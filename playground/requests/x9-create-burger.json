@@ -1,0 +1,46 @@
+{
+  "validUntil": "2030-12-31T23:59:59Z",
+  "creditor": {
+    "name": "Smash & Stack Burgers",
+    "phone": "+14155550111",
+    "email": "pay@smashstack.example",
+    "address": {
+      "line1": "88 Grill Alley",
+      "city": "Austin",
+      "state": "TX",
+      "postalCode": "78701",
+      "country": "US"
+    },
+    "MCC": "5812"
+  },
+  "bill": {
+    "description": "Table 7 - dine-in",
+    "tip": {
+      "range": { "min": 150, "max": 250 },
+      "presets": [ 180, 200, 220, 250 ]
+    },
+    "amountDue": {
+      "amount": 2450,
+      "currency": "USD"
+    }
+  },
+  "paymentNotification": { "kind": "DEFAULT" },
+  "paymentMethods": [
+    {
+      "currency": "USD",
+      "validUntil": "2030-12-31T23:59:59Z",
+      "amount": 2450,
+      "networks": {
+        "FedNow": { "routingNumber": "021000021", "accountNumber": "5540118820", "protectionType": "tokenized" }
+      }
+    },
+    {
+      "currency": "USDC",
+      "validUntil": "2030-12-31T23:59:59Z",
+      "amount": 24500000,
+      "networks": {
+        "Solana": { "walletAddress": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM" }
+      }
+    }
+  ]
+}
