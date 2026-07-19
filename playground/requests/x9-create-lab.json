@@ -1,9 +1,9 @@
 {
   "validUntil": "2030-12-31T23:59:59Z",
   "creditor": {
-    "name": "BlaBla Diagnostics Lab",
+    "name": "Helix Diagnostics Lab",
     "phone": "+16175550188",
-    "email": "accounts@blablalab.example",
+    "email": "billing@helixdiagnostics.example",
     "address": {
       "line1": "45 Science Park",
       "line2": "Bldg C",

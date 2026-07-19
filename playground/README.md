@@ -89,7 +89,7 @@ own `x9-create-<name>.json`:
 |------|----------|-----------|
 | `x9-create-burger.json` | Burger joint, $24.50 | **tip** presets/range |
 | `x9-create-waterbill.json` | Water utility, $87.30 | **discount + late-fee adjustments**, 3 bank rails (FedNow/RTP/ACH) |
-| `x9-create-blablalab.json` | Diagnostics lab, $312.00 | invoice + USDC on Ethereum |
+| `x9-create-lab.json` | Helix Diagnostics Lab, $312.00 | invoice + USDC on Ethereum |
 | `x9-create-parking.json` | Parking, $6.00 | tiny amount, USDC on Polygon |
 | `x9-create-donation.json` | Charity | **editable amount** (payer chooses) + **Bitcoin** & Solana |
 
