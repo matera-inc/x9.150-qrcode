@@ -1,0 +1,53 @@
+name: DCO
+
+# Fails a pull request if any of its (non-merge) commits is missing a
+# `Signed-off-by:` line that matches the commit author. See CONTRIBUTING.md.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  dco:
+    name: DCO
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify Signed-off-by on every commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          fail=0
+          for sha in $(git rev-list "$BASE_SHA".."$HEAD_SHA"); do
+            # Skip merge commits (2+ parents) — they carry no sign-off.
+            if [ "$(git rev-list --parents -n1 "$sha" | wc -w)" -gt 2 ]; then
+              continue
+            fi
+            subject=$(git log -1 --format='%s' "$sha")
+            expected="Signed-off-by: $(git log -1 --format='%an <%ae>' "$sha")"
+            if git log -1 --format='%B' "$sha" | grep -qxF "$expected"; then
+              echo "PASS  ${sha:0:12}  $subject"
+            else
+              echo "FAIL  ${sha:0:12}  $subject"
+              echo "      expected a line exactly matching: $expected"
+              fail=1
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo ""
+            echo "::error::One or more commits are missing a matching DCO 'Signed-off-by' line."
+            echo "Fix with:  git commit --amend -s   (last commit)"
+            echo "      or:  git rebase --signoff HEAD~<n>   (several), then force-push your branch."
+            echo "See CONTRIBUTING.md."
+            exit 1
+          fi
+          echo ""
+          echo "All commits are signed off. ✅"
