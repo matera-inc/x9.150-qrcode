@@ -1,0 +1,13 @@
+{
+  "_comment": [
+    "Pegged-currency groups. Each array in \"groups\" is one peg group whose currencies MAY be mixed",
+    "on a single QR payment request (e.g. dollar-pegged USD/USDC/USDT). Currencies from two different",
+    "groups must not be combined (e.g. USD + BRL); any currency not listed in a group is non-pegged",
+    "and must be the only currency on the request. This '_comment' key is documentation only and is",
+    "ignored by the loader, keeping the file strict, standard JSON."
+  ],
+  "groups": [
+    ["USD", "USDC", "USDT"],
+    ["BRL", "BRL1"]
+  ]
+}
