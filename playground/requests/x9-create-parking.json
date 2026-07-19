@@ -1,0 +1,42 @@
+{
+  "validUntil": "2030-12-31T23:59:59Z",
+  "creditor": {
+    "name": "MetroPark Downtown",
+    "phone": "+13125550170",
+    "email": "support@metropark.example",
+    "address": {
+      "line1": "210 Wacker Dr",
+      "city": "Chicago",
+      "state": "IL",
+      "postalCode": "60606",
+      "country": "US"
+    },
+    "MCC": "7523"
+  },
+  "bill": {
+    "description": "Parking - 2h, Lot B, bay 42",
+    "amountDue": {
+      "amount": 600,
+      "currency": "USD"
+    }
+  },
+  "paymentNotification": { "kind": "DEFAULT" },
+  "paymentMethods": [
+    {
+      "currency": "USD",
+      "validUntil": "2030-12-31T23:59:59Z",
+      "amount": 600,
+      "networks": {
+        "FedNow": { "routingNumber": "071000013", "accountNumber": "4402219980", "protectionType": "tokenized" }
+      }
+    },
+    {
+      "currency": "USDC",
+      "validUntil": "2030-12-31T23:59:59Z",
+      "amount": 6000000,
+      "networks": {
+        "Polygon": { "walletAddress": "0x742d35Cc6634C0539Ff82c466ae367A6097dE123" }
+      }
+    }
+  ]
+}

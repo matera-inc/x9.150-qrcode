@@ -1,0 +1,48 @@
+{
+  "validUntil": "2030-12-31T23:59:59Z",
+  "creditor": {
+    "name": "BlaBla Diagnostics Lab",
+    "phone": "+16175550188",
+    "email": "accounts@blablalab.example",
+    "address": {
+      "line1": "45 Science Park",
+      "line2": "Bldg C",
+      "city": "Cambridge",
+      "state": "MA",
+      "postalCode": "02139",
+      "country": "US"
+    },
+    "MCC": "8071"
+  },
+  "bill": {
+    "description": "Lab panel - CBC + lipid profile",
+    "invoice": {
+      "number": "LAB-88231",
+      "date": "2030-05-14",
+      "dueDate": "2030-06-14T23:59:59Z"
+    },
+    "amountDue": {
+      "amount": 31200,
+      "currency": "USD"
+    }
+  },
+  "paymentNotification": { "kind": "DEFAULT" },
+  "paymentMethods": [
+    {
+      "currency": "USD",
+      "validUntil": "2030-12-31T23:59:59Z",
+      "amount": 31200,
+      "networks": {
+        "FedNow": { "routingNumber": "011000015", "accountNumber": "7712004590", "protectionType": "tokenized" }
+      }
+    },
+    {
+      "currency": "USDC",
+      "validUntil": "2030-12-31T23:59:59Z",
+      "amount": 312000000,
+      "networks": {
+        "Ethereum": { "walletAddress": "0x71C7656EC7ab88b098defB751B7401B5f6d8976F" }
+      }
+    }
+  ]
+}
