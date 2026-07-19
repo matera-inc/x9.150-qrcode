@@ -21,6 +21,7 @@ import com.matera.x9qrcode.app.usecase.retrieveqrcode.RetrieveQRCodeUseCase;
 import com.matera.x9qrcode.app.usecase.updatestatus.UpdateQRCodeStatusUseCase;
 import com.matera.x9qrcode.app.usecase.validatesignature.ValidateSignatureUseCase;
 import com.matera.x9qrcode.domain.generator.IdGenerator;
+import com.matera.x9qrcode.domain.service.CurrencyMixPolicy;
 import com.matera.x9qrcode.domain.service.factory.FormulaFactory;
 
 import org.springframework.context.annotation.Bean;
@@ -35,8 +36,10 @@ public class UseCaseConfiguration {
     public CreateQRCodeUseCase createQRCodeUseCase(QRCodeRepository qrCodeRepository,
                                                    QRCodeEMVService qrCodeEMVService,
                                                    QRCodeLocationService qrCodeLocationService,
-                                                   IdGenerator<UUID> idGenerator) {
-        return new CreateQRCodeUseCase(qrCodeRepository, qrCodeEMVService, qrCodeLocationService, idGenerator);
+                                                   IdGenerator<UUID> idGenerator,
+                                                   CurrencyMixPolicy currencyMixPolicy) {
+        return new CreateQRCodeUseCase(qrCodeRepository, qrCodeEMVService, qrCodeLocationService, idGenerator,
+            currencyMixPolicy);
     }
 
     @Bean
@@ -72,8 +75,9 @@ public class UseCaseConfiguration {
     @Bean
     public PatchQRCodeUseCase patchQRCodeUseCase(QRCodeRepository qrCodeRepository,
                                                  QRCodeEMVService qrCodeEMVService,
-                                                 QRCodeLocationService qrCodeLocationService) {
-        return new PatchQRCodeUseCase(qrCodeRepository, qrCodeEMVService, qrCodeLocationService);
+                                                 QRCodeLocationService qrCodeLocationService,
+                                                 CurrencyMixPolicy currencyMixPolicy) {
+        return new PatchQRCodeUseCase(qrCodeRepository, qrCodeEMVService, qrCodeLocationService, currencyMixPolicy);
     }
 
     @Bean
