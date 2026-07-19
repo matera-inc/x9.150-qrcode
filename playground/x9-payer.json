@@ -1,0 +1,62 @@
+{
+  "id": "019F7BE9941FC5BC170F6066D7C27766",
+  "revision": 0,
+  "createdAt": "2026-07-19T19:45:33.216Z",
+  "revisedAt": "2026-07-19T19:45:33.216Z",
+  "sentAt": "2026-07-19T19:58:00.773Z",
+  "validUntil": "2030-12-31T23:59:59Z",
+  "status": "ACTIVE",
+  "creditor": {
+    "name": "Riverside Coffee Roasters",
+    "phone": "+14155550175",
+    "email": "billing@riversidecoffee.example",
+    "address": {
+      "line1": "128 Riverside Drive",
+      "line2": "Suite 3",
+      "city": "Portland",
+      "state": "OR",
+      "postalCode": "97204",
+      "country": "US"
+    },
+    "MCC": "5812"
+  },
+  "bill": {
+    "amountDue": {
+      "amount": 10000,
+      "currency": "USD"
+    },
+    "paymentTiming": "IMMEDIATE",
+    "description": "In-store purchase",
+    "tip": {
+      "allowed": false
+    }
+  },
+  "paymentNotification": "https://x9-150.example.com/pub/api/v1/payment-notification",
+  "paymentMethods": [
+    {
+      "currency": "USD",
+      "validUntil": "2030-12-31T23:59:59Z",
+      "amount": 10000,
+      "networks": {
+        "FedNow": {
+          "routingNumber": "021000021",
+          "accountNumber": "4021115500",
+          "protectionType": "tokenized"
+        }
+      }
+    },
+    {
+      "currency": "USDC",
+      "validUntil": "2030-12-31T23:59:59Z",
+      "amount": 100000000,
+      "networks": {
+        "Solana": {
+          "walletAddress": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+        },
+        "Ethereum": {
+          "walletAddress": "0x71C7656EC7ab88b098defB751B7401B5f6d8976F"
+        }
+      }
+    }
+  ]
+}
