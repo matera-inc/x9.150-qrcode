@@ -1,0 +1,10 @@
+{
+  "payment": {
+    "qrcodeId": "{{qrcodeId}}",
+    "amount": 5000,
+    "currency": "USD",
+    "network": "FedNow",
+    "transactionId": "XYZ.USBK.X9aTf72qLm.1"
+  },
+  "expectedDate": "2030-10-08T06:59:59Z"
+}

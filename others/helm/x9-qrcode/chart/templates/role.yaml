@@ -1,0 +1,23 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "x9-qrcode.fullname" . }}-config-reader
+  labels:
+    {{- include "x9-qrcode.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["list"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames:
+      - {{ include "x9-qrcode.fullname" . }}
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames:
+      - {{ include "x9-qrcode.fullname" . }}
+    verbs: ["get"]
+  - apiGroups: [ "" ]
+    resources: [ "pods" ]
+    verbs: [ "get" ]

@@ -1,0 +1,17 @@
+spring:
+  threads:
+    virtual:
+      enabled: false
+
+x9:
+  public-endpoints:
+    host: x9-150.example.com
+  certificate:
+    # Tests use the self-signed DEMO keystore shipped on the classpath (non-production).
+    private-keystore:
+      location: classpath:/certificate/x9-demo.jks
+      password: x9demo123
+      private-key-password: x9demo123
+    truststore:
+      location: classpath:/certificate/x9-demo-truststore.jks
+      password: x9demo123

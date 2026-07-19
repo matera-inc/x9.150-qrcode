@@ -1,0 +1,15 @@
+{
+  "payment": {
+    "qrcodeId": "{{qrcodeId}}",
+    "amount": 25000000,
+    "currency": "USDC",
+    "network": "Polygon",
+    "transactionId": "XYZ.USBK.X9aTf72qLm.1"
+  },
+  "expectedDate": "2030-10-08T06:59:59Z",
+  "blockchain": {
+    "action": "{{action}}",
+    "to": "0x742d35Cc6634C0539Ff82c466ae367A6097dE123",
+    "from": "0x742d35Cc6634C0539Ff82c466ae367A6097dE123"
+  }
+}

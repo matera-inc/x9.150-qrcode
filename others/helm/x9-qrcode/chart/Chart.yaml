@@ -1,0 +1,13 @@
+apiVersion: v2
+# Chart Name
+name: x9-qrcode
+# Chart Icon
+icon: https://www.matera.com/images/matera.png
+# Chart Description
+description: 'X9 QRCode'
+# This is the chart type.
+type: application
+# This is the chart version.
+version: 1.1.0
+# This is the version number of the application being deployed. (version image container)
+appVersion: latest-amd64

@@ -1,0 +1,23 @@
+/*
+ * Copyright © 2026 Matera Systems, Inc.
+ * Licensed under the Matera Source License v1.0 (source-available; not open source). See LICENSE.md.
+ * Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
+ * based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
+ */
+package com.matera.x9qrcode.app.usecase.retrieveqrcode.mapper;
+
+import com.matera.x9qrcode.app.dto.LocationDTO;
+import com.matera.x9qrcode.domain.vo.LocationIdVO;
+
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
+
+import java.net.URI;
+
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
+public class RetrieveQRCodeLocationMapper {
+    public static LocationDTO map(LocationIdVO locationId, URI endpoint) {
+        return new LocationDTO(locationId.value(), endpoint);
+    }
+
+}

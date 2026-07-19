@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "x9-qrcode.fullname" . }}
+  labels:
+    {{- include "x9-qrcode.labels" . | nindent 4 }}
+  {{- with .Values.deploymentAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "x9-qrcode.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: {{ .Values.deploymentStrategy.type | default "RollingUpdate" }}
+    {{- if eq (.Values.deploymentStrategy.type | default "RollingUpdate") "RollingUpdate" }}
+    rollingUpdate:
+      {{- toYaml .Values.deploymentStrategy.rollingUpdate | nindent 6 }}
+    {{- end }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "x9-qrcode.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "x9-qrcode.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        {{- toYaml .Values.initContainers | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.deploymentStrategy.terminationGracePeriodSeconds }}
+      containers:
+        - name: {{ include "x9-qrcode.fullname" . }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: {{ include "x9-qrcode.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.deploy.ports.containerPort }}
+              protocol: TCP
+            - name: management
+              containerPort: {{ .Values.deploy.ports.managementPort }}
+              protocol: TCP
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/bash","-c","sleep {{ .Values.deploymentStrategy.preStop.sleep }}"]
+          {{- if .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml .Values.startupProbe | nindent 12 }}
+          {{- end }}
+          {{- include "x9-qrcode.calculateResourcesBlock" . | nindent 10 }}
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: kubernetes
+            {{- with .Values.environment.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.customerEnvs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            {{- with .Values.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            - name: app-config
+              readOnly: true
+              mountPath: /workspace/app-config
+        {{- if .Values.sidecars }}
+        {{- toYaml .Values.sidecars | nindent 8 }}
+        {{- end }}
+      volumes:
+        - name: app-config
+          configMap:
+            name: {{ include "x9-qrcode.fullname" . }}-kubernetes
+        {{- with .Values.volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

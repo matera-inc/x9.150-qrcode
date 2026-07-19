@@ -1,0 +1,141 @@
+{
+  "id": "68D389223C4E428EB1D6C87122C94EB5",
+  "qrCode": "00020101021226800006org.x92566x9-150.example.com/pub/api/v1/loc/68D389223C4E428EB1D6C87122C94EB5520449005303986540105802US5925California Electric Compa6011Los Angeles6304E681",
+  "location": {
+    "id": "68D389223C4E428EB1D6C87122C94EB5",
+    "endpoint": "x9-150.example.com/pub/api/v1/loc/68D389223C4E428EB1D6C87122C94EB5"
+  },
+  "validUntil": "2030-05-15T23:59:59Z",
+  "creditor": {
+    "name": "California Electric Company",
+    "phone": "+15552223333",
+    "email": "billing@californiaelectric.com",
+    "address": {
+      "line1": "500 Energy Ave",
+      "line2": "500 Energy Ave",
+      "city": "Los Angeles",
+      "state": "CA",
+      "postalCode": "90012",
+      "country": "US"
+    },
+    "ultimateCreditor": {
+      "account": {
+        "id": "identification within the ultimate creditor system, like virtualAccount, e-mail, number, handle, etc.",
+        "schemaName": "Schema for the id - naming convention adopted from ISO20022"
+      },
+      "name": "California Electric Company",
+      "phone": "+15552223333",
+      "email": "billing@californiaelectric.com",
+      "address": {
+        "line1": "500 Energy Ave",
+        "line2": "500 Energy Ave",
+        "city": "Los Angeles",
+        "state": "CA",
+        "postalCode": "90012",
+        "country": "US"
+      }
+    },
+    "MCC": "4900"
+  },
+  "bill": {
+    "description": "Electricity service for April 2030",
+    "paymentTiming": "DEFERRED",
+    "order": {
+      "number": "ORD-2030-04-00123",
+      "date": "2030-04-30"
+    },
+    "invoice": {
+      "number": "ORD-2030-04-00123",
+      "date": "2030-04-30",
+      "dueDate": "2030-05-15T23:59:59Z",
+      "invoicee": {
+        "name": "California Electric Company",
+        "phone": "+15552223333",
+        "email": "billing@californiaelectric.com",
+        "address": {
+          "line1": "500 Energy Ave",
+          "line2": "500 Energy Ave",
+          "city": "Los Angeles",
+          "state": "CA",
+          "postalCode": "90012",
+          "country": "US"
+        }
+      }
+    },
+    "tip": {
+      "allowed": false
+    },
+    "amountDue": {
+      "amount": 18834,
+      "currency": "USD",
+      "adjustments": {
+        "formula": "FixedDiscountLateFeeLinearInterest",
+        "parameters": {
+          "discounts": [
+            {
+              "daysBefore": 60,
+              "discount": 1000,
+              "explanation": "$10 discount because you're paying 60 days before ${dueDate}"
+            }
+          ],
+          "lateFees": {
+            "fixed": 100,
+            "perDay": 25,
+            "explanation": "$1 administrative fee plus $0.25 per day interest"
+          }
+        }
+      }
+    }
+  },
+  "locationId": "68D389223C4E428EB1D6C87122C94EB5",
+  "unstructured": "Account: 987650001, Meter: MTR45567, payer: ${payer.email}",
+  "additionalInformation": [
+    {
+      "key": "CustomerServiceRef",
+      "value": "CSREF-77283"
+    }
+  ],
+  "paymentNotification": {
+    "kind": "EXTERNAL",
+    "endpoint": "https://paymentNotification.com/paymentNotificationOrder14525"
+  },
+  "paymentMethods": [
+    {
+      "currency": "USD",
+      "validUntil": "2030-05-10T23:59:59Z",
+      "amount": 18834,
+      "editable": {
+        "range": {
+          "min": 10000,
+          "max": 18834
+        }
+      },
+      "networks": {
+        "FedNow": {
+          "routingNumber": "021000021",
+          "accountNumber": "1234567890",
+          "protectionType": "tokenized"
+        },
+        "RTP": {
+          "routingNumber": "021000021",
+          "accountNumber": "1234567890",
+          "protectionType": "tokenized"
+        },
+        "ACH": {
+          "routingNumber": "021000021",
+          "accountNumber": "1234567890",
+          "protectionType": "tokenized"
+        }
+      }
+    }
+  ],
+  "revision": 2,
+  "createdAt": "2030-04-30T12:00:00Z",
+  "revisedAt": "2030-05-05T15:45:30Z",
+  "sentAt": "2030-05-01T21:30:00Z",
+  "status": "PAID",
+  "paymentDetails": {
+    "network": "FedNow",
+    "endToEndId": "0196cb82-afab-46f1-bf8d-fff2f9c8a53e"
+  }
+}

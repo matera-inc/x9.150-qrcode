@@ -1,0 +1,107 @@
+# =============================================================================
+# X9 QRCode — production-style Docker Compose (non-Kubernetes deployment)
+# =============================================================================
+# Self-contained: ALL application configuration is set INLINE below as
+# environment variables. There is no .env file and no mounted config file —
+# the compose file itself is the single source of configuration for this path.
+#
+# (Kubernetes users should keep using the Helm chart under others/helm/;
+#  local dev users can keep using docker-compose.yml. This file is the plain
+#  "docker compose" production-style option.)
+#
+# Prerequisite — build the application image first:
+#     ./mvnw -Pdocker -DskipTests clean package   # produces x9-qrcode:latest  (or: make image)
+#
+# Run:
+#     docker compose -f docker-compose.prod.yml up -d
+#
+# App:   http://localhost:8080      (actuator health: /actuator/health)
+# Mongo: localhost:27017            (single-node replica set "x9-qrcode")
+#
+# NOTE on secrets: real secrets and keystores are NOT in this file. They live in
+# ./secrets (git-ignored) and are mounted into the container at /app/secrets and
+# auto-imported via spring.config.import. Copy secrets/application-secrets.yml.sample
+# to secrets/application-secrets.yml and place your keystores in secrets/certificate/.
+# See secrets/README.md.
+# =============================================================================
+
+services:
+
+  x9-qrcode:
+    image: x9-qrcode:latest
+    container_name: x9-qrcode
+    ports:
+      - "8080:8080"
+    environment:
+
+      # --- MongoDB (points at the 'mongo' service; replica set enables transactions) ---
+      SPRING_DATA_MONGODB_HOST: "mongo"
+      SPRING_DATA_MONGODB_PORT: "27017"
+      SPRING_DATA_MONGODB_REPLICA_SET_NAME: "x9-qrcode"
+
+      # --- Public origin for the URLs baked into QR codes + JWS headers (see ENDPOINTS.md) ---
+      # No scheme; must be <= 37 chars so the loc URL fits the EMV tag-26 budget.
+      #   X9_PUBLICENDPOINTS_HOST=x9.mydomain.dev docker compose -f docker-compose.prod.yml up -d
+      X9_PUBLICENDPOINTS_HOST: "${X9_PUBLICENDPOINTS_HOST:-x9-150.example.com}"
+      X9_PUBLICENDPOINTS_BASEPATH: "${X9_PUBLICENDPOINTS_BASEPATH:-/pub}"
+
+      # --- Secrets & keystores: NOT inlined. They come from ./secrets (mounted below),
+      #     auto-imported via spring.config.import in application.yml. See secrets/README.md.
+    volumes:
+      - ./secrets:/app/secrets:ro
+    depends_on:
+      mongo-setup:
+        condition: service_completed_successfully
+    networks:
+      - x9-qrcode-network
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:latest
+    container_name: x9-mongo
+    # Single-node replica set — required so the app can use MongoDB transactions.
+    # Cache pinned low for a modest host footprint.
+    command: ["mongod", "--replSet", "x9-qrcode", "--bind_ip_all", "--wiredTigerCacheSizeGB", "0.25"]
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - x9-qrcode-network
+    restart: unless-stopped
+
+  mongo-setup:
+    image: mongo:latest
+    container_name: x9-mongo-setup
+    depends_on:
+      mongo:
+        condition: service_healthy
+    # Initiate the replica set once (idempotent — skips if already initiated).
+    # Member host is the 'mongo' service name so it resolves inside the compose network.
+    entrypoint:
+      - bash
+      - -c
+      - >
+        mongosh --host mongo:27017 --quiet --eval '
+          try { rs.status(); print("replica set already initiated"); }
+          catch (e) {
+            rs.initiate({ _id: "x9-qrcode", members: [ { _id: 0, host: "mongo:27017" } ] });
+            print("replica set initiated");
+          }'
+    networks:
+      - x9-qrcode-network
+    restart: "no"
+
+networks:
+  x9-qrcode-network:
+    name: x9-qrcode-network
+    driver: bridge
+
+volumes:
+  mongo-data:

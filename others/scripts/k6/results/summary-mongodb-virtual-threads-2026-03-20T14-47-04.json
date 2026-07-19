@@ -1,0 +1,270 @@
+{
+  "root_group": {
+    "name": "",
+    "path": "",
+    "id": "d41d8cd98f00b204e9800998ecf8427e",
+    "groups": [],
+    "checks": [
+        {
+          "fails": 0,
+          "name": "status is 201",
+          "path": "::status is 201",
+          "id": "ec8c9afd59577ad0eb26fbf150ecf791",
+          "passes": 56077
+        },
+        {
+          "name": "response has id",
+          "path": "::response has id",
+          "id": "6649b70c5c96e7e83e46163774f71c12",
+          "passes": 56077,
+          "fails": 0
+        },
+        {
+          "path": "::response has qrCode",
+          "id": "77a00c7ef0d4d4f12d12140858db48a7",
+          "passes": 56077,
+          "fails": 0,
+          "name": "response has qrCode"
+        }
+      ]
+  },
+  "options": {
+    "summaryTimeUnit": "",
+    "noColor": false,
+    "summaryTrendStats": [
+      "avg",
+      "min",
+      "med",
+      "max",
+      "p(90)",
+      "p(95)"
+    ]
+  },
+  "state": {
+    "isStdOutTTY": true,
+    "isStdErrTTY": true,
+    "testRunDurationMs": 302368.652021
+  },
+  "metrics": {
+    "http_req_sending": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "max": 69.820366,
+        "p(90)": 0.05217020000000003,
+        "p(95)": 0.10380859999999993,
+        "avg": 0.06901074911282738,
+        "min": 0.005816,
+        "med": 0.02912
+      }
+    },
+    "data_sent": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "rate": 151292.11872407614,
+        "count": 45745994
+      }
+    },
+    "iterations": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "rate": 185.45904023180736,
+        "count": 56077
+      }
+    },
+    "iteration_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "max": 3279.744457,
+        "p(90)": 3018.6378784,
+        "p(95)": 3030.6704087999997,
+        "avg": 2016.6393389068146,
+        "min": 1002.377939,
+        "med": 2011.520867
+      }
+    },
+    "http_req_blocked": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(95)": 0.01579359999999999,
+        "avg": 0.03372304891488519,
+        "min": 0.001665,
+        "med": 0.00755,
+        "max": 18.191085,
+        "p(90)": 0.0117514
+      }
+    },
+    "http_req_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(95)": 56.87176799999994,
+        "avg": 20.691668254097078,
+        "min": 0.279342,
+        "med": 9.916309,
+        "max": 196036.688311,
+        "p(90)": 37.3010732
+      },
+      "thresholds": {
+        "p(95)<2000": {
+          "ok": true
+        }
+      }
+    },
+    "http_req_failed": {
+      "contains": "default",
+      "values": {
+        "rate": 0,
+        "passes": 0,
+        "fails": 56077
+      },
+      "thresholds": {
+        "rate<0.05": {
+          "ok": true
+        }
+      },
+      "type": "rate"
+    },
+    "vus": {
+      "type": "gauge",
+      "contains": "default",
+      "values": {
+        "value": 3,
+        "min": 2,
+        "max": 500
+      }
+    },
+    "http_req_tls_handshaking": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "min": 0,
+        "med": 0,
+        "max": 0,
+        "p(90)": 0,
+        "p(95)": 0,
+        "avg": 0
+      }
+    },
+    "qrcode_creation_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(90)": 37.3010732,
+        "p(95)": 56.87176799999994,
+        "avg": 20.691668254097085,
+        "min": 0.279342,
+        "med": 9.916309,
+        "max": 196036.688311
+      }
+    },
+    "qrcode_success_rate": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 1,
+        "passes": 56077,
+        "fails": 0
+      },
+      "thresholds": {
+        "rate>0.95": {
+          "ok": true
+        }
+      }
+    },
+    "http_req_connecting": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "med": 0,
+        "max": 13.634269,
+        "p(90)": 0,
+        "p(95)": 0,
+        "avg": 0.01757521409847174,
+        "min": 0
+      }
+    },
+    "checks": {
+      "values": {
+        "rate": 1,
+        "passes": 168231,
+        "fails": 0
+      },
+      "type": "rate",
+      "contains": "default"
+    },
+    "qrcodes_created": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 56077,
+        "rate": 185.45904023180736
+      }
+    },
+    "http_req_waiting": {
+      "contains": "time",
+      "values": {
+        "avg": 19.331016700072944,
+        "min": 0,
+        "med": 9.170295,
+        "max": 196036.519656,
+        "p(90)": 34.313707,
+        "p(95)": 52.651757199999956
+      },
+      "type": "trend"
+    },
+    "data_received": {
+      "values": {
+        "count": 38853738,
+        "rate": 128497.9039338428
+      },
+      "type": "counter",
+      "contains": "data"
+    },
+    "vus_max": {
+      "type": "gauge",
+      "contains": "default",
+      "values": {
+        "value": 500,
+        "min": 500,
+        "max": 500
+      }
+    },
+    "http_reqs": {
+      "contains": "default",
+      "values": {
+        "count": 56077,
+        "rate": 185.45904023180736
+      },
+      "type": "counter"
+    },
+    "http_req_duration{expected_response:true}": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "max": 196036.688311,
+        "p(90)": 37.3010732,
+        "p(95)": 56.87176799999994,
+        "avg": 20.691668254097078,
+        "min": 0.279342,
+        "med": 9.916309
+      }
+    },
+    "http_req_receiving": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "max": 136.168356,
+        "p(90)": 2.342541,
+        "p(95)": 4.7363823999999966,
+        "avg": 1.2916408049110955,
+        "min": 0.012871,
+        "med": 0.212615
+      }
+    }
+  }
+}

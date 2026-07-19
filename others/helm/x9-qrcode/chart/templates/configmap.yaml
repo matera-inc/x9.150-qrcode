@@ -1,0 +1,22 @@
+{{ $applicationConfig := toYaml .Values.applicationExtra -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "x9-qrcode.fullname" . }}-kubernetes
+data:
+  application-kubernetes.yaml: |-
+{{ tpl $applicationConfig . | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "x9-qrcode.fullname" . }}
+data:
+  spring.cloud.discovery.client.composite-indicator.enabled: "false"
+  server.port: {{ .Values.deploy.ports.containerPort | quote }}
+  management.server.port: {{ .Values.deploy.ports.managementPort | quote }}
+  spring.application.name: {{ include "x9-qrcode.fullname" . }}
+  application.loggingFormat: {{ required "The '.Values.application.loggingFormat' is required! See documentation for more details!" (dig "loggingFormat" nil .Values.application) | quote }}
+  x9.public-endpoints.host: {{ required "The '.Values.application.x9.public-endpoints.host' is required! See documentation for more details!" (dig "x9" "public-endpoints" "host" nil .Values.application) | quote }}
+  x9.certificate.private-keystore.location: {{ required "The '.Values.application.x9.certificate.private-keystore.location' is required! See documentation for more details!" (dig "x9" "certificate" "private-keystore" "location" nil .Values.application) | quote }}
+  x9.certificate.truststore.location: {{ required "The '.Values.application.x9.certificate.truststore.location' is required! See documentation for more details!" (dig "x9" "certificate" "truststore" "location" nil .Values.application) | quote }}

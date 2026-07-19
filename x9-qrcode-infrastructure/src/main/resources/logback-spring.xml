@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration scan="true" scanPeriod="30 seconds" packagingData="true">
+
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <!-- Suppress Logback internal status messages -->
+    <statusListener class="ch.qos.logback.core.status.NopStatusListener" />
+
+    <!-- The separator is used to delimit the information from the audit log. -->
+    <property name="LOG_FOLDER" value="${java.io.tmpdir}/logs" />
+
+    <property name="LOG_FILE_NAME" value="x9-qrcode.log" />
+
+    <property scope="context" name="ASYNC_LOGGING_FLUSH_TIME_TO_USE" value="${ASYNC_LOGGING_FLUSH_TIME:-5000}"/>
+
+    <property name="CONSOLE_LOG_PATTERN" value="[%d{dd/MM/yyyy HH:mm:ss.SSS X}] [%-32mdc{traceId:----- traceId -----}] [%-33.-33thread] [%-5level] [%-70logger{70}] %msg %n"/>
+
+    <springProperty scope="context" name="applicationLoggingFormat" source="application.loggingFormat" defaultValue="json"/>
+
+    <conversionRule conversionWord="crlf" class="org.owasp.security.logging.mask.CRLFConverter"/>
+
+    <appender name="textFile" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_FOLDER}/${LOG_FILE_NAME}</file>
+        <append>true</append>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_FOLDER}/${LOG_FILE_NAME}.%d{yyyy-MM-dd_HH}hs.%i.zip</fileNamePattern>
+            <maxHistory>240</maxHistory>
+            <maxFileSize>10MB</maxFileSize>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+        </encoder>
+    </appender>
+
+    <condition class="ch.qos.logback.core.boolex.ExpressionPropertyCondition">
+        <expression>propertyEquals("applicationLoggingFormat", "json")</expression>
+    </condition>
+    <if>
+        <then>
+            <!-- Console logging with JSON -->
+            <appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+                <encoder class="net.logstash.logback.encoder.LogstashEncoder" >
+                    <customFields>{ "service" : "X9-QRCODE" }</customFields>
+                </encoder>
+            </appender>
+        </then>
+        <else>
+            <!-- Console logging with plain text -->
+            <conversionRule conversionWord="clr" class="org.springframework.boot.logging.logback.ColorConverter" />
+            <appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+                <encoder>
+                    <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+                </encoder>
+            </appender>
+        </else>
+    </if>
+
+    <root level="INFO">
+        <appender-ref ref="console" />
+        <appender-ref ref="textFile" />
+    </root>
+
+    <logger name="org.springframework.boot.web.servlet.context.AnnotationConfigServletWebServerApplicationContext" level="DEBUG"/>
+
+</configuration>

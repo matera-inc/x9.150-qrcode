@@ -1,0 +1,96 @@
+services:
+  x9-qrcode:
+    image: x9-qrcode:latest
+    container_name: x9-qrcode
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_CONFIG_LOCATION=classpath:/,/app/config/
+      # Talk to the 'mongo' service by name (works inside the compose network on any Docker/Colima).
+      - SPRING_DATA_MONGODB_HOST=mongo
+      # Override the public origin at launch (env vars win over the mounted YAML).
+      # See ENDPOINTS.md. No scheme; must be <= 37 chars.
+      - X9_PUBLICENDPOINTS_HOST=${X9_PUBLICENDPOINTS_HOST:-x9-150.example.com}
+    volumes:
+      - ./x9-qrcode-infrastructure/src/main/resources/application-default.yml:/app/config/application-dev.yml:ro
+    networks:
+      - x9-qrcode-network
+    depends_on:
+      mongo:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+        reservations:
+          cpus: "1.0"
+          memory: 1G
+
+  mongo:
+    image: mongo
+    container_name: x9-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    command: ["mongod", "--replSet", "x9-qrcode"]
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/27017"]
+      interval: 2s
+      timeout: 2s
+      retries: 2
+      start_period: 2s
+    networks:
+      - x9-qrcode-network
+    tmpfs:
+      - /data/db
+      - /data/configdb
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "2.0"
+          memory: 2G
+
+  mongo-setup:
+    image: mongo
+    container_name: x9-mongo-setup
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - x9-qrcode-network
+    command: >
+      mongosh --host mongo:27017 --eval '
+        rs.initiate({
+          _id: "x9-qrcode",
+          members: [
+            { _id: 0, host: "mongo:27017" }
+          ]
+        })
+      '
+
+  mongo-express:
+    image: mongo-express
+    container_name: x9-mongo-express
+    restart: always
+    ports:
+      - "9091:8081"
+    environment:
+      - ME_CONFIG_MONGODB_SERVER=mongo
+      - ME_CONFIG_MONGODB_PORT=27017
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=admin
+    networks:
+      - x9-qrcode-network
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+networks:
+  x9-qrcode-network:
+    name: x9-qrcode-network
+    driver: bridge

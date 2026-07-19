@@ -1,0 +1,362 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>3.5.11</version>
+		<relativePath/>
+	</parent>
+
+	<groupId>com.matera</groupId>
+	<artifactId>x9-qrcode-parent</artifactId>
+	<version>2.3.0-SNAPSHOT</version>
+	<packaging>pom</packaging>
+	<name>x9-qrcode-parent</name>
+	<description>QRCode X9 project</description>
+
+	<modules>
+		<module>x9-qrcode-build-init</module>
+		<module>x9-qrcode-domain</module>
+		<module>x9-qrcode-application</module>
+		<module>x9-qrcode-infrastructure</module>
+	</modules>
+
+	<properties>
+        <module.name>x9-qrcode</module.name>
+
+        <overriden.image.tag>${project.version}</overriden.image.tag>
+		<build.arch>amd64</build.arch>
+		<registry.url>registry.example.com</registry.url>
+		<registry.project>x9-qrcode</registry.project>
+		<registry.repository>${registry.url}/${registry.project}/${module.name}</registry.repository>
+		<image.name>${registry.repository}:${overriden.image.tag}</image.name>
+
+		<spring-boot.build-image.builder>paketobuildpacks/builder-noble-java-tiny:latest</spring-boot.build-image.builder>
+
+		<java.version>25</java.version>
+
+		<maven.compiler.source>${java.version}</maven.compiler.source>
+		<maven.compiler.target>${java.version}</maven.compiler.target>
+
+		<jacoco.version>0.8.14</jacoco.version>
+
+		<swagger-annotations-jakarta.version>2.2.30</swagger-annotations-jakarta.version>
+		<jakarta.validation-api.version>3.1.1</jakarta.validation-api.version>
+		<jackson-databind-nullable.version>0.2.6</jackson-databind-nullable.version>
+		<de.flapdoodle.embed.mongo.version>4.20.0</de.flapdoodle.embed.mongo.version>
+		<commons-lang3.version>3.20.0</commons-lang3.version>
+		<commons-collections4.version>4.5.0</commons-collections4.version>
+		<ulid-creator.version>5.2.3</ulid-creator.version>
+		<jackson-datatype-jsr310.version>2.18.3</jackson-datatype-jsr310.version>
+		<matera-emv-qrcode.version>0.1.3</matera-emv-qrcode.version>
+		<datafaker.version>2.4.4</datafaker.version>
+		<json-path.version>2.8.0</json-path.version>
+		<nimbus-jose-jwt.version>10.7</nimbus-jose-jwt.version>
+		<jasypt.version>4.0.4</jasypt.version>
+		<logstash-logback-encoder.version>9.0</logstash-logback-encoder.version>
+		<security-logging-logback.version>1.1.7</security-logging-logback.version>
+		<spring-cloud-dependencies.version>2025.0.0</spring-cloud-dependencies.version>
+	</properties>
+
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>com.matera</groupId>
+				<artifactId>x9-qrcode-domain</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>com.matera</groupId>
+				<artifactId>x9-qrcode-application</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>io.swagger.core.v3</groupId>
+				<artifactId>swagger-annotations-jakarta</artifactId>
+				<version>${swagger-annotations-jakarta.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>jakarta.validation</groupId>
+				<artifactId>jakarta.validation-api</artifactId>
+				<version>${jakarta.validation-api.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>org.openapitools</groupId>
+				<artifactId>jackson-databind-nullable</artifactId>
+				<version>${jackson-databind-nullable.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>org.apache.commons</groupId>
+				<artifactId>commons-lang3</artifactId>
+				<version>${commons-lang3.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>org.apache.commons</groupId>
+				<artifactId>commons-collections4</artifactId>
+				<version>${commons-collections4.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>com.github.f4b6a3</groupId>
+				<artifactId>ulid-creator</artifactId>
+				<version>${ulid-creator.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>com.fasterxml.jackson.datatype</groupId>
+				<artifactId>jackson-datatype-jsr310</artifactId>
+				<version>${jackson-datatype-jsr310.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>com.matera.adopt</groupId>
+				<artifactId>emv-qrcode</artifactId>
+				<version>${matera-emv-qrcode.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>net.datafaker</groupId>
+				<artifactId>datafaker</artifactId>
+				<version>${datafaker.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>com.nimbusds</groupId>
+				<artifactId>nimbus-jose-jwt</artifactId>
+				<version>${nimbus-jose-jwt.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>net.logstash.logback</groupId>
+				<artifactId>logstash-logback-encoder</artifactId>
+				<version>${logstash-logback-encoder.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>org.owasp</groupId>
+				<artifactId>security-logging-logback</artifactId>
+				<version>${security-logging-logback.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>com.github.ulisesbocchio</groupId>
+				<artifactId>jasypt-spring-boot-starter</artifactId>
+				<version>${jasypt.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>org.springframework.cloud</groupId>
+				<artifactId>spring-cloud-dependencies</artifactId>
+				<version>${spring-cloud-dependencies.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+
+		</dependencies>
+	</dependencyManagement>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<configuration>
+					<annotationProcessorPaths>
+						<path>
+							<groupId>org.projectlombok</groupId>
+							<artifactId>lombok</artifactId>
+						</path>
+					</annotationProcessorPaths>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<version>${jacoco.version}</version>
+				<configuration>
+					<excludes>
+						<exclude>**/dto/**</exclude>
+						<exclude>**/exception/**</exclude>
+						<exclude>**/database/entity/**</exclude>
+						<exclude>**/generated/**</exclude>
+						<exclude>**/exception/**</exclude>
+						<exclude>**/*MapperImpl.*</exclude>
+					</excludes>
+				</configuration>
+				<executions>
+					<execution>
+						<id>default-prepare-agent</id>
+						<goals>
+							<goal>prepare-agent</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>default-report</id>
+						<goals>
+							<goal>report</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+
+	<profiles>
+		<profile>
+			<id>mongo</id>
+			<activation>
+				<activeByDefault>true</activeByDefault>
+			</activation>
+			<properties>
+				<test.database>mongo</test.database>
+			</properties>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-surefire-plugin</artifactId>
+						<configuration>
+							<systemPropertyVariables>
+								<test.database>${test.database}</test.database>
+							</systemPropertyVariables>
+						</configuration>
+					</plugin>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-failsafe-plugin</artifactId>
+						<configuration>
+							<systemPropertyVariables>
+								<test.database>${test.database}</test.database>
+							</systemPropertyVariables>
+						</configuration>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+
+		<profile>
+			<id>docker</id>
+			<activation>
+				<activeByDefault>false</activeByDefault>
+			</activation>
+			<properties>
+				<overriden.image.tag>latest</overriden.image.tag>
+				<!-- Buildpack image tag. Override per-arch, e.g. -Dbuild.image.name=x9-qrcode:latest-amd64 -->
+				<build.image.name>${module.name}:${overriden.image.tag}</build.image.name>
+			</properties>
+			<build>
+				<pluginManagement>
+					<plugins>
+						<plugin>
+							<groupId>org.springframework.boot</groupId>
+							<artifactId>spring-boot-maven-plugin</artifactId>
+							<configuration>
+								<imageName>${build.image.name}</imageName>
+								<image>
+									<env>
+										<BP_JVM_TYPE>JRE</BP_JVM_TYPE>
+										<BP_JVM_VERSION>25.*</BP_JVM_VERSION>
+									</env>
+								</image>
+								<layers>
+									<enabled>true</enabled>
+								</layers>
+								<mainClass>com.matera.x9qrcode.infrastructure.X9QRCodeApplication</mainClass>
+								<excludes>
+									<exclude>
+										<groupId>org.projectlombok</groupId>
+										<artifactId>lombok</artifactId>
+									</exclude>
+								</excludes>
+							</configuration>
+							<executions>
+								<execution>
+									<phase>package</phase>
+									<goals>
+										<goal>build-image</goal>
+									</goals>
+								</execution>
+							</executions>
+						</plugin>
+					</plugins>
+				</pluginManagement>
+			</build>
+		</profile>
+
+		<profile>
+			<id>publish</id>
+			<activation>
+				<activeByDefault>false</activeByDefault>
+			</activation>
+			<build>
+				<pluginManagement>
+					<plugins>
+						<plugin>
+							<groupId>org.springframework.boot</groupId>
+							<artifactId>spring-boot-maven-plugin</artifactId>
+							<configuration>
+								<imageName>${image.name}-${build.arch}</imageName>
+								<publish>true</publish>
+								<docker>
+									<publishRegistry>
+										<url>${registry.url}</url>
+										<username>${registry.username}</username>
+										<password>${registry.password}</password>
+									</publishRegistry>
+								</docker>
+								<image>
+									<tags>
+										<tag>${registry.repository}:latest-${build.arch}</tag>
+									</tags>
+									<env>
+										<BP_JVM_TYPE>JRE</BP_JVM_TYPE>
+										<BP_JVM_VERSION>25.*</BP_JVM_VERSION>
+									</env>
+								</image>
+								<layers>
+									<enabled>true</enabled>
+								</layers>
+							</configuration>
+							<executions>
+								<execution>
+									<phase>package</phase>
+									<goals>
+										<goal>build-image</goal>
+									</goals>
+								</execution>
+							</executions>
+						</plugin>
+					</plugins>
+				</pluginManagement>
+			</build>
+		</profile>
+
+	</profiles>
+
+	<reporting>
+		<plugins>
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<version>${jacoco.version}</version>
+				<reportSets>
+					<reportSet>
+						<reports>
+							<report>report</report>
+						</reports>
+					</reportSet>
+				</reportSets>
+			</plugin>
+		</plugins>
+	</reporting>
+
+</project>

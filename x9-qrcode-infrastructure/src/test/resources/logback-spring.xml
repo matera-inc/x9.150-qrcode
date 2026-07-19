@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration scan="true" scanPeriod="30 seconds" packagingData="true">
+	<include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+		<encoder>
+			<pattern>[%d{HH:mm:ss.SSS}] [%-33.-33thread] [%-5level] [%-70logger{70}] %msg%n</pattern>
+		</encoder>
+	</appender>
+
+ 	<appender name="textFile" class="ch.qos.logback.core.FileAppender">
+		<file>x9-qrcode-tests.log</file>
+		<append>true</append>
+		<encoder>
+			<pattern>[%d{HH:mm:ss.SSS}] [%mdc{X-B3-TraceId:-}] [%-33.-33thread] [%-5level] [%-70logger{70}] %msg%n</pattern>
+		</encoder>
+	</appender>
+
+	<root level="INFO">
+		<appender-ref ref="console" />
+		<appender-ref ref="textFile" />
+	</root>
+
+
+</configuration>

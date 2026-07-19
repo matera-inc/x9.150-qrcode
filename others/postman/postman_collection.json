@@ -1,0 +1,588 @@
+{
+ "info": {
+  "_postman_id": "bf6b643b-7538-44c9-ac9b-02ed69939fe3",
+  "name": "X9 QRCode",
+  "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+  "_exporter_id": "1238601"
+ },
+ "item": [
+  {
+   "name": "Payment-Request",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "exec": [
+       "// Fixed variable declaration error\r",
+       "const requestBody = pm.request.body && pm.request.body.raw ? JSON.parse(pm.request.body.raw) : {};\r",
+       "const responseBody = pm.response.json(); // Corrected to define responseBody from response\r",
+       "const responseData = responseBody; // Removed duplicate declaration\r",
+       "\r",
+       "// Validate MCC \r",
+       "pm.test(\"Response message contains MCC (Tag 52) matching request\", () => {\r",
+       "    const expectedMCC = requestBody.creditor && requestBody.creditor.MCC ? requestBody.creditor.MCC.toString() : \"\"; // Added optional chaining and default value\r",
+       "    const mccRegex = /5204(\\d{4})/;\r",
+       "    const mccMatch = responseBody.qrCode.match(mccRegex);\r",
+       "\r",
+       "    if (mccMatch) {\r",
+       "        pm.expect(mccMatch[1]).to.equal(expectedMCC);\r",
+       "    } else {\r",
+       "        pm.expect.fail(\"MCC (Tag 52) with length 04 not found in the response message.\");\r",
+       "    }\r",
+       "});\r",
+       "\r",
+       "pm.test(\"Response message contains Transaction Amount (Tag 54)\", () => {\r",
+       "    const amountRegex = /54\\d{2}[\\d.]+/; // Tag 54, length (2 digits), followed by one or more digits or dots\r",
+       "    pm.expect(responseBody.qrCode).to.match(amountRegex);\r",
+       "});\r",
+       "\r",
+       "// Validate status code\r",
+       "pm.test(\"Status code is 201\", () => {\r",
+       "    pm.response.to.have.status(201);\r",
+       "    pm.collectionVariables.set(\"id\", responseBody.id);\r",
+       "    pm.collectionVariables.set(\"emv\",pm.response.json().qrCode)\r",
+       "    pm.collectionVariables.set(\"location\",pm.response.json().location.endpoint)\r",
+       "});\r",
+       "\r",
+       "// Validate status code name\r",
+       "pm.test(\"Status code name has string\", () => {\r",
+       "    pm.response.to.have.status(\"Created\");\r",
+       "});\r",
+       "\r",
+       "// Validate presence of 'id' field\r",
+       "pm.test(\"Response has an 'id' field\", () => {\r",
+       "    pm.expect(responseBody).to.have.property('id');\r",
+       "});\r",
+       "\r",
+       "pm.test(\"'id' field is a valid QRCode identifier\", () => {\r",
+       "    // Regex for a 32-character string containing only uppercase hexadecimal characters (A-F, 0-9)\r",
+       "    const qrCodeRegex = /^[0-9A-F]{32}$/;\r",
+       "\r",
+       "    // Assuming the response body is JSON and the field is 'id'\r",
+       "    const responseData = pm.response.json();\r",
+       "    \r",
+       "    // Check if the 'id' field matches the regex\r",
+       "    pm.expect(responseData.id).to.match(qrCodeRegex);\r",
+       "});\r",
+       "\r",
+       "// Validate presence of 'qrCode' field\r",
+       "pm.test(\"Response has a 'qrCode' field\", () => {\r",
+       "    pm.expect(responseBody).to.have.property('qrCode');\r",
+       "});\r",
+       "\r",
+       "// Added definition for location variable\r",
+       "const location = responseBody.location;\r",
+       "\r",
+       "pm.test(\"Response has a 'location' field\", () => {\r",
+       "    pm.expect(location).to.have.property('id');\r",
+       "    pm.expect(location).to.have.property('endpoint');\r",
+       "});\r",
+       "\r",
+       "// Validate Payload Format Indicator (Tag 00)\r",
+       "pm.test(\"Message contains Payload Format Indicator (Tag 00)\", () => {\r",
+       "    pm.expect(responseBody.qrCode).to.match(/^000201/); // Tag 00, length 02, value \"01\"\r",
+       "});\r",
+       "\r",
+       "// Validate Point of Initiation Method (Tag 01)\r",
+       "pm.test(\"Message contains Point of Initiation Method (Tag 01)\", () => {\r",
+       "    pm.expect(responseBody.qrCode).to.match(/01021[12]/); // Tag 01, length 02, value \"11\" (Static) or \"12\" (Dynamic)\r",
+       "});\r",
+       "\r",
+       "// Validate presence of 'location' field\r",
+       "pm.test(\"Response has a 'location' field\", () => {\r",
+       "    pm.expect(location).to.exist; // Check if location exists\r",
+       "});\r",
+       "\r",
+       "pm.test(\"Response IDs must be equal (id and location.id)\", function () {\r",
+       "    // Check if fields exist before trying to compare them\r",
+       "    pm.expect(responseData.id).to.exist;\r",
+       "    pm.expect(responseData.location).to.exist;\r",
+       "    pm.expect(responseData.location.id).to.exist;\r",
+       "\r",
+       "    // The main assertion: compares the IDs\r",
+       "    pm.expect(responseData.id).to.eql(responseData.location.id);\r",
+       "});\r",
+       "\r",
+       "// Fixed TypeError by using pm.test.skip\r",
+       "pm.test(\"Request's locationId must be equal to the location's id in the Response\", function () {\r",
+       "    // This condition ensures the test is only executed if the 'locationId' field exists in the REQUEST.\r",
+       "    if (requestBody && requestBody.locationId) {\r",
+       "        \r",
+       "        // Log to help with debugging, showing the values being compared\r",
+       "        console.log(`Request's locationId: ${requestBody.locationId}`);\r",
+       "        console.log(`Response's Location id: ${responseData.location.id}`);\r",
+       "        \r",
+       "        // Check if the response's 'location.id' exists to avoid errors\r",
+       "        pm.expect(responseData.location).to.exist;\r",
+       "        pm.expect(responseData.location.id).to.exist;\r",
+       "        \r",
+       "        // The main assertion: compares the IDs\r",
+       "        pm.expect(requestBody.locationId).to.eql(responseData.location.id);\r",
+       "\r",
+       "    } else {\r",
+       "        // If the condition is not met, skip the test with an informative message\r",
+       "        console.log(\"'locationId' field not found in the request body. Test not applicable.\");\r",
+       "        pm.test.skip(); // Changed this.skip() to pm.test.skip()\r",
+       "    }\r",
+       "});"
+      ],
+      "type": "text/javascript",
+      "packages": {},
+      "requests": {}
+     }
+    },
+    {
+     "listen": "prerequest",
+     "script": {
+      "exec": [
+       "const requestBody = pm.request.body.toJSON();\r",
+       "if (requestBody && requestBody.creditor && requestBody.creditor.MCC) {\r",
+       "    pm.environment.set(\"expectedMCC\", requestBody.creditor.MCC.toString());\r",
+       "}"
+      ],
+      "type": "text/javascript",
+      "packages": {},
+      "requests": {}
+     }
+    }
+   ],
+   "request": {
+    "auth": {
+     "type": "noauth"
+    },
+    "method": "POST",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "body": {
+     "mode": "raw",
+     "raw": "{\n    \"validUntil\": \"2025-12-31T23:59:59Z\",\n    \"creditor\": {\n        \"name\": \"California Electric Company\",\n        \"phone\": \"+15552223333\",\n        \"email\": \"billing@californiaelectric.com\",\n        \"address\": {\n            \"line1\": \"500 Energy Ave\",\n            \"line2\": \"Building 17, Suite 1701\",\n            \"city\": \"BOSTON\",\n            \"state\": \"CA\",\n            \"postalCode\": \"90012\",\n            \"country\": \"US\"\n        },\n        \"MCC\": \"4900\"\n    },\n    \"bill\": {\n        \"description\": \"Electricity service for April 2026\",\n        \"order\": {\n            \"number\": \"ORD-2025-07-00123\",\n            \"date\": \"2025-12-31\"\n        },\n        \"invoice\": {\n            \"number\": \"INV-2024-05-00123\",\n            \"date\": \"2025-12-31\",\n            \"dueDate\": \"2025-12-31T07:20:59Z\",\n            \"invoicee\": {\n                \"name\": \"John Doe\",\n                \"phone\": \"+15559876543\",\n                \"email\": \"johndoe@email.com\",\n                \"address\": {\n                    \"line1\": \"500 Energy Ave\",\n                    \"line2\": \"Building 17, Suite 1701\",\n                    \"city\": \"Los Angeles\",\n                    \"state\": \"CA\",\n                    \"postalCode\": \"90012\",\n                    \"country\": \"US\"\n                }\n            }\n        },\n        \"tip\": {\n            \"range\": {\n                \"min\": \"15\",\n                \"max\": \"75\"\n            }\n           \n        },\n        \"amountDue\": {\n            \"amount\": 225,\n            \"currency\": \"USD\",\n            \"adjustments\": {\n                \"formula\": \"FixedDiscountLateFeeLinearInterest\",\n                \"parameters\": {\n                    \"discounts\": [\n                        {\n                            \"daysBefore\": 5,\n                            \"discount\": 1,\n                            \"explanation\": \"$1 discount because you're paying 10 days before\"\n                        }\n                    ],\n                    \"lateFees\": {\n                        \"fixed\": 15,\n                        \"perDay\": 25,\n                        \"explanation\": \"$15 administrative fee plus $25 per day interest\"\n                    }\n                }\n            }\n        }\n    },\n    \"unstructured\": \"Account: 987650001, Meter: MTR45567\",\n    \"additionalInformation\": [\n        {\n            \"key\": \"CustomerServiceRef\",\n            \"value\": \"CSREF-77283\"\n        }\n    ],\n    \"paymentNotification\": {\n        \"kind\": \"EXTERNAL\",\n        \"endpoint\": \"https://billing.california-eletric.com/payment-notifications\"\n    },\n    \"paymentMethods\": [\n        {\n            \"currency\": \"USD\",\n            \"validUntil\": \"2025-12-31T23:59:59Z\",\n            \"amount\": 100,\n            \"networks\": {\n                \"FedNow\": {\n                    \"routingNumber\": \"021000021\",\n                    \"accountNumber\": \"1234567890\",\n                    \"ultimateCreditor\": {\n                        \"routingNumber\": \"111222333\",\n                        \"accountNumber\": \"444555666\"\n                    }\n                }\n            }\n        }\n    ]\n}",
+     "options": {
+      "raw": {
+       "language": "json"
+      }
+     }
+    },
+    "url": {
+     "raw": "{{x9qrcode_host}}/api/v1/payment-request",
+     "host": [
+      "{{x9qrcode_host}}"
+     ],
+     "path": [
+      "api",
+      "v1",
+      "payment-request"
+     ]
+    }
+   },
+   "response": []
+  },
+  {
+   "name": "Payment- Request",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "exec": [
+       "// Fixed syntax and property names",
+       "pm.test(\"Request was successful (Status code is 2xx)\", function () {",
+       "    pm.response.to.have.status(200);",
+       "   ",
+       "    pm.collectionVariables.set(\"endToEndId\", pm.response.json().paymentDetails.emv); // Assuming 'endToEndId' should be set from 'paymentDetails.emv'",
+       "});",
+       "",
+       "pm.test(\"Response EndToEndId matches global variable\", function () {",
+       "    // 1. Get the response body in JSON format",
+       "    const jsonData = pm.response.json();",
+       "",
+       "    // 2. Get the value of the global variable named \"EndToEndId\"",
+       "    const expectedEndToEndId = pm.globals.get(\"endToEndId\");",
+       "",
+       "    // Throw an error if the global variable is not defined or has no value",
+       "    pm.expect(expectedEndToEndId, \"The global variable 'EndToEndId' was not found or has no value. Please check if it was created and has a value.\").to.exist;",
+       "",
+       "    // 3. Check for the existence of the structure and field in the response JSON",
+       "    pm.expect(jsonData).to.have.property('paymentDetails');",
+       "    pm.expect(jsonData.paymentDetails).to.have.property('emv'); // Changed from 'endToEndId' to 'emv'",
+       "",
+       "    // 4. Extract the endToEndId value from the response",
+       "    const responseEndToEndId = jsonData.paymentDetails.emv; // Changed from 'endToEndId' to 'emv'",
+       "",
+       "    // 5. Compare the response value with the global variable value",
+       "    pm.expect(responseEndToEndId).to.eql(expectedEndToEndId, \"The EndToEndId from the response is equal to the global variable value\");",
+       "});",
+       ""
+      ],
+      "type": "text/javascript",
+      "packages": {},
+      "requests": {}
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [],
+    "url": {
+     "raw": "{{x9qrcode_host}}/api/v1/payment-request/{{id}}",
+     "host": [
+      "{{x9qrcode_host}}"
+     ],
+     "path": [
+      "api",
+      "v1",
+      "payment-request",
+      "{{id}}"
+     ]
+    }
+   },
+   "response": []
+  },
+  {
+   "name": "Payment-Payload",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "exec": [
+       "// Removed duplicate tests and fixed adjustment structure",
+       "pm.test(\"Status code is 200\", function () {",
+       "    pm.response.to.have.status(200);",
+       "});",
+       "",
+       "// Validates the JSON structure for the 'bill' object",
+       "pm.test(\"Bill JSON structure validation\", function () {",
+       "    const jsonData = pm.response.json();",
+       "",
+       "    // Ensures that the 'bill' object exists in the response",
+       "    pm.expect(jsonData).to.have.property('bill');",
+       "    const bill = jsonData.bill;",
+       "",
+       "    // Validations within the 'amountDue' object",
+       "    pm.expect(bill).to.have.property('amountDue');",
+       "    const amountDue = bill.amountDue;",
+       "    pm.expect(amountDue).to.have.property('amount');",
+       "    pm.expect(amountDue).to.have.property('currency');",
+       "",
+       "    // Validations within the 'adjustment' object",
+       "    pm.expect(amountDue).to.have.property('adjustment');",
+       "    const adjustment = amountDue.adjustment; // Fixed reference",
+       "    pm.expect(adjustment).to.be.an('array'); // Ensure adjustment is an array",
+       "    adjustment.forEach(adj => {",
+       "        pm.expect(adj).to.have.property('explanation');",
+       "        pm.expect(adj).to.have.property('amount');",
+       "        pm.expect(adj).to.have.property('validUntil');",
+       "    });",
+       "});",
+       "",
+       "pm.test(\"Status code is 200 and response time is less than 200ms\", function () {",
+       "    pm.response.to.have.status(200);",
+       "    pm.expect(pm.response.responseTime).to.be.below(200);",
+       "});",
+       ""
+      ],
+      "type": "text/javascript",
+      "packages": {}
+     }
+    }
+   ],
+   "request": {
+    "auth": {
+     "type": "noauth"
+    },
+    "method": "GET",
+    "header": [
+     {
+      "key": "dateForPayment",
+      "value": "2025-10-22",
+      "type": "text"
+     },
+     {
+      "key": "Accept",
+      "value": "application/json",
+      "type": "text"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json",
+      "type": "text"
+     }
+    ],
+    "url": {
+     "raw": "{{x9qrcode_host}}/pub/api/v1/loc/{{id}}",
+     "host": [
+      "{{x9qrcode_host}}"
+     ],
+     "path": [
+      "pub",
+      "api",
+      "v1",
+      "loc",
+      "{{id}}"
+     ]
+    }
+   },
+   "response": []
+  },
+  {
+   "name": "Payment-Request",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "exec": [
+       "// Fixed syntax and added check for undefined raw body\r",
+       "const requestBody = pm.request.body && pm.request.body.raw ? JSON.parse(pm.request.body.raw) : {}; \r",
+       "const responseBody = pm.response.json();\r",
+       "const responseJson = responseBody; // Defined responseJson variable\r",
+       "const responseData = responseBody; // Removed duplicate declaration\r",
+       "\r",
+       "\r",
+       "pm.test(\"'id' field is a valid QRCode identifier\", () => {\r",
+       "    // Regex for a 32-character string containing only uppercase hexadecimal characters (A-F, 0-9)\r",
+       "    const qrCodeRegex = /^[0-9A-F]{32}$/;\r",
+       "\r",
+       "    // Assuming the response body is JSON and the field is 'id'\r",
+       "    const responseData = pm.response.json();\r",
+       "    \r",
+       "    // Check if the 'id' field matches the regex\r",
+       "    pm.expect(responseData.id).to.match(qrCodeRegex);\r",
+       "});\r",
+       "\r",
+       "// Validate presence of 'qrCode' field\r",
+       "pm.test(\"Response has a 'qrCode' field\", () => {\r",
+       "    pm.expect(responseBody).to.have.property('qrCode');\r",
+       "});\r",
+       "\r",
+       "// Added definition for location variable\r",
+       "const location = responseBody.location;\r",
+       "\r",
+       "// Validate presence of 'location' field\r",
+       "pm.test(\"Response has a 'location' field\", () => {\r",
+       "    pm.expect(location).to.exist; // Check if location exists\r",
+       "});\r",
+       "\r",
+       "pm.test(\"Response IDs must be equal (id and location.id)\", function () {\r",
+       "    // Check if fields exist before trying to compare them\r",
+       "    pm.expect(responseData.id).to.exist;\r",
+       "    pm.expect(responseData.location).to.exist;\r",
+       "    pm.expect(responseData.location.id).to.exist;\r",
+       "\r",
+       "    // The main assertion: compares the IDs\r",
+       "    pm.expect(responseData.id).to.eql(responseData.location.id);\r",
+       "});\r",
+       "\r",
+       "pm.test(\"Response has a 'location' field\", () => {\r",
+       "    pm.expect(location).to.have.property('id');\r",
+       "    pm.expect(location).to.have.property('endpoint');\r",
+       "});\r",
+       "\r",
+       "pm.test(\"Status code is 200\", () => {\r",
+       "  pm.response.to.have.status(200);\r",
+       " pm.globals.set(\"id\",pm.response.json().id)\r",
+       "});\r",
+       ""
+      ],
+      "type": "text/javascript",
+      "packages": {},
+      "requests": {}
+     }
+    },
+    {
+     "listen": "prerequest",
+     "script": {
+      "exec": [
+       "const requestBody = pm.request.body.toJSON();\r",
+       "if (requestBody && requestBody.creditor && requestBody.creditor.MCC) {\r",
+       "    pm.environment.set(\"expectedMCC\", requestBody.creditor.MCC.toString());\r",
+       "}"
+      ],
+      "type": "text/javascript",
+      "packages": {},
+      "requests": {}
+     }
+    }
+   ],
+   "request": {
+    "auth": {
+     "type": "noauth"
+    },
+    "method": "PATCH",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "body": {
+     "mode": "raw",
+     "raw": "{\n    \n    \"bill\": {\n        \"description\": \"Bill of Dec 2026\",\n        \"order\": {\n            \"number\": \"ORD-2025-07-00123\",\n            \"date\": \"2025-12-20\"\n        },\n        \"invoice\": {\n            \"number\": \"INV-2024-05-00123\",\n            \"date\": \"2025-12-20\",\n            \"dueDate\": \"2025-12-20T07:20:59Z\",\n            \"invoicee\": {\n                \"name\": \"Receiver new name\",               \n                \"address\": {\n                    \"line1\": \"500 Energy Av2222e\",\n                    \"line2\": \"Building 17, Suite222 1701\",\n                    \"city\": \"BOSTON\",\n                    \"state\": \"CA\",\n                    \"postalCode\": \"90012\",\n                    \"country\": \"LA\"\n                }\n            }\n        },\n        \"tip\": {\n            \"range\": {\n                \"min\": 15,\n                \"max\": 20\n            }\n            \n        },\n        \"amountDue\": {\n            \"amount\": 99000000,\n            \"currency\": \"USD\",\n            \"adjustments\": {\n                \"formula\": \"FixedDiscountLateFeeLinearInterest\",\n                \"parameters\": {\n                    \"discounts\": [\n                        {\n                            \"daysBefore\": 5,\n                            \"discount\": 1000000,\n                            \"explanation\": \"$1 discount because you're paying 5 days before\"\n                        }\n                    ],\n                    \"lateFees\": {\n                        \"fixed\": 150000,\n                        \"perDay\": 250000,\n                        \"explanation\": \"$0.15 administrative fee plus $0.25 per day interest\"\n                    }\n                }\n            }\n        }\n    },\n    \"unstructured\": \"Account: 987650001, Meter: MTR45567\",\n    \"additionalInformation\": [\n        {\n            \"key\": \"CustomerServiceRef\",\n            \"value\": \"CSREF-77283\"\n        }\n    ],\n    \"paymentMethods\": [\n        {\n            \"currency\": \"CAD\",\n            \"validUntil\": \"2025-12-20T23:59:59Z\",\n            \"amount\": 10000,\n            \"editable\": {\n                \"range\": {\n                    \"min\": 1000,\n                    \"max\": 10000\n                }\n            },\n            \"networks\": {\n                \"FedNow\": {\n                    \"routingNumber\": \"021000021\",\n                    \"accountNumber\": \"1234567890\"\n                }\n            }\n        },\n        {\n            \"currency\": \"USD\",\n            \"validUntil\": \"2025-12-30T23:59:59Z\",\n            \"amount\": 10000,\n            \"networks\": {\n                \"Polygon\": {\n                    \"address\": \"0x742d35Cc6634C0539Ff82c466ae367A6097dE123\"\n                },\n                \"Solana\": {\n                    \"address\": \"7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV\"\n                }\n            }\n        }\n    ]\n}",
+     "options": {
+      "raw": {
+       "language": "json"
+      }
+     }
+    },
+    "url": {
+     "raw": "{{x9qrcode_host}}/api/v1/payment-request/{{id}}",
+     "host": [
+      "{{x9qrcode_host}}"
+     ],
+     "path": [
+      "api",
+      "v1",
+      "payment-request",
+      "{{id}}"
+     ],
+     "query": [
+      {
+       "key": "o",
+       "value": "o",
+       "disabled": true
+      }
+     ]
+    }
+   },
+   "response": []
+  },
+  {
+   "name": "Status-Update",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "exec": [
+       "// Fixed syntax error by adding missing parentheses",
+       "pm.test(\"Request was successful (Status code is 2xx)\", function () {",
+       "    pm.response.to.have.statusCode(200);",
+       "     pm.globals.set(\"id\",pm.response.json().id);",
+       "      pm.globals.set(\"endToEndId\",pm.request.body.endToEndId);",
+       "});",
+       "// Parses the response and request bodies for use in tests",
+       "",
+       "const responseJson = pm.response.json();",
+       "const requestBody = JSON.parse(pm.request.body.raw);",
+       "",
+       "// 1. Validates if the 'status' in the response is the same as sent in the request body",
+       "",
+       "pm.test(\"Response 'status' matches request 'status'\", function () {",
+       "    console.log(\"Status send request:\", requestBody.status);",
+       "    console.log(\"Status received request\", responseJson.status);",
+       "});",
+       ""
+      ],
+      "type": "text/javascript",
+      "packages": {},
+      "requests": {}
+     }
+    }
+   ],
+   "request": {
+    "method": "PUT",
+    "header": [],
+    "body": {
+     "mode": "raw",
+     "raw": "{\n  \"network\": \"FedNow\",\n  \"endToEndId\": \"{{$randomUUID}}\",\n  \"status\": \"PAID\"\n}",
+     "options": {
+      "raw": {
+       "language": "json"
+      }
+     }
+    },
+    "url": {
+     "raw": "{{x9qrcode_host}}/api/v1/payment-request/{{id}}/status-update",
+     "host": [
+      "{{x9qrcode_host}}"
+     ],
+     "path": [
+      "api",
+      "v1",
+      "payment-request",
+      "{{id}}",
+      "status-update"
+     ]
+    }
+   },
+   "response": []
+  },
+  {
+   "name": "Decode-EMV",
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Accept",
+      "value": "application/json",
+      "type": "text"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json",
+      "type": "text"
+     }
+    ],
+    "body": {
+     "mode": "raw",
+     "raw": "{\n  \"qrCode\": \"{{emv}}\"\n}",
+     "options": {
+      "raw": {
+       "language": "json"
+      }
+     }
+    },
+    "url": {
+     "raw": "{{x9qrcode_host}}/api/v1/qrcode-emv-decoder",
+     "host": [
+      "{{x9qrcode_host}}"
+     ],
+     "path": [
+      "api",
+      "v1",
+      "qrcode-emv-decoder"
+     ]
+    }
+   },
+   "response": []
+  }
+ ],
+ "auth": {
+  "type": "noauth"
+ },
+ "event": [
+  {
+   "listen": "test",
+   "script": {
+    "type": "text/javascript",
+    "packages": {},
+    "requests": {},
+    "exec": [
+     ""
+    ]
+   }
+  }
+ ],
+ "variable": [
+  {
+   "key": "x9qrcode_host",
+   "value": "https://x9.example.com"
+  },
+  {
+   "key": "id",
+   "value": ""
+  },
+  {
+   "key": "endToEndId",
+   "value": ""
+  },
+  {
+   "key": "emv",
+   "value": ""
+  },
+  {
+   "key": "location",
+   "value": ""
+  }
+ ]
+}

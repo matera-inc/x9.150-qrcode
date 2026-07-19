@@ -1,0 +1,201 @@
+{{ template "chart.header" . }}
+{{ template "chart.deprecationWarning" . }}
+
+{{ template "chart.badgesSection" . }}
+
+{{ template "chart.description" . }}
+
+{{ template "chart.homepageLine" . }}
+
+{{ template "chart.maintainersSection" . }}
+
+{{ template "chart.sourcesSection" . }}
+
+{{ template "chart.requirementsSection" . }}
+
+## Overview
+
+`x9-qrcode` is a backend service that implements the X9 merchant-presented QR Code pattern for secure payment initiation.
+
+Business context:
+- The service is aligned with the ANSI X9.150 Payment QR Code Standard for merchant-presented, dynamic QR codes.
+- It supports Payment Payload and Payment Notification flows.
+- It enforces message integrity and authenticity using JWS (RFC 7515) and X9 Financial PKI trust principles.
+
+Technical context:
+- Java 25 + Spring Boot 3.5 Stack.
+- Designed for Kubernetes 1.30 (or higher) deployment using Helm.
+- Requires MongoDB 8 (or higher)
+- Use secrets for security-related artifacts and production-like environments.
+
+
+## Important Notice
+
+This project is a demo/open-source reference implementation and is not intended for direct production use without hardening, governance, and environment-specific controls.
+
+## Minimal Configuration
+
+Use the following minimal values file as a quick start:
+
+```yaml
+{{ .Files.Get "values-minimal.yaml" }}
+```
+
+To extract the complete default values from the packaged chart:
+
+```bash
+helm show values <repo-name>/{{ .Name }} > values-full.yaml
+```
+
+## Installation
+
+1. Create or select a namespace:
+```bash
+kubectl create namespace <namespace>
+```
+
+2. Review and adjust your values file (minimal or full).
+
+3. Install or upgrade:
+```bash
+helm upgrade --install x9-qrcode <repo-name>/{{ .Name }} \
+  --namespace <namespace> \
+  --values values.yaml
+```
+
+4. Render manifests locally for validation:
+```bash
+helm template x9-qrcode <repo-name>/{{ .Name }} --values values.yaml
+```
+
+## Environment Promotion Example
+
+```bash
+ENV=x9-dev
+helm upgrade --install -n ${ENV} -f chart/values.yaml --values values/${ENV}/values.yaml x9-qrcode chart/
+```
+
+Dry run:
+
+```bash
+ENV=x9-dev
+helm upgrade --dry-run -n ${ENV} -f chart/values.yaml --values values/${ENV}/values.yaml x9-qrcode chart/
+```
+
+## Configuration Details
+{{ $values := (.Files.Get "values.yaml") | fromYaml }}
+
+### Naming and Release Identity
+
+Use overrides to keep deterministic resource names across environments.
+
+```yaml
+{{ pick $values "nameOverride" | toYaml | replace "    " "  " }}
+{{ pick $values "fullnameOverride" | toYaml | replace "    " "  " }}
+```
+
+### Image and Pull Settings
+
+```yaml
+{{ pick $values "image" | toYaml | replace "    " "  " }}
+{{ pick $values "imagePullSecrets" | toYaml | replace "    " "  " }}
+```
+
+### Service Account and Pod Security
+
+```yaml
+{{ pick $values "serviceAccount" | toYaml | replace "    " "  " }}
+{{ pick $values "podSecurityContext" | toYaml | replace "    " "  " }}
+{{ pick $values "securityContext" | toYaml | replace "    " "  " }}
+```
+
+### Deployment Strategy and Shutdown Behavior
+
+These values control rollout safety and graceful termination behavior.
+
+```yaml
+{{ pick $values "deploymentStrategy" | toYaml | replace "    " "  " }}
+```
+
+### Runtime Environment Variables
+
+- `environment.env`: baseline application runtime variables.
+- `customerEnvs`: environment-specific business and integration variables.
+
+```yaml
+{{ pick $values "environment" | toYaml | replace "    " "  " }}
+{{ pick $values "customerEnvs" | toYaml | replace "    " "  " }}
+```
+
+### Networking
+
+```yaml
+{{ pick $values "service" | toYaml | replace "    " "  " }}
+{{ pick $values "deploy" | toYaml | replace "    " "  " }}
+{{ pick $values "ingress" | toYaml | replace "    " "  " }}
+```
+
+### High Availability and Capacity
+
+```yaml
+{{ pick $values "replicaCount" | toYaml | replace "    " "  " }}
+{{ pick $values "autoscaling" | toYaml | replace "    " "  " }}
+{{ pick $values "resources" | toYaml | replace "    " "  " }}
+```
+
+### Health Probes
+
+The chart exposes explicit startup, readiness, and liveness probes to support stable operations during startup and rolling updates.
+
+```yaml
+{{ pick $values "livenessProbe" | toYaml | replace "    " "  " }}
+{{ pick $values "readinessProbe" | toYaml | replace "    " "  " }}
+{{ pick $values "startupProbe" | toYaml | replace "    " "  " }}
+```
+
+### Scheduling and Storage Extensions
+
+```yaml
+{{ pick $values "nodeSelector" | toYaml | replace "    " "  " }}
+{{ pick $values "tolerations" | toYaml | replace "    " "  " }}
+{{ pick $values "affinity" | toYaml | replace "    " "  " }}
+{{ pick $values "volumes" | toYaml | replace "    " "  " }}
+{{ pick $values "volumeMounts" | toYaml | replace "    " "  " }}
+```
+
+### Application and Secret Configuration
+
+`application` contains non-sensitive runtime properties rendered via ConfigMap.
+`secrets` contains sensitive values rendered via Kubernetes Secret.
+
+```yaml
+{{ pick $values "application" | toYaml | replace "    " "  " }}
+{{ pick $values "applicationExtra" | toYaml | replace "    " "  " }}
+{{ pick $values "secrets" | toYaml | replace "    " "  " }}
+```
+
+## Security and X9 Standard Notes
+
+This chart is intended to support deployments where:
+- Payment payload exchange is protected by JWS signatures.
+- Certificate trust is validated according to X9 Financial PKI expectations.
+- Key material and integration credentials are injected through secret management practices.
+
+This service exposes an open, unauthenticated API. Access control is intentionally out of scope —
+protect it at your edge (API gateway, mTLS, or network policy).
+
+From an operations perspective, pay special attention to:
+- Keystore and truststore paths/passwords.
+- MongoDB URI and TLS/auth settings.
+
+## Swagger Endpoints Overview
+
+Main API groups exposed by the OpenAPI contract:
+- Payment Request lifecycle: `POST /api/v1/payment-request`, `GET/PATCH /api/v1/payment-request/{id}`, `PUT /api/v1/payment-request/{id}/status-update`
+- Signature utilities: `POST /api/v1/signature/generate`, `POST /api/v1/signature/validate`
+- Public X9 endpoints: `GET /pub/.well-known/jwks`, `GET /pub/.well-known/certificate/{pemFileName}`, `POST /pub/api/v1/loc/{id}`, `POST /pub/api/v1/payment-notification`
+- EMV decoding helper endpoint: `POST /api/v1/qrcode-emv-decoder`
+
+Complete API details are available in the project OpenAPI file under Matera Portal.
+
+{{ template "chart.valuesSection" . }}

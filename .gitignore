@@ -1,0 +1,86 @@
+target/
+!**/src/main/**
+!**/src/test/**
+bin/
+*.log
+*.log.json
+logs/
+tmp/
+packages
+
+### STS/ECLIPSE ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+
+### VS Code ###
+.vscode/
+
+### Docker ###
+docker-image.properties
+
+# Python Virtual Environment
+.venv/
+venv/
+
+# --- Secrets: commit only README + *.sample; never real values or keys ---
+secrets/*
+!secrets/README.md
+!secrets/*.sample
+!secrets/certificate
+secrets/certificate/*
+!secrets/certificate/README.md
+
+# --- ANSI standard PDF is copyrighted; keep it local, don't publish it ---
+official-spec/*.pdf
+official-spec/ANSI-X9.150-2026.md
+# Local reconciliation analysis (references internal, non-public material) — keep it local
+official-spec/reconciliation_report.md
+
+# --- Local AI-agent instructions: kept local so it can reference the local
+#     copyrighted spec (PDF/MD) and other machine-local files; not published ---
+AGENTS.md
+
+# macOS junk
+.DS_Store
+**/.DS_Store
+._*
+.AppleDouble
+.LSOverride
+Icon
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Local scratch / editor backups
+claude.back
+*.back
+
+# Docker Compose local env overrides (may hold environment-specific values); keep .env.sample
+.env
