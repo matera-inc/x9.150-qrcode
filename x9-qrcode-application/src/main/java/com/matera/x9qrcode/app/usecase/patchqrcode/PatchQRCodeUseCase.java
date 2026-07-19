@@ -16,15 +16,19 @@ import com.matera.x9qrcode.app.usecase.patchqrcode.mapper.PatchQRCodeBillMapper;
 import com.matera.x9qrcode.app.usecase.patchqrcode.mapper.PatchQRCodePaymentMethodsMapper;
 import com.matera.x9qrcode.domain.entity.QRCodeEntity;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
+import com.matera.x9qrcode.domain.service.CurrencyMixPolicy;
 import com.matera.x9qrcode.domain.vo.LocationIdVO;
 import com.matera.x9qrcode.domain.vo.PaymentMethodVO;
 import com.matera.x9qrcode.domain.vo.QRCodeIdVO;
 
 import lombok.RequiredArgsConstructor;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
+
+import static java.util.Objects.nonNull;
 
 @RequiredArgsConstructor
 public class PatchQRCodeUseCase extends UseCase<PatchQRCodeInput, PatchQRCodeOutput> {
@@ -32,6 +36,7 @@ public class PatchQRCodeUseCase extends UseCase<PatchQRCodeInput, PatchQRCodeOut
     private final QRCodeRepository qrCodeRepository;
     private final QRCodeEMVService qrCodeEMVService;
     private final QRCodeLocationService qrCodeLocationService;
+    private final CurrencyMixPolicy currencyMixPolicy;
 
     @Override
     public PatchQRCodeOutput execute(PatchQRCodeInput input) {
@@ -54,6 +59,8 @@ public class PatchQRCodeUseCase extends UseCase<PatchQRCodeInput, PatchQRCodeOut
             PatchQRCodePaymentMethodsMapper.map(qrCodeEntity.getPaymentMethods(), input.paymentMethodUpdateDTOList());
 
         qrCodeEntity.updatePaymentMethods(updatedPaymentMethods);
+
+        currencyMixPolicy.validate(collectCurrencies(qrCodeEntity));
 
         String qrCodeContent = qrCodeEMVService.generateQrCodeContent(qrCodeEntity);
 
@@ -83,6 +90,19 @@ public class PatchQRCodeUseCase extends UseCase<PatchQRCodeInput, PatchQRCodeOut
         });
 
         return patchQRCodeEntity::updateLocationId;
+    }
+
+    private static List<String> collectCurrencies(final QRCodeEntity qrCodeEntity) {
+        List<String> currencies = new ArrayList<>();
+
+        currencies.add(qrCodeEntity.getBill().amountDue().currencyAmount().currency());
+
+        List<PaymentMethodVO> paymentMethods = qrCodeEntity.getPaymentMethods();
+        if (nonNull(paymentMethods)) {
+            paymentMethods.forEach(paymentMethod -> currencies.add(paymentMethod.currency()));
+        }
+
+        return currencies;
     }
 
 }
