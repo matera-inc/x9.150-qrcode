@@ -16,23 +16,12 @@
   "bill": {
     "description": "Donation - reforestation fund (choose your amount)",
     "amountDue": {
-      "amount": 5000,
-      "currency": "USD"
+      "amount": 250000,
+      "currency": "BTC"
     }
   },
   "paymentNotification": { "kind": "DEFAULT" },
   "paymentMethods": [
-    {
-      "currency": "USDC",
-      "validUntil": "2030-12-31T23:59:59Z",
-      "amount": 50000000,
-      "editable": {
-        "range": { "min": 5000000, "max": 5000000000 }
-      },
-      "networks": {
-        "Solana": { "walletAddress": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM" }
-      }
-    },
     {
       "currency": "BTC",
       "validUntil": "2030-12-31T23:59:59Z",
