@@ -1,0 +1,50 @@
+{
+  "validUntil": "2030-12-31T23:59:59Z",
+  "creditor": {
+    "name": "Cascade Water District",
+    "phone": "+12065550143",
+    "email": "billing@cascadewater.example",
+    "address": {
+      "line1": "1200 Reservoir Rd",
+      "city": "Seattle",
+      "state": "WA",
+      "postalCode": "98101",
+      "country": "US"
+    },
+    "MCC": "4900"
+  },
+  "bill": {
+    "description": "Water & sewer - June 2030",
+    "invoice": {
+      "number": "WB-2030-06-4471",
+      "date": "2030-06-01",
+      "dueDate": "2030-06-20T23:59:59Z"
+    },
+    "amountDue": {
+      "amount": 8730,
+      "currency": "USD",
+      "adjustments": {
+        "formula": "FixedDiscountLateFeeLinearInterest",
+        "parameters": {
+          "discounts": [
+            { "daysBefore": 15, "discount": 500, "explanation": "$5.00 off when paid 15+ days early" }
+          ],
+          "lateFees": { "fixed": 200, "perDay": 50, "explanation": "$2.00 late fee plus $0.50 per day" }
+        }
+      }
+    }
+  },
+  "paymentNotification": { "kind": "DEFAULT" },
+  "paymentMethods": [
+    {
+      "currency": "USD",
+      "validUntil": "2030-12-31T23:59:59Z",
+      "amount": 8730,
+      "networks": {
+        "FedNow": { "routingNumber": "125000024", "accountNumber": "8830012245", "protectionType": "tokenized" },
+        "RTP":    { "routingNumber": "125000024", "accountNumber": "8830012245", "protectionType": "tokenized" },
+        "ACH":    { "routingNumber": "125000024", "accountNumber": "8830012245", "protectionType": "tokenized" }
+      }
+    }
+  ]
+}

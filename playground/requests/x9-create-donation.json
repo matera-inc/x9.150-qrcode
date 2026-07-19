@@ -1,0 +1,48 @@
+{
+  "validUntil": "2030-12-31T23:59:59Z",
+  "creditor": {
+    "name": "Green Earth Foundation",
+    "phone": "+15035550129",
+    "email": "give@greenearth.example",
+    "address": {
+      "line1": "9 Cedar Way",
+      "city": "Portland",
+      "state": "OR",
+      "postalCode": "97205",
+      "country": "US"
+    },
+    "MCC": "8398"
+  },
+  "bill": {
+    "description": "Donation - reforestation fund (choose your amount)",
+    "amountDue": {
+      "amount": 5000,
+      "currency": "USD"
+    }
+  },
+  "paymentNotification": { "kind": "DEFAULT" },
+  "paymentMethods": [
+    {
+      "currency": "USDC",
+      "validUntil": "2030-12-31T23:59:59Z",
+      "amount": 50000000,
+      "editable": {
+        "range": { "min": 5000000, "max": 5000000000 }
+      },
+      "networks": {
+        "Solana": { "walletAddress": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM" }
+      }
+    },
+    {
+      "currency": "BTC",
+      "validUntil": "2030-12-31T23:59:59Z",
+      "amount": 250000,
+      "editable": {
+        "range": { "min": 50000, "max": 50000000 }
+      },
+      "networks": {
+        "Bitcoin": { "walletAddress": "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq" }
+      }
+    }
+  ]
+}
