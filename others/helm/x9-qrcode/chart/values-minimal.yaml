@@ -1,0 +1,42 @@
+# Minimal values file for quick installation (This file is intentionally concise and can be used as a starting point for development environments).
+
+image:
+  repository: "registry.example.com/x9-qrcode"
+
+imagePullSecrets:
+  - name: registry-credentials
+
+# Required configs for startup
+application:
+  loggingFormat: text
+  x9:
+    public-endpoints:
+      host: "https://x9.company-domain.com"
+    certificate:
+      private-keystore:
+        location: "/certificate/x9-matera.jks"
+      truststore:
+        location: "/certificate/x9-truststore.jks"
+
+# Extra application configuration provided as a complete YAML file.
+# This service exposes an open, unauthenticated API. Access control is intentionally out of scope —
+# protect it at your edge (API gateway, mTLS, or network policy).
+applicationExtra: {}
+
+# Secrets config for sensitive data like database credentials, keystore passwords, etc.
+# MUST be in a separate file for security reasons, and should be referenced as config in helm deploy operations
+# NOTICE: The Matera keys only works for testing and development environments, for production environments, it will not work and should not be used.
+secrets:
+  configEncryption:
+    enabled: false
+  spring:
+    data:
+      mongodb:
+        uri: "mongodb+srv://user:pass@mongo-server.company-domain.com/x9_qrcode?tls=true&authMechanism=SCRAM-SHA-256&retrywrites=false"
+  x9:
+    certificate:
+      privateKeystore:
+        password: "change-me-keystore-password"
+        privateKeyPassword: "change-me-private-key-password"
+      truststore:
+        password: "change-me-keystore-password"

@@ -1,0 +1,145 @@
+info:
+  app:
+    name: '@project.artifactId@'
+    description: '@project.description@'
+    version: '@project.version@'
+
+server:
+  port: 8080
+  shutdown: graceful
+  max-http-request-header-size: 30KB
+
+management:
+  prometheus:
+    metrics:
+      enabled: true
+      export:
+        properties:
+          io:
+            prometheus:
+              exporter:
+                exemplarsOnAllMetricTypes: false
+  tracing:
+    propagation:
+      type: b3
+  health:
+    mail:
+      enabled: false
+    rabbit:
+      enabled: false
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+        exclude:
+          - shutdown
+          - heapdump
+  endpoint:
+    logfile:
+      externalFile: /tmp/logs/x9-qrcode.log
+    metrics:
+      enabled: true
+    prometheus:
+      enabled: true
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+    sbom:
+      enabled: false
+    env:
+      show-values: when-authorized
+      keys-to-sanitize:
+        - password
+        - secret
+        - key
+        - token
+        - .credentials.
+        - sun.java.command
+        - EASTER_ID
+    configprops:
+      show-values: when-authorized
+      keys-to-sanitize:
+        - password
+        - secret
+        - key
+        - token
+        - .credentials.
+        - sun.java.command
+        - EASTER_ID
+
+jasypt:
+  encryptor:
+    algorithm: PBEWithHmacSHA512AndAES_256
+
+application:
+  loggingFormat:
+    logging: json
+
+spring:
+  config:
+    import:
+      # app runs from repo root (./secrets); tests run from the module dir (../secrets)
+      - "optional:file:./secrets/application-secrets.yml"
+      - "optional:file:../secrets/application-secrets.yml"
+  data:
+    mongodb:
+      database: ${spring.application.name}
+      auto-index-creation: true
+      max-wait-time: 2500
+      connection-timeout: 2500
+      socket-timeout: 2500
+  threads:
+    virtual:
+      enabled: true
+  application:
+    name: x9-qrcode
+  main:
+    allow-circular-references: false
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  jmx:
+    enabled: false
+
+x9:
+  public-endpoints:
+    jws-ttl-seconds: 300
+    base-path: /pub
+    certificate-path: ${x9.public-endpoints.base-path}/.well-known/certificate
+    jwk-set-path: ${x9.public-endpoints.base-path}/.well-known/jwks
+    payload-path: ${x9.public-endpoints.base-path}/api/v1/loc
+    payment-notification-path: ${x9.public-endpoints.base-path}/api/v1/payment-notification
+  certificate:
+    issuer-name: X9
+    certificate-supported-type: X.509
+    endpoint-type: JWK_SET
+    jwk-algorithm: PS512
+    # Ships with a self-signed DEMO keystore (NON-PRODUCTION) so the app runs out of the box.
+    # Override location + password for real X9-issued keys via secrets/application-secrets.yml
+    # (git-ignored) or environment variables. See secrets/README.md.
+    private-keystore:
+      alias: x9-private-keystore
+      location: classpath:/certificate/x9-demo.jks
+      password: x9demo123
+      private-key-password: x9demo123
+    truststore:
+      alias: x9-truststore
+      location: classpath:/certificate/x9-demo-truststore.jks
+      password: x9demo123
+
+---
+spring:
+  config:
+    activate:
+      on-cloud-platform: kubernetes
+    import:
+      - "optional:kubernetes:"
+  cloud:
+    kubernetes:
+      enabled: true
+      secrets:
+        enable-api: true
+
+info:
+  tags:
+    pod: ${HOSTNAME}

@@ -1,0 +1,15 @@
+{
+  "payment": {
+    "qrcodeId": "{{qrcodeId}}",
+    "amount": 25000000,
+    "currency": "USDC",
+    "network": "Bitcoin",
+    "transactionId": "XYZ.USBK.X9aTf72qLm.1"
+  },
+  "expectedDate": "2030-10-08T06:59:59Z",
+  "blockchain": {
+    "action": "{{action}}",
+    "to": "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+    "from": "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+  }
+}

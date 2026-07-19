@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "x9-qrcode.fullname" . }}
+  labels:
+    {{- include "x9-qrcode.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ .Values.deploy.ports.containerPort }}
+      protocol: TCP
+      name: http-svc
+    - port: {{ .Values.deploy.ports.managementPort | default .Values.deploy.ports.metricsPort }}
+      targetPort: {{ .Values.deploy.ports.managementPort | default .Values.deploy.ports.metricsPort }}
+      protocol: TCP
+      name: mngt-svc
+  selector:
+    {{- include "x9-qrcode.selectorLabels" . | nindent 4 }}

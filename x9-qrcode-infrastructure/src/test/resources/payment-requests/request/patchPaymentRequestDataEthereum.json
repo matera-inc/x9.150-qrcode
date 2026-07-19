@@ -1,0 +1,20 @@
+{
+  "paymentMethods": [
+    {
+      "currency": "USDC",
+      "validUntil": "2030-05-10T23:59:59Z",
+      "amount": 30000000,
+      "networks": {
+        "Ethereum": {
+          "walletAddress": "0x742d35Cc6634C0539Ff82c466ae367A6097dE123"
+        },
+        "Tron": {
+          "address": "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7"
+        },
+        "Avalanche": {
+          "address": "0xABCd35Cc6634C0539Ff82c466ae367A6097dEFFF"
+        }
+      }
+    }
+  ]
+}

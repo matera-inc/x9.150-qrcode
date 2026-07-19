@@ -1,0 +1,1942 @@
+openapi: 3.0.0
+info:
+  title: Matera X9 Payments QR Code APIs
+  version: 0.6.0-rc
+  description: |-
+    #  General Information
+
+    API specification for the X9 Payments QR Code.
+    This API is called via the URL provided in field 26.01 of the X9 QR Code.
+    It returns a JSON payload containing details of the payment request, which is digitally signed. The API call itself MUST be over HTTPS.
+    The HTTP response from this API call is also digitally signed as per the HTTP Message Signatures draft [HTTP-SIG] (RFC 9421).
+
+    ## Date & time conventions
+
+    All date-time values in this API are **UTC** and MUST use the ISO-8601 "Zulu" form ending in `Z` (for example `2026-12-31T07:20:59Z`). The API does not carry a timezone/offset — any offset supplied is normalized to UTC — so converting to a local timezone for display is the responsibility of the API caller.
+
+    - **`dueDate`**, and every other `date-time` field (e.g. `validUntil`, `createdAt`, `revisedAt`, `sentAt`), MUST be a UTC timestamp ending in `Z`. There is no separate timezone field when creating a QR Code: the biller must convert the bill's due date/time **from the biller's own local timezone to UTC** before submitting it (e.g. end-of-day 2030-05-15 in a UTC-03:00 timezone is sent as `2030-05-16T02:59:59Z`).
+    - **Date-only** fields — `invoice.date` and the `dateForPayment` query parameter — are plain calendar dates (`YYYY-MM-DD`) and are interpreted at UTC start-of-day.
+    - Late-fee / discount amounts and their `validUntil` are calculated at request time in UTC. A `validUntil` of `...T23:59:59Z` therefore means end-of-day **UTC**, not the biller's local day; the caller is responsible for any local-day interpretation.
+
+    ## Compatibility with future versions
+
+    **IMPORTANT:** All endpoints on RC versions could be changed or updated with minor changes and new required fields. The rules above applies only to Stable / Final versions.
+
+    Clients of these services must be forwards-compatible with future versions of these services. Specifically, clients need to be prepared for the services:
+    - to return new attributes in the JSON structure of the response bodies in future API versions. For this, it should be a matter of the client to configure their JSON parsers to ignore unexpected attributes.
+    - to return new `enum` values in response attributes of `enum` type.
+
+    Changes without contract breakage and clarifications to specifications may occur at any time. 
+    Clients should be prepared to handle these changes without disruption.
+
+    The following changes are anticipated and deemed backward-compatible:
+
+    - Addition of new features to the API.
+    - Inclusion of new optional parameters.
+    - Introduction of new optional fields in API.
+    - Rearrangement of field order.
+    - Addition of new elements to enumerations.
+
+    ## Release Notes
+
+    ### 2.2.0
+    * Adding rails Ethereum and BitCoin
+    * Adding field qrCodeB64 with QRCode EMV formattted in Base64 on responses of POST, GET and PATCH
+
+    ### 2.0.0
+    * Change Payload API to POST method to receive, validate and return a X9 JWS content
+    * Change Notification API to receive and validate X9 JWS content with payment notification data
+    * Change Decoding API to support new JWS representation
+
+    ### 1.0.0    
+    * Implemented PATCH endpoint
+    * Implemented Persistent Location feature on Payment Request creation    
+    * Implemented PUT endpoint to update a status of a exist payment request
+    * Implemented Formula calculation on payment payload
+    * Implemented Payment signature preview
+    * Created Decoder API contract
+    * Implemented GET endpoint for recover a payment request data
+    * Implemented POST endpoint for creating a new payment request
+    * Implemented GET endpoint for obtain a payment payload
+
+  contact:
+    name: ASC X9, Inc.
+    url: http://www.x9.org
+    email: admin@x9.org
+
+paths:
+  /api/v1/payment-request:
+    post:
+      summary: "Create a new QR code payment request"
+      description: "Creates a new payment request with the provided details. The API generates the UUID, revision, QR code, timestamps and status. Must be a valid locationId and must not be associated to an ACTIVE or INITIATED QRCode."
+      operationId: createPaymentRequest
+      tags:
+        - payment-request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentRequestInput"
+      responses:
+        "201":
+          description: "Payment request created successfully"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentRequestResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorResponse"
+
+  /api/v1/payment-request/{id}:
+    get:
+      summary: "Retrieve QR Code data by revision"
+      description: "Retrieves a QR Code by revision, default to latest if revision number not specified in the request. The payload includes the QR Code details and information."
+      operationId: getPaymentRequest
+      tags:
+        - payment-request
+      parameters:
+        - $ref: "#/components/parameters/qrCodeId"
+        - $ref: "#/components/parameters/revision"
+      responses:
+        "200":
+          description: "QR Code information retrieved successfully"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentRequestInformation"
+        "404":
+          $ref: "#/components/responses/NotFoundErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorResponse"
+
+    patch:
+      summary: "Update QR code payment request"
+      description: "Updates an existing QR code payment request identified by its UUID with a new one. The creditor, QR code, revision, createdAt, revisedAt, and status are reused or generated by the API. The old version is moved to history."
+      operationId: patchPaymentRequest
+      tags:
+        - payment-request
+      parameters:
+        - $ref: "#/components/parameters/qrCodeId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchPaymentRequestReplacement"
+      responses:
+        "200":
+          description: "Payment request replaced successfully"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentRequestResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorResponse"
+
+  /api/v1/payment-request/{id}/status-update:
+    put:
+      summary: "QR Code status update"
+      description: "This REST API allows updating the status of a QR Code by providing its UUID and the desired new status."
+      operationId: putPaymentRequestStatusUpdate
+      tags:
+        - payment-request
+      parameters:
+        - $ref: "#/components/parameters/qrCodeId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatusUpdate"
+      responses:
+        "200":
+          description: "Payment request status updated successfully"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusUpdateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorResponse"
+
+  /api/v1/signature/generate:
+    post:
+      summary: "Generate a valid signature for json content"
+      operationId: generate
+      tags:
+        - signature-features
+      parameters:
+        - $ref: "#/components/parameters/correlationId"
+        - $ref: "#/components/parameters/timeToLiveSeconds"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              example:
+                "qrCodeContent": "MDAwMjAxMDEwMjEyMjY3ODAwMDZvcmcueDkwMTY0eDkubWF0ZXJhLmNvbS9wdWJsaWMvYXBpL3YxL2xvYy82OEQzODkyMjNDNEU0MjhFQjFENkM4NzEyMkM5NEVCNTUyMDQ0OTAwNTMwMzg0MDU0MDEwNTgwMlVTNTkyNUNhbGlmb3JuaWEgRWxlY3RyaWMgQ29tcGE2MDExTG9zIEFuZ2VsZXM2MzA0QkI1NA=="
+      responses:
+        "200":
+          description: "A JWS within original content and correlation Id"
+          content:
+            application/jose:
+              schema:
+                type: string
+                example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpPU0UiLCJraWQiOiJ4OS1rZXkiLCJpYXQiOjE3Njg0ODA4NDQ5MzgsIng1dCNTMjU2Ijoiajc2dm9GSHhnLUhwTkhJSlBPUGxVOVpGNUY4NUVQSDRROUdwSEc1al9YTSIsIng1dSI6Ing5Lm1hdGVyYS5jb20vcHVibGljLy53ZWxsLWtub3duL2NlcnRpZmljYXRlL3g5LnBlbSIsImNvcnJlbGF0aW9uSWQiOiI5N2E2NDA2My03YzRkLTRkMzYtYTJmYy00YzU0NzcyMTBlZjciLCJ0dGwiOjMwMDAwMH0.eyJxckNvZGVDb250ZW50IjoiTURBd01qQXhNREV3TWpFeU1qWTNPREF3TURadmNtY3VlRGt3TVRZMGVEa3ViV0YwWlhKaExtTnZiUzl3ZFdKc2FXTXZZWEJwTDNZeEwyeHZZeTgyT0VRek9Ea3lNak5ETkVVME1qaEZRakZFTmtNNE56RXlNa001TkVWQ05UVXlNRFEwT1RBd05UTXdNemcwTURVME1ERXdOVGd3TWxWVE5Ua3lOVU5oYkdsbWIzSnVhV0VnUld4bFkzUnlhV01nUTI5dGNHRTJNREV4VEc5eklFRnVaMlZzWlhNMk16QTBRa0kxTkE9PSJ9.RLtWp-qrzTmyVeMSeCvbbSrecWsOz6N_2XRHlects4E
+        "400":
+          $ref: "#/components/responses/BadRequestErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundErrorResponse"
+
+  /api/v1/signature/validate:
+    post:
+      summary: "Check if a JWS is valid"
+      operationId: validate
+      tags:
+        - signature-features
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignatureValidationRequest"
+      responses:
+        "200":
+          description: "The signature is valid"
+          headers:
+            Correlation-Id:
+              $ref: "#/components/headers/correlationId"
+        "400":
+          $ref: "#/components/responses/BadRequestErrorResponse"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntityErrorResponse"
+
+  /pub/.well-known/jwks:
+    get:
+      summary: JWK Set Information.
+      tags:
+        - public-endpoints
+      operationId: getJwkSet
+      description: Returns a JWK Set JSON data structure that represents a set of JWKs which are responsible to sign the Payloads API response.
+      responses:
+        "200":
+          description: Response OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JwkSetInformationResponse"
+
+  /pub/.well-known/certificate/{pemFileName}:
+    get:
+      summary: "Retrieve the public X9 certificate used for signing QR Code payloads"
+      description: "Retrieve the public certificate to validate payload signatures. The payload will be signed using this exposed file."
+      operationId: getCertificate
+      tags:
+        - public-endpoints
+      parameters:
+        - $ref: "#/components/parameters/pemFileName"
+      responses:
+        "200":
+          description: "Certificate retrieved successfully"
+          content:
+            application/x-pem-file:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFoundErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorResponse"
+
+  /pub/api/v1/loc/{id}:
+    post:
+      summary: "Request QR code payload by location"
+      description: "Retrieves the payload of a QR code identified by its location ID. The payload includes the QR code and payment details."
+      operationId: retrievePaymentPayloadByLocation
+      tags:
+        - public-endpoints
+      parameters:
+        - $ref: "#/components/parameters/locId"
+        - $ref: "#/components/parameters/dateForPayment"
+      requestBody:
+        description: Payload request in JWS format with data following PaymentPayloadRequest schema"
+        required: true
+        content:
+          application/jose:
+            schema:
+              type: string
+              example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpPU0UiLCJraWQiOiJ4OS1rZXkiLCJpYXQiOjE3Njg0ODA4NDQ5MzgsIng1dCNTMjU2Ijoiajc2dm9GSHhnLUhwTkhJSlBPUGxVOVpGNUY4NUVQSDRROUdwSEc1al9YTSIsIng1dSI6Ing5Lm1hdGVyYS5jb20vcHVibGljLy53ZWxsLWtub3duL2NlcnRpZmljYXRlL3g5LnBlbSIsImNvcnJlbGF0aW9uSWQiOiI5N2E2NDA2My03YzRkLTRkMzYtYTJmYy00YzU0NzcyMTBlZjciLCJ0dGwiOjMwMDAwMH0.eyJxckNvZGVDb250ZW50IjoiTURBd01qQXhNREV3TWpFeU1qWTNPREF3TURadmNtY3VlRGt3TVRZMGVEa3ViV0YwWlhKaExtTnZiUzl3ZFdKc2FXTXZZWEJwTDNZeEwyeHZZeTgyT0VRek9Ea3lNak5ETkVVME1qaEZRakZFTmtNNE56RXlNa001TkVWQ05UVXlNRFEwT1RBd05UTXdNemcwTURVME1ERXdOVGd3TWxWVE5Ua3lOVU5oYkdsbWIzSnVhV0VnUld4bFkzUnlhV01nUTI5dGNHRTJNREV4VEc5eklFRnVaMlZzWlhNMk16QTBRa0kxTkE9PSJ9.RLtWp-qrzTmyVeMSeCvbbSrecWsOz6N_2XRHlects4E
+      responses:
+        "200":
+          description: "Payment payload as JWS with data following PaymentPayloadResponse schema"
+          content:
+            application/jose:
+              schema:
+                type: string
+                example: eyJ4NXQjUzI1NiI6IjljdTZZZ0l2SmN3cFZiQ1pxLXQ4eG5ndlRKX3Vjbm5oR08teDlwaDd0OEEiLCJjcml0IjpbImNvcnJlbGF0aW9uSWQiLCJ0dGwiLCJpYXQiLCJzdGF0dXNDb2RlIl0sImprdSI6Imh0dHBzOi8veDkubWF0ZXJhLmNvbS9wdWJsaWMvLndlbGwta25vd24vandrcyIsImtpZCI6Ing5LWtleSIsImNvcnJlbGF0aW9uSWQiOiI4YTY1Mjc5NC05ZTczLTRmZDctYTYyOC00ZDUyNWI2MzhjYmMiLCJ0eXAiOiJKT1NFIiwiaWF0IjoxNzgxMDE0MjUyODc4LCJ0dGwiOjMwMDAwMCwiYWxnIjoiUFM1MTIiLCJzdGF0dXNDb2RlIjoyMDB9.ewogICJpZCIgOiAiMDE5RUFDQjQ4RURBN0NFQTU5RjgxRjc0QTQxNzhEOEYiLAogICJyZXZpc2lvbiIgOiAwLAogICJjcmVhdGVkQXQiIDogIjIwMjYtMDYtMDlUMTQ6MDY6MTQuNzQ2NjgxWiIsCiAgInJldmlzZWRBdCIgOiAiMjAyNi0wNi0wOVQxNDowNjoxNC43NDY2ODFaIiwKICAic2VudEF0IiA6ICIyMDI2LTA2LTA5VDE0OjEwOjUyLjg2NjE2MTMwMVoiLAogICJ2YWxpZFVudGlsIiA6ICIyMDI2LTEyLTMxVDIzOjU5OjU5WiIsCiAgInN0YXR1cyIgOiAiQUNUSVZFIiwKICAiY3JlZGl0b3IiIDogewogICAgIm5hbWUiIDogIkNhbGlmb3JuaWEgRWxlY3RyaWMgQ29tcGFueSIsCiAgICAicGhvbmUiIDogIisxNTU1MjIyMzMzMyIsCiAgICAiZW1haWwiIDogImJpbGxpbmdAY2FsaWZvcm5pYWVsZWN0cmljLmNvbSIsCiAgICAiYWRkcmVzcyIgOiB7CiAgICAgICJsaW5lMSIgOiAiNTAwIEVuZXJneSBBdmUiLAogICAgICAibGluZTIiIDogIkJ1aWxkaW5nIDE3LCBTdWl0ZSAxNzAxIiwKICAgICAgImNpdHkiIDogIkJPU1RPTiIsCiAgICAgICJzdGF0ZSIgOiAiQ0EiLAogICAgICAicG9zdGFsQ29kZSIgOiAiOTAwMTIiLAogICAgICAiY291bnRyeSIgOiAiVVMiCiAgICB9LAogICAgIk1DQyIgOiAiNDkwMCIKICB9LAogICJiaWxsIiA6IHsKICAgICJhbW91bnREdWUiIDogewogICAgICAiYW1vdW50IiA6IDIyNSwKICAgICAgImN1cnJlbmN5IiA6ICJVU0QiLAogICAgICAiYWRqdXN0bWVudCIgOiBbIHsKICAgICAgICAiZXhwbGFuYXRpb24iIDogIiQxIGRpc2NvdW50IGJlY2F1c2UgeW91J3JlIHBheWluZyAxMCBkYXlzIGJlZm9yZSIsCiAgICAgICAgImFtb3VudCIgOiAtMSwKICAgICAgICAidmFsaWRVbnRpbCIgOiAiMjAyNi0xMi0yNlQyMzo1OTo1OVoiCiAgICAgIH0gXQogICAgfSwKICAgICJwYXltZW50VGltaW5nIiA6ICJJTU1FRElBVEUiLAogICAgImRlc2NyaXB0aW9uIiA6ICJFbGVjdHJpY2l0eSBzZXJ2aWNlIGZvciBBcHJpbCAyMDI2IiwKICAgICJvcmRlciIgOiB7CiAgICAgICJudW1iZXIiIDogIk9SRC0yMDI2LTA3LTAwMTIzIiwKICAgICAgImRhdGUiIDogIjIwMjYtMTItMzEiCiAgICB9LAogICAgImludm9pY2UiIDogewogICAgICAibnVtYmVyIiA6ICJJTlYtMjAyNC0wNS0wMDEyMyIsCiAgICAgICJkYXRlIiA6ICIyMDI2LTEyLTMxIiwKICAgICAgImR1ZURhdGUiIDogIjIwMjYtMTItMzFUMDc6MjA6NTlaIiwKICAgICAgImludm9pY2VlIiA6IHsKICAgICAgICAibmFtZSIgOiAiSm9obiBEb2UiLAogICAgICAgICJwaG9uZSIgOiAiKzE1NTU5ODc2NTQzIiwKICAgICAgICAiZW1haWwiIDogImpvaG5kb2VAZW1haWwuY29tIiwKICAgICAgICAiYWRkcmVzcyIgOiB7CiAgICAgICAgICAibGluZTEiIDogIjUwMCBFbmVyZ3kgQXZlIiwKICAgICAgICAgICJsaW5lMiIgOiAiQnVpbGRpbmcgMTcsIFN1aXRlIDE3MDEiLAogICAgICAgICAgImNpdHkiIDogIkxvcyBBbmdlbGVzIiwKICAgICAgICAgICJzdGF0ZSIgOiAiQ0EiLAogICAgICAgICAgInBvc3RhbENvZGUiIDogIjkwMDEyIiwKICAgICAgICAgICJjb3VudHJ5IiA6ICJVUyIKICAgICAgICB9CiAgICAgIH0KICAgIH0sCiAgICAidGlwIiA6IHsKICAgICAgImFsbG93ZWQiIDogdHJ1ZSwKICAgICAgInJhbmdlIiA6IHsKICAgICAgICAibWluIiA6IDE1LAogICAgICAgICJtYXgiIDogNzUKICAgICAgfQogICAgfQogIH0sCiAgInVuc3RydWN0dXJlZCIgOiAiQWNjb3VudDogOTg3NjUwMDAxLCBNZXRlcjogTVRSNDU1NjciLAogICJhZGRpdGlvbmFsSW5mb3JtYXRpb24iIDogWyB7CiAgICAia2V5IiA6ICJDdXN0b21lclNlcnZpY2VSZWYiLAogICAgInZhbHVlIiA6ICJDU1JFRi03NzI4MyIKICB9IF0sCiAgInBheW1lbnROb3RpZmljYXRpb24iIDogInRlc3RlIiwKICAicGF5bWVudE1ldGhvZHMiIDogWyB7CiAgICAiY3VycmVuY3kiIDogIlVTRCIsCiAgICAidmFsaWRVbnRpbCIgOiAiMjAyNi0xMi0zMVQyMzo1OTo1OVoiLAogICAgImFtb3VudCIgOiAyMjQsCiAgICAiZWRpdGFibGUiIDogewogICAgICAicGF5ZXJDYW5FZGl0IiA6IGZhbHNlCiAgICB9LAogICAgIm5ldHdvcmtzIiA6IHsKICAgICAgIkZlZE5vdyIgOiB7CiAgICAgICAgInJvdXRpbmdOdW1iZXIiIDogIjAyMTAwMDAyMSIsCiAgICAgICAgImFjY291bnROdW1iZXIiIDogIjEyMzQ1Njc4OTAiCiAgICAgIH0KICAgIH0KICB9IF0KfQ.RLtWp-qrzTmyVeMSeCvbbSrecWsOz6N_2XRHlects4E
+        "404":
+          $ref: "#/components/responses/NotFoundErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorResponse"
+
+  /api/v1/qrcode-emv-decoder:
+    post:
+      summary: "Decode QR Code EMV"
+      description: "Service that validates the QR Code and calculates the amount due considering discounts and fees so that the final amount due is presented to the payer. It also validates and presents the amount of the debit authorization issued by the payer through QR Code to the receiver."
+      operationId: decodeEmv
+      tags:
+        - qrcode-emv
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QRCodeEmvDecoder"
+      responses:
+        "200":
+          description: "Payment request decode retrieved successfully"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentPayloadResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorResponse"
+
+  /pub/api/v1/payment-notification:
+    post:
+      summary: Send Payment Notification
+      description: Standardized message sent from Payer's PSP to Payee's PSP after payment initiation
+      operationId: processPaymentNotification
+      tags:
+        - public-endpoints
+      requestBody:
+        required: true
+        description: "JWS containing payment notification data following PaymentNotificationData schema"
+        content:
+          application/jose:
+            schema:
+              type: string
+              example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpPU0UiLCJraWQiOiJ4OS1rZXkiLCJpYXQiOjE3Njg0ODA4NDQ5MzgsIng1dCNTMjU2Ijoiajc2dm9GSHhnLUhwTkhJSlBPUGxVOVpGNUY4NUVQSDRROUdwSEc1al9YTSIsIng1dSI6Ing5Lm1hdGVyYS5jb20vcHVibGljLy53ZWxsLWtub3duL2NlcnRpZmljYXRlL3g5LnBlbSIsImNvcnJlbGF0aW9uSWQiOiI5N2E2NDA2My03YzRkLTRkMzYtYTJmYy00YzU0NzcyMTBlZjciLCJ0dGwiOjMwMDAwMH0.eyJwYXltZW50Ijp7InFyY29kZUlkIjoiOTdBNjQwNjM3QzRENEQzNkEyRkM0QzU0NzcyMTBFRjciLCJhbW91bnQiOjUwMDAsImN1cnJlbmN5IjoiVVNEIiwibmV0d29yayI6IkZlZE5vdyIsInRyYW5zYWN0aW9uSWQiOiJYWVouVVNCSy5YOWFUZjcycUxtLjEifSwiZXhwZWN0ZWREYXRlIjoiMjAzMC0xMC0wOFQwNjo1OTo1OVoifQ.GmJEY9Eo1kWOL9mfx6Vh9eQAYgxb8iu5obTJIR37--U
+      responses:
+        "200":
+          description: "Notification received and validated"
+        "400":
+          $ref: "#/components/responses/BadRequestErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundErrorResponse"
+        "409":
+          $ref: "#/components/responses/ConflictErrorResponse"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntityErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorResponse"
+
+components:
+  schemas:
+    SignatureValidationRequest:
+      description: JWS content to be validate with original request / response data.
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          description: "The JWS content for validation."
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpPU0UiLCJraWQiOiJ4OS1rZXkiLCJpYXQiOjE3Njg0ODA4NDQ5MzgsIng1dCNTMjU2Ijoiajc2dm9GSHhnLUhwTkhJSlBPUGxVOVpGNUY4NUVQSDRROUdwSEc1al9YTSIsIng1dSI6Ing5Lm1hdGVyYS5jb20vcHVibGljLy53ZWxsLWtub3duL2NlcnRpZmljYXRlL3g5LnBlbSIsImNvcnJlbGF0aW9uSWQiOiI5N2E2NDA2My03YzRkLTRkMzYtYTJmYy00YzU0NzcyMTBlZjciLCJ0dGwiOjMwMDAwMH0.eyJxckNvZGVDb250ZW50IjoiTURBd01qQXhNREV3TWpFeU1qWTNPREF3TURadmNtY3VlRGt3TVRZMGVEa3ViV0YwWlhKaExtTnZiUzl3ZFdKc2FXTXZZWEJwTDNZeEwyeHZZeTgyT0VRek9Ea3lNak5ETkVVME1qaEZRakZFTmtNNE56RXlNa001TkVWQ05UVXlNRFEwT1RBd05UTXdNemcwTURVME1ERXdOVGd3TWxWVE5Ua3lOVU5oYkdsbWIzSnVhV0VnUld4bFkzUnlhV01nUTI5dGNHRTJNREV4VEc5eklFRnVaMlZzWlhNMk16QTBRa0kxTkE9PSJ9.RLtWp-qrzTmyVeMSeCvbbSrecWsOz6N_2XRHlects4E
+
+    PaymentRequestInformation:
+      allOf:
+        - $ref: "#/components/schemas/PaymentRequestResponse"
+        - $ref: "#/components/schemas/PaymentRequestInput"
+        - $ref: "#/components/schemas/PaymentRequestAdditionalInfo"
+
+    PaymentRequestAdditionalInfo:
+      type: object
+      properties:
+        paymentNotification:
+          allOf:
+            - $ref: "#/components/schemas/PaymentNotification"
+            - $ref: "#/components/schemas/PaymentNotificationDataWrapper"
+        revision:
+          $ref: "#/components/schemas/QRCodeRevision"
+        createdAt:
+          type: string
+          format: date-time
+          description: 'UTC timestamp indicating when the payment request was created. Expected pattern: `^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d{1,3})?Z$`'
+          example: "2030-04-30T12:00:00Z"
+        revisedAt:
+          type: string
+          format: date-time
+          description: 'UTC timestamp indicating when the payment request was last revised. Expected pattern: `^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d{1,3})?Z$`'
+          example: "2030-05-05T15:45:30Z"
+        sentAt:
+          type: string
+          format: date-time
+          description: 'UTC timestamp indicating when the payment request was sent. Expected pattern: `^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d{1,3})?Z$`'
+          example: "2030-05-01T21:30:00Z"
+        status:
+          $ref: "#/components/schemas/QRCodeStatus"
+        paymentDetails:
+          $ref: "#/components/schemas/BasePaymentDetails"
+        emv:
+          type: string
+          description: "EMV QR Code string representation."
+      required:
+        - revision
+        - createdAt
+        - sentAt
+        - status
+
+    PaymentRequestInput:
+      type: object
+      required:
+        - validUntil
+        - creditor
+        - bill
+        - paymentMethods
+      properties:
+        validUntil:
+          type: string
+          format: date-time
+          description: 'UTC timestamp until which this payment request is valid. After this time, the QR Code and API response may no longer be considered active. MUST be greater than or equal to sentAt (if sentAt is present) or revisedAt. Expected pattern: `^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d{1,3})?Z$`'
+          example: "2030-05-25T23:59:59Z"
+        creditor:
+          $ref: "#/components/schemas/Creditor"
+          description: "Details of the entity requesting payment."
+        bill:
+          $ref: "#/components/schemas/Bill"
+          description: "Information specific to the bill or invoice being paid."
+        locationId:
+          $ref: "#/components/schemas/LocationId"
+        unstructured:
+          type: string
+          pattern: ^[\x20-\x7E]*$
+          description: "Internal string passed from payer's bank to biller's bank, displayed in biller's statements."
+          example: "Account: 987650001, Meter: MTR45567, payer: ${payer.email}"
+        additionalInformation:
+          type: array
+          items:
+            $ref: "#/components/schemas/KeyValuePair"
+          description: "Optional key-value pairs for additional metadata."
+        paymentNotification:
+          $ref: "#/components/schemas/PaymentNotification"
+        paymentMethods:
+          $ref: "#/components/schemas/PaymentMethods"
+          description: "Details of the payment amount and methods."
+
+    PaymentNotification:
+      type: object
+      description: Payment notification data for a QRCode
+      properties:
+        kind:
+          type: string
+          enum: [DEFAULT, EXTERNAL]
+          description: "Type of payment notification endpoint. Usage of EXTERNAL kind requires a endpoint to be informed."
+          example: "EXTERNAL"
+        endpoint:
+          type: string
+          format: uri
+          description: "Optional URL that indicates where payment status notification information should be sent (likely Payee's PSP)"
+          example: "https://external.domain.com/paymentNotification"
+      required:
+        - kind
+
+    JwkSetInformationResponse:
+      type: object
+      description: "The Jwk Set information"
+      additionalProperties: true
+      example:
+        keys:
+          [
+            {
+              kty: "RSA",
+              x5t#S256: "T7uEY39Wo6-0OrPP60bXely",
+              e: "AQAB",
+              x5t: "a7e317f6ddasdy12938789asd",
+              kid: "123456",
+              x5c: ["MIIDGzCCAgOgAwIBA", "iG9w0BAQsFADAmMSQwIgYDVQQD"],
+              key_ops: ["verify"],
+              n: "ZP6IldZhWiFrWC",
+            },
+          ]
+
+    PaymentPayloadRequest:
+      type: object
+      required:
+        - qrCodeContent
+      properties:
+        qrCodeContent:
+          type: string
+          description: "The QRCode EMV string Base64 representation"
+
+    PaymentPayloadResponse:
+      type: object
+      required:
+        - id
+        - revision
+        - createdAt
+        - revisedAt
+        - sentAt
+        - validUntil
+        - status
+        - creditor
+        - bill
+        - paymentMethods
+      properties:
+        id:
+          $ref: "#/components/schemas/QRCodeId"
+        revision:
+          $ref: "#/components/schemas/QRCodeRevision"
+        createdAt:
+          type: string
+          format: date-time
+          description: "UTC timestamp indicating when the payment request was created. Expected pattern: `^(\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d{1,3})?Z$`"
+          example: "2030-04-30T12:00:00Z"
+        revisedAt:
+          type: string
+          format: date-time
+          description: "UTC timestamp indicating when the payment request was last revised. Expected pattern: `^(\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d{1,3})?Z$`"
+          example: "2030-05-05T15:45:30Z"
+        sentAt:
+          type: string
+          format: date-time
+          description: "UTC timestamp indicating when the payment request was sent. Expected pattern: `^(\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d{1,3})?Z$`"
+          example: "2030-05-01T21:30:00Z"
+        validUntil:
+          type: string
+          format: date-time
+          description: "UTC timestamp indicating until when the payment request is valid. Expected pattern: `^(\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d{1,3})?Z$`"
+          example: "2030-05-25T23:59:59Z"
+        status:
+          $ref: "#/components/schemas/QRCodeStatus"
+        creditor:
+          $ref: "#/components/schemas/Creditor"
+          description: "Details of the entity requesting payment."
+        bill:
+          $ref: "#/components/schemas/BillPayloadResponse"
+          description: "Information specific to the bill or invoice being paid."
+        unstructured:
+          type: string
+          pattern: ^[\x20-\x7E]*$
+          description: "Internal string passed from payer's bank to biller's bank, displayed in biller's statements."
+          example: "Account: 987650001, Meter: MTR45567, payer: ${payer.email}"
+        additionalInformation:
+          type: array
+          items:
+            $ref: "#/components/schemas/KeyValuePair"
+          description: "Optional key-value pairs for additional metadata."
+        paymentNotification:
+          type: string
+          format: uri
+          description: "Optional URL that indicates where payment status notification information should be sent (likely Payee's PSP)"
+          example: "https://paymentNotification.com/paymentNotificationOrder14525"
+        paymentMethods:
+          $ref: "#/components/schemas/PaymentMethods"
+          description: "Details of the payment amount and methods."
+      description: |
+        Cross-field validations (enforced in business logic):
+        - revisedAt >= createdAt: Ensures revisions occur after creation.
+        - sentAt >= revisedAt: Ensures sending occurs after the latest revision.
+        - validUntil >= sentAt: Ensures the record remains valid after being sent.
+
+    Creditor:
+      type: object
+      required:
+        - name
+        - address
+        - MCC
+      properties:
+        name:
+          $ref: "#/components/schemas/Name"
+        phone:
+          $ref: "#/components/schemas/Phone"
+        email:
+          $ref: "#/components/schemas/Email"
+        address:
+          $ref: "#/components/schemas/Address"
+          description: "Creditor's physical address."
+        ultimateCreditor:
+          type: object
+          required:
+            - account
+            - name
+            - address
+          properties:
+            account:
+              type: object
+              required:
+                - id
+                - schemaName
+              properties:
+                id:
+                  type: string
+                  pattern: ^[\x20-\x7E]*$
+                  description: "identification within the ultimate creditor system, like virtualAccount, e-mail, number, handle, etc."
+                  example: "identification within the ultimate creditor system, like virtualAccount, e-mail, number, handle, etc."
+                schemaName:
+                  type: string
+                  pattern: ^[\x20-\x7E]*$
+                  description: "Schema for the id - naming convention adopted from ISO20022"
+                  example: "Schema for the id - naming convention adopted from ISO20022"
+            name:
+              $ref: "#/components/schemas/Name"
+            phone:
+              $ref: "#/components/schemas/Phone"
+            email:
+              $ref: "#/components/schemas/Email"
+            address:
+              $ref: "#/components/schemas/Address"
+          description: "Ultimate creditor details."
+        MCC:
+          type: string
+          pattern: ^\d{4}$
+          minLength: 4
+          maxLength: 4
+          description: "Merchant Category Code, a 4-digit string per ISO 18245."
+          example: "4900"
+    Address:
+      type: object
+      required:
+        - line1
+        - city
+        - country
+      properties:
+        line1:
+          $ref: "#/components/schemas/AddressLine"
+        line2:
+          $ref: "#/components/schemas/AddressLine"
+        city:
+          $ref: "#/components/schemas/AddressCity"
+        state:
+          $ref: "#/components/schemas/AddressState"
+        postalCode:
+          $ref: "#/components/schemas/AddressPostalCode"
+        country:
+          $ref: "#/components/schemas/AddressCountry"
+
+    BillBase:
+      type: object
+      required:
+        - description
+        - paymentTiming
+      properties:
+        paymentTiming:
+          type: string
+          enum:
+            - DEFERRED
+            - IMMEDIATE
+          default: IMMEDIATE
+        description:
+          type: string
+          pattern: ^[\x20-\x7E]*$
+          maxLength: 100
+          description: "A short description of the bill (e.g., Monthly electricity service)."
+          example: "Electricity service for April 2030"
+        order:
+          type: object
+          required:
+            - number
+          properties:
+            number:
+              $ref: "#/components/schemas/DocumentNumber"
+            date:
+              type: string
+              format: date
+              description: "The date the order was created. Expected pattern: YYYY-MM-DD"
+              example: "2030-04-30"
+        invoice:
+          type: object
+          required:
+            - number
+            - date
+            - dueDate
+          properties:
+            number:
+              $ref: "#/components/schemas/DocumentNumber"
+            date:
+              type: string
+              format: date
+              description: "The date the bill was issued. Expected pattern: YYYY-MM-DD"
+              example: "2030-04-30"
+            dueDate:
+              type: string
+              format: date-time
+              description: "**Specify this in UTC.** The biller must convert the bill's due date/time from the biller's own local timezone to UTC before sending it — as an ISO-8601 timestamp ending in `Z` (e.g. a bill due end-of-day 2030-05-15 in a UTC-03:00 timezone is sent as `2030-05-16T02:59:59Z`). A timezone offset such as `-05:00` is NOT accepted. This is the date the payment for the bill is due, and MUST be greater than or equal to revisedAt and less than or equal to validUntil. Expected pattern: `^(\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d{1,3})?Z$`"
+              example: "2030-05-15T23:59:59Z"
+            invoicee:
+              $ref: "#/components/schemas/Invoicee"
+              description: "Optional details of the invoice recipient."
+        tip:
+          type: object
+          description: "Percentage of the amount due in creditor's currency that was selected by the payer, if so. Otherwise, if should be sent 'null'"
+          required:
+            - allowed
+          properties:
+            allowed:
+              type: boolean
+              description: "Determines whether the receiver allows the payer to make a tip payment."
+              example: true
+              default: true
+            range:
+              $ref: "#/components/schemas/TipRange"
+            presets:
+              type: array
+              minItems: 1
+              maxItems: 10
+              items:
+                type: integer
+                minimum: 0
+                maximum: 999
+              description: "Array of integer percentage presets that can be used as tips (e.g. 15 for 15%). Per ANSI X9.150 §13.6.2, tip values are integer percentages between 0 and 999 — no decimal points or '%' sign."
+              example:
+                - 10
+                - 25
+                - 50
+                - 75
+    BillPayloadResponse:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/BillBase"
+      required:
+        - amountDue
+      properties:
+        amountDue:
+          $ref: "#/components/schemas/AmountDuePayloadResponse"
+
+    Bill:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/BillBase"
+      required:
+        - amountDue
+      properties:
+        amountDue:
+          $ref: "#/components/schemas/AmountDue"
+
+    BillUpdate:
+      allOf:
+        - $ref: "#/components/schemas/BillBase"
+      required:
+        - amountDue
+      properties:
+        amountDue:
+          $ref: "#/components/schemas/AmountDue"
+
+    Invoicee:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          $ref: "#/components/schemas/Name"
+        phone:
+          $ref: "#/components/schemas/Phone"
+        email:
+          $ref: "#/components/schemas/Email"
+        address:
+          $ref: "#/components/schemas/Address"
+
+    KeyValuePair:
+      type: object
+      required:
+        - key
+        - value
+      properties:
+        key:
+          type: string
+          pattern: ^[\x20-\x7E]+$
+          description: "Key for additional metadata, printable ASCII characters."
+          example: "CustomerServiceRef"
+        value:
+          type: string
+          pattern: ^[\x20-\x7E]*$
+          description: "Value for additional metadata, printable ASCII characters."
+          example: "CSREF-77283"
+
+    QRCodeEmvDecoder:
+      required:
+        - qrCode
+      properties:
+        qrCode:
+          type: string
+          description: "The string of alpha numeric characters that represents the QR Code (EMV standard)."
+          example: "00020101021226800006org.x92566x9-150.example.com/pub/api/v1/loc/68D389223C4E428EB1D6C87122C94EB5520449005303986540105802US5925California Electric Compa6011Los Angeles6304E681"
+        dateForPayment:
+          type: string
+          format: date
+          description: "Date that the payer intends to pay the QR Code."
+          example: "2024-04-30"
+        correlationID:
+          type: string
+          format: uuid
+          description: "Correlation ID to track the request."
+          example: "123e4567-e89b-12d3-a456-426614174000"
+
+    AmountDuePayloadResponse:
+      description: "Details of the amount owed."
+      type: object
+      required:
+        - amount
+        - currency
+      properties:
+        amount:
+          type: integer
+          format: int64
+          description: "Amount due as a positive integer in the smallest currency unit (minor units; the currency defines the decimals — e.g. cents for USD, none for JPY, micro-units for USDC). Example: 19825 = $198.25 (USD)."
+          example: 19825
+        currency:
+          $ref: "#/components/schemas/CurrencyCode"
+        adjustment:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdjustmentPayload"
+
+    AdjustmentPayload:
+      type: object
+      required:
+        - explanation
+        - amount
+        - validUntil
+      properties:
+        explanation:
+          type: string
+          maxLength: 200
+          description: "A human-readable explanation of the adjustments (e.g., 5% discount for early payment)."
+          example: "5% discount applied for early payment before May 10, 2030."
+        amount:
+          type: integer
+          format: int64
+          description: "Adjustment amount in minor units (e.g. cents). Per ANSI X9.150 §13.5.3.2 this is a signed integer that MAY be positive or negative: a discount is negative (e.g. -1000 = -$10.00), a late fee is positive."
+          example: -1000
+        validUntil:
+          type: string
+          format: date-time
+          description: "UTC timestamp until which the currency option is valid. Expected pattern: `^(\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d{1,3})?Z$`"
+          example: "2030-05-10T23:59:59Z"
+
+    AmountDue:
+      type: object
+      description: "Configuration to generate the billing amount"
+      required:
+        - amount
+        - currency
+      properties:
+        amount:
+          $ref: "#/components/schemas/Amount"
+        currency:
+          $ref: "#/components/schemas/CurrencyCode"
+        adjustments:
+          $ref: "#/components/schemas/Adjustment"
+          description: "Parameters for calculating amount adjustments."
+
+    Adjustment:
+      type: object
+      required:
+        - formula
+        - parameters
+      properties:
+        formula:
+          type: string
+          enum:
+            - FixedDiscountLateFeeLinearInterest
+          description: "Formula for calculating adjustments (e.g., discounts or late fees)."
+          example: "FixedDiscountLateFeeLinearInterest"
+        parameters:
+          type: object
+          required:
+            - lateFees
+          properties:
+            discounts:
+              type: array
+              items:
+                type: object
+                required:
+                  - daysBefore
+                  - discount
+                  - explanation
+                properties:
+                  daysBefore:
+                    type: integer
+                    minimum: 0
+                    description: "Number of days before due date for discount."
+                    example: "60"
+                  discount:
+                    type: integer
+                    format: int64
+                    description: "Discount amount as a positive integer in the smallest currency unit (minor units; the currency defines the decimals — e.g. cents for USD, none for JPY, micro-units for USDC)."
+                    example: "1000"
+                  explanation:
+                    type: string
+                    description: "Human-readable explanation of the discount."
+                    example: "$10 discount because you're paying 60 days before ${dueDate}"
+            lateFees:
+              type: object
+              required:
+                - fixed
+                - perDay
+                - explanation
+              properties:
+                fixed:
+                  type: integer
+                  format: int64
+                  description: "Fixed late fee amount as a positive integer in the smallest currency unit (minor units; decimals defined by the currency)."
+                  example: "100"
+                perDay:
+                  type: integer
+                  format: int64
+                  description: "Per-day late fee amount as a positive integer in the smallest currency unit (minor units; decimals defined by the currency)."
+                  example: "25"
+                explanation:
+                  type: string
+                  description: "Human-readable explanation of late fees."
+                  example: "$1 administrative fee plus $0.25 per day interest"
+    PaymentMethods:
+      type: array
+      items:
+        $ref: "#/components/schemas/PaymentMethod"
+      minItems: 1
+      description: "List of supported currencies and payment methods."
+      example:
+        - currency: "USD"
+          validUntil: "2030-05-10T23:59:59Z"
+          amount: 18834
+          editable:
+            range:
+              min: 10000
+              max: 18834
+          networks:
+            FedNow:
+              routingNumber: "021000021"
+              accountNumber: "1234567890"
+            RTP:
+              routingNumber: "021000021"
+              accountNumber: "1234567890"
+            ACH:
+              routingNumber: "021000021"
+              accountNumber: "1234567890"
+        - currency: "USDC"
+          validUntil: "2030-05-10T23:59:59Z"
+          amount: 26282
+          editable:
+            range:
+              min: 13952
+              max: 26282
+          networks:
+            Ethereum:
+              walletAddress: "0x1234567890abcdef1234567890abcdef12345678"
+
+    PaymentMethod:
+      type: object
+      required:
+        - currency
+        - validUntil
+        - amount
+        - networks
+      properties:
+        currency:
+          $ref: "#/components/schemas/CurrencyCode"
+        validUntil:
+          type: string
+          format: date-time
+          description: "UTC timestamp until which the currency option is valid. Expected pattern: `^(\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d{1,3})?Z$`"
+          example: "2030-05-10T23:59:59Z"
+        amount:
+          $ref: "#/components/schemas/Amount"
+        editable:
+          type: object
+          required:
+            - range
+          properties:
+            range:
+              $ref: "#/components/schemas/IntegerRange"
+          description: "Present only when the payer can edit the amount. Per ANSI X9.150 §14.4, the presence of this object indicates the amount is editable; when present, `range` is mandatory (§14.4.1)."
+        networks:
+          $ref: "#/components/schemas/NetworksSimple"
+
+    NetworksSimple:
+      type: object
+      description: "Available payment methods for this currency."
+      properties:
+        FedNow:
+          $ref: "#/components/schemas/FedNow"
+        RTP:
+          $ref: "#/components/schemas/RTP"
+        ACH:
+          $ref: "#/components/schemas/ACH"
+        Polygon:
+          $ref: "#/components/schemas/Polygon"
+        Solana:
+          $ref: "#/components/schemas/Solana"
+        Ethereum:
+          $ref: "#/components/schemas/Ethereum"
+        Bitcoin:
+          $ref: "#/components/schemas/Bitcoin"
+        Base:
+          $ref: "#/components/schemas/Base"
+        XRP:
+          $ref: "#/components/schemas/XRP"
+        Arc:
+          $ref: "#/components/schemas/Arc"
+      additionalProperties: true
+
+    RTP:
+      allOf:
+        - $ref: "#/components/schemas/BankAddress"
+
+    FedNow:
+      allOf:
+        - $ref: "#/components/schemas/BankAddress"
+
+    ACH:
+      allOf:
+        - $ref: "#/components/schemas/BankAddress"
+
+    Polygon:
+      allOf:
+        - $ref: "#/components/schemas/CryptoWalletAddress"
+
+    Solana:
+      allOf:
+        - $ref: "#/components/schemas/CryptoWalletAddress"
+
+    Ethereum:
+      allOf:
+        - $ref: "#/components/schemas/CryptoWalletAddress"
+
+    Bitcoin:
+      allOf:
+        - $ref: "#/components/schemas/CryptoWalletAddress"
+
+    Base:
+      allOf:
+        - $ref: "#/components/schemas/CryptoWalletAddress"
+
+    XRP:
+      allOf:
+        - $ref: "#/components/schemas/CryptoWalletAddress"
+
+    Arc:
+      allOf:
+        - $ref: "#/components/schemas/CryptoWalletAddress"
+
+    BankAddress:
+      type: object
+      required:
+        - routingNumber
+        - accountNumber
+        - protectionType
+      properties:
+        routingNumber:
+          type: string
+          pattern: ^\d{9}$
+          minLength: 9
+          maxLength: 9
+          description: "9-digit US ABA routing number for RTP, FedNow."
+          example: "021000021"
+        accountNumber:
+          type: string
+          pattern: ^\d{4,17}$
+          minLength: 4
+          maxLength: 17
+          description: "Bank account number, 4-17 digits."
+          example: "1234567890"
+        protectionType:
+          $ref: "#/components/schemas/ProtectionTypeEnum"
+      description: "Bank routing details for RTP and FedNow with ultimate creditor."
+
+    ProtectionTypeEnum:
+      type: string
+      enum:
+        - tokenized
+        - encrypted
+        - plaintext
+      description: "How the bank account number is protected for the bank rails (FedNow, RTP, ACH), per ANSI X9.150-2026 (Protection Type, §14.5.x): `tokenized`, `encrypted`, or `plaintext`. This implementation always secures account numbers by tokenization and therefore always emits `tokenized`. Applies only to bank networks — not to card or blockchain payment methods."
+      example: "tokenized"
+
+    CryptoWalletAddress:
+      type: object
+      description: "Blockchain payment method. The presence of the network object (e.g. Ethereum, Solana, Bitcoin, Base, XRP, Arc) selects the chain; only the receiving wallet address is carried — no memo/tag fields."
+      required:
+        - walletAddress
+      properties:
+        walletAddress:
+          $ref: "#/components/schemas/CryptoAddressHash"
+      additionalProperties: false
+
+    CryptoAddressHash:
+      type: string
+      pattern: ^(0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}|bc1[a-zA-HJ-NP-Z0-9]{25,87}|r[1-9A-HJ-NP-Za-km-z]{24,34})$
+      description: "Cryptocurrency wallet address that receives the funds. Supports EVM 0x (Ethereum, Polygon, Base, Arc), Base58 (Solana), Bitcoin Bech32 (bc1), and XRP Ledger (r-prefixed)."
+      example: "0x1234567890abcdef1234567890abcdef12345678"
+
+    PaymentRequestResponse:
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/QRCodeId"
+        qrCode:
+          type: string
+          description: "EMV string to be rendered into a QR Code."
+          example: "00020101021226800006org.x92566x9-150.example.com/pub/api/v1/loc/68D389223C4E428EB1D6C87122C94EB5520449005303986540105802US5925California Electric Compa6011Los Angeles6304E681"
+        qrCodeB64:
+          type: string
+          description: "Base64-encoded QR Code EMV content, ready to be used as qrCodeContent in the payload retrieval flow."
+          example: "MDAyMDAxMDEwMjEyMjY3ODA..."
+        location:
+          $ref: "#/components/schemas/PaymentRequestLocation"
+      required:
+        - id
+        - qrCode
+        - qrCodeB64
+        - location
+
+    PaymentNotificationDataWrapper:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/PaymentNotificationData"
+
+    PaymentNotificationData:
+      type: object
+      properties:
+        payment:
+          type: object
+          properties:
+            qrcodeId:
+              $ref: "#/components/schemas/QRCodeId"
+            amount:
+              $ref: "#/components/schemas/Amount"
+            tipAmount:
+              $ref: "#/components/schemas/Amount"
+            currency:
+              $ref: "#/components/schemas/CurrencyCode"
+            network:
+              $ref: "#/components/schemas/NetworkEnum"
+            transactionId:
+              $ref: "#/components/schemas/TransactionId"
+          required:
+            - qrcodeId
+            - amount
+            - currency
+            - network
+        payer:
+          type: object
+          properties:
+            info:
+              type: string
+              maxLength: 140
+              description: "An optional free text field that may be included for informational purposes or customer engagement."
+              example: "email@info.com"
+        expectedDate:
+          type: string
+          format: date-time
+          example: "2024-05-05T15:45:30Z"
+        blockchain:
+          type: object
+          properties:
+            action:
+              $ref: "#/components/schemas/BlockchainActionEnum"
+            from:
+              $ref: "#/components/schemas/CryptoAddressHash"
+            to:
+              $ref: "#/components/schemas/CryptoAddressHash"
+          required:
+            - action
+            - from
+            - to
+      required:
+        - payment
+
+    PaymentRequestLocation:
+      type: object
+      description: "Location data of the payment request details."
+      properties:
+        id:
+          $ref: "#/components/schemas/LocationId"
+        endpoint:
+          type: string
+          format: uri
+          description: "Payload URI endpoint to retrieve the payment request details."
+          example: "x9-150.example.com/pub/api/v1/loc/68D389223C4E428EB1D6C87122C94EB5"
+      required:
+        - id
+        - endpoint
+
+    PaymentRequestReplacement:
+      type: object
+      required:
+        - paymentMethods
+      properties:
+        validUntil:
+          type: string
+          format: date-time
+          description: "UTC timestamp until which this payment request is valid."
+          example: "2030-05-25T23:59:59Z"
+        bill:
+          $ref: "#/components/schemas/BillUpdate"
+          description: "Information specific to the bill or invoice being paid."
+        locationId:
+          $ref: "#/components/schemas/LocationId"
+        unstructured:
+          type: string
+          pattern: ^[\x20-\x7E]*$
+          description: "Internal string passed from payer's bank to biller's bank, displayed in biller's statements."
+          example: "Account: 987650001, Meter: MTR45567, payer: ${payer.email}"
+        additionalInformation:
+          type: array
+          items:
+            $ref: "#/components/schemas/KeyValuePair"
+          description: "Optional key-value pairs for additional metadata."
+        paymentMethods:
+          $ref: "#/components/schemas/PaymentMethods"
+
+    StatusUpdate:
+      allOf:
+        - $ref: "#/components/schemas/BasePaymentDetails"
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - PAID
+            - CANCELLED
+            - INITIATED
+            - ACTIVE
+          description: "Status of the payment request."
+
+    StatusUpdateResponse:
+      type: object
+      required:
+        - id
+        - status
+      properties:
+        id:
+          $ref: "#/components/schemas/QRCodeId"
+        status:
+          $ref: "#/components/schemas/QRCodeStatus"
+
+    BasePaymentDetails:
+      type: object
+      properties:
+        network:
+          $ref: "#/components/schemas/NetworkEnum"
+        endToEndId:
+          type: string
+          maxLength: 255
+          description: "ID that identifies the payment transaction. Mandatory if status is Paid"
+          example: "0196cb82-afab-46f1-bf8d-fff2f9c8a53e"
+
+    QRCodeId:
+      type: string
+      minLength: 32
+      maxLength: 32
+      description: "Unique QRCode identifier without hyphens in uppercase."
+      example: "68D389223C4E428EB1D6C87122C94EB5"
+
+    LocationId:
+      type: string
+      minLength: 32
+      maxLength: 32
+      description: "Unique Location identifier without hyphens in uppercase."
+      example: "68D389223C4E428EB1D6C87122C94EB5"
+
+    TransactionId:
+      type: string
+      maxLength: 255
+      description: "Unique payment transaction reference ID"
+      example: "XYZ.USBK.X9aTf72qLm.1"
+
+    QRCodeRevision:
+      type: integer
+      minimum: 0
+      description: "Revision number of the payment request."
+
+    QRCodeStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - INITIATED
+        - PAID
+        - CANCELLED
+      description: "Current status of the payment request."
+      example: "PAID"
+
+    BlockchainActionEnum:
+      type: string
+      enum:
+        - PAYMENT_INITIATED
+        - SENT
+        - NOT_SENT
+      description: "Indicates the action taken regarding the payment notification. Mandatory if is blockchain payment."
+      example: "PAYMENT_INITIATED"
+
+    DocumentNumber:
+      type: string
+      pattern: ^[\x20-\x7E]{0,20}$
+      maxLength: 20
+      description: "Order/Invoice number containing any printable ASCII"
+      example: "ORD-2030-04-00123"
+
+    IntegerRange:
+      type: object
+      required:
+        - min
+        - max
+      properties:
+        min:
+          type: integer
+          format: int64
+          description: "Minimum value in the range."
+          example: 1000
+        max:
+          type: integer
+          format: int64
+          description: "Maximum value in the range."
+          example: 5000
+
+    TipRange:
+      type: object
+      description: "Range of tip values, expressed as integer percentages (ANSI X9.150 §13.6.2). Values are between 0 and 999 — a tip cannot exceed 999%."
+      required:
+        - min
+        - max
+      properties:
+        min:
+          type: integer
+          minimum: 0
+          maximum: 999
+          description: "Minimum tip percentage (integer, 0-999)."
+          example: 0
+        max:
+          type: integer
+          minimum: 0
+          maximum: 999
+          description: "Maximum tip percentage (integer, 0-999)."
+          example: 50
+
+    CurrencyCode:
+      type: string
+      maxLength: 32
+      pattern: ^[A-Za-z]{1,32}$
+      description: "Currency for payment. Per ANSI X9.150 §13.5.2/§14.1, a string (max 32 chars) — an ISO 4217 alphabetic code (e.g. USD, EUR, JPY) or a non-ISO digital-asset ticker (e.g. USDC, BTC, ETH). The payload is currency-agnostic: this module repeats the informed value verbatim and the paying PSP interprets it."
+      example: "USD"
+
+    Amount:
+      type: integer
+      format: int64
+      description: "The monetary value is represented as an integer in the smallest unit of the currency (for example, cents in the case of USD). To interpret the value correctly, it is necessary to know the number of decimal places used by the currency. In this example, an amount of 100 USDC corresponds to one dollar, $1.00."
+      example: 18834
+
+    NetworkEnum:
+      type: string
+      enum:
+        - FedNow
+        - RTP
+        - ACH
+        - Polygon
+        - Solana
+        - Ethereum
+        - Bitcoin
+        - Base
+        - XRP
+        - Arc
+      description: "Payment method used for payment. Mandatory if status is Paid."
+      example: "FedNow"
+    Name:
+      type: string
+      pattern: ^[\x20-\x7E]{1,50}$
+      maxLength: 50
+      description: "Name of the creditor (individual or company), up to 50 printable ASCII characters."
+      example: "California Electric Company"
+
+    Phone:
+      type: string
+      pattern: ^(\+1[2-9]\d{2}[2-9]\d{6}|\+\d{1,3}\d{4,14})$
+      description: "Creditor's phone number, US (+1) or international format."
+      example: "+15552223333"
+
+    Email:
+      type: string
+      format: email
+      maxLength: 60
+      description: "Creditor's email address, up to 60 characters."
+      example: "billing@californiaelectric.com"
+    AddressLine:
+      type: string
+      pattern: ^[\x20-\x7E]{1,60}$
+      maxLength: 60
+      description: "Primary address line, up to 60 printable ASCII characters."
+      example: "500 Energy Ave"
+
+    AddressCity:
+      type: string
+      pattern: ^[\x20-\x7E]{1,40}$
+      maxLength: 40
+      description: "City name, up to 40 printable ASCII characters."
+      example: "Los Angeles"
+
+    AddressState:
+      type: string
+      pattern: ^[\x20-\x7E]{0,30}$
+      maxLength: 30
+      description: "State or province, US state code if country is 'US', otherwise free text."
+      example: "CA"
+
+    AddressPostalCode:
+      type: string
+      pattern: ^(\d{5}(-\d{4})?|[\x20-\x7E]{0,10})$
+      maxLength: 20
+      description: "Postal code, US ZIP (NNNNN or NNNNN-NNNN) if country is 'US', otherwise up to 10 printable ASCII characters."
+      example: "90012"
+
+    AddressCountry:
+      type: string
+      pattern: ^[A-Z]{2}$
+      minLength: 2
+      maxLength: 2
+      description: 'ISO 3166-1 alpha-2 country code (e.g., "US", "CN").'
+      example: "US"
+
+    PatchAddress:
+      type: object
+      required:
+        - line1
+        - city
+        - country
+      properties:
+        line1:
+          $ref: "#/components/schemas/AddressLine"
+        line2:
+          allOf:
+            - $ref: "#/components/schemas/AddressLine"
+          nullable: true
+        city:
+          $ref: "#/components/schemas/AddressCity"
+        state:
+          allOf:
+            - $ref: "#/components/schemas/AddressState"
+          nullable: true
+        postalCode:
+          allOf:
+            - $ref: "#/components/schemas/AddressPostalCode"
+          nullable: true
+        country:
+          $ref: "#/components/schemas/AddressCountry"
+
+    PatchInvoicee:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          $ref: "#/components/schemas/Name"
+        phone:
+          allOf:
+            - $ref: "#/components/schemas/Phone"
+          nullable: true
+        email:
+          allOf:
+            - $ref: "#/components/schemas/Email"
+          nullable: true
+        address:
+          allOf:
+            - $ref: "#/components/schemas/PatchAddress"
+          nullable: true
+
+    PatchInvoice:
+      type: object
+      required:
+        - number
+        - date
+        - dueDate
+      properties:
+        number:
+          $ref: "#/components/schemas/DocumentNumber"
+        date:
+          type: string
+          format: date
+          description: "The date the bill was issued. Expected pattern: YYYY-MM-DD"
+          example: "2030-04-30"
+        dueDate:
+          type: string
+          format: date-time
+          description: '**Specify this in UTC.** The biller must convert the bill''s due date/time from the biller''s own local timezone to UTC before sending it — as an ISO-8601 timestamp ending in `Z` (e.g. a bill due end-of-day 2030-05-15 in a UTC-03:00 timezone is sent as `2030-05-16T02:59:59Z`). A timezone offset such as `-05:00` is NOT accepted. This is the date the payment for the bill is due, and MUST be greater than or equal to revisedAt and less than or equal to validUntil. Expected pattern: `^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d{1,3})?Z$`'
+          example: "2030-05-15T23:59:59Z"
+        invoicee:
+          description: "Optional details of the invoice recipient."
+          allOf:
+            - $ref: "#/components/schemas/PatchInvoicee"
+          nullable: true
+
+    PatchOrder:
+      type: object
+      required:
+        - number
+      properties:
+        number:
+          $ref: "#/components/schemas/DocumentNumber"
+        date:
+          type: string
+          format: date
+          description: "The date the order was created. Expected pattern: YYYY-MM-DD"
+          nullable: true
+          example: "2030-04-30"
+
+    PatchTip:
+      type: object
+      description: "Amount in creditor's currency that was selected by the payer, if so. Otherwise, if should be sent 'null'"
+      required:
+        - allowed
+      properties:
+        allowed:
+          type: boolean
+          description: "Determines whether the receiver allows the payer to make a tip payment."
+          example: true
+          default: true
+        range:
+          $ref: "#/components/schemas/TipRange"
+        presets:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            type: integer
+            minimum: 0
+            maximum: 999
+          description: "Array of integer percentage presets that can be used as tips (e.g. 15 for 15%). Per ANSI X9.150 §13.6.2, tip values are integer percentages between 0 and 999 — no decimal points or '%' sign."
+          nullable: true
+          example:
+            - 10
+            - 25
+
+    PatchAdjustmentParameters:
+      type: object
+      required:
+        - lateFees
+      properties:
+        discounts:
+          type: array
+          items:
+            type: object
+            required:
+              - daysBefore
+              - discount
+              - explanation
+            properties:
+              daysBefore:
+                type: integer
+                minimum: 0
+                description: "Number of days before due date for discount."
+                example: "60"
+              discount:
+                type: integer
+                format: int64
+                description: "Discount amount as a positive integer in the smallest currency unit (minor units; the currency defines the decimals — e.g. cents for USD, none for JPY, micro-units for USDC)."
+                example: "1000"
+              explanation:
+                type: string
+                description: "Human-readable explanation of the discount."
+                example: "$10 discount because you're paying 60 days before ${dueDate}"
+          nullable: true
+        lateFees:
+          type: object
+          required:
+            - fixed
+            - perDay
+            - explanation
+          properties:
+            fixed:
+              type: integer
+              format: int64
+              description: "Fixed late fee amount as a positive integer in the smallest currency unit (minor units; decimals defined by the currency)."
+              example: "100"
+            perDay:
+              type: integer
+              format: int64
+              description: "Per-day late fee amount as a positive integer in the smallest currency unit (minor units; decimals defined by the currency)."
+              example: "25"
+            explanation:
+              type: string
+              description: "Human-readable explanation of late fees."
+              example: "$1 administrative fee plus $0.25 per day interest"
+
+    PatchAdjustment:
+      type: object
+      required:
+        - formula
+        - parameters
+      properties:
+        formula:
+          type: string
+          enum:
+            - FixedDiscountLateFeeLinearInterest
+          description: "Formula for calculating adjustments (e.g., discounts or late fees)."
+          example: "FixedDiscountLateFeeLinearInterest"
+        parameters:
+          $ref: "#/components/schemas/PatchAdjustmentParameters"
+
+    PatchAmountDue:
+      type: object
+      description: "Configuration to generate the billing amount."
+      required:
+        - amount
+      properties:
+        amount:
+          $ref: "#/components/schemas/Amount"
+        adjustments:
+          description: "Parameters for calculating amount adjustments."
+          allOf:
+            - $ref: "#/components/schemas/PatchAdjustment"
+          nullable: true
+
+    PatchBillBase:
+      type: object
+      required:
+        - description
+        - paymentTiming
+      properties:
+        paymentTiming:
+          type: string
+          enum:
+            - DEFERRED
+            - IMMEDIATE
+        description:
+          type: string
+          pattern: ^[\x20-\x7E]*$
+          maxLength: 100
+          description: "A short description of the bill (e.g., Monthly electricity service)."
+          example: "Electricity service for April 2030"
+        order:
+          allOf:
+            - $ref: "#/components/schemas/PatchOrder"
+          nullable: true
+        invoice:
+          allOf:
+            - $ref: "#/components/schemas/PatchInvoice"
+          nullable: true
+        tip:
+          allOf:
+            - $ref: "#/components/schemas/PatchTip"
+          nullable: true
+
+    PatchBillUpdate:
+      allOf:
+        - $ref: "#/components/schemas/PatchBillBase"
+      required:
+        - amountDue
+      properties:
+        amountDue:
+          $ref: "#/components/schemas/PatchAmountDue"
+
+    PatchEditable:
+      type: object
+      description: "Patch for the editable amount. As in the payload, the presence of the editable object indicates the amount is editable (ANSI X9.150 §14.4); there is no separate boolean flag."
+      properties:
+        range:
+          allOf:
+            - $ref: "#/components/schemas/IntegerRange"
+          nullable: true
+
+    PatchNetworksSimple:
+      type: object
+      description: "Available payment methods for this currency."
+      properties:
+        FedNow:
+          allOf:
+            - $ref: "#/components/schemas/FedNow"
+          nullable: true
+        RTP:
+          allOf:
+            - $ref: "#/components/schemas/RTP"
+          nullable: true
+        ACH:
+          allOf:
+            - $ref: "#/components/schemas/ACH"
+          nullable: true
+        Polygon:
+          allOf:
+            - $ref: "#/components/schemas/Polygon"
+          nullable: true
+        Solana:
+          allOf:
+            - $ref: "#/components/schemas/Solana"
+          nullable: true
+        Ethereum:
+          allOf:
+            - $ref: "#/components/schemas/Ethereum"
+          nullable: true
+        Bitcoin:
+          allOf:
+            - $ref: "#/components/schemas/Bitcoin"
+          nullable: true
+        Base:
+          allOf:
+            - $ref: "#/components/schemas/Base"
+          nullable: true
+        XRP:
+          allOf:
+            - $ref: "#/components/schemas/XRP"
+          nullable: true
+        Arc:
+          allOf:
+            - $ref: "#/components/schemas/Arc"
+          nullable: true
+      additionalProperties: true
+
+    PatchPaymentMethod:
+      type: object
+      required:
+        - currency
+        - validUntil
+        - amount
+        - networks
+      properties:
+        currency:
+          $ref: "#/components/schemas/CurrencyCode"
+        validUntil:
+          type: string
+          format: date-time
+          description: 'UTC timestamp until which the currency option is valid. Expected pattern: `^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d{1,3})?Z$`'
+          example: "2030-05-10T23:59:59Z"
+        amount:
+          $ref: "#/components/schemas/Amount"
+        editable:
+          description: Details on whether the payer can edit the amount.
+          allOf:
+            - $ref: "#/components/schemas/PatchEditable"
+          nullable: true
+        networks:
+          $ref: "#/components/schemas/PatchNetworksSimple"
+
+    PatchPaymentRequestReplacement:
+      type: object
+      required:
+        - paymentMethods
+      properties:
+        locationId:
+          type: string
+          minLength: 32
+          maxLength: 32
+          description: "Unique Location identifier without hyphens in uppercase."
+          nullable: true
+          example: "68D389223C4E428EB1D6C87122C94EB5"
+        validUntil:
+          type: string
+          format: date-time
+          description: UTC timestamp until which this payment request is valid.
+          nullable: true
+          example: "2030-05-25T23:59:59Z"
+        bill:
+          description: Information specific to the bill or invoice being paid.
+          allOf:
+            - $ref: "#/components/schemas/PatchBillUpdate"
+          nullable: true
+        unstructured:
+          type: string
+          pattern: ^[\x20-\x7E]*$
+          description: "Internal string passed from payer's bank to biller's bank, displayed in biller's statements."
+          nullable: true
+          example: "Account: 987650001, Meter: MTR45567, payer: ${payer.email}"
+        additionalInformation:
+          type: array
+          items:
+            $ref: "#/components/schemas/KeyValuePair"
+          description: Optional key-value pairs for additional metadata.
+          nullable: true
+        paymentMethods:
+          type: array
+          items:
+            $ref: "#/components/schemas/PatchPaymentMethod"
+          minItems: 1
+          description: List of supported currencies and payment methods.
+
+    BaseError:
+      type: object
+      required:
+        - title
+        - detail
+        - status
+      properties:
+        title:
+          type: string
+          example: "Invalid Input"
+          description: "Short summary of the error condition."
+        detail:
+          type: string
+          example: "The provided request body is missing required fields."
+          description: "Detailed, human-readable explanation of the error."
+        status:
+          type: integer
+          format: int32
+          example: 400
+          description: "HTTP status code."
+        instance:
+          type: string
+          format: uri
+          example: "/example"
+          description: "A URI reference that identifies the specific occurrence of the error."
+        type:
+          type: string
+          format: uri
+          example: "https://x9.matera.com/docs/errors/invalid-input"
+          description: "A URI reference to more information about the error type."
+        violations:
+          type: array
+          items:
+            type: string
+            example: "field.name: error message"
+
+  parameters:
+    qrCodeId:
+      name: id
+      in: path
+      description: "Id of the QR code payment request."
+      required: true
+      schema:
+        type: string
+        minLength: 32
+        maxLength: 32
+        example: 68D389223C4E428EB1D6C87122C94EB5
+
+    locId:
+      name: id
+      in: path
+      description: "Id of the Location"
+      required: true
+      schema:
+        type: string
+        minLength: 32
+        maxLength: 32
+        example: 68D389223C4E428EB1D6C87122C94EB5
+
+    pemFileName:
+      name: pemFileName
+      in: path
+      description: "Name of the PEM file to retrieve"
+      required: true
+      schema:
+        type: string
+        example: x9-certificate.pem
+
+    dateForPayment:
+      name: dateForPayment
+      description: "The optional header of date for payment"
+      in: header
+      schema:
+        type: string
+        format: date
+        example: "2030-12-21"
+
+    revision:
+      name: revision
+      in: query
+      description: "The number of the revision to retrieve. If not provided, the latest revision is returned."
+      schema:
+        type: integer
+        minimum: 0
+
+    correlationId:
+      name: Correlation-Id
+      description: "Mandatory header with Signature Correlation ID (should be a UUID)"
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      example: "123e4567-e89b-12d3-a456-426614174000"
+
+    timeToLiveSeconds:
+      name: TTL-Seconds
+      description: "Mandatory header with TTL in seconds"
+      in: header
+      required: true
+      schema:
+        type: integer
+      example: "3600"
+
+  responses:
+    BadRequestErrorResponse:
+      description: "Bad Request - The request could not be understood or was missing required parameters."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BaseError"
+          example:
+            title: "Invalid Input"
+            detail: "The provided request body is missing required fields."
+            status: 400
+            instance: "/example"
+            type: "https://x9.matera.com/docs/errors/invalid-input"
+            violations:
+              - "field.name: error message"
+    NotFoundErrorResponse:
+      description: "Not Found - The requested resource could not be found."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BaseError"
+          example:
+            title: "Resource Not Found"
+            detail: "The requested resource was not found."
+            status: 404
+            instance: "/example"
+            type: "https://x9.matera.com/docs/errors/resource-not-found"
+    ConflictErrorResponse:
+      description: "Conflict - The request could not be completed due to a conflict with the current state of the resource."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BaseError"
+          example:
+            title: "Conflict"
+            detail: "The request could not be completed due to a conflict with the current state of the resource."
+            status: 409
+            instance: "/example"
+            type: "https://x9.matera.com/docs/errors/conflict"
+    UnprocessableEntityErrorResponse:
+      description: "Unprocessable Entity - The request was well-formed but was unable to be followed due to semantic errors."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BaseError"
+          example:
+            title: "Unprocessable Entity"
+            detail: "The request was well-formed but was unable to be followed due to semantic errors."
+            status: 422
+            instance: "/example"
+            type: "https://x9.matera.com/docs/errors/unprocessable-entity"
+    InternalServerErrorResponse:
+      description: "Internal Server Error - An unexpected error occurred on the server."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BaseError"
+          example:
+            title: "Server Error"
+            detail: "An unexpected error occurred on the server."
+            status: 500
+            instance: "/example"
+            type: "https://x9.matera.com/docs/errors/server-error"
+  headers:
+    correlationId:
+      description: "Mandatory header with correlation id that was consider on JWS signature verification"
+      required: true
+      schema:
+        type: string
+        format: uuid
+      example: "123e4567-e89b-12d3-a456-426614174000"

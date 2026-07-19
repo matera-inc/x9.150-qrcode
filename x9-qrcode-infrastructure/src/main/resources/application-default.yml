@@ -1,0 +1,21 @@
+application:
+  loggingFormat: text
+
+spring:
+  threads:
+    virtual:
+#      enabled: false
+  data:
+    mongodb:
+      host: 172.17.0.1
+      port: 27017
+      replica-set-name: x9-qrcode
+
+x9:
+  public-endpoints:
+    # Advertised origin for all public URLs baked into generated QR codes and JWS headers
+    # (payload/loc, payment-notification, JWKS, certificate). Override per environment via
+    # the X9_PUBLICENDPOINTS_HOST env var or a profile YAML. No scheme; must be <= 37 chars
+    # so the loc URL fits the EMV tag-26 budget (see ENDPOINTS.md). example.com is a reserved
+    # placeholder — point it at your own host (or a tunnel) to test real phone scans.
+    host: x9-150.example.com

@@ -1,0 +1,110 @@
+{
+  "validUntil": "2030-05-25T23:59:59Z",
+  "creditor": {
+    "name": "California Electric Company",
+    "phone": "+15552223333",
+    "email": "billing@californiaelectric.com",
+    "address": {
+      "line1": "500 Energy Ave",
+      "line2": "500 Energy Ave",
+      "city": "Los Angeles",
+      "state": "CA",
+      "postalCode": "90012",
+      "country": "US"
+    },
+    "ultimateCreditor": {
+      "account": {
+        "id": "identification within the ultimate creditor system, like virtualAccount, e-mail, number, handle, etc.",
+        "schemaName": "Schema for the id - naming convention adopted from ISO20022"
+      },
+      "name": "California Electric Company",
+      "phone": "+15552223333",
+      "email": "billing@californiaelectric.com",
+      "address": {
+        "line1": "500 Energy Ave",
+        "line2": "500 Energy Ave",
+        "city": "Los Angeles",
+        "state": "CA",
+        "postalCode": "90012",
+        "country": "US"
+      }
+    },
+    "MCC": "4900"
+  },
+  "bill": {
+    "description": "Electricity service for April 2030",
+    "order": {
+      "number": "ORD-2030-04-00123",
+      "date": "2030-04-30"
+    },
+    "invoice": {
+      "number": "ORD-2030-04-00123",
+      "date": "2030-04-30",
+      "dueDate": "2030-05-15T23:59:59Z",
+      "invoicee": {
+        "name": "California Electric Company",
+        "phone": "+15552223333",
+        "email": "billing@californiaelectric.com",
+        "address": {
+          "line1": "500 Energy Ave",
+          "line2": "500 Energy Ave",
+          "city": "Los Angeles",
+          "state": "CA",
+          "postalCode": "90012",
+          "country": "US"
+        }
+      }
+    },
+    "tip": {
+      "presets": [
+        10,
+        25,
+        50,
+        75
+      ]
+    },
+    "amountDue": {
+      "amount": 18834,
+      "currency": "USD",
+      "adjustments": {
+        "formula": "FixedDiscountLateFeeLinearInterest",
+        "parameters": {
+          "discounts": [
+            {
+              "daysBefore": 60,
+              "discount": 1000,
+              "explanation": "$10 discount because you're paying 60 days before ${dueDate}"
+            }
+          ],
+          "lateFees": {
+            "fixed": 100,
+            "perDay": 25,
+            "explanation": "$1 administrative fee plus $0.25 per day interest"
+          }
+        }
+      }
+    }
+  },
+  "unstructured": "Account: 987650001, Meter: MTR45567, payer: ${payer.email}",
+  "additionalInformation": [
+    {
+      "key": "CustomerServiceRef",
+      "value": "CSREF-77283"
+    }
+  ],
+  "paymentNotification": {
+    "kind": "DEFAULT"
+  },
+  "paymentMethods": [
+    {
+      "currency": "USDC",
+      "validUntil": "2030-05-10T23:59:59Z",
+      "amount": 25000000,
+      "networks": {
+        "Bitcoin": {
+          "walletAddress": "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+        }
+      }
+    }
+  ]
+}
