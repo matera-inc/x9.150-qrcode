@@ -17,6 +17,13 @@ The REST APIs are documented in the OpenAPI (Swagger) contract:
 
 **Provided AS IS.** This software is offered without warranty of any kind. It is source-available under the [Matera Source License v1.0](LICENSE.md) and **may be used and run under the terms of that license** — see [LICENSE.md](LICENSE.md) for the permitted uses and conditions.
 
+# Contributing & Security
+
+Contributions go through pull requests — `main` is protected and every PR needs review. Commits must
+be DCO signed off (`git commit -s`); see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Found a vulnerability? Report it **privately** — see [SECURITY.md](SECURITY.md), not a public issue.
+
 # Project Structure
 
 Maven multi-module project following Clean / Hexagonal architecture:
