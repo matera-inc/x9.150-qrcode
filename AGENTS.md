@@ -84,8 +84,15 @@ curl -sS -X POST http://localhost:8080/api/v1/payment-request \
   --data-binary @playground/requests/qr-parking-createqr.json
 ```
 
-The response carries `qrCode` (the EMV string to render) and `qrCodeB64`. Full walkthrough: the
-`x9-qrcode` skill and `playground/README.md`.
+The response carries the QR **content**, not an image: `qrCode` (the EMV string) and `qrCodeB64`
+(that same EMV content, Base64-encoded — reuse it as `qrCodeContent` in the payload-retrieval flow).
+
+**This service never renders the QR image.** It emits only the EMV content string; any off-the-shelf
+QR library turns that into an image. Render in the **last mile**: for payment terminals, transmit the
+small content string and render the image on the terminal rather than shipping a bitmap over the wire
+— it's faster and lighter. Generating the image as late as possible is the general recommendation.
+
+Full walkthrough: the `x9-qrcode` skill and `playground/README.md`.
 
 ## Architecture rules (mandatory)
 
