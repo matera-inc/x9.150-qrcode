@@ -84,7 +84,7 @@ function buildPayload(vuId, iteration) {
     },
     bill: {
       description: `K6 load test bill VU-${vuId} iter-${iteration}`,
-      paymentTiming: "IMMEDIATE",
+      paymentTiming: "immediate",
       order: {
         number: `K6-${vuId}-${iteration}`.substring(0, 20),
         date: orderDate,

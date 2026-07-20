@@ -16,6 +16,7 @@
   },
   "bill": {
     "description": "Lab panel - CBC + lipid profile",
+    "paymentTiming": "deferred",
     "invoice": {
       "number": "LAB-88231",
       "date": "2030-05-14",

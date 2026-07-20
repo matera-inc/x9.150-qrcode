@@ -6,6 +6,7 @@
  */
 package com.matera.x9qrcode.infrastructure.web.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.matera.x9qrcode.app.dto.enumerated.ActionEnumDTO;
 import com.matera.x9qrcode.domain.dto.CertificateEndpointTypeEnum;
 import com.matera.x9qrcode.infrastructure.AbstractIntegrationTest;
@@ -33,6 +34,7 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -128,6 +130,54 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
 
         assertNotNull(response.getLocation().getEndpoint());
         assertNotNull(response.getQrCode());
+    }
+
+    /**
+     * Postel's law: the canonical wire value for paymentTiming is lowercase ("deferred"/"immediate",
+     * ANSI X9.150 §13.1), which is always what we EMIT. On INPUT we are lenient and accept any case
+     * ("deferred", "DEFERRED", "Deferred", ...), normalizing it — the request must be ACCEPTED (201),
+     * never rejected with a 400, and the persisted/returned payload must emit lowercase "deferred".
+     */
+    @Order(15)
+    @ParameterizedTest(name = "create accepts paymentTiming \"{0}\" and emits lowercase \"deferred\"")
+    @ValueSource(strings = {"deferred", "DEFERRED", "Deferred"})
+    @SneakyThrows
+    void testCreateAcceptsPaymentTimingCaseInsensitivelyAndEmitsLowercase(String inputPaymentTiming) {
+        // Base request has an invoice (so a "deferred" bill is valid) and creates a fresh location.
+        String baseJson = readJson("/payment-requests/request/postPaymentRequestCreationWithoutLocation.json");
+        String json = baseJson.replace(
+                "\"description\": \"Electricity service for April 2030\",",
+                "\"paymentTiming\": \"" + inputPaymentTiming + "\",\n    "
+                        + "\"description\": \"Electricity service for April 2030\",");
+
+        // Any casing on input must be ACCEPTED (201 Created), not rejected with a 400.
+        String createdId = given()
+                .contentType("application/json")
+                .body(json)
+                .when()
+                .post("/api/v1/payment-request")
+                .then()
+                .statusCode(HttpStatus.CREATED.value())
+                .log().all()
+                .extract()
+                .body().as(PaymentRequestResponseDTO.class)
+                .getId();
+
+        assertNotNull(createdId);
+
+        // The returned payload MUST emit the canonical lowercase wire value regardless of input casing.
+        String getResponseBody = given()
+                .when()
+                .get("/api/v1/payment-request/" + createdId)
+                .then()
+                .statusCode(HttpStatus.OK.value())
+                .log().all()
+                .extract()
+                .body().asString();
+
+        JsonNode paymentTiming = objectMapper.readTree(getResponseBody).path("bill").path("paymentTiming");
+        assertEquals("deferred", paymentTiming.asText(),
+                "paymentTiming must be emitted as canonical lowercase regardless of input casing");
     }
 
     @Test

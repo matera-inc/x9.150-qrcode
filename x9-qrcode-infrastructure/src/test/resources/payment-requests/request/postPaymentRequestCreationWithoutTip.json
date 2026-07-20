@@ -32,7 +32,7 @@
     "MCC": "4900"
   },
   "bill": {
-    "paymentTiming": "DEFERRED",
+    "paymentTiming": "deferred",
     "description": "Electricity service for April 2030",
     "order": {
       "number": "ORD-2030-04-00123",
