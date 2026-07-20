@@ -637,9 +637,9 @@ components:
         paymentTiming:
           type: string
           enum:
-            - DEFERRED
-            - IMMEDIATE
-          default: IMMEDIATE
+            - deferred
+            - immediate
+          default: immediate
         description:
           type: string
           pattern: ^[\x20-\x7E]*$
@@ -1613,8 +1613,8 @@ components:
         paymentTiming:
           type: string
           enum:
-            - DEFERRED
-            - IMMEDIATE
+            - deferred
+            - immediate
         description:
           type: string
           pattern: ^[\x20-\x7E]*$

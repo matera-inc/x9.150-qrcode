@@ -15,6 +15,7 @@
   },
   "bill": {
     "description": "Parking - 2h, Lot B, bay 42",
+    "paymentTiming": "immediate",
     "amountDue": {
       "amount": 600,
       "currency": "USD"

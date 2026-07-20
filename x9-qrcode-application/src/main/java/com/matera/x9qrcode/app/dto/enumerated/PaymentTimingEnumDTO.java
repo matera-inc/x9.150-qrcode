@@ -7,16 +7,22 @@
 package com.matera.x9qrcode.app.dto.enumerated;
 
 public enum PaymentTimingEnumDTO {
-    DEFERRED,
-    IMMEDIATE;
+    DEFERRED("deferred"),
+    IMMEDIATE("immediate");
+
+    private final String value;
+
+    PaymentTimingEnumDTO(String value) {
+        this.value = value;
+    }
 
     public String value() {
-        return name();
+        return value;
     }
 
     public static PaymentTimingEnumDTO fromValue(String value) {
         for (PaymentTimingEnumDTO b : PaymentTimingEnumDTO.values()) {
-            if (b.name().equals(value)) {
+            if (b.value.equalsIgnoreCase(value)) {
                 return b;
             }
         }

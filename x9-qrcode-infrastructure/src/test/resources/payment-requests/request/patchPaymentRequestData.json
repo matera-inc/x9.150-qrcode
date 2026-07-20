@@ -24,7 +24,7 @@
         }
       }
     },
-    "paymentTiming": "DEFERRED",
+    "paymentTiming": "deferred",
     "tip": {
       "allowed": false
     },

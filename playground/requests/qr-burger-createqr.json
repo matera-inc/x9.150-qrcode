@@ -15,6 +15,7 @@
   },
   "bill": {
     "description": "Table 7 - dine-in",
+    "paymentTiming": "immediate",
     "tip": {
       "range": { "min": 150, "max": 250 },
       "presets": [ 180, 200, 220, 250 ]

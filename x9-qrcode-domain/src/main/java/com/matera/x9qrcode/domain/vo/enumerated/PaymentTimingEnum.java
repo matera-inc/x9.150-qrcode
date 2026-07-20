@@ -9,8 +9,8 @@ package com.matera.x9qrcode.domain.vo.enumerated;
 import com.matera.x9qrcode.domain.exception.ValueObjectRuleException;
 
 public enum PaymentTimingEnum {
-    DEFERRED("DEFERRED"),
-    IMMEDIATE("IMMEDIATE");
+    DEFERRED("deferred"),
+    IMMEDIATE("immediate");
 
     private final String value;
 
@@ -20,7 +20,7 @@ public enum PaymentTimingEnum {
 
     public static PaymentTimingEnum fromValue(String value) {
         for (PaymentTimingEnum b : PaymentTimingEnum.values()) {
-            if (b.value.equals(value)) {
+            if (b.value.equalsIgnoreCase(value)) {
                 return b;
             }
         }

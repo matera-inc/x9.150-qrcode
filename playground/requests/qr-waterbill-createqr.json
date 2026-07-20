@@ -15,6 +15,7 @@
   },
   "bill": {
     "description": "Water & sewer - June 2030",
+    "paymentTiming": "deferred",
     "invoice": {
       "number": "WB-2030-06-4471",
       "date": "2030-06-01",
