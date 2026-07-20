@@ -54,6 +54,8 @@ official-spec/*.pdf
 official-spec/ANSI-X9.150-2026.md
 # Local reconciliation analysis (references internal, non-public material) — keep it local
 official-spec/reconciliation_report.md
+# Local enum casing/naming reference (quotes non-public spec sections) — keep it local
+official-spec/ENUM-CONVENTIONS.md
 
 # --- Local AI-agent instructions: kept local so it can reference the local
 #     copyrighted spec (PDF/MD) and other machine-local files; not published ---

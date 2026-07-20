@@ -290,9 +290,9 @@ public final class QRCodeEntityValidator {
         List<ActionEnum> BLOCKCHAIN_POST_ACTIONS = List.of(ActionEnum.SENT, ActionEnum.NOT_SENT);
 
         if (BLOCKCHAIN_POST_ACTIONS.contains(blockchainDTO.action())) {
-            if (!QRCodeStatusEnum.INITIATED.equals(this.entity.getStatus())) {
+            if (!QRCodeStatusEnum.PAYMENT_INITIATED.equals(this.entity.getStatus())) {
                 throw new BusinessRuleException("paymentNotification.data.blockchain.action",
-                    "Cannot notify a blockchain payment for a QR Code that is not INITIATED.");
+                    "Cannot notify a blockchain payment for a QR Code that is not PAYMENT_INITIATED.");
             }
 
             if (ActionEnum.SENT.equals(blockchainDTO.action()) && StringUtils.isBlank(newPaymentNotification.payment().transactionId())) {

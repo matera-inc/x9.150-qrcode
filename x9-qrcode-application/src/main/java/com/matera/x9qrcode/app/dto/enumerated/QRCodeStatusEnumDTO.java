@@ -8,7 +8,7 @@ package com.matera.x9qrcode.app.dto.enumerated;
 
 public enum QRCodeStatusEnumDTO {
     ACTIVE("ACTIVE"),
-    INITIATED("INITIATED"),
+    PAYMENT_INITIATED("PAYMENT_INITIATED"),
     PAID("PAID"),
     CANCELLED("CANCELLED");
 
