@@ -58,8 +58,9 @@ official-spec/reconciliation_report.md
 official-spec/ENUM-CONVENTIONS.md
 
 # --- Local AI-agent instructions: kept local so it can reference the local
-#     copyrighted spec (PDF/MD) and other machine-local files; not published ---
-AGENTS.md
+#     copyrighted spec (PDF/MD) and other machine-local files; not published.
+#     The public, tracked AGENTS.md is the clone-safe counterpart. ---
+CLAUDE.md
 
 # macOS junk
 .DS_Store
