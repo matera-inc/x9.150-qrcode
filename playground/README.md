@@ -59,6 +59,15 @@ Save the JWS exchange (call + response) (Y/n):   → <name>-call.jws  +  <name>-
 (Enter = yes.) The payload holds the **full** bill — amount + every payment method — none of which
 was in the scannable QR.
 
+### c) 🔍 Peek inside a JWS — `dumpjws.py`
+```bash
+python3 dumpjws.py burger-call.jws        # decode the JOSE header + payload of a saved JWS
+cat any.jws | python3 dumpjws.py          # or from stdin
+```
+Pretty-prints the header (`alg`, `kid`, `x5t#S256`, `correlationId`, …) and payload. It correctly
+handles base64url + missing padding (which plain `base64 -d` doesn't) and needs nothing installed. It
+inspects, it does not verify the signature.
+
 ## 4. The create requests (`requests/`)
 
 The only committed source: the create-request bodies. Edit them or add your own
@@ -78,7 +87,7 @@ The only committed source: the create-request bodies. Edit them or add your own
 > fetches in step (b).
 
 ## 5. Files
-Committed: the two scripts, `requests/qr-*-createqr.json`, this README. **Generated** and git-ignored
+Committed: the two `simulate_*` scripts, `dumpjws.py`, `requests/qr-*-createqr.json`, this README. **Generated** and git-ignored
 (regenerate any time): `qr-<name>.emv`, `<name>-payload.json`, `<name>-call.jws`, `<name>-response.jws`.
 
 ## 6. Ideas
