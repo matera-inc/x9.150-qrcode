@@ -92,6 +92,30 @@ QR library turns that into an image. Render in the **last mile**: for payment te
 small content string and render the image on the terminal rather than shipping a bitmap over the wire
 — it's faster and lighter. Generating the image as late as possible is the general recommendation.
 
+### Render a `.emv` string as a scannable PNG (dev convenience)
+
+The playground writes the EMV content to `playground/qr-<name>.emv`. To eyeball / scan one, turn it
+into a PNG with **`qrencode`** (`brew install qrencode`, or `apt-get install qrencode`):
+
+```bash
+qrencode -8 -m 4 -s 8 -l M -o playground/qr-cloudprovider.png < playground/qr-cloudprovider.emv
+#        │      │    │    └─ error-correction level M   -o <out.png>   < <in.emv>
+#        │      │    └────── module size (px per cell)
+#        │      └─────────── quiet-zone margin (4 modules — required by the QR spec)
+#        └────────────────── 8-bit/byte mode (the EMV payload is mixed-case, so byte mode is correct)
+```
+
+The `.emv` payload is **plain text** — it starts with `0002…`, it is **not** a URL. A phone camera
+may show it with an `https://` prefix and offer to "open" it: that is the camera *linkifying* the
+`…example.com/…` substring inside the EMV for its own preview UI — the `https://` is **not** in the
+encoded bytes, and no generator/decoder switch adds or removes it. A real X9.150 payer app reads the
+raw EMV content, not a URL. Confirm what is actually encoded (note: `zbar` only *decodes*, it cannot
+generate images):
+
+```bash
+zbarimg --raw -q playground/qr-cloudprovider.png   # prints the exact EMV string, no https:// prefix
+```
+
 Full walkthrough: the `x9-qrcode` skill and `playground/README.md`.
 
 ## Architecture rules (mandatory)
