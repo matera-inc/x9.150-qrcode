@@ -74,6 +74,31 @@ There are three ways to run it:
 3. **Kubernetes** — via the Helm chart under `others/helm/x9-qrcode/`. Keep `replicaCount: 1`
    (see [High Availability](HIGH-AVAILABILITY.md) for the single-active-instance posture).
 
+## Pull the prebuilt image (Docker Hub)
+
+A multi-architecture image (**linux/amd64 + linux/arm64**) is published on Docker Hub at
+[`materainc/x9-qrcode`](https://hub.docker.com/r/materainc/x9-qrcode):
+
+```bash
+docker pull materainc/x9-qrcode:latest          # newest build — auto-selects your architecture
+docker pull materainc/x9-qrcode:git-<short-sha> # a specific commit (immutable), e.g. git-da5450e
+```
+
+Tags: `latest` (multi-arch, floating), `git-<short-sha>` (immutable, pinned to a source commit), and
+the per-arch `latest-arm64` / `latest-amd64`.
+
+Each image records the exact source commit it was built from, via standard OCI labels — so you can
+always tell which version you're running (and that anything committed after it is *not* in the image):
+
+```bash
+docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' materainc/x9-qrcode:latest
+# -> the full git SHA on https://github.com/matera-inc/x9.150-qrcode
+```
+
+The image is the application only; it still needs a **MongoDB replica set**. The quickest way to run
+it with a bundled Mongo is Docker Compose (above); to run the pulled image against your own database,
+point it there with the `SPRING_DATA_MONGODB_*` environment variables — see [RUNNING.md](RUNNING.md).
+
 ## MongoDB dependency
 
 MongoDB Community is free to run in Docker. The compose files use the official **`mongo`** image
