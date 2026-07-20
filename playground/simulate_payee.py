@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """
-Playground — simulate the PAYEE (the merchant creating a QR).
+Playground — the PAYEE (merchant) creating a QR Code.
 
-Lists the create requests in requests/x9-create-*.json, lets you pick one, POSTs it to the app, and
-saves the resulting EMV QR string as x9-created-<scenario>.emv (which simulate_payer.py then reads).
+Lists the create requests in requests/qr-*-createqr.json, lets you pick one, POSTs it to the app
+(which stores the request in Mongo and generates the X9.150 QR), and writes the resulting EMV QR
+string to qr-<name>.emv — the input for simulate_payer.py.
+
+Note: a qr-*-createqr.json is the *create request*, NOT a full X9.150 payload — it may carry things
+like a late-fee formula and it has no digitally-signed QR content. The signed payload is what the
+payer later fetches.
 
     python3 simulate_payee.py            # interactive menu
-    python3 simulate_payee.py burger     # non-interactive: pick by name (or by number)
+    python3 simulate_payee.py burger     # non-interactive: pick by name (or number)
 
 Needs the app running (`make up`). Override the target with X9_BASE_URL. Stdlib only.
 """
@@ -44,35 +49,43 @@ def pick(paths, label, arg):
     for i, n in enumerate(names, 1):
         print(f"  {i}) {n}")
     while True:
-        sel = input("> ").strip()
+        try:
+            sel = input("> ").strip()
+        except EOFError:
+            sys.exit("no selection")
         if sel.isdigit() and 1 <= int(sel) <= len(paths):
             return paths[int(sel) - 1]
         print("  pick a number from the list")
 
 
-creates = sorted(glob.glob(os.path.join(REQ_DIR, "x9-create-*.json")))
+def scenario_of(create_path):
+    base = os.path.basename(create_path)          # qr-<name>-createqr.json
+    return base[len("qr-"):-len("-createqr.json")]
+
+
+creates = sorted(glob.glob(os.path.join(REQ_DIR, "qr-*-createqr.json")))
 if not creates:
-    sys.exit(f"no x9-create-*.json in {REQ_DIR}")
+    sys.exit(f"no qr-*-createqr.json in {REQ_DIR}")
 
 chosen = pick(creates, "create request", sys.argv[1] if len(sys.argv) > 1 else None)
-scenario = os.path.basename(chosen)[len("x9-create-"):-len(".json")]
-print(f"[payee]   {os.path.basename(chosen)}  (scenario: {scenario})")
+name = scenario_of(chosen)
+print(f"[payee]  {os.path.basename(chosen)}  (name: {name})")
 
 body = json.load(open(chosen))
 code, resp = http("POST", f"{BASE}/api/v1/payment-request",
                   json.dumps(body).encode(), {"Content-Type": "application/json"})
 # if a fixed locationId is already in use, retry letting the server generate a fresh one
 if code not in (200, 201) and "locationId" in body:
-    print(f"[payee]   HTTP {code} — retrying with a server-generated locationId")
+    print(f"[payee]  HTTP {code} - retrying with a server-generated locationId")
     body.pop("locationId", None)
     code, resp = http("POST", f"{BASE}/api/v1/payment-request",
                       json.dumps(body).encode(), {"Content-Type": "application/json"})
-print(f"[payee]   HTTP {code}")
+print(f"[payee]  HTTP {code}")
 if code not in (200, 201):
     print(resp[:600]); sys.exit(1)
 
 d = json.loads(resp)
-out = os.path.join(HERE, f"x9-created-{scenario}.emv")
+out = os.path.join(HERE, f"qr-{name}.emv")
 open(out, "w").write(d["qrCode"])
-print(f"[payee]   id={d['id']}  loc={d['location']['id']}")
-print(f"[payee]   saved {os.path.basename(out)}\n\n{d['qrCode']}")
+print(f"[payee]  id={d['id']}  loc={d['location']['id']}")
+print(f"[payee]  wrote {os.path.basename(out)}\n\n{d['qrCode']}")
