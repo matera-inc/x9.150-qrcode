@@ -23,6 +23,34 @@ re-fetched every time:
 The spec treats certificate caching as RECOMMENDED, not required, so this is an optimization — the
 current behavior is already conformant, just an extra round-trip per verification.
 
+## Publish a "payment expected" event on blockchain payment initiation
+
+Today `PaymentNotificationQRCodeUseCase` only updates the entity and calls `qrCodeRepository.save(...)`
+— it emits no outbound event. The blockchain `from` (payer) and `to` (payee) wallet addresses **are**
+already captured and persisted (`BlockchainVO` → `QRCodeMongoDocumentMapper`), but nothing downstream
+is told that an on-chain payment is now expected.
+
+For crypto rails (Solana/Ethereum/Bitcoin/…), the service that watches the chain needs to know to
+expect an inbound transfer. When a blockchain notification arrives with `action = PAYMENT_INITIATED`
+(QR moves `ACTIVE → PAYMENT_INITIATED`), publish a **"payment expected"** message to a topic:
+
+- **Payload:** `qrCodeId`, `network`, expected `amount`/`currency`, the `to` (payee) and `from`
+  (payer) wallet addresses, and a correlation id. Enough for the chain-watcher to match an incoming
+  on-chain tx to this QR Code.
+- **Transport:** RabbitMQ (a dormant `spring.rabbit` config block already exists in
+  `application.yml`; no AMQP dependency or producer is wired yet). Keep the broker behind a
+  gateway/port in the infrastructure layer so the domain/use-case stays transport-agnostic.
+- **Reliability:** publish via a **transactional outbox** (write the event in the same Mongo save,
+  relay to the broker after commit) so a payment-initiated notification is never lost or
+  double-emitted on retry.
+- **Return path:** the chain-watcher later feeds confirmation back as the existing `SENT`
+  (with `transactionId`) or `NOT_SENT` blockchain notification — no new inbound API needed.
+- **Behind a config flag** (default off until a broker is provisioned), covered by a test that a
+  `PAYMENT_INITIATED` crypto notification enqueues exactly one message with the expected fields.
+
+Scope note: this is our integration concern (feeding an external blockchain-settlement system), not
+an ANSI X9.150 requirement — the standard defines the notification contract, not the internal fan-out.
+
 ---
 
 <sub>Copyright © 2026 Matera Systems, Inc. Licensed under the Matera Source License v1.0 (source-available; not open source) — see LICENSE.md at the repository root.</sub>
