@@ -37,9 +37,18 @@ expect an inbound transfer. When a blockchain notification arrives with `action 
 - **Payload:** `qrCodeId`, `network`, expected `amount`/`currency`, the `to` (payee) and `from`
   (payer) wallet addresses, and a correlation id. Enough for the chain-watcher to match an incoming
   on-chain tx to this QR Code.
-- **Transport:** RabbitMQ (a dormant `spring.rabbit` config block already exists in
-  `application.yml`; no AMQP dependency or producer is wired yet). Keep the broker behind a
-  gateway/port in the infrastructure layer so the domain/use-case stays transport-agnostic.
+- **Transport — Spring Cloud Stream (binder pattern), broker-agnostic.** Use Spring Cloud Stream so
+  the same code supports **both Kafka and RabbitMQ Streams** with no code change. App logic stays
+  plain functional beans (`Supplier`/`Function`/`Consumer<Payload>`); the target broker is selected
+  purely by (a) the classpath binder — `spring-cloud-starter-stream-kafka` vs
+  `spring-cloud-starter-stream-rabbit` — and (b) `spring.cloud.stream.bindings.<name>.destination`
+  config. For RabbitMQ Streams, set `spring.cloud.stream.rabbit.bindings.<name>.producer.containerType:
+  stream` to enable the Stream protocol.
+  - **Do not hand-roll a broker abstraction** — the binder *is* that abstraction; a custom one just
+    reimplements thousands of lines of infra code. (The dormant `spring.rabbit` block in
+    `application.yml` predates this and would be superseded by Spring Cloud Stream binder config.)
+  - Still expose it behind a port in the infrastructure layer so the domain/use-case stays
+    transport-agnostic.
 - **Reliability:** publish via a **transactional outbox** (write the event in the same Mongo save,
   relay to the broker after commit) so a payment-initiated notification is never lost or
   double-emitted on retry.
