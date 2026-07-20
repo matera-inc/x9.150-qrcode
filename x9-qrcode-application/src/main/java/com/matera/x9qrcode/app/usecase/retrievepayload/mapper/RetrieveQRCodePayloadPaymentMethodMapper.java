@@ -23,8 +23,9 @@ import com.matera.x9qrcode.domain.vo.PaymentMethodVO;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
-import java.util.function.BiPredicate;
 
 import static java.util.Objects.isNull;
 
@@ -36,18 +37,42 @@ public class RetrieveQRCodePayloadPaymentMethodMapper {
             return null;
         }
 
-        BiPredicate<String, FormulaResultDTO> checkCurrencyPredicate =
-            (paymentCurrency, formula) -> isNull(formula) || !paymentCurrency.equals(formula.targetCurrency());
-
         return output.stream().map(paymentMethod -> new PaymentMethodDTO(
             paymentMethod.currency(),
             paymentMethod.validUntil(),
-            checkCurrencyPredicate.test(paymentMethod.currency(), formulaResult)
-                ? paymentMethod.amount().value()
-                : formulaResult.amount(),
+            applyAdjustment(paymentMethod.amount().value(), formulaResult),
             buildEditableAmount(paymentMethod.editable()),
             buildNetworks(paymentMethod.networks())
         )).toList();
+    }
+
+    /**
+     * Carries the bill's adjustment (discount or late fee) to a payment method.
+     *
+     * <p>The adjustment is computed once against the bill's amount and currency. Every payment
+     * method on a QR is guaranteed (by the currency-mix policy) to belong to the same pegged group,
+     * so we apply the same <em>proportional</em> adjustment to each method. Pro-rating by ratio —
+     * rather than subtracting the raw minor-unit delta — keeps the result correct across currencies
+     * whose minor-unit scale differs (e.g. USD has 2 decimal places, USDC has 6).
+     *
+     * <p>TODO: when non-pegged currencies are supported, convert the discounted amount to each
+     * method's currency via the dynamic currency converter instead of pro-rating by ratio.
+     */
+    private static Long applyAdjustment(Long methodAmount, FormulaResultDTO formulaResult) {
+        if (isNull(formulaResult)) {
+            return methodAmount;
+        }
+
+        long originalBillAmount = formulaResult.amount() - formulaResult.adjustmentAmount();
+
+        if (originalBillAmount <= 0) {
+            return methodAmount;
+        }
+
+        return BigDecimal.valueOf(methodAmount)
+            .multiply(BigDecimal.valueOf(formulaResult.amount()))
+            .divide(BigDecimal.valueOf(originalBillAmount), 0, RoundingMode.HALF_UP)
+            .longValueExact();
     }
 
     private static CurrencyEditableDTO buildEditableAmount(EditableAmountVO output) {
