@@ -64,6 +64,29 @@ Default port `8080`; health at `http://localhost:8080/actuator/health`. MongoDB 
 replica set (transactions) — Compose starts one automatically. See `RUNNING.md` for host-JVM runs
 (`make run-local`) and details.
 
+## Generate a QR code (the first thing to try)
+
+With the app running (`make up`), the quickest path is the playground — plain Python 3, stdlib only,
+nothing to `pip install`:
+
+```bash
+cd playground
+python3 simulate_payee.py parking   # POSTs requests/qr-parking-createqr.json -> writes qr-parking.emv, prints EMV + id/loc
+python3 simulate_payer.py parking   # fetches & prints the signed Payment Payload for that QR
+```
+
+Run `python3 simulate_payee.py` with no argument to pick from the sample scenarios (burger,
+waterbill, lab, parking, donation). Or create one directly against the API:
+
+```bash
+curl -sS -X POST http://localhost:8080/api/v1/payment-request \
+  -H 'Content-Type: application/json' \
+  --data-binary @playground/requests/qr-parking-createqr.json
+```
+
+The response carries `qrCode` (the EMV string to render) and `qrCodeB64`. Full walkthrough: the
+`x9-qrcode` skill and `playground/README.md`.
+
 ## Architecture rules (mandatory)
 
 - **No Spring in `domain` or `application`** — no `@Component`/`@Service`/`@Autowired` there. All
