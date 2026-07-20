@@ -1,0 +1,60 @@
+{
+  "validUntil": "2026-08-30T23:59:59Z",
+  "creditor": {
+    "name": "Nimbus Cloud Services",
+    "phone": "+14155550100",
+    "email": "billing@nimbuscloud.example",
+    "address": {
+      "line1": "400 Cloud Way",
+      "city": "San Francisco",
+      "state": "CA",
+      "postalCode": "94107",
+      "country": "US"
+    },
+    "MCC": "4816"
+  },
+  "bill": {
+    "description": "Cloud services - August 2026",
+    "paymentTiming": "deferred",
+    "invoice": {
+      "number": "NCS-2026-08-00042",
+      "date": "2026-07-20",
+      "dueDate": "2026-08-30T23:59:59Z"
+    },
+    "amountDue": {
+      "amount": 5000,
+      "currency": "USD",
+      "adjustments": {
+        "formula": "FixedDiscountLateFeeLinearInterest",
+        "parameters": {
+          "discounts": [
+            { "daysBefore": 10, "discount": 250, "explanation": "5% off ($2.50) when paid 10+ days before the due date" }
+          ],
+          "lateFees": { "fixed": 200, "perDay": 50, "explanation": "$2.00 late fee plus $0.50 per day" }
+        }
+      }
+    }
+  },
+  "paymentNotification": { "kind": "DEFAULT" },
+  "paymentMethods": [
+    {
+      "currency": "USD",
+      "validUntil": "2026-08-30T23:59:59Z",
+      "amount": 5000,
+      "networks": {
+        "FedNow": { "routingNumber": "121000248", "accountNumber": "4455667788", "protectionType": "tokenized" },
+        "RTP":    { "routingNumber": "121000248", "accountNumber": "4455667788", "protectionType": "tokenized" },
+        "ACH":    { "routingNumber": "121000248", "accountNumber": "4455667788", "protectionType": "tokenized" }
+      }
+    },
+    {
+      "currency": "USDC",
+      "validUntil": "2026-08-30T23:59:59Z",
+      "amount": 50000000,
+      "networks": {
+        "Ethereum": { "walletAddress": "0x742d35Cc6634C0539Ff82c466ae367A6097dE123" },
+        "Polygon":  { "walletAddress": "0x742d35Cc6634C0539Ff82c466ae367A6097dE123" }
+      }
+    }
+  ]
+}
