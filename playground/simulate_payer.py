@@ -95,8 +95,15 @@ if code != 200:
 call_jws = call_jws.strip()
 
 # 2. the single payer call: POST the JWS -> the payload comes back as a JWS
+# dateForPayment is an optional header (UTC calendar date). Omitting it makes the backend
+# use "now" (today), so early-payment discounts apply as expected. Set X9_DATE_FOR_PAYMENT
+# (YYYY-MM-DD) to simulate paying on another day, e.g. after the due date to see a late fee.
+loc_headers = {"Content-Type": "application/jose"}
+date_for_payment = os.environ.get("X9_DATE_FOR_PAYMENT")
+if date_for_payment:
+    loc_headers["dateForPayment"] = date_for_payment
 code, resp_jws = http("POST", f"{BASE}/pub/api/v1/loc/{locid}",
-                      call_jws.encode(), {"Content-Type": "application/jose", "dateForPayment": "2030-06-01"})
+                      call_jws.encode(), loc_headers)
 print(f"[payer]  loc   HTTP {code}")
 if code != 200:
     print(resp_jws[:800]); sys.exit(1)
