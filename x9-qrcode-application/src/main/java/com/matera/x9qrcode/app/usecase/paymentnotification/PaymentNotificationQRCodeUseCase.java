@@ -53,14 +53,14 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
 
         switch (notificationDataDTO.payment().network()) {
             case FEDNOW, RTP -> qrCodeEntity.notifyPayment(paymentNotificationDataVO);
-            case ACH -> qrCodeEntity.notifyPayment(paymentNotificationDataVO, QRCodeStatusEnum.INITIATED);
+            case ACH -> qrCodeEntity.notifyPayment(paymentNotificationDataVO, QRCodeStatusEnum.PAYMENT_INITIATED);
             case SOLANA, POLYGON, ETHEREUM, BITCOIN -> {
                 if (isNull(paymentNotificationDataVO.blockchain())) {
                     throw new BusinessRuleException("Blockchain action is required for crypto payments.");
                 }
 
                 if (ActionEnumDTO.PAYMENT_INITIATED.equals(notificationDataDTO.blockchain().action())) {
-                    qrCodeEntity.notifyPayment(paymentNotificationDataVO, QRCodeStatusEnum.INITIATED);
+                    qrCodeEntity.notifyPayment(paymentNotificationDataVO, QRCodeStatusEnum.PAYMENT_INITIATED);
                 } else {
                     qrCodeEntity.notifyPayment(paymentNotificationDataVO);
                 }
