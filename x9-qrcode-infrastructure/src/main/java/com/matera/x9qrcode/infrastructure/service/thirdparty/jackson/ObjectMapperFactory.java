@@ -15,7 +15,10 @@ import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.matera.x9qrcode.infrastructure.generated.dto.BillDTO;
+import com.matera.x9qrcode.infrastructure.generated.dto.PatchBillUpdateDTO;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
@@ -27,6 +30,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoField;
 import java.time.temporal.ChronoUnit;
+import java.util.Locale;
 import java.util.TimeZone;
 
 import static com.fasterxml.jackson.core.JsonGenerator.Feature.WRITE_BIGDECIMAL_AS_PLAIN;
@@ -85,7 +89,38 @@ public final class ObjectMapperFactory {
         objectMapper.registerModule(javaTimeModule);
         objectMapper.registerModule(new JsonNullableModule());
 
+        // Postel's law for paymentTiming: the canonical wire value is lowercase ("immediate"/"deferred"
+        // per ANSI X9.150 §13.1) and that is always what we EMIT, but on INPUT we accept any case
+        // ("DEFERRED", "Immediate", ...) and normalize it. The generated request enums expose a
+        // single-arg @JsonCreator fromValue(...) doing an exact-string match, so Jackson builds a
+        // FactoryBasedEnumDeserializer that ignores MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS; hence
+        // this scoped normalization instead of a global mapper feature.
+        objectMapper.registerModule(caseInsensitivePaymentTimingModule());
+
         return objectMapper;
+    }
+
+    private static SimpleModule caseInsensitivePaymentTimingModule() {
+        SimpleModule module = new SimpleModule("CaseInsensitivePaymentTiming");
+        module.addDeserializer(BillDTO.PaymentTimingEnum.class, new JsonDeserializer<>() {
+            @Override
+            public BillDTO.PaymentTimingEnum deserialize(JsonParser p, DeserializationContext ctxt)
+                throws IOException {
+                return BillDTO.PaymentTimingEnum.fromValue(normalize(p.getValueAsString()));
+            }
+        });
+        module.addDeserializer(PatchBillUpdateDTO.PaymentTimingEnum.class, new JsonDeserializer<>() {
+            @Override
+            public PatchBillUpdateDTO.PaymentTimingEnum deserialize(JsonParser p, DeserializationContext ctxt)
+                throws IOException {
+                return PatchBillUpdateDTO.PaymentTimingEnum.fromValue(normalize(p.getValueAsString()));
+            }
+        });
+        return module;
+    }
+
+    private static String normalize(String value) {
+        return value == null ? null : value.toLowerCase(Locale.ROOT);
     }
 
 }

@@ -15,6 +15,7 @@
   },
   "bill": {
     "description": "Donation - reforestation fund (choose your amount)",
+    "paymentTiming": "immediate",
     "amountDue": {
       "amount": 250000,
       "currency": "BTC"

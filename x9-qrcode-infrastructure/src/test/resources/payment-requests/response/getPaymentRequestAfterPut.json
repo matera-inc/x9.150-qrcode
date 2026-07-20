@@ -39,7 +39,7 @@
   },
   "bill": {
     "description": "Electricity service for April 2030",
-    "paymentTiming": "DEFERRED",
+    "paymentTiming": "deferred",
     "order": {
       "number": "ORD-2030-04-00123",
       "date": "2030-04-30"
