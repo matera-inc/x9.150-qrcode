@@ -290,8 +290,8 @@ public class QRCodeEntity {
     }
 
     public void reactivate(PaymentDetailsVO paymentDetails) {
-        if (!QRCodeStatusEnum.INITIATED.equals(this.status)) {
-            throw new BusinessRuleException("Only QR Codes with INITIATED status can be reactivated.");
+        if (!QRCodeStatusEnum.PAYMENT_INITIATED.equals(this.status)) {
+            throw new BusinessRuleException("Only QR Codes with PAYMENT_INITIATED status can be reactivated.");
         }
 
         if (nonNull(paymentDetails)) {
@@ -319,7 +319,7 @@ public class QRCodeEntity {
 
 
     public boolean isNotActiveOrInitiated() {
-        List<QRCodeStatusEnum> allowedStatuses = List.of(QRCodeStatusEnum.ACTIVE, QRCodeStatusEnum.INITIATED);
+        List<QRCodeStatusEnum> allowedStatuses = List.of(QRCodeStatusEnum.ACTIVE, QRCodeStatusEnum.PAYMENT_INITIATED);
 
         return !allowedStatuses.contains(this.status);
     }

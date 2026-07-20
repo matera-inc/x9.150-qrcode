@@ -10,7 +10,7 @@ import com.matera.x9qrcode.domain.exception.ValueObjectRuleException;
 
 public enum QRCodeStatusEnum {
     ACTIVE("ACTIVE"),
-    INITIATED("INITIATED"),
+    PAYMENT_INITIATED("PAYMENT_INITIATED"),
     PAID("PAID"),
     CANCELLED("CANCELLED");
 
