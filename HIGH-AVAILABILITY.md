@@ -79,7 +79,7 @@ For faster failover than a pod reschedule, a warm standby (a second install kept
 No. The remaining production limits are **global to the deployment**, independent of topology:
 
 - **§1(b)** — at most **2** payment rails/blockchains combined per 24-hour period (same set for all QR codes in that period).
-- **§1(c)** — at most **1,000,000** paid QR codes per calendar month.
+- **§1(c)** — at most **100,000** paid QR codes per calendar month.
 
 Running standby copies or a larger MongoDB replica set does **not** raise these ceilings, and (because standbys don't serve traffic) does not consume them either. They are measured across the single active production system.
 

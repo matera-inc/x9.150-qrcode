@@ -135,7 +135,7 @@ Production use of the Licensed Work is permitted free of charge only within all 
 
 * **a) Single active instance.** The Licensed Work may run on only one server in active production operation at any given time. It may be installed on additional servers solely to provide standby or fast-failover capacity, provided that no more than one instance actively serves production traffic at the same time.
 * **b) Payment network limit per 24-hour period.** No more than two (2) payment rails or blockchains, combined, may be used in any 24-hour period. All QR Codes generated within the same 24-hour period must use the same set of at most two (2) rails or blockchains, as identified by the payment network tag in the QR Code.
-* **c) Monthly paid QR Code limit.** No more than one million (1,000,000) QR Codes may be paid per calendar month.
+* **c) Monthly paid QR Code limit.** No more than one hundred thousand (100,000) QR Codes may be paid per calendar month.
 
 ### **2. Mandatory Branding & Attribution**
 
