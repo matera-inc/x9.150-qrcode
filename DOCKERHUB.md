@@ -22,7 +22,7 @@ JWS-signed payment payload a payer's app fetches, and receives payment notificat
 | Tag | Meaning |
 |-----|---------|
 | `latest` | Newest build; auto-selects your architecture |
-| `git-<short-sha>` | Immutable — pinned to a source commit (e.g. `git-da5450e`) |
+| `git-<short-sha>` | Immutable — pinned to a source commit (e.g. `git-3ddaee1`) |
 | `latest-arm64` / `latest-amd64` | Explicit per-architecture images |
 
 ## Pull

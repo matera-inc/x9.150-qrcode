@@ -81,7 +81,7 @@ A multi-architecture image (**linux/amd64 + linux/arm64**) is published on Docke
 
 ```bash
 docker pull materainc/x9-qrcode:latest          # newest build — auto-selects your architecture
-docker pull materainc/x9-qrcode:git-<short-sha> # a specific commit (immutable), e.g. git-da5450e
+docker pull materainc/x9-qrcode:git-<short-sha> # a specific commit (immutable), e.g. git-3ddaee1
 ```
 
 Tags: `latest` (multi-arch, floating), `git-<short-sha>` (immutable, pinned to a source commit), and
