@@ -13,6 +13,7 @@ The lifecycle of a QR Code (payment payload) is modeled by `QRCodeStatusEnum`
 | **INITIATED** | A payment is in flight — announced/initiated but not yet settled. | No |
 | **PAID** | Payment settled. | **Yes** |
 | **CANCELLED** | Payload cancelled by the biller. | **Yes** |
+| **PARTIALLY_PAID** *(proposed, not implemented)* | Part of the amount due is settled; the rest is still payable. See [Proposed: partial payment](#proposed-partial-payment-partially_paid). | No |
 
 ## Core lifecycle
 
@@ -117,6 +118,86 @@ stateDiagram-v2
         in the current implementation.
     end note
 ```
+
+## Proposed: partial payment (`PARTIALLY_PAID`)
+
+> **Status: proposed — not implemented.** Nothing in this section exists in the code yet; the
+> sections above describe current behaviour. The decision and its reasoning are in Matera Workspace
+> **ADR-028** (`workspace/docs/adr/ADR-028-x9150-payment-notifications-partial-payment.md`).
+
+**Why.** A QR Code can offer several currencies, for example USD and USDC. A payer may settle part of
+the bill in one currency and leave the rest. This service is the only one that serves the payload to
+the payer, so it must know what is still owed: the next fetch of `/pub/api/v1/loc/{id}` has to stamp
+the **remaining** amount, not the full one.
+
+### Amounts
+
+- `amountPaid`: the sum of settled payments, in the **invoice currency's minor units**, plus the
+  list of settled payments behind it.
+- `amountRemaining = amountDue − amountPaid`. It's derived, not stored.
+- A USDC settlement (scale 6) credits `floor(usdcMinor / 10^4)` US cents (scale 2): never more than
+  was received. The up-to-0.009999 USDC left over is a known overpayment, not a debt.
+- Payload retrieval stamps `amountRemaining` (converted per currency, see
+  `PLAN-NON-USD-PEGGED-CURRENCIES.md`) in every payment method.
+
+### Lifecycle with partial payment
+
+```mermaid
+stateDiagram-v2
+    [*] --> ACTIVE : create()
+
+    ACTIVE --> INITIATED : notifyPayment(…, INITIATED)
+    INITIATED --> ACTIVE : reactivate()
+
+    ACTIVE --> PARTIALLY_PAID : pay(amount < remaining)
+    INITIATED --> PARTIALLY_PAID : pay(amount < remaining)
+    PARTIALLY_PAID --> PARTIALLY_PAID : pay(amount < remaining)
+
+    ACTIVE --> PAID : pay(amount ≥ remaining)
+    INITIATED --> PAID : pay(amount ≥ remaining)
+    PARTIALLY_PAID --> PAID : pay(amount ≥ remaining)
+
+    ACTIVE --> CANCELLED : cancel()
+    INITIATED --> CANCELLED : cancel()
+    PARTIALLY_PAID --> CANCELLED : cancel() — open question
+
+    PAID --> [*]
+    CANCELLED --> [*]
+
+    note right of PARTIALLY_PAID
+        amountPaid > 0 and amountRemaining > 0.
+        Still payable: notifications are accepted
+        and the payload stamps amountRemaining.
+    end note
+```
+
+### Proposed transition rules
+
+| Transition | Method | Allowed from | Notes |
+|-----------|--------|--------------|-------|
+| → PARTIALLY_PAID | `pay(paymentDetails)` with settled amount **<** `amountRemaining` | ACTIVE, INITIATED, PARTIALLY_PAID | Adds to `amountPaid`; appends to the settled-payments list |
+| → PAID | `pay(paymentDetails)` with settled amount **≥** `amountRemaining` | ACTIVE, INITIATED, PARTIALLY_PAID | Any excess is recorded as overpayment |
+| record / → INITIATED | `notifyPayment(data[, status])` | ACTIVE, INITIATED, **PARTIALLY_PAID** | A notification never changes `amountPaid` (see below) |
+| → CANCELLED | `cancel(paymentDetails)` | ACTIVE, INITIATED; PARTIALLY_PAID **open** | Cancelling after a partial payment needs a refund flow and must keep `amountPaid` |
+
+`paymentDetails` for `pay()` gains the **settled amount and currency**. Today it's all-or-nothing.
+
+### A notification is a claim; settlement moves the amount
+
+A payment notification is the payer PSP's claim. It records the payment in flight, but only a
+**settled** amount, reported through `PUT /api/v1/payment-request/{id}/status-update` → `pay()`,
+changes `amountPaid`. A failed or forged notification therefore can't make a customer owe less.
+
+For blockchain payments, Workspace confirms settlement. It matches the tx hash in a post-commit
+(`SENT`) notification's `$.payment.transactionId` against the deposit it saw on chain, then calls
+status-update with the settled amount.
+
+### Open questions (from ADR-028)
+
+1. May a `PARTIALLY_PAID` QR be cancelled? If so, the paid part needs a refund flow.
+2. On a merchant "refresh", should it reissue for `amountRemaining` only, or keep the same QR with
+   refreshed rates?
+3. How is a deposit matched when no notification arrives (no tx hash to join on)?
 
 ## Source references
 
