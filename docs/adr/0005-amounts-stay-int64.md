@@ -15,12 +15,20 @@ Avro `decimal` over `fixed(32)`/`fixed(33)`.
 **Amounts stay `int64` minor units**, as JSON numbers, in the event contract exactly as in
 `AmountVO` and in every amount field of `openapi.yaml`.
 
-This is not a preference. Checked against the standard (its data-type table and the §13.5 / §14.3 /
-§2.1 field tables), paraphrased rather than quoted since the ANSI text is not distributed here:
+This is not a preference — the standard mandates it. From the `Amount (Minor Units)` data type
+definition:
 
-- The `Amount (Minor Units)` data type **mandates a 64-bit integer** in the smallest currency unit.
-  It is a `SHALL`.
-- Payment amount (§2.1) and tip amount (§2.2) are additionally **non-negative**. The bill **adjustment**
+> "**Shall** be a 64 bit integer (see specific field-level requirements on whether can be negative)"
+> — ANSI X9.150-2026, Data Types
+
+and of the payment amount specifically:
+
+> "**Shall** be a 64 bit integer with minimum value = 0."
+> — ANSI X9.150-2026 §2.1
+
+The rest, checked against the §13.5 / §14.3 / §2.1 field tables:
+
+- Tip amount (§2.2) is likewise non-negative. The bill **adjustment**
   amount (§13.5.3.2) is the signed one, and arrives as an **array whose entries may mix signs** — a
   discount and a late fee together.
 - Amount fields carry a **max length of 18 digits**, *tighter* than `int64`'s 19.

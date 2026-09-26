@@ -13,8 +13,14 @@ guarded only by `@Version` optimistic locking, whose lost race surfaces as an HT
 Separately, nothing downstream is told that a payment started, and any "update state then publish"
 scheme can lose the publish or publish without the state change.
 
-ANSI X9.150 Annex A.9 asks for the status transition explicitly, and gives the reason in as many
-words: **to prevent duplicate payment.**
+The standard asks for this transition explicitly, and names the reason:
+
+> "On receipt of a payment notification, The Payee's PSP **SHOULD** update status to
+> 'PAYMENT_INITIATED' to prevent duplicate payment." — ANSI X9.150-2026 §A.9
+
+So duplicate-payment prevention is not only the adopter's requirement; it is the standard's stated
+purpose for the transition. (The standard is not in this repository; see
+[`official-spec/README.md`](../../official-spec/README.md) to purchase it.)
 
 ## Decision
 

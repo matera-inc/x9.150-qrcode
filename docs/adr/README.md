@@ -44,9 +44,11 @@ the history of why we changed our minds — the part that is usually lost.
 
 ## Grounding rule
 
-ANSI X9.150 is copyrighted and is **not** in this repository. ADRs may cite section numbers and
-**paraphrase** requirements in our own words; they must never quote or reproduce the standard's text.
-See `AGENTS.md`.
+ANSI X9.150 is copyrighted and is **not** in this repository. ADRs **may quote a short normative
+fragment — one or two lines — with its section attributed**, and should, when a decision turns on the
+exact wording: a verbatim `SHALL` is evidence, a paraphrase is a claim. Whole sections, field tables
+and figures stay out, and the standard itself is never committed. See the quoting rule in `AGENTS.md`,
+and [`official-spec/README.md`](../../official-spec/README.md) for where to buy it.
 
 ---
 

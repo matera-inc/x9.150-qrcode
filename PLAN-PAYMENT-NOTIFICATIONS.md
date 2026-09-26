@@ -437,19 +437,31 @@ maps it to one call. The boundary stays clean: X9.150 owns the QR lifecycle; the
 
 #### This is what the standard asks for — and we do not implement it
 
-Grounded in Annex **A.9** (status lifecycle) and **Table 3 field 8** (`$.status`), paraphrased, not
-quoted (the ANSI text stays out of this repo):
+Annex **A.9** names the ISO 20022 triggers directly:
 
-- On **initial network acceptance of the credit transfer request (pacs.008)**, the payee's PSP
-  **SHOULD** set status to `PAYMENT_INITIATED`.
-- On **network confirmation of settlement (pacs.002)**, it **SHOULD** set status to `PAID`.
-- On receipt of a payment notification it **SHOULD** set `PAYMENT_INITIATED` — and the standard gives
-  the reason in as many words: **to prevent duplicate payment**. That is the same rationale as §3.3,
-  from the standard itself rather than from the adopter's brief.
-- Only a `PAYMENT_INITIATED` payload may revert to `ACTIVE`; once `PAYMENT_INITIATED`, `PAID` or
-  `CANCELLED`, a payload **SHALL NOT** be revised. Both already match `QRCodeEntity`.
-- ACH has **no network finality event** in the standard; the transition to paid is explicitly
-  implementation-dependent and out of scope — which is why the notification path matters there (§3.4).
+> "On initial network acceptance of the credit transfer request (pacs.008), the Payee's PSP
+> **SHOULD** update status to 'PAYMENT_INITIATED'"
+>
+> "On network confirmation of settlement (pacs.002), the Payee's PSP **SHOULD** update status to
+> 'PAID.'"
+>
+> — ANSI X9.150-2026 §A.9
+
+and gives the rationale — the same one as §3.3, arrived at independently from the adopter's brief:
+
+> "On receipt of a payment notification, The Payee's PSP **SHOULD** update status to
+> 'PAYMENT_INITIATED' to prevent duplicate payment." — ANSI X9.150-2026 §A.9
+
+The remaining lifecycle rules (Annex A.9, **Table 3 field 8** `$.status`, §7), all already matched by
+`QRCodeEntity`: only a `PAYMENT_INITIATED` payload may revert to `ACTIVE`, and
+
+> "Once the payload status is 'PAYMENT_INITIATED', 'PAID', or 'CANCELLED', it **SHALL NOT** be
+> revised." — ANSI X9.150-2026 §7
+
+ACH is the exception: the standard defines **no network finality event** for it, so the transition to
+paid is implementation-dependent and out of scope — which is why the notification path matters there
+(§3.4). The standard is not in this repository; see
+[`official-spec/README.md`](official-spec/README.md) to purchase it.
 
 **Current state: the contract promises this and the code refuses it.**
 
@@ -943,12 +955,15 @@ branch's shape.
   no indirection.**
 - **Q7 — ~~The money model's `int64` ceiling~~ — CLOSED: `int64` is normative.** Checked directly
   against the standard (its data-type table and the §13.5 / §14.3 / §2.1 field tables). The finding,
-  in our own words — the ANSI text is copyrighted and is not quoted or reproduced here or anywhere in
-  the repo:
+  quoting the normative fragments that decide it (short attributed excerpts; see the quoting rule in
+  `AGENTS.md`):
 
-  - The standard's `Amount (Minor Units)` data type **mandates a 64-bit integer** in the smallest
-    currency unit, with negativity decided per field. It is a `SHALL`, not a recommendation.
-  - Payment amount (§2.1) and tip amount (§2.2) are additionally constrained to **non-negative**.
+  - The `Amount (Minor Units)` data type is normative, not advisory:
+    > "**Shall** be a 64 bit integer (see specific field-level requirements on whether can be
+    > negative)" — ANSI X9.150-2026, Data Types
+  - And for the payment amount specifically:
+    > "**Shall** be a 64 bit integer with minimum value = 0." — ANSI X9.150-2026 §2.1
+  - Tip amount (§2.2) is likewise **non-negative**.
     The bill **adjustment** amount (§13.5.3.2) is the signed one — which is exactly what
     `openapi.yaml` already documents.
   - Amount fields carry a **max length of 18 digits**, which is *tighter* than `int64`'s 19.

@@ -27,19 +27,35 @@ maps the pacs.008 to one call.
 
 ## This closes a conformance gap, it is not a new feature
 
-Grounded in ANSI X9.150 Annex **A.9** and **Table 3 field 8** (`$.status`), paraphrased rather than
-quoted since the standard is not distributed with this repository:
+Annex **A.9** (status lifecycle) names the ISO 20022 triggers directly:
 
-- On initial network acceptance of the credit transfer request (**pacs.008**), the payee's PSP
-  **SHOULD** set status to `PAYMENT_INITIATED`.
-- On network confirmation of settlement (**pacs.002**), it **SHOULD** set `PAID`.
-- On receipt of a payment notification it **SHOULD** set `PAYMENT_INITIATED` — and the standard states
-  the reason in as many words: **to prevent duplicate payment**, which is independently the rationale
-  for ADR-0002.
-- Only a `PAYMENT_INITIATED` payload may revert to `ACTIVE`; once initiated, paid or cancelled it
-  **SHALL NOT** be revised. Both already match `QRCodeEntity`.
-- ACH has **no network finality event**; the transition to paid is implementation-dependent and out of
-  scope — which is why the notification path carries the weight there.
+> "On initial network acceptance of the credit transfer request (pacs.008), the Payee's PSP
+> **SHOULD** update status to 'PAYMENT_INITIATED'"
+>
+> "On network confirmation of settlement (pacs.002), the Payee's PSP **SHOULD** update status to
+> 'PAID.'"
+>
+> — ANSI X9.150-2026 §A.9
+
+and states the rationale for the transition — independently the rationale for ADR-0002:
+
+> "On receipt of a payment notification, The Payee's PSP **SHOULD** update status to
+> 'PAYMENT_INITIATED' to prevent duplicate payment."
+>
+> — ANSI X9.150-2026 §A.9
+
+The remaining lifecycle rules (Annex A.9, **Table 3 field 8** `$.status`, and §7), all of which
+`QRCodeEntity` already matches — only a `PAYMENT_INITIATED` payload may revert to `ACTIVE`, and:
+
+> "Once the payload status is 'PAYMENT_INITIATED', 'PAID', or 'CANCELLED', it **SHALL NOT** be
+> revised." — ANSI X9.150-2026 §7
+
+ACH is the exception: the standard defines **no network finality event** for it, so the transition to
+paid is implementation-dependent and out of scope — which is why the notification path carries the
+weight there.
+
+The standard is not distributed with this repository; see
+[`official-spec/README.md`](../../official-spec/README.md) to purchase it.
 
 **Current state — the contract promises this and the code refuses it:**
 
