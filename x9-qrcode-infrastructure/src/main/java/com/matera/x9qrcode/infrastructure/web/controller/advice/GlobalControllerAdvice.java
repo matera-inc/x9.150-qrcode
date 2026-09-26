@@ -9,6 +9,7 @@ package com.matera.x9qrcode.infrastructure.web.controller.advice;
 import com.matera.x9qrcode.app.exception.EntityNotFoundException;
 import com.matera.x9qrcode.app.exception.ServiceException;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
+import com.matera.x9qrcode.domain.exception.QRCodeStatusConflictException;
 import com.matera.x9qrcode.domain.exception.ValueObjectRuleException;
 
 import jakarta.validation.ConstraintViolationException;
@@ -31,6 +32,7 @@ import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.Err
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.INVALID_HTTP_HEADER;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.METHOD_ARGUMENT_NOT_VALID;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.RESOURCE_NOT_FOUND;
+import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.STATUS_CONFLICT;
 import static org.apache.commons.lang3.StringUtils.isBlank;
 
 @Slf4j
@@ -39,6 +41,7 @@ public class GlobalControllerAdvice {
 
     private static final String VIOLATIONS_MESSAGE_PATTERN = "%s: %s";
     private static final String VIOLATIONS_PROPERTY = "violations";
+    private static final String CURRENT_STATUS_PROPERTY = "currentStatus";
     private static final String INVALID_PROPERTY_VIOLATION = "%s has invalid value.";
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -98,6 +101,20 @@ public class GlobalControllerAdvice {
         problemDetail.setType(METHOD_ARGUMENT_NOT_VALID.uriType());
         problemDetail.setDetail(METHOD_ARGUMENT_NOT_VALID.description());
         problemDetail.setProperty(VIOLATIONS_PROPERTY, INVALID_PROPERTY_VIOLATION.formatted(ex.getPropertyName()));
+
+        return problemDetail;
+    }
+
+    @ExceptionHandler(QRCodeStatusConflictException.class)
+    public ProblemDetail handleQRCodeStatusConflictException(QRCodeStatusConflictException ex) {
+        logExceptionStacktrace(ex);
+
+        ProblemDetail problemDetail = ProblemDetail.forStatus(STATUS_CONFLICT.status());
+        problemDetail.setTitle(STATUS_CONFLICT.title());
+        problemDetail.setType(STATUS_CONFLICT.uriType());
+        problemDetail.setDetail(STATUS_CONFLICT.description());
+        problemDetail.setProperty(CURRENT_STATUS_PROPERTY, ex.getCurrentStatus().value());
+        problemDetail.setProperty(VIOLATIONS_PROPERTY, List.of(ex.getMessage()));
 
         return problemDetail;
     }
