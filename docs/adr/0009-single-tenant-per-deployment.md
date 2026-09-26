@@ -33,6 +33,39 @@ The events and approval APIs are therefore **PSP-internal interfaces**. Distribu
 biller it belongs to is the PSP platform's job, downstream of X9.150 — the same platform that created
 the QR Code and already knows which biller it was for.
 
+### The consumer may be multi-tenant; X9.150 does not need to know
+
+Nothing here constrains the platform that consumes the events. A PSP platform is free to be
+multi-tenant and serve many banks from one installation of *its own* software — that is its
+architecture, not ours. What follows from this ADR is only:
+
+- **All of that deployment's notifications are available to that platform**, undifferentiated.
+- **The platform maps each event to the right bank itself**, and it already can: it created the QR
+  Code, so it holds that mapping. It does not need X9.150 to carry its tenant model.
+- Every event carries the correlation keys that make this a lookup rather than a guess — `qrId`,
+  `locationId`, `paymentId`, and the biller's own `invoiceNumber` / `orderNumber`.
+
+This is the payoff of the decision: X9.150 stays ignorant of a consumer's tenancy while giving it
+everything needed to route. A `tenantId` would be X9.150 storing someone else's model of the world,
+and going stale the first time that model changed.
+
+### Exactly one consumer polls
+
+**Two systems must not poll the same deployment.** For the read-only events API this is a matter of
+clarity — two cursors each see everything, so a second poller gains no isolation and only invites the
+belief that it has some.
+
+For the **approval channel** ([ADR-0003](0003-two-phase-payment-notification-approval.md)) it is a
+correctness requirement. A pending approval is a row, not a queued message, so two pollers both see
+it and both may post a verdict. The first wins and the second is told the outcome that was already
+applied — nothing is corrupted, but **the decision becomes whichever system answered first**. For a
+vote on whether money may move, a nondeterministic winner is not an acceptable outcome, and two
+systems that disagree would produce a different result on every run.
+
+So: one deployment, one consuming platform, one poller. A consumer that needs internal redundancy
+should make its *own* pollers mutually exclusive (a lease, a leader election) before calling X9.150 —
+the same posture X9.150 itself takes for its outbox drain.
+
 ## Rationale
 
 **1. A filter that is never written can never be wrong.** For the boundary that matters — PSP to PSP —

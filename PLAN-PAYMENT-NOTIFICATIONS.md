@@ -595,6 +595,13 @@ cursor read with nothing to get wrong.
 merchants — they return every biller's events for that PSP. Fanning out to the right biller is the
 PSP platform's job, using the mapping it already owns from having created the QR Code.
 
+**Exactly one consumer polls a deployment.** The consuming platform may itself be multi-tenant and
+serve many banks — that is its architecture, and X9.150 neither knows nor needs to. But two systems
+must not poll the same deployment: for the events API a second cursor gains no isolation, and for the
+approval channel (§3.4.3) two pollers both see a pending approval and both may vote, making the
+verdict *whichever answered first*. A nondeterministic winner is not acceptable for a decision about
+whether money may move.
+
 **X9.150 does not push.** It records facts and serves them; anyone who wants them pulls, on their own
 schedule, with their own cursor. No broker client, no serialization framework, no Schema Registry, and
 no transport configuration inside a payment service.
