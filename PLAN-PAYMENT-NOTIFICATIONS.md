@@ -23,6 +23,7 @@ docs (`STATE-MACHINE.md`, `ENDPOINTS.md`, a new `EVENTS.md`, `openapi.yaml`).
 | Notification opt-in is additive; no `/v2` | [ADR-0006](docs/adr/0006-notification-opt-in-is-additive.md) |
 | Configurable CA allowlist | [ADR-0007](docs/adr/0007-configurable-ca-allowlist.md) |
 | Status-update as the ISO 20022 (pacs.008) entry point | [ADR-0008](docs/adr/0008-status-update-is-the-iso20022-entry-point.md) |
+| Tenant-agnostic; one system per deployment | [ADR-0009](docs/adr/0009-tenant-agnostic-single-system.md) |
 
 Where this plan and an ADR disagree, **the ADR wins** — it is the accepted decision; the plan is how we
 get there. Open questions (§12) are decisions **not yet made**, and each becomes an ADR when it is.
@@ -583,6 +584,23 @@ monetary field reuses it, including `AmountDue`, the adjustment amount, and the 
 per-day late-fee fields. `int64` is confirmed; the plan keeps it.
 ### 3.7 How events leave the system
 
+**X9.150 is tenant-agnostic** ([ADR-0009](docs/adr/0009-tenant-agnostic-single-system.md)): every QR
+Code exists on its own, and who it belongs to is not modelled, stored or consulted. There is no
+`tenantId` and no filter, so the events API returns everything that deployment holds — there is no
+axis to slice it on. Scope is decided by what an operator puts in a deployment, not by the software.
+That is what lets the endpoint below stay a plain cursor read with nothing to get wrong.
+
+**The events and approval APIs are therefore operator-internal.** They must not be exposed directly
+to merchants — they return every QR Code's events in that deployment. Fanning out to the right biller is the
+consuming system's job, using the mapping it already owns from having created the QR Code.
+
+**Exactly one system polls a deployment.** The consuming platform may itself be multi-tenant and
+serve many banks — that is its architecture, and X9.150 neither knows nor needs to. But two systems
+must not poll the same deployment: for the events API a second cursor gains no isolation, and for the
+approval channel (§3.4.3) two pollers both see a pending approval and both may vote, making the
+verdict *whichever answered first*. A nondeterministic winner is not acceptable for a decision about
+whether money may move.
+
 **X9.150 does not push.** It records facts and serves them; anyone who wants them pulls, on their own
 schedule, with their own cursor. No broker client, no serialization framework, no Schema Registry, and
 no transport configuration inside a payment service.
@@ -669,7 +687,10 @@ GET /pub/api/v1/events?after=<cursor>&limit=<1..500>&wait=<0..30s>
   from the QR state via the management API" recovery.
 
 > **Exposure.** This publishes payment facts on the open, unauthenticated `/pub` surface, which makes
-> the project's "protect it at your edge" posture load-bearing rather than advisory. It must say so in
+> the project's "protect it at your edge" posture load-bearing rather than advisory. Note the scope of
+> a leak is bounded by ADR-0009: a deployment holds one operator's QR Codes, so an exposed endpoint
+> reveals that operator's payments and no other institution's. This endpoint is operator-internal and
+> must not be handed to merchants directly. It must say so in
 > `ENDPOINTS.md`, `SECURITY.md` and the OpenAPI description. Because this is now the *only* way out,
 > it ships **enabled by default** (`x9.events.api.enabled`, default `true`) — a reversal of the
 > earlier position, and the reason the exposure note matters more, not less.
@@ -899,6 +920,7 @@ additions, not surgery.
 | Single active | Set `strategy.type: Recreate` in `values.yaml` (with a comment) so a rolling update never runs two serving pods — which `HIGH-AVAILABILITY.md` §3 says exceeds Annex A §1(a), and which would also briefly double the relay. Today's default rolling update overlaps pods. |
 | Graceful drain | `terminationGracePeriodSeconds` ≥ `spring.lifecycle.timeout-per-shutdown-phase` (20 s) so the relay finishes its in-flight publish instead of being killed mid-ack. |
 | Tunnel | Documented `sidecars` block for `cloudflared` (§9), and a k3s-specific note: with a real Ingress + DNS the tunnel is unnecessary; it is for labs and demos. |
+| Per-deployment install | ADR-0009 means one release per operator. The chart must make that a values-file change and nothing more: release name, `spring.data.mongodb.*` database, and `x9.public-endpoints.host`. Document the three values and a worked two-tenant example. |
 | Mongo | Chart README gains a k3s note: the app needs a replica set, so point `spring.data.mongodb.uri` at a real replica set (Atlas, Bitnami chart, or the MongoDB Community Operator). A single-node `mongod` will not start the app. |
 | Compose parity | `docker-compose.yml` is **unchanged** — no broker profile to add. The optional Redpanda demo lives with the bridge example (**Q14**), not in the service's compose file. |
 | Verification | A `helm template` smoke check in CI (renders the chart with `values-minimal.yaml` and the events values) so chart drift is caught by the same gate as the code. |
@@ -915,7 +937,7 @@ additions, not surgery.
 | `apis/events/payment-event-v1.schema.json` + `EVENTS.md` | New: the public contract, the cursor/long-poll protocol, consumer rules (dedupe by `eventId`, cursor persistence), versioning policy, recovery when a cursor predates retention, and how to write a bridge. |
 | `README.md` | "Payment events" section: outbox, at-least-once, pull API, no broker required, link to `EVENTS.md`. |
 | `TODO.md` | **Replace** the "payment expected event" entry — its Spring Cloud Stream direction is superseded (§1.1). Keep the certificate-caching entry. |
-| `HIGH-AVAILABILITY.md` | Relay is single-active by design; `Recreate` strategy; broker HA is out of the Licensed Work, like MongoDB. |
+| `HIGH-AVAILABILITY.md` | Relay is single-active by design; `Recreate` strategy; broker HA is out of the Licensed Work, like MongoDB. Add that the Annex A limits being *per deployment* is one of the reasons scope is set by deployment, not by a tenant model (ADR-0009). |
 | `AGENTS.md`, `CLAUDE.md` | New module surfaces (events, outbox, drain, events API) and the pull-based consumption model. |
 | `CONTRIBUTING.md` | How to write a bridge against the events API — the community extension path, which now needs no change to this codebase. Point contributors at `docs/adr/` for the reasoning, and at its "Writing a new one" section for proposing a change of direction. |
 | `docs/adr/` | Already written (ADR-0001…0008). Each open question in §12 becomes an ADR when decided. |
