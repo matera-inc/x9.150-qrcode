@@ -94,10 +94,8 @@ class StatusUpdatePaymentInitiatedApiTest extends AbstractIntegrationTest {
         MockMvcResponse response = initiatePayment(qrCodeId);
 
         // The contract advertises 409 for this case; it used to be an undifferentiated 400.
-        // `currentStatus` sits under `properties`, which is how this service serializes every
-        // ProblemDetail extension (`violations` included) — not a shape introduced here.
         assertEquals(HttpStatus.CONFLICT.value(), response.statusCode(), response.asString());
-        assertEquals("PAYMENT_INITIATED", response.jsonPath().getString("properties.currentStatus"));
+        assertEquals("PAYMENT_INITIATED", response.jsonPath().getString("currentStatus"));
     }
 
     @Test
@@ -110,7 +108,7 @@ class StatusUpdatePaymentInitiatedApiTest extends AbstractIntegrationTest {
         MockMvcResponse response = initiatePayment(qrCodeId);
 
         assertEquals(HttpStatus.CONFLICT.value(), response.statusCode(), response.asString());
-        assertEquals("PAID", response.jsonPath().getString("properties.currentStatus"));
+        assertEquals("PAID", response.jsonPath().getString("currentStatus"));
     }
 
     @Test
@@ -121,7 +119,7 @@ class StatusUpdatePaymentInitiatedApiTest extends AbstractIntegrationTest {
         MockMvcResponse response = initiatePayment(qrCodeId);
 
         assertEquals(HttpStatus.CONFLICT.value(), response.statusCode(), response.asString());
-        assertEquals("CANCELLED", response.jsonPath().getString("properties.currentStatus"));
+        assertEquals("CANCELLED", response.jsonPath().getString("currentStatus"));
     }
 
     @Test
