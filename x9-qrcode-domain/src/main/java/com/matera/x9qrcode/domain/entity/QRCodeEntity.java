@@ -8,6 +8,7 @@ package com.matera.x9qrcode.domain.entity;
 
 import com.matera.x9qrcode.domain.entity.validator.QRCodeEntityValidator;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
+import com.matera.x9qrcode.domain.exception.QRCodeStatusConflictException;
 import com.matera.x9qrcode.domain.generator.IdGenerator;
 import com.matera.x9qrcode.domain.utils.DateTimeUtils;
 import com.matera.x9qrcode.domain.vo.BillVO;
@@ -260,6 +261,30 @@ public class QRCodeEntity {
 
         this.status = QRCodeStatusEnum.PAID;
         this.paymentDetails = paymentDetails;
+        this.updateRevision();
+    }
+
+    /**
+     * ACTIVE -> PAYMENT_INITIATED: a payment is under way for this QR Code.
+     *
+     * <p>Driven by the payee's own platform, typically on initial network acceptance of a credit
+     * transfer request (ISO 20022 pacs.008). Per ANSI X9.150-2026 §A.9 the payee's PSP SHOULD make
+     * this transition on such an event "to prevent duplicate payment" — which is why it is refused
+     * for any QR Code that is not ACTIVE.
+     */
+    public void initiatePayment(PaymentDetailsVO paymentDetails) {
+        if (!QRCodeStatusEnum.ACTIVE.equals(this.status)) {
+            throw new QRCodeStatusConflictException(
+                this.status,
+                "The QRCode needs to be active to have a payment initiated. Current status: %s".formatted(this.getStatus())
+            );
+        }
+
+        if (nonNull(paymentDetails)) {
+            throw new BusinessRuleException("paymentDetails must be not informed when initiating a payment.");
+        }
+
+        this.status = QRCodeStatusEnum.PAYMENT_INITIATED;
         this.updateRevision();
     }
 

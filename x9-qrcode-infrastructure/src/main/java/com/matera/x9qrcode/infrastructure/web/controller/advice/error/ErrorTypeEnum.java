@@ -16,7 +16,8 @@ public enum ErrorTypeEnum {
     INVALID_HTTP_HEADER("Validation Failed", URI.create("https://x9.matera.com/api/validation-error"), "One or more headers failed validation.", HttpStatus.BAD_REQUEST),
     HTTP_MESSAGE_NOT_READABLE("Malformed JSON", URI.create("https://x9.matera.com/api/malformed-json"), "The request body is not readable or is incorrectly formatted.", HttpStatus.BAD_REQUEST),
     BUSINESS_RULE("Business Rule Violation", URI.create("https://x9.matera.com/api/business-rule-violation"), "A business rule was violated.", HttpStatus.BAD_REQUEST),
-    RESOURCE_NOT_FOUND("Resource not found", URI.create("https://x9.matera.com/api/resource-not-found"), "A resource was not found.", HttpStatus.NOT_FOUND);
+    RESOURCE_NOT_FOUND("Resource not found", URI.create("https://x9.matera.com/api/resource-not-found"), "A resource was not found.", HttpStatus.NOT_FOUND),
+    STATUS_CONFLICT("Status Conflict", URI.create("https://x9.matera.com/api/status-conflict"), "The QR Code is not in a status that allows this transition.", HttpStatus.CONFLICT);
 
     private final String title;
     private final URI uriType;

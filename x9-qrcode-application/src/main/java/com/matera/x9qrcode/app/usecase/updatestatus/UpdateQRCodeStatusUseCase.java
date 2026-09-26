@@ -44,6 +44,7 @@ public class UpdateQRCodeStatusUseCase extends UseCase<UpdateQRCodeStatusInput, 
 
         switch (updateQRCodeStatusInput.status()) {
             case PAID -> qrCodeEntity.pay(buildPaymentDetails(updateQRCodeStatusInput));
+            case PAYMENT_INITIATED -> qrCodeEntity.initiatePayment(buildPaymentDetails(updateQRCodeStatusInput));
             case CANCELLED -> qrCodeEntity.cancel(buildPaymentDetails(updateQRCodeStatusInput));
             case ACTIVE -> qrCodeEntity.reactivate(buildPaymentDetails(updateQRCodeStatusInput));
             default -> throw new BusinessRuleException(
