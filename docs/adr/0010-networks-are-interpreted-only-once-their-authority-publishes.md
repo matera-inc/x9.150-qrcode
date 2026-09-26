@@ -6,14 +6,24 @@
 
 ## Context
 
-ANSI X9.150 defines the **envelope** — the payload structure, the signing, the lifecycle — but it is
-deliberately **open about how an individual payment method is named and how its JSON is organised
-inside `networks`**. The standard does not enumerate every rail on earth, and it does not dictate the
-shape of a rail's own object.
+### The standard's flexibility here is deliberate, and it is a strength
 
-That openness is the point: it lets rails be added without revising the standard. But it means the
-shape of any given network inside X9.150 is **not something an implementer gets to invent**. It has to
-come from the party with authority over that rail.
+ANSI X9.150 does not attempt to specify, in one document, the format of every blockchain and payment
+network in the world. That would require a single committee to hold expertise in every rail that
+exists — and to revise the standard every time a new one appears. Instead it **specifies the style and
+the root, and delegates the rest**:
+
+| X9.150 defines | The network's owner defines |
+|---|---|
+| That a payment method carries a `networks` object | What the network is called inside it |
+| The envelope: payload structure, signing, lifecycle, amounts, currency | **The inner JSON of that network's object** — its fields and their meaning |
+
+**The inner JSON belongs to the network owner.** That is a division of authority, not a gap in the
+text. Read as silence it looks like an omission to be filled in by whoever gets there first; read
+correctly it is the mechanism that lets the standard outlive the rails it was written alongside.
+
+The consequence for us is direct: the shape of any given network inside X9.150 is **not something an
+implementer gets to invent**. It has to come from the party with authority over that rail.
 
 - If **Pix** is to be an X9.150 payment method for Brazilians, **Banco Central do Brasil** is the body
   that should publish how Pix is embedded — the object name, the fields, their meaning.
