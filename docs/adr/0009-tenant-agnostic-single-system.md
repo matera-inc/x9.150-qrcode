@@ -31,6 +31,24 @@ It follows that:
 "Tenant-agnostic" is a stronger and more honest claim than "single-tenant". Single-tenant would mean
 we have a tenancy model configured to one. We do not have one to configure.
 
+### Amendment, 2026-09-26: the one system is also the only creator
+
+As first accepted, this ADR said *one consuming system, one poller*. It did not say who **creates**
+the QR Codes. Completing it:
+
+> **Exactly one system is X9.150's client, on both sides.** The same platform is the **only creator**
+> of QR Codes *and* the **only poller** of the events and approval APIs.
+
+This is additive — it forecloses a case the original left open rather than changing any decision — and
+it repairs an argument below that was otherwise only probably true. "The consuming system maps each
+event to the right bank itself, and it already can: it created the QR Code" holds *by construction*
+once creator and consumer are the same system. Had system A created QR Codes while system B polled,
+B would hold no mapping and routing would be impossible; nothing in the original text ruled that out.
+
+It also settles how an approval can be authorized without an auth framework: a token minted at QR
+creation returns to the same system that must later vote, so there is no case where the creator and
+the voter differ.
+
 ### Who runs a deployment
 
 In practice an operator is a **PSP** — a bank or payment processor — playing the Payee-PSP role this
@@ -77,7 +95,8 @@ nothing is corrupted, but **the decision becomes whichever system answered first
 whether money may move, a nondeterministic winner is not acceptable, and two systems that disagree
 would produce a different result on every run.
 
-So: one deployment, one consuming system, one poller. A consumer needing internal redundancy should
+So: one deployment, one system, one poller — and per the amendment above, that same system is the
+only creator of the QR Codes it later reads events for. A consumer needing internal redundancy should
 make its *own* pollers mutually exclusive (a lease, a leader election) before calling X9.150 — the
 same posture X9.150 takes for its own outbox drain.
 
