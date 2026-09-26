@@ -28,8 +28,25 @@ data model, ground your answers **only** in tracked sources:
   enums under `vo/enumerated/`, and policies under `service/`.
 - **The tracked docs** listed below.
 
-Do **not** source, quote, or reproduce the ANSI PDF/MD even if a copy exists on the local machine.
-(Describing how *this software* behaves is fine — that is our own implementation, documented below.)
+### Quoting the standard: short attributed fragments are allowed
+
+Do **not** reproduce the ANSI PDF/MD wholesale, and never treat a local copy as a source to copy from
+at length. But a **short quoted fragment — one or two lines — with attribution is allowed and
+encouraged**, because it grounds a claim in the normative text instead of a paraphrase a reader has to
+take on faith, and it points readers at a standard worth buying.
+
+The boundary:
+
+- **Allowed:** a normative sentence or two, quoted verbatim, attributed to its section — e.g.
+  > "**Shall** be a 64 bit integer with minimum value = 0." — ANSI X9.150-2026 §2.1
+- **Not allowed:** whole sections, field tables, figures, or a series of fragments that together
+  substitute for reading the standard. If a reader could skip buying it, we have gone too far.
+- **Always attribute** the section, and link [`official-spec/README.md`](official-spec/README.md),
+  which points at the [ANSI Web Store](https://webstore.ansi.org/standards/ascx9/ansix91502026).
+- **Never commit the PDF/MD itself.** It stays git-ignored.
+
+(Describing how *this software* behaves needs no quotation at all — that is our own implementation,
+documented below.)
 
 ## Data model conventions (as implemented)
 
