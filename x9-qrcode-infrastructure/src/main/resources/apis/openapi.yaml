@@ -1810,6 +1810,13 @@ components:
           items:
             type: string
             example: "field.name: error message"
+          description: "Human-readable descriptions of what failed, one per violation."
+        currentStatus:
+          $ref: "#/components/schemas/QRCodeStatus"
+          description: |-
+            Present on **409** responses only: the status the QR Code was actually found in, which is
+            why the requested transition was refused. Lets a caller tell "already being paid" from
+            "already paid" from "cancelled" without a second request.
 
   parameters:
     qrCodeId:
