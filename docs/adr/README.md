@@ -31,7 +31,7 @@ the history of why we changed our minds — the part that is usually lost.
 | [0006](0006-notification-opt-in-is-additive.md) | Notification opt-in is an **additive optional field**, not a new API version | Accepted |
 | [0007](0007-configurable-ca-allowlist.md) | **Configurable CA allowlist** for notification signatures, with a self-signed escape for dev | Accepted |
 | [0008](0008-status-update-is-the-iso20022-entry-point.md) | **Status-update is the rail-agnostic entry point** (pacs.008); X9.150 does not parse ISO 20022 | Accepted |
-| [0009](0009-single-tenant-per-deployment.md) | **One deployment per PSP** (many billers inside one) — no `tenantId`, no tenant filter on the events reader | Accepted |
+| [0009](0009-tenant-agnostic-single-system.md) | **X9.150 is tenant-agnostic** — a QR Code exists on its own; no `tenantId`, no filter, one system per deployment | Accepted |
 
 ## Writing a new one
 
