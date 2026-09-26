@@ -40,8 +40,13 @@ the history of why we changed our minds — the part that is usually lost.
 3. Keep it to roughly one page. If it needs more, the extra belongs in a reference doc.
 4. **Name what was rejected and why.** An ADR without rejected alternatives is a description, not a
    decision, and it is the rejected options that a future reader most needs.
-5. To reverse a decision, write a **new** ADR marked *Supersedes NNNN*, and mark the old one
+5. To **reverse** a decision, write a **new** ADR marked *Supersedes NNNN*, and mark the old one
    *Superseded by NNNN*. Do not edit the original — the point is that the change of mind is visible.
+6. To **complete** one — a clarification that forecloses a case the original left open, without
+   changing what was decided — add a dated `### Amendment, YYYY-MM-DD` block to the existing ADR,
+   placed where a reader meets it before the text it affects. Say plainly what was open and what is
+   now closed. Reversals get a new number; completions do not, because there is no change of mind to
+   record. If you cannot tell which you are doing, it is a reversal.
 
 ## Grounding rule
 

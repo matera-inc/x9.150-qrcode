@@ -594,8 +594,9 @@ That is what lets the endpoint below stay a plain cursor read with nothing to ge
 to merchants — they return every QR Code's events in that deployment. Fanning out to the right biller is the
 consuming system's job, using the mapping it already owns from having created the QR Code.
 
-**Exactly one system polls a deployment.** The consuming platform may itself be multi-tenant and
-serve many banks — that is its architecture, and X9.150 neither knows nor needs to. But two systems
+**Exactly one system is X9.150's client, on both sides** — the same platform is the only creator of
+QR Codes and the only poller of the events and approval APIs. It may itself be multi-tenant and serve
+many banks — that is its architecture, and X9.150 neither knows nor needs to. But two systems
 must not poll the same deployment: for the events API a second cursor gains no isolation, and for the
 approval channel (§3.4.3) two pollers both see a pending approval and both may vote, making the
 verdict *whichever answered first*. A nondeterministic winner is not acceptable for a decision about
@@ -1023,7 +1024,9 @@ branch's shape.
   and `adjustment` is an **array** whose entries may mix signs (a discount and a late fee together).
   So the day adjustments join an event they need a `SignedAmountVO` **and** an array-typed field, not
   a single scalar. Not needed for v1.0 (payment amounts are non-negative).
-- **Q15 — Authentication for the approval channel.** The project's posture is "open API, protect at
+- **Q15 — Authentication for the approval channel.** *(ADR-0009's amendment makes option (c)
+  straightforward: creator and voter are the same system by construction, so a creation-time token
+  always returns to the party entitled to vote.)* The project's posture is "open API, protect at
   the edge", which was defensible when every endpoint was read-or-report. `POST /payment-approvals`
   is different in kind: it **authorizes money movement**. Anyone who can reach it can approve or
   refuse any pending payment. Options: (a) keep the posture and document the requirement loudly;
