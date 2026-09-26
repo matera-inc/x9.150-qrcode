@@ -11,7 +11,9 @@ import com.matera.x9qrcode.infrastructure.testing.database.DatabaseInitializer;
 import com.matera.x9qrcode.infrastructure.testing.annotation.IntegrationTest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.restassured.config.ObjectMapperConfig;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
+import io.restassured.module.mockmvc.config.RestAssuredMockMvcConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +37,13 @@ public abstract class AbstractIntegrationTest {
     @BeforeEach
     void setUp() {
         RestAssuredMockMvc.webAppContextSetup(context);
+
+        // Deserialize responses with the APPLICATION's ObjectMapper rather than RestAssured's own.
+        // Otherwise a test reads the wire with different rules than the service writes it — which
+        // hides contract regressions, and breaks outright on ProblemDetail, whose RFC 9457 extension
+        // members are top-level and only map back via ProblemDetailJacksonMixin's @JsonAnySetter.
+        RestAssuredMockMvc.config = RestAssuredMockMvcConfig.config()
+            .objectMapperConfig(new ObjectMapperConfig().jackson2ObjectMapperFactory((type, charset) -> objectMapper));
     }
 
 }

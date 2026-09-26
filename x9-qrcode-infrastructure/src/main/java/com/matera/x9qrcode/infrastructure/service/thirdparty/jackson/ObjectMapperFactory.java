@@ -23,6 +23,8 @@ import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
 import org.openapitools.jackson.nullable.JsonNullableModule;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.json.ProblemDetailJacksonMixin;
 
 import java.io.IOException;
 import java.time.OffsetDateTime;
@@ -96,6 +98,15 @@ public final class ObjectMapperFactory {
         // FactoryBasedEnumDeserializer that ignores MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS; hence
         // this scoped normalization instead of a global mapper feature.
         objectMapper.registerModule(caseInsensitivePaymentTimingModule());
+
+        // RFC 9457 requires a problem detail's extension members ("violations", "currentStatus", ...)
+        // to sit at the TOP LEVEL of the response body, and that is what BaseError in openapi.yaml
+        // declares. Spring Boot's auto-configured mapper achieves this by registering
+        // ProblemDetailJacksonMixin, whose @JsonAnyGetter flattens ProblemDetail.getProperties().
+        // This factory builds its mapper with `new ObjectMapper()` instead of Spring's builder, so
+        // that mixin was absent and Jackson serialized the map as a plain bean property — nesting
+        // every extension member under a "properties" object and silently breaking the contract.
+        objectMapper.addMixIn(ProblemDetail.class, ProblemDetailJacksonMixin.class);
 
         return objectMapper;
     }
