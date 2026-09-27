@@ -415,13 +415,15 @@ Account numbers on these rails use the **tokenized** protection approach **only*
 
 Refusing rather than carrying is a deployment-level judgement on top of that: a network we cannot interpret is one we cannot validate a payment notification against, so a QR Code advertising it is a promise we cannot keep. See [ADR-0012](docs/adr/0012-refuse-what-this-deployment-cannot-honour.md). The supported set is configuration — a network becomes acceptable when it is added to it, never because a caller sent it.
 
-Network names are **read leniently and written strictly**: any casing is accepted on input, and the emitted key is the standard's own lowercase spelling, itself configurable via `x9.networks.emitted-keys`. The standard is not self-consistent on this point; the reasoning is in [official-spec/INTERPRETATION.md](official-spec/INTERPRETATION.md).
+Network names have **one spelling inside this ecosystem**: the object key `fednow`/`rtp`/`ach` from §14.5, which is what we emit and — on our own create/patch API — the only spelling we accept. Anything else is a 400 naming both what was sent and what to send, because whatever we accept we emit one form, and a caller who sends `FedNow` and reads back `fednow` has a round-trip mismatch on a field they just set. The key is configurable via `x9.networks.emitted-keys`, and since it is also the accepted key, changing it moves both halves together.
+
+Leniency is reserved for the boundary we do not control: a **payment notification from a third-party payer** is matched case-insensitively, and its `$.payment.network` value is echoed back verbatim. That field — the one §2.4 calls “all-uppercase” before listing `FedNow` — is the only genuinely ambiguous one in the standard, and it is one this build only ever *receives*. See [official-spec/INTERPRETATION.md](official-spec/INTERPRETATION.md) I-1.
 
 ### Currencies
 
 Monetary amounts are **64-bit integers in a currency's minor units** (never floating-point). The currency is an open string in the payload — an ISO 4217 code such as `USD`/`JPY`, or a digital-asset ticker such as `USDC`/`BTC` — that the module repeats verbatim; the paying PSP resolves its decimals.
 
-What a **deployment** will accept is narrower, because it is decided by the rails: FedNow, RTP and ACH move dollars, so `supported-currencies.json` lists `USD` alone and a QR Code denominated in anything else is refused at creation. An empty list disables the check. This is separate from the peg-mixing rule (`pegged-currencies.json`), which asks whether the currencies on one request may appear *together*.
+What a **deployment** will accept is narrower, because it is decided by the rails: FedNow, RTP and ACH move dollars, so `supported-currencies.json` lists `USD` alone and a QR Code denominated in anything else — or in the wrong case, `usd` — is refused at creation. An empty list disables the check. This is separate from the peg-mixing rule (`pegged-currencies.json`), which asks whether the currencies on one request may appear *together*.
 
 ### Implementation
 

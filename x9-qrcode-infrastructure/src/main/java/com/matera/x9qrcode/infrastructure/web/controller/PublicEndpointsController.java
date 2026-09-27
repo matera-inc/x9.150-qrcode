@@ -28,6 +28,8 @@ import com.matera.x9qrcode.infrastructure.web.controller.mapper.response.Retriev
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jose.JWSObject;
+import com.matera.x9qrcode.infrastructure.configuration.property.X9Properties;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ByteArrayResource;
@@ -56,6 +58,7 @@ public class PublicEndpointsController implements PublicEndpointsApi {
     private final QRCodeSignatureService qrCodeSignatureService;
     private final ObjectMapper objectMapper;
     private final PaymentEventReader paymentEventReader;
+    private final X9Properties x9Properties;
 
     @Override
     public ResponseEntity<Resource> getCertificate(String fileName) {
@@ -148,7 +151,7 @@ public class PublicEndpointsController implements PublicEndpointsApi {
                     Optional.ofNullable(dateForPayment).orElse(retrieveQRCodePayloadOutput.sentAt().toLocalDate());
 
                 PaymentPayloadResponseDTO responseDTO =
-                    RetrieveQRCodePayloadResponseMapper.map(retrieveQRCodePayloadOutput);
+                    RetrieveQRCodePayloadResponseMapper.map(retrieveQRCodePayloadOutput, x9Properties.getNetworks());
 
                 SignatureInputDataDTO signatureInputDataDTO =
                     new SignatureInputDataDTO(SignatureTypeEnumDTO.X9, responseDTO, validationResult.correlationId(),

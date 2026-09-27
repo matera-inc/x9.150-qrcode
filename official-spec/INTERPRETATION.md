@@ -18,46 +18,52 @@ Architectural decisions that are *ours alone* — not readings of the standard �
 
 ---
 
-## I-1 — Network names: we accept any casing, and emit the one the standard shows
+## I-1 — The casing ambiguity is confined to one field, and it is one we only receive
 
 **Where:** §2.4 (`$.payment.network`), §14.5 and Table 14 (`$.paymentMethods[].networks.*`)
 
-**What the standard says.** Two different things, in two different places, and they do not use the
-same casing:
+**What the standard says.** Two different things in two different places — and, crucially, two
+different *kinds* of thing:
 
-| | Kind | Standard's form |
-|---|---|---|
-| `$.paymentMethods[].networks.*` | JSON **object key** | `fednow`, `rtp`, `ach` |
-| `$.payment.network` | String **value** in a payment notification | `FedNow`, `RTP`, `ACH` |
+| | Kind | Standard's form | Ambiguous? |
+|---|---|---|---|
+| `$.paymentMethods[].networks.*` | JSON **object key** | `fednow`, `rtp`, `ach` | **No.** §14.5 and Table 14 agree, throughout |
+| `$.payment.network` | String **value**, in a payment notification | `FedNow`, `RTP`, `ACH` | **Yes.** §2.4 introduces its list as "exact, all-uppercase values" and then gives `FedNow`, which is not |
 
-These are not in conflict — they are separate fields and may legitimately differ. The conflict is
-inside §2.4, which introduces its list as "exact, all-uppercase values" and then gives `FedNow` as
-the first entry and `"FedNow"` as the example. `FedNow` is not all-uppercase. One of the two is
-wrong and the text does not say which.
+The object keys have their own quiet surprise — §14.5 uses lowercase for `fednow` but camelCase for
+`americanExpress`, so "lowercase" is not a *convention*, the keys are simply spelled out one by one.
+But they are spelled out unambiguously, and that is what matters.
 
-The object keys have their own quiet surprise: §14.5 uses lowercase for `fednow` but camelCase for
-`americanExpress`, so "lowercase" is not the convention either — the keys are simply spelled out
-one by one.
+So there is exactly one ambiguous field. And it is one **this build only ever receives**: a payment
+notification arrives from a third-party payer. We do not send notifications, so we never have to
+choose which half of §2.4 to obey.
 
-**What we do.**
+**What we do.** Postel's rule at the boundary we do not control; one spelling inside it.
 
-- **On input, we accept any casing** for both the object key and the notification value. `FEDNOW`,
-  `fedNow`, `FedNow` and `fednow` all resolve to the same rail.
-- **On output, we emit exactly what the standard prints**: `fednow` / `rtp` / `ach` as object keys,
-  and `FedNow` / `RTP` / `ACH` as the `$.payment.network` value — the literal forms, not the prose
-  description of them.
-- **The emitted string is configuration, not a constant** (`NetworksProperties.emittedKeys`), so a
-  deployment can change what it puts on the wire without a code change.
+- **`$.payment.network`, inbound from a payer — case-insensitive.** The payer may have read either
+  half of §2.4. Refusing a payment over the case of a string would be absurd, and we have no
+  standing to insist: it is their implementation, not ours. The value is stored and echoed back
+  **verbatim**, because the notification is a record of what the payer claimed, and normalising it
+  would be rewriting their words.
+- **`networks.*` object keys, outbound — lowercase.** No judgement call: §14.5 says so.
+- **`networks.*` object keys, inbound on our own API — the same lowercase, exactly.** A create or
+  patch request comes from inside this ecosystem, against a published OpenAPI contract that declares
+  the property as `fednow`. A generated client sends lowercase already; a hand-rolled one that sends
+  `FedNow` gets a 400 naming both spellings.
+- **Currency codes, on our own API — likewise exact.** `usd` is refused in favour of `USD`. Same
+  field, same reasoning.
 
-**Why.** An ambiguity in a wire format becomes an interoperability failure the first time two
-implementers resolve it differently, and here two readings are both defensible. Postel's rule is the
-cheap insurance: being liberal on input costs us nothing and rescues every counterparty that read
-"all-uppercase" literally, while being strict on output keeps us to the form the standard actually
-demonstrates. Examples are what implementers copy; prose describing examples is what they skim.
+**Why not be lenient on our own API too?** Because we would have to emit *something*, and whatever
+we emit is what the caller reads back. Accepting `FedNow` and returning `fednow` hands them a
+round-trip mismatch on a field they just set — and they find out somewhere less forgiving than our
+400. Leniency is a courtesy to a party whose implementation you cannot change. Our own callers are
+not that party; they have the contract.
 
-Making the output string configurable is the same bet taken one step further. If the committee
-errata resolves this the other way, or a large counterparty resolves it the other way first, we want
-to follow within a deploy rather than within a release.
+**The emitted key is still configuration** (`x9.networks.emitted-keys`), and since it is also the key
+we *accept*, changing it moves both halves together — a caller always sends what they will read back.
+Given §14.5 is unambiguous, this is insurance rather than a resolution of anything: if a large
+counterparty turns out to have implemented the object key differently, matching them is a deploy
+rather than a release.
 
 ## I-2 — We interpret three networks, and refuse the rest by name
 

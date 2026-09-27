@@ -45,7 +45,7 @@ class StatusUpdatePaymentInitiatedApiTest extends AbstractIntegrationTest {
           "paymentNotification": { "kind": "DEFAULT" },
           "paymentMethods": [
             { "currency": "USD", "validUntil": "2030-12-31T23:59:59Z", "amount": 1000,
-              "networks": { "FedNow": { "routingNumber": "021000021", "accountNumber": "1234567890", "protectionType": "tokenized" } } }
+              "networks": { "fednow": { "routingNumber": "021000021", "accountNumber": "1234567890", "protectionType": "tokenized" } } }
           ]
         }
         """;

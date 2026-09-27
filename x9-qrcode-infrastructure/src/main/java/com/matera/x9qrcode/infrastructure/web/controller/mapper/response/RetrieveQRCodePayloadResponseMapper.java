@@ -27,6 +27,8 @@ import com.matera.x9qrcode.app.dto.TipRangeDTO;
 import com.matera.x9qrcode.app.dto.UltimateCreditorDTO;
 import com.matera.x9qrcode.app.usecase.retrievepayload.RetrieveQRCodePayloadOutput;
 import com.matera.x9qrcode.domain.utils.UUIDUtils;
+import com.matera.x9qrcode.domain.vo.enumerated.NetworkEnum;
+import com.matera.x9qrcode.infrastructure.configuration.property.NetworksProperties;
 import com.matera.x9qrcode.infrastructure.generated.dto.ACHDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.AdjustmentPayloadDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.AmountDuePayloadResponseDTO;
@@ -53,7 +55,8 @@ import static java.util.Objects.isNull;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class RetrieveQRCodePayloadResponseMapper {
 
-    public static PaymentPayloadResponseDTO map(RetrieveQRCodePayloadOutput output) {
+    public static PaymentPayloadResponseDTO map(RetrieveQRCodePayloadOutput output,
+                                                NetworksProperties networkNaming) {
         if (isNull(output)) {
             return null;
         }
@@ -73,7 +76,7 @@ public final class RetrieveQRCodePayloadResponseMapper {
             .paymentNotification(output.paymentNotification())
             .paymentMethods(isNull(output.paymentMethods())
                 ? null
-                : output.paymentMethods().stream().map(RetrieveQRCodePayloadResponseMapper::buildPaymentMethod)
+                : output.paymentMethods().stream().map(paymentMethod -> buildPaymentMethod(paymentMethod, networkNaming))
             .toList());
     }
 
@@ -231,13 +234,14 @@ public final class RetrieveQRCodePayloadResponseMapper {
         return List.of(adjustmentPayload);
     }
 
-    private static com.matera.x9qrcode.infrastructure.generated.dto.PaymentMethodDTO buildPaymentMethod(PaymentMethodDTO paymentMethod) {
+    private static com.matera.x9qrcode.infrastructure.generated.dto.PaymentMethodDTO buildPaymentMethod(
+        PaymentMethodDTO paymentMethod, NetworksProperties networkNaming) {
         return new com.matera.x9qrcode.infrastructure.generated.dto.PaymentMethodDTO()
             .currency(paymentMethod.currency())
             .validUntil(paymentMethod.validUntil())
             .amount(paymentMethod.amount())
             .editable(buildCurrencyEditable(paymentMethod.editable()))
-            .networks(buildNetworks(paymentMethod.networks()));
+            .networks(buildNetworks(paymentMethod.networks(), networkNaming));
     }
 
     private static PaymentMethodEditableDTO buildCurrencyEditable(CurrencyEditableDTO editable) {
@@ -259,12 +263,26 @@ public final class RetrieveQRCodePayloadResponseMapper {
             .max(range.max());
     }
 
-    private static NetworksSimpleDTO buildNetworks(NetworksDTO networks) {
-        NetworksSimpleDTO networksDTO =
-            new NetworksSimpleDTO()
-                .fednow(buildFedNow(networks.getFedNow()))
-                .ach(buildACH(networks.getAch()))
-                .rtp(buildRTP(networks.getRtp()));
+    /**
+     * The networks object, with each rail written under the key this deployment is configured to
+     * emit (lower-case {@code fednow}/{@code rtp}/{@code ach} unless overridden — see
+     * {@link NetworksProperties}).
+     *
+     * <p>The rails go through {@code additionalProperties} rather than the contract's own typed
+     * properties, because a typed property's name is fixed at code-generation time and the whole
+     * point here is that the emitted name is a deployment decision. With nothing configured the two
+     * routes produce byte-identical JSON; configure an override and only this route can honour it.
+     *
+     * <p>Done here rather than in a Jackson serializer on purpose: this runs when the DTO is built,
+     * so it cannot be bypassed by a hand-rolled {@code ObjectMapper} that missed a module — which is
+     * a mistake this codebase has already made once.
+     */
+    private static NetworksSimpleDTO buildNetworks(NetworksDTO networks, NetworksProperties networkNaming) {
+        NetworksSimpleDTO networksDTO = new NetworksSimpleDTO();
+
+        putRail(networksDTO, networkNaming, NetworkEnum.FEDNOW, buildFedNow(networks.getFedNow()));
+        putRail(networksDTO, networkNaming, NetworkEnum.RTP, buildRTP(networks.getRtp()));
+        putRail(networksDTO, networkNaming, NetworkEnum.ACH, buildACH(networks.getAch()));
 
         if (isNull(networks.getAdditionalProperties())) {
             return networksDTO;
@@ -275,6 +293,17 @@ public final class RetrieveQRCodePayloadResponseMapper {
         }
 
         return networksDTO;
+    }
+
+    private static void putRail(NetworksSimpleDTO networksDTO,
+                                NetworksProperties networkNaming,
+                                NetworkEnum rail,
+                                Object address) {
+        if (isNull(address)) {
+            return;
+        }
+
+        networksDTO.putAdditionalProperty(networkNaming.keyFor(rail.value()), address);
     }
 
     private static RTPDTO buildRTP(BankPaymentAddressDTO bankPaymentAddress) {

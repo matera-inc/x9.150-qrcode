@@ -107,7 +107,7 @@
         }
       },
       "networks": {
-        "ACH": {
+        "ach": {
           "routingNumber": "021000021",
           "accountNumber": "1234567890",
           "protectionType": "tokenized"
