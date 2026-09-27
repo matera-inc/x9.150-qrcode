@@ -221,6 +221,48 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
         assertNotEquals(HttpStatus.OK.value(), response.statusCode(), response.asString());
     }
 
+    // ---------------------------------------------------------------------------- opt-in
+
+    /**
+     * Notifications are opt-in at creation: ask for one and it exists, say nothing and it does not.
+     * A QR Code created without a {@code paymentNotification} object must refuse notifications
+     * outright — before any amount, address or expiry is even considered.
+     */
+    @Test
+    void aQRCodeCreatedWithoutAPaymentNotificationRefusesNotifications() {
+        String body = qrCodeBody("2030-12-31T23:59:59Z", "2030-12-31T23:59:59Z")
+                .replace("\"paymentNotification\": { \"kind\": \"DEFAULT\" },", "");
+
+        String qrCodeId = given().contentType("application/json").body(body)
+                .when().post(CREATE)
+                .then().statusCode(HttpStatus.CREATED.value())
+                .extract().path("id");
+
+        MockMvcResponse response = notify(notification(qrCodeId, AMOUNT, "USDC", WALLET));
+
+        assertRefusedAndUntouched(response, qrCodeId, "paymentNotification");
+    }
+
+    /**
+     * {@code kind: EXTERNAL} means the creditor hosts its own callback, so X9.150 is not the party
+     * that should be receiving this.
+     */
+    @Test
+    void aQRCodeWithAnExternalNotificationEndpointRefusesNotifications() {
+        String body = qrCodeBody("2030-12-31T23:59:59Z", "2030-12-31T23:59:59Z")
+                .replace("\"paymentNotification\": { \"kind\": \"DEFAULT\" }",
+                         "\"paymentNotification\": { \"kind\": \"EXTERNAL\", \"endpoint\": \"https://biller.example.com/notify\" }");
+
+        String qrCodeId = given().contentType("application/json").body(body)
+                .when().post(CREATE)
+                .then().statusCode(HttpStatus.CREATED.value())
+                .extract().path("id");
+
+        MockMvcResponse response = notify(notification(qrCodeId, AMOUNT, "USDC", WALLET));
+
+        assertRefusedAndUntouched(response, qrCodeId, "EXTERNAL");
+    }
+
     // ------------------------------------------------------------------------- signature
 
     @Test
