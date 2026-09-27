@@ -67,17 +67,17 @@ These describe how our software behaves; they're enforced in `openapi.yaml` + th
 - **`protectionType`** (bank rails) is lowercase and always `tokenized`; **tips** are integer
   percentages `0–999`; **timestamps** are UTC, `Z`-terminated.
 - **Networks: X9.150 specifies the style and the root; the inner JSON belongs to the network's
-  owner.** The standard does not define, in one document, the format of every rail in the world — a
-  network's own authority publishes how it is embedded, and until it does we have no basis to
-  interpret it ([ADR-0010](docs/adr/0010-networks-are-interpreted-only-once-their-authority-publishes.md)).
-  **`NetworkEnum` therefore holds exactly three rails: `fednow`, `rtp` and `ach`.** Every other rail,
-  chain or brand (Pix, Zelle, Tron, Ethereum, …) is **refused at creation, by name** — not carried
-  verbatim, and never silently dropped
-  ([ADR-0012](docs/adr/0012-refuse-what-this-deployment-cannot-honour.md)). A rail becomes acceptable
-  when it is added to the configuration, never because a caller sent it.
-  Dispatch lives on `NetworksVO.supports(...)` and the notification use case as exhaustive switch
-  **expressions**, so adding a rail without handling it is a compile error — a silent fall-through is
-  exactly how Base, XRP and Arc were once accepted and ignored.
+  owner.** A network is interpreted only once its authority publishes how it embeds
+  ([ADR-0010](docs/adr/0010-networks-are-interpreted-only-once-their-authority-publishes.md)).
+  **`NetworkEnum` holds four rails: `fednow`, `rtp`, `ach` (the standard's) and `solana` (the Solana
+  Foundation's — `recipient` + optional `memo`, see official-spec/SOLANA-FIELDS.md).** Everything
+  else is **refused at creation, by name**
+  ([ADR-0012](docs/adr/0012-refuse-what-this-deployment-cannot-honour.md)).
+- **Every rail dispatch must be an exhaustive switch EXPRESSION.** Adding Solana reopened a
+  fall-through in `QRCodeEntityValidator` because that one was a switch *statement*: Solana
+  notifications were accepted with none of their validation running. `isBankRail()` and
+  `isInterpretedRail()` are also deliberately different — conflating them skipped the destination
+  check for Solana, which unlike a bank rail does name one.
 - **Network keys are lower-case, always** (`fednow`, `rtp`, `ach` — §14.5's normative paths). The
   OpenAPI contract declares them that way, so a conformant caller binds to the generated properties
   and no casing logic is needed; anything else falls into `additionalProperties` and is refused by

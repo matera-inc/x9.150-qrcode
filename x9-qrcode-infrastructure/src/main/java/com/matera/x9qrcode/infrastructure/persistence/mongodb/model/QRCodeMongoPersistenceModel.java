@@ -490,18 +490,23 @@ public class QRCodeMongoPersistenceModel implements Persistable<UUID> {
     }
 
     @Data
+    public static class SolanaPaymentAddress {
+
+        private String recipient;
+        private String memo;
+
+    }
+
+    @Data
     public static class Networks {
 
         private BankPaymentAddress fedNow;
         private BankPaymentAddress ach;
         private BankPaymentAddress rtp;
-        private CryptoWalletPaymentAddress polygon;
-        private CryptoWalletPaymentAddress solana;
-        private CryptoWalletPaymentAddress ethereum;
-        private CryptoWalletPaymentAddress bitcoin;
-        private CryptoWalletPaymentAddress base;
-        private CryptoWalletPaymentAddress xrp;
-        private CryptoWalletPaymentAddress arc;
+        // Six unpublished chains used to sit here (polygon, ethereum, bitcoin, base, xrp, arc).
+        // They were modelled ahead of any publication and removed with ADR-0010. Solana stays, in
+        // the shape its own Foundation published: recipient + memo, not a bare walletAddress.
+        private SolanaPaymentAddress solana;
         private Map<String, Object> additionalProperties;
 
     }

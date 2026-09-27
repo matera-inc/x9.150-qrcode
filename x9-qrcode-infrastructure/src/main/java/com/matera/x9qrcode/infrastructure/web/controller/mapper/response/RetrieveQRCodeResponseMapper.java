@@ -37,6 +37,7 @@ import com.matera.x9qrcode.app.dto.UltimateCreditorDTO;
 import com.matera.x9qrcode.app.dto.enumerated.PaymentTimingEnumDTO;
 import com.matera.x9qrcode.app.usecase.retrieveqrcode.RetrieveQRCodeOutput;
 import com.matera.x9qrcode.domain.utils.UUIDUtils;
+import com.matera.x9qrcode.infrastructure.generated.dto.SolanaDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.ACHDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.AdjustmentParametersDiscountsInnerDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.AdjustmentParametersLateFeesDTO;
@@ -373,7 +374,8 @@ public class RetrieveQRCodeResponseMapper {
             new NetworksSimpleDTO()
                 .fednow(buildFedNow(networks.getFedNow()))
                 .ach(buildACH(networks.getAch()))
-                .rtp(buildRTP(networks.getRtp()));
+                .rtp(buildRTP(networks.getRtp()))
+                .solana(buildSolana(networks.getSolana()));
 
         if (isNull(networks.getAdditionalProperties())) {
             return networksDTO;
@@ -384,6 +386,16 @@ public class RetrieveQRCodeResponseMapper {
         }
 
         return networksDTO;
+    }
+
+    private static SolanaDTO buildSolana(com.matera.x9qrcode.app.dto.SolanaPaymentAddressDTO solana) {
+        if (isNull(solana)) {
+            return null;
+        }
+
+        return new SolanaDTO()
+            .recipient(solana.recipient())
+            .memo(solana.memo());
     }
 
     private static RTPDTO buildRTP(BankPaymentAddressDTO bankPaymentAddress) {

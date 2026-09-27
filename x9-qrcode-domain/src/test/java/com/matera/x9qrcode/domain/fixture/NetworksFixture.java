@@ -35,7 +35,7 @@ public final class NetworksFixture {
         // which is what every non-standard rail looks like on the wire now.
         additionalProperties.put("solana", Map.of("walletAddress", generateSolanaWallet()));
 
-        return new NetworksVO(fedNow(), ach(), rtp(), additionalProperties);
+        return new NetworksVO(fedNow(), ach(), rtp(), null, additionalProperties);
     }
 
     public BankPaymentAddressVO fedNow() {

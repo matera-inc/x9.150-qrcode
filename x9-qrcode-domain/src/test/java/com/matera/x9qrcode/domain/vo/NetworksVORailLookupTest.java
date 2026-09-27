@@ -35,23 +35,39 @@ class NetworksVORailLookupTest extends AbstractTest {
     private static final String SOLANA_WALLET = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
 
     private static NetworksVO onlySolana() {
-        return new NetworksVO(null, null, null, Map.of("solana", Map.of("walletAddress", SOLANA_WALLET)));
+        return new NetworksVO(null, null, null, new SolanaPaymentAddressVO(SOLANA_WALLET, null), Map.of());
     }
 
     private static NetworksVO onlyAch() {
-        return new NetworksVO(null, NETWORKS_FIXTURE.ach(), null, Map.of());
+        return new NetworksVO(null, NETWORKS_FIXTURE.ach(), null, null, Map.of());
     }
 
+    /**
+     * Four rails, on two different authorities — and the distinction is the point.
+     *
+     * <p>FedNow, RTP and ACH are here because ANSI X9.150 defines their fields. Solana is here
+     * because the Solana Foundation published its own (official-spec/SOLANA-FIELDS.md), which is the
+     * bar ADR-0010 sets. Nothing is here because it seemed likely.
+     */
     @Test
-    void onlyTheStandardsOwnRailsAreEnumerated() {
-        assertEquals(3, NetworkEnum.values().length,
-                "the enum holds exactly what ANSI X9.150 defines: FedNow, RTP, ACH");
+    void onlyRailsWithAPublishedShapeAreEnumerated() {
+        assertEquals(4, NetworkEnum.values().length,
+                "FedNow, RTP and ACH from the standard; Solana from its own published embedding");
     }
 
     @ParameterizedTest
-    @EnumSource(NetworkEnum.class)
-    void noStandardRailIsClassifiedAsABlockchain(NetworkEnum rail) {
+    @EnumSource(value = NetworkEnum.class, names = {"FEDNOW", "RTP", "ACH"})
+    void theStandardsOwnRailsAreNotBlockchains(NetworkEnum rail) {
         assertFalse(rail.isBlockchain(), "%s is a US bank rail".formatted(rail));
+    }
+
+    /**
+     * The classification is not cosmetic: it decides whether a notification takes the two-phase
+     * on-chain path, which is the only path that can tell before-the-funds-move from after.
+     */
+    @Test
+    void solanaIsClassifiedAsABlockchain() {
+        assertTrue(NetworkEnum.SOLANA.isBlockchain());
     }
 
     /**
@@ -88,8 +104,8 @@ class NetworksVORailLookupTest extends AbstractTest {
 
     /** Not an error: an unrecognised name is a network we do not interpret, not a malformed one. */
     @ParameterizedTest
-    @ValueSource(strings = {"Solana", "Pix", "Zelle", "Tron"})
-    void anUnlistedNetworkSimplyDoesNotResolveToAStandardRail(String name) {
+    @ValueSource(strings = {"Pix", "Zelle", "Tron", "Ethereum"})
+    void anUnlistedNetworkSimplyDoesNotResolveToAnInterpretedRail(String name) {
         assertTrue(NetworkEnum.find(name).isEmpty());
     }
 

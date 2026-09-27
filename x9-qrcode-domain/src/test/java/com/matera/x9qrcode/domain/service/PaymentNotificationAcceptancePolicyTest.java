@@ -23,6 +23,7 @@ import com.matera.x9qrcode.domain.vo.DiscountVO;
 import com.matera.x9qrcode.domain.vo.InvoiceVO;
 import com.matera.x9qrcode.domain.vo.LateFeesVO;
 import com.matera.x9qrcode.domain.vo.NetworksVO;
+import com.matera.x9qrcode.domain.vo.SolanaPaymentAddressVO;
 import com.matera.x9qrcode.domain.vo.PaymentMethodVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationDataVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationPaymentVO;
@@ -61,6 +62,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
 
     private static final String WALLET = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
+    private static final String MEMO = "{QRCD:\"01A0E3A12805CB382EF4687F18CDC43A\"}";
     private static final long FACE = 10_000_000L;
     private static final long DISCOUNT = 1_000_000L;
     private static final long LATE_FEE = 500_000L;
@@ -100,7 +102,7 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
             new PaymentNotificationVO(NotificationKindEnum.DEFAULT, null, null),
             List.of(new PaymentMethodVO(
                 "USDC", DUE_DATE.plusDays(1), new AmountVO(FACE), null,
-                new NetworksVO(null, null, null, Map.of("solana", Map.of("walletAddress", WALLET))))));
+                new NetworksVO(null, null, null, new SolanaPaymentAddressVO(WALLET, MEMO), Map.of()))));
     }
 
     /** Same QR Code, but the USDC method lapses well before the payload does. */
@@ -109,7 +111,7 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
 
         qrCode.updatePaymentMethods(List.of(new PaymentMethodVO(
             "USDC", methodValidUntil, new AmountVO(FACE), null,
-            new NetworksVO(null, null, null, Map.of("solana", Map.of("walletAddress", WALLET))))));
+            new NetworksVO(null, null, null, new SolanaPaymentAddressVO(WALLET, MEMO), Map.of()))));
 
         return qrCode;
     }

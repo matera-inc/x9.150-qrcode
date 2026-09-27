@@ -59,6 +59,14 @@ class SupportedCurrencyApiTest extends AbstractIntegrationTest {
             """.formatted(currency, currency);
     }
 
+    /** Solana settles USDC, so USDC is payable here — the allow list grew with the rail. */
+    @Test
+    void usdcIsAcceptedNowThatSolanaSettlesIt() {
+        given().contentType("application/json").body(body("USDC"))
+                .when().post(CREATE)
+                .then().statusCode(HttpStatus.CREATED.value());
+    }
+
     @Test
     void theSettledCurrencyIsAccepted() {
         given().contentType("application/json").body(body("USD"))
@@ -67,12 +75,15 @@ class SupportedCurrencyApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * USDC is dollar-pegged and BTC is not, but neither is settled by FedNow, RTP or ACH — so the
-     * peg is beside the point. The allow list is about what this deployment can pay out, not about
-     * what the format can carry.
+     * BTC is not settled by any rail here, and neither are EUR or BRL. The peg is beside the point:
+     * the allow list is about what this deployment can pay out, not about what the format can carry
+     * or what a currency is worth.
+     *
+     * <p>USDC used to be on this list and no longer is — Solana settles it. That is the list doing
+     * its job: a currency becomes acceptable when a rail that settles it arrives, and not before.
      */
     @ParameterizedTest(name = "a {0} QR Code is refused")
-    @ValueSource(strings = {"EUR", "BRL", "USDC", "BTC"})
+    @ValueSource(strings = {"EUR", "BRL", "BTC", "JPY"})
     void aCurrencyNoSupportedRailSettlesIsRefused(String currency) {
         String response = given().contentType("application/json").body(body(currency))
                 .when().post(CREATE)

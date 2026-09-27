@@ -13,6 +13,7 @@ import com.matera.x9qrcode.app.dto.AdjustmentParametersDTO;
 import com.matera.x9qrcode.app.dto.AmountDueDTO;
 import com.matera.x9qrcode.app.dto.AmountRangeDTO;
 import com.matera.x9qrcode.app.dto.BankPaymentAddressDTO;
+import com.matera.x9qrcode.app.dto.SolanaPaymentAddressDTO;
 import com.matera.x9qrcode.app.dto.BillDTO;
 import com.matera.x9qrcode.app.dto.CreditorDTO;
 import com.matera.x9qrcode.app.dto.CryptoWalletPaymentAddressDTO;
@@ -32,6 +33,7 @@ import com.matera.x9qrcode.app.dto.enumerated.NotificationKindEnumDTO;
 import com.matera.x9qrcode.app.dto.enumerated.PaymentTimingEnumDTO;
 import com.matera.x9qrcode.app.usecase.createqrcode.CreateQRCodeInput;
 import com.matera.x9qrcode.infrastructure.generated.dto.ACHDTO;
+import com.matera.x9qrcode.infrastructure.generated.dto.SolanaDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.BillDTO.PaymentTimingEnum;
 import com.matera.x9qrcode.infrastructure.generated.dto.FedNowDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.IntegerRangeDTO;
@@ -295,6 +297,7 @@ public final class CreateQRCodeRequestMapper {
         FedNowDTO fedNow = networksSimple.getFednow();
         RTPDTO rtp = networksSimple.getRtp();
         ACHDTO ach = networksSimple.getAch();
+        SolanaDTO solana = networksSimple.getSolana();
 
         StandardRailKeys.rejectUnsupported(networksSimple.getAdditionalProperties());
 
@@ -305,6 +308,8 @@ public final class CreateQRCodeRequestMapper {
                     : new BankPaymentAddressDTO(rtp.getRoutingNumber(), rtp.getAccountNumber()))
                 .ach(isNull(ach) ? null
                     : new BankPaymentAddressDTO(ach.getRoutingNumber(), ach.getAccountNumber()))
+                .solana(isNull(solana) ? null
+                    : new SolanaPaymentAddressDTO(solana.getRecipient(), solana.getMemo()))
                 .additionalProperties(networksSimple.getAdditionalProperties())
                 .build();
     }

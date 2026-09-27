@@ -80,32 +80,47 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
      */
     private NotificationIntent resolveIntent(PaymentNotificationDataDTO notificationDataDTO,
                                              PaymentNotificationDataVO paymentNotificationDataVO) {
-        // Only the rails ANSI X9.150 itself defines are typed. Everything else arrives as a name
-        // (§2.4: the notification "MAY also carry a network not listed above"), and a network we do
-        // not have a standard rule for is handled by the generic path.
-        if (!paymentNotificationDataVO.payment().isStandardRail()) {
-            if (isNull(paymentNotificationDataVO.blockchain())) {
-                throw new BusinessRuleException(
-                    "Blockchain data is required for a notification on the %s network."
-                        .formatted(paymentNotificationDataVO.payment().network()));
-            }
-
-            return switch (notificationDataDTO.blockchain().action()) {
-                // Pre-commit: nothing has moved on-chain yet, so this is the notification that takes
-                // the QR Code out of circulation.
-                case PAYMENT_INITIATED -> NotificationIntent.INITIATE;
-                // Post-commit. The transaction is on-chain, but X9.150 never touches money and cannot
-                // observe settlement, so the QR Code STAYS PAYMENT_INITIATED. Whatever system receives
-                // the funds matches the transaction and calls the status-update API to mark it PAID.
-                case SENT, NOT_SENT -> NotificationIntent.RECORD;
-            };
+        // A network this service does not interpret cannot reach a QR Code any more — it is refused
+        // at creation (ADR-0012) — but a notification can still name one, and it takes the generic
+        // on-chain path rather than falling through in silence.
+        if (!paymentNotificationDataVO.payment().isInterpretedRail()) {
+            return onChainIntent(notificationDataDTO, paymentNotificationDataVO);
         }
 
-        return switch (paymentNotificationDataVO.payment().standardRail().orElseThrow()) {
+        return switch (paymentNotificationDataVO.payment().interpretedRail().orElseThrow()) {
             // The QR Code id travels inside the ISO 20022 message, so the payee reconciles from the
             // message itself; a notification on these rails is a courtesy and changes no status.
             case FEDNOW, RTP -> NotificationIntent.RECORD;
             case ACH -> NotificationIntent.INITIATE;
+            // Solana is the one interpreted rail with a public ledger, so it is the one that can
+            // distinguish before-the-funds-move from after. That distinction is the whole two-phase
+            // protocol, and it has had no trigger since the blockchains were removed.
+            case SOLANA -> onChainIntent(notificationDataDTO, paymentNotificationDataVO);
+        };
+    }
+
+    /**
+     * Pre-commit or post-commit, for a rail that settles on a public ledger.
+     *
+     * <p>The phase is carried by {@code blockchain.action} because ANSI X9.150 has no phase marker —
+     * the committee rejected one (ADR-0004) — so the only signal is whether a transaction exists yet.
+     */
+    private NotificationIntent onChainIntent(PaymentNotificationDataDTO notificationDataDTO,
+                                             PaymentNotificationDataVO paymentNotificationDataVO) {
+        if (isNull(paymentNotificationDataVO.blockchain())) {
+            throw new BusinessRuleException(
+                "Blockchain data is required for a notification on the %s network."
+                    .formatted(paymentNotificationDataVO.payment().network()));
+        }
+
+        return switch (notificationDataDTO.blockchain().action()) {
+            // Pre-commit: nothing has moved on-chain yet, so this is the notification that takes the
+            // QR Code out of circulation.
+            case PAYMENT_INITIATED -> NotificationIntent.INITIATE;
+            // Post-commit. The transaction is on-chain, but X9.150 never touches money and cannot
+            // observe settlement, so the QR Code STAYS PAYMENT_INITIATED. Whatever system receives
+            // the funds matches the transaction and calls the status-update API to mark it PAID.
+            case SENT, NOT_SENT -> NotificationIntent.RECORD;
         };
     }
 

@@ -101,8 +101,19 @@ public class RetrieveQRCodePayloadPaymentMethodMapper {
             .fedNow(buildBankPaymentAddress(output.fedNow()))
             .ach(buildBankPaymentAddress(output.ach()))
             .rtp(buildBankPaymentAddress(output.rtp()))
+            .solana(buildSolanaPaymentAddress(output.solana()))
             .additionalProperties(output.additionalProperties())
             .build();
+    }
+
+    private static com.matera.x9qrcode.app.dto.SolanaPaymentAddressDTO buildSolanaPaymentAddress(
+        com.matera.x9qrcode.domain.vo.SolanaPaymentAddressVO output) {
+
+        if (isNull(output)) {
+            return null;
+        }
+
+        return new com.matera.x9qrcode.app.dto.SolanaPaymentAddressDTO(output.recipient(), output.memo());
     }
 
     private static BankPaymentAddressDTO buildBankPaymentAddress(BankPaymentAddressVO output) {

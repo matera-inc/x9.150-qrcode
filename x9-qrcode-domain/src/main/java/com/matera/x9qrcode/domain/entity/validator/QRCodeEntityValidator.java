@@ -237,15 +237,19 @@ public final class QRCodeEntityValidator {
     }
 
     private void validatePaymentNotificationNetwork(PaymentNotificationDataVO newPaymentNotification) {
-        // The standard's own rails have rules the standard fixes. Every other network is carried by
-        // name (§2.4), so it gets the generic path: we validate what any rail must satisfy and leave
-        // the rest to the embedding its owner published.
-        newPaymentNotification.payment().standardRail().ifPresentOrElse(
+        // A switch EXPRESSION, deliberately. The statement form this replaced did not force a case
+        // per rail, so adding Solana to the enum silently dropped its notifications through
+        // unvalidated — the same fall-through that once let Base, XRP and Arc be accepted and
+        // ignored. An expression makes the next rail a compile error instead of a quiet hole.
+        newPaymentNotification.payment().interpretedRail().ifPresentOrElse(
             rail -> {
-                switch (rail) {
-                    case FEDNOW, RTP -> validatePaymentNotificationFromInstantPayments(newPaymentNotification);
-                    case ACH -> validatePaymentNotificationFromACH(newPaymentNotification);
-                }
+                Runnable validation = switch (rail) {
+                    case FEDNOW, RTP -> () -> validatePaymentNotificationFromInstantPayments(newPaymentNotification);
+                    case ACH -> () -> validatePaymentNotificationFromACH(newPaymentNotification);
+                    case SOLANA -> () -> validatePaymentNotificationFromBlockchain(newPaymentNotification);
+                };
+
+                validation.run();
             },
             () -> validatePaymentNotificationFromBlockchain(newPaymentNotification));
     }

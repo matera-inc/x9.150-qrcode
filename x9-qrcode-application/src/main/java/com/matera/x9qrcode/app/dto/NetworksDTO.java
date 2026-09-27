@@ -18,13 +18,11 @@ public class NetworksDTO {
     private BankPaymentAddressDTO fedNow;
     private BankPaymentAddressDTO rtp;
     private BankPaymentAddressDTO ach;
-    private CryptoWalletPaymentAddressDTO polygon;
-    private CryptoWalletPaymentAddressDTO solana;
-    private CryptoWalletPaymentAddressDTO ethereum;
-    private CryptoWalletPaymentAddressDTO bitcoin;
-    private CryptoWalletPaymentAddressDTO base;
-    private CryptoWalletPaymentAddressDTO xrp;
-    private CryptoWalletPaymentAddressDTO arc;
+    // Solana is the one chain with a published embedding (official-spec/SOLANA-FIELDS.md), so it is
+    // the one carried in a typed field. The six that used to sit here — polygon, ethereum, bitcoin,
+    // base, xrp, arc — were modelled ahead of any publication and removed with ADR-0010; nothing
+    // replaced them, because a rail we cannot validate is one we refuse (ADR-0012).
+    private SolanaPaymentAddressDTO solana;
     private Map<String, Object> additionalProperties;
 
 }

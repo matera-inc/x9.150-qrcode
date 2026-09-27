@@ -35,14 +35,34 @@ public record PaymentNotificationPaymentVO(
         NetworkEnum.FEDNOW
     );
 
-    /** The standard's rail of this name, if it is one. Empty for every other network. */
-    public Optional<NetworkEnum> standardRail() {
+    /**
+     * The rail of this name, if this service interprets one. Empty for every other network.
+     *
+     * <p>"Interpreted" rather than "standard", because the two stopped being the same thing when
+     * Solana was added: its fields come from the Solana Foundation's published embedding, not from
+     * ANSI X9.150, which defines only where a network object hangs. What the name really asks is
+     * "do we know the shape of this rail?", and that is the question every caller needs answered.
+     */
+    public Optional<NetworkEnum> interpretedRail() {
         return NetworkEnum.find(network);
     }
 
     /** Whether this is a rail ANSI X9.150 itself defines, as opposed to one carried by name. */
-    public boolean isStandardRail() {
-        return standardRail().isPresent();
+    /**
+     * Whether this rail settles through a bank rather than a public ledger.
+     *
+     * <p>Kept distinct from {@link #isInterpretedRail()} because the two were the same thing until
+     * Solana arrived, and code that conflated them silently stopped checking destinations. A bank
+     * notification names no destination account — it is in the payment message, not here — while an
+     * on-chain one names exactly the address the funds went to, and that address must be one this
+     * QR Code published.
+     */
+    public boolean isBankRail() {
+        return interpretedRail().filter(rail -> !rail.isBlockchain()).isPresent();
+    }
+
+    public boolean isInterpretedRail() {
+        return interpretedRail().isPresent();
     }
 
     public PaymentNotificationPaymentVO {

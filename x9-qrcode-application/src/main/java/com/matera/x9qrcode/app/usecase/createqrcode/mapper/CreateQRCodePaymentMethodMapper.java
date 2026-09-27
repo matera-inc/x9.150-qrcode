@@ -14,6 +14,8 @@ import com.matera.x9qrcode.app.dto.NetworksDTO;
 import com.matera.x9qrcode.app.dto.PaymentMethodDTO;
 import com.matera.x9qrcode.domain.vo.AmountRangeVO;
 import com.matera.x9qrcode.domain.vo.AmountVO;
+import com.matera.x9qrcode.app.dto.SolanaPaymentAddressDTO;
+import com.matera.x9qrcode.domain.vo.SolanaPaymentAddressVO;
 import com.matera.x9qrcode.domain.vo.BankPaymentAddressVO;
 import com.matera.x9qrcode.domain.vo.CryptoWalletPaymentAddressVO;
 import com.matera.x9qrcode.domain.vo.EditableAmountVO;
@@ -66,8 +68,17 @@ public final class CreateQRCodePaymentMethodMapper {
             buildBankPaymentAddress(input.getFedNow()),
             buildBankPaymentAddress(input.getAch()),
             buildBankPaymentAddress(input.getRtp()),
+            buildSolanaPaymentAddress(input.getSolana()),
             input.getAdditionalProperties()
         );
+    }
+
+    private static SolanaPaymentAddressVO buildSolanaPaymentAddress(SolanaPaymentAddressDTO input) {
+        if (isNull(input)) {
+            return null;
+        }
+
+        return new SolanaPaymentAddressVO(input.recipient(), input.memo());
     }
 
     private static BankPaymentAddressVO buildBankPaymentAddress(BankPaymentAddressDTO input) {

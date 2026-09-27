@@ -103,7 +103,7 @@ public class PaymentNotificationAcceptancePolicy {
 
         return matched.orElseThrow(() -> new BusinessRuleException(
             "paymentNotification.data",
-            notification.payment().isStandardRail()
+            notification.payment().isBankRail()
                 ? "This QR Code offers no %s payment method on the %s rail."
                       .formatted(notifiedCurrency, notifiedNetwork)
                 : ("No %s payment method on this QR Code publishes the destination address %s. "
@@ -114,8 +114,10 @@ public class PaymentNotificationAcceptancePolicy {
     private boolean destinationMatches(PaymentMethodVO method,
                                        PaymentNotificationDataVO notification,
                                        String notifiedNetwork) {
-        if (notification.payment().isStandardRail()) {
-            // A bank-rail notification names no destination account; the rail check above is the match.
+        if (notification.payment().isBankRail()) {
+            // A bank-rail notification names no destination account; the rail check above is the
+            // match. Asking "is this interpreted?" here would skip the check for Solana too, which
+            // does name one — and that address is the whole point of checking.
             return true;
         }
 

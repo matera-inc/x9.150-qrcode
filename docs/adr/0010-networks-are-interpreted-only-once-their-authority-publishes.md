@@ -121,3 +121,28 @@ them.
 ---
 
 <sub>Copyright © 2026 Matera Systems, Inc. Licensed under the Matera Source License v1.0 (source-available; not open source) — see LICENSE.md at the repository root.</sub>
+
+## Amendment, 2026-09-27: Solana published, and the guess had been wrong
+
+Solana's embedding for X9.150 now exists — `recipient` (Base58, mandatory) and `memo` (UTF-8,
+optional), published by the Solana Foundation and recorded in
+[official-spec/SOLANA-FIELDS.md](../../official-spec/SOLANA-FIELDS.md). It is therefore interpreted
+here, as a typed object in the OpenAPI contract, exactly as this ADR's bar requires: point at the
+publication.
+
+**The guess it replaced was wrong in both halves.** Before any publication, this repository modelled
+a blockchain payment method as a lone `walletAddress` with **no memo**. The published fields are
+`recipient` and `memo`. Every QR Code built on the guess would have been unreadable by a conformant
+payer, and the missing field is the one that carries the marker making reconciliation possible.
+
+That is worth recording plainly, because the earlier recommendation in this ADR was to keep the
+unpublished chains and merely *mark* them provisional. Had we done that, this is what "provisional"
+would have shipped as. The amendment of 2026-09-26 removed them instead, and this is the evidence
+that removal was the right call rather than a fastidious one.
+
+One further consequence, found by the tests that came with Solana: adding a rail to `NetworkEnum`
+reopened a fall-through in `QRCodeEntityValidator`, because that dispatch was a switch *statement*
+rather than an expression and so did not demand a case per rail. Solana notifications were accepted
+without any of their validation running — the same class of hole that once let Base, XRP and Arc be
+accepted and ignored. It is a switch expression now. **Exhaustiveness has to be enforced by the
+compiler at every rail-dispatch point, not just the ones we remembered.**
