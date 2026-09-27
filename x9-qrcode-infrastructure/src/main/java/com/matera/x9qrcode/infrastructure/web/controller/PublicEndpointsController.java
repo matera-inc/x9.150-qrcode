@@ -19,7 +19,9 @@ import com.matera.x9qrcode.app.usecase.validatesignature.SignatureValidationInpu
 import com.matera.x9qrcode.app.usecase.validatesignature.SignatureValidationOutput;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 import com.matera.x9qrcode.infrastructure.generated.api.PublicEndpointsApi;
+import com.matera.x9qrcode.infrastructure.generated.dto.PaymentEventPageDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentNotificationDataDTO;
+import com.matera.x9qrcode.infrastructure.service.events.PaymentEventReader;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentPayloadResponseDTO;
 import com.matera.x9qrcode.infrastructure.web.controller.mapper.request.PaymentNotificationRequestMapper;
 import com.matera.x9qrcode.infrastructure.web.controller.mapper.response.RetrieveQRCodePayloadResponseMapper;
@@ -53,6 +55,7 @@ public class PublicEndpointsController implements PublicEndpointsApi {
     private final PaymentNotificationQRCodeUseCase paymentNotificationQRCodeUseCase;
     private final QRCodeSignatureService qrCodeSignatureService;
     private final ObjectMapper objectMapper;
+    private final PaymentEventReader paymentEventReader;
 
     @Override
     public ResponseEntity<Resource> getCertificate(String fileName) {
@@ -72,6 +75,11 @@ public class PublicEndpointsController implements PublicEndpointsApi {
     @Override
     public ResponseEntity<Map<String, Object>> getJwkSet() {
         return ResponseEntity.ok(qrCodeSignatureService.retrieveDigitalSignatureJwkSet());
+    }
+
+    @Override
+    public ResponseEntity<PaymentEventPageDTO> listPaymentEvents(String after, Integer limit, Integer wait) {
+        return ResponseEntity.ok(paymentEventReader.read(after, limit, wait));
     }
 
     @Override

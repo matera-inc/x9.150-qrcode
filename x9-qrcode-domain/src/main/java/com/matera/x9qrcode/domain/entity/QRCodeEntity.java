@@ -7,6 +7,7 @@
 package com.matera.x9qrcode.domain.entity;
 
 import com.matera.x9qrcode.domain.entity.validator.QRCodeEntityValidator;
+import com.matera.x9qrcode.domain.event.PaymentEvent;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 import com.matera.x9qrcode.domain.exception.QRCodeStatusConflictException;
 import com.matera.x9qrcode.domain.generator.IdGenerator;
@@ -22,6 +23,7 @@ import com.matera.x9qrcode.domain.vo.PaymentNotificationVO;
 import com.matera.x9qrcode.domain.vo.QRCodeIdVO;
 import com.matera.x9qrcode.domain.vo.UnstructuredVO;
 import com.matera.x9qrcode.domain.vo.ValidUntilVO;
+import com.matera.x9qrcode.domain.vo.enumerated.PaymentEventTypeEnum;
 import com.matera.x9qrcode.domain.vo.enumerated.QRCodeStatusEnum;
 
 import lombok.Getter;
@@ -60,6 +62,16 @@ public class QRCodeEntity {
     private List<PaymentMethodVO> paymentMethods;
     private PaymentDetailsVO paymentDetails;
     private EmvVO qrcodeContent;
+
+    /**
+     * Events this transition produced, to be written in the same save as the state change.
+     *
+     * <p>Transient by design: the entity accumulates what it emitted during THIS unit of work, and
+     * the persistence adapter appends them to the document's outbox alongside the new state. That is
+     * what makes an event impossible to lose without also losing the state change that caused it,
+     * and impossible to publish for a state change that did not happen.
+     */
+    private final List<PaymentEvent> pendingEvents = new ArrayList<>();
 
     private QRCodeEntity(QRCodeIdVO id,
                          LocationIdVO locationId,
@@ -262,6 +274,7 @@ public class QRCodeEntity {
         this.status = QRCodeStatusEnum.PAID;
         this.paymentDetails = paymentDetails;
         this.updateRevision();
+        this.emit(PaymentEventTypeEnum.PAYMENT_CLEARED, null);
     }
 
     /**
@@ -286,6 +299,7 @@ public class QRCodeEntity {
 
         this.status = QRCodeStatusEnum.PAYMENT_INITIATED;
         this.updateRevision();
+        this.emit(PaymentEventTypeEnum.PAYMENT_INITIATED, null);
     }
 
     public void releaseLocation() {
@@ -312,6 +326,7 @@ public class QRCodeEntity {
         this.status = QRCodeStatusEnum.CANCELLED;
         this.paymentDetails = null;
         this.updateRevision();
+        this.emit(PaymentEventTypeEnum.PAYMENT_CANCELLED, null);
     }
 
     public void reactivate(PaymentDetailsVO paymentDetails) {
@@ -335,13 +350,99 @@ public class QRCodeEntity {
     public void notifyPayment(PaymentNotificationDataVO paymentNotificationDataVO, QRCodeStatusEnum status) {
         this.qrCodeEntityValidator.validatePaymentNotification(paymentNotificationDataVO);
 
+        QRCodeStatusEnum previousStatus = this.status;
+
         this.status = status;
         this.paymentNotification =
             new PaymentNotificationVO(this.paymentNotification.kind(), this.paymentNotification.endpoint(),
                 paymentNotificationDataVO);
         this.updateRevision();
+
+        emitForNotification(previousStatus, paymentNotificationDataVO);
     }
 
+    /**
+     * A notification emits an event only when it tells a consumer something new.
+     *
+     * <p>Crucially, a post-commit notification does NOT clear the QR Code. X9.150 never touches
+     * money and cannot observe settlement — it only knows what a payer claimed. So a reported
+     * transaction is published as {@code payment.sent} and the QR Code stays PAYMENT_INITIATED;
+     * whatever system actually receives the funds matches the transaction and calls the status
+     * endpoint, and only that produces {@code payment.cleared}.
+     */
+    private void emitForNotification(QRCodeStatusEnum previousStatus, PaymentNotificationDataVO data) {
+        if (!previousStatus.equals(this.status)) {
+            // This notification is what moved the QR Code out of circulation.
+            emit(PaymentEventTypeEnum.PAYMENT_INITIATED, null);
+            return;
+        }
+
+        if (isNull(data.blockchain())) {
+            // A courtesy notification on a rail that reconciles from the payment message itself.
+            return;
+        }
+
+        switch (data.blockchain().action()) {
+            case SENT -> emit(PaymentEventTypeEnum.PAYMENT_SENT, null);
+            case NOT_SENT -> emit(PaymentEventTypeEnum.PAYMENT_FAILED, "payer reported the payment did not proceed");
+            case PAYMENT_INITIATED -> {
+                // Already handled by the status transition above.
+            }
+        }
+    }
+
+
+    /** Events emitted by transitions on this instance, in order. */
+    public List<PaymentEvent> getPendingEvents() {
+        return Collections.unmodifiableList(pendingEvents);
+    }
+
+    private void emit(PaymentEventTypeEnum type, String reason) {
+        PaymentNotificationDataVO data =
+            nonNull(this.paymentNotification) ? this.paymentNotification.data() : null;
+
+        pendingEvents.add(new PaymentEvent(
+            UUID.randomUUID(),
+            type,
+            DateTimeUtils.nowUTC(),
+            this.id.value(),
+            this.revision,
+            this.locationId.valueAsString(),
+            nonNull(data) ? data.payment().amount().value() : amountOfFirstMethod(),
+            nonNull(data) ? data.payment().currency() : currencyOfFirstMethod(),
+            nonNull(data) ? data.payment().network().value() : networkOfPaymentDetails(),
+            nonNull(data) ? data.payment().transactionId() : endToEndIdOfPaymentDetails(),
+            invoiceNumber(),
+            orderNumber(),
+            reason
+        ));
+    }
+
+    private Long amountOfFirstMethod() {
+        return isNull(paymentMethods) || paymentMethods.isEmpty() ? null : paymentMethods.get(0).amount().value();
+    }
+
+    private String currencyOfFirstMethod() {
+        return isNull(paymentMethods) || paymentMethods.isEmpty() ? null : paymentMethods.get(0).currency();
+    }
+
+    private String networkOfPaymentDetails() {
+        return isNull(paymentDetails) || isNull(paymentDetails.paymentNetwork())
+            ? null : paymentDetails.paymentNetwork().value();
+    }
+
+    private String endToEndIdOfPaymentDetails() {
+        return isNull(paymentDetails) ? null : paymentDetails.endToEndId();
+    }
+
+    private String invoiceNumber() {
+        return isNull(bill) || isNull(bill.invoice()) || isNull(bill.invoice().number())
+            ? null : bill.invoice().number().value();
+    }
+
+    private String orderNumber() {
+        return isNull(bill) || isNull(bill.order()) ? null : bill.order().number();
+    }
 
     public boolean isNotActiveOrInitiated() {
         List<QRCodeStatusEnum> allowedStatuses = List.of(QRCodeStatusEnum.ACTIVE, QRCodeStatusEnum.PAYMENT_INITIATED);

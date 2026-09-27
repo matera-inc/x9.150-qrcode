@@ -326,6 +326,64 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerErrorResponse"
 
+  /pub/api/v1/events:
+    get:
+      summary: "Read the payment event stream"
+      description: |-
+        Cursor-paged, long-polling read of every payment event this deployment holds.
+
+        **This is an operator-internal interface, not a merchant-facing one.** It returns every QR
+        Code's events for this deployment — X9.150 is tenant-agnostic and has no axis to filter on —
+        so fanning out to the right biller is the consuming system's job, using the mapping it
+        already owns from having created the QR Code.
+
+        **Exactly one system should poll a deployment.** Two pollers each see everything, which gains
+        no isolation and only invites the belief that it provides some.
+
+        Delivery is at-least-once: a consumer that crashes before persisting its cursor re-reads
+        events. **Deduplicate by `eventId`.**
+      operationId: listPaymentEvents
+      tags:
+        - public-endpoints
+      parameters:
+        - name: after
+          in: query
+          required: false
+          description: "Cursor from a previous response's `nextCursor`. Omitted starts at the beginning of retained history."
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: wait
+          in: query
+          required: false
+          description: |-
+            Seconds to hold the request open when there is nothing to return, so an idle consumer
+            costs one parked request rather than a poll loop. Virtual threads make the hold nearly
+            free. `0` returns immediately.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 30
+            default: 0
+      responses:
+        "200":
+          description: "A page of events, possibly empty"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentEventPage"
+        "400":
+          $ref: "#/components/responses/BadRequestErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorResponse"
+
   /pub/api/v1/payment-notification:
     post:
       summary: Send Payment Notification
@@ -473,6 +531,86 @@ components:
           example: "https://external.domain.com/paymentNotification"
       required:
         - kind
+
+    PaymentEventPage:
+      type: object
+      required:
+        - events
+        - hasMore
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentEvent"
+        nextCursor:
+          type: string
+          description: "Pass as `after` on the next call. Absent when the page is empty."
+        hasMore:
+          type: boolean
+          description: "True when more events were available than `limit` allowed, so a catching-up consumer can drain without waiting."
+
+    PaymentEvent:
+      type: object
+      description: |-
+        A fact about a QR Code's payment. Additive within a major version — ignore unknown fields and
+        unknown `type` values rather than failing on them.
+      required:
+        - eventId
+        - type
+        - occurredAt
+        - qrCodeId
+        - schemaVersion
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          description: "Stable across re-publishes. **The deduplication key.**"
+        type:
+          type: string
+          enum: [payment.initiated, payment.sent, payment.failed, payment.cleared, payment.cancelled]
+          description: |-
+            `payment.sent` means a payer reported an on-chain transaction — **not** that the QR Code is
+            paid. X9.150 never touches money and cannot observe settlement, so only `payment.cleared`
+            says the funds arrived, and that is emitted when a system that saw them says so.
+        occurredAt:
+          type: string
+          format: date-time
+        qrCodeId:
+          type: string
+          description: "The ordering key. Events for one QR Code are ordered; nothing is promised across QR Codes."
+        qrCodeRevision:
+          type: integer
+          description: |-
+            Monotonic per QR Code but **not gap-free** — a notification that only records details
+            bumps the revision without emitting an event. Use it as "ignore anything not greater than
+            what I have", never as "expect the next one".
+        locationId:
+          type: string
+        amount:
+          type: integer
+          format: int64
+          description: "Minor units, as everywhere in this API."
+        currency:
+          $ref: "#/components/schemas/CurrencyCode"
+        network:
+          type: string
+        transactionId:
+          type: string
+          nullable: true
+          description: "The rail's own reference — ISO 20022 end-to-end id, ACH trace number, or blockchain transaction hash."
+        invoiceNumber:
+          type: string
+          nullable: true
+          description: "The biller's own reference, for correlation by the consuming system."
+        orderNumber:
+          type: string
+          nullable: true
+        reason:
+          type: string
+          nullable: true
+        schemaVersion:
+          type: string
+          example: "1.0"
 
     JwkSetInformationResponse:
       type: object
