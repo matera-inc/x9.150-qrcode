@@ -302,6 +302,15 @@ The fixtures under `x9-qrcode-infrastructure/src/test/resources/certificate/` no
 party with both key types, issued by a test CA. Their README explains the two PKIX subtleties that
 make that possible.
 
+**The same assumption ran the other way, and was worse.** Our *own* identity was parsed as RSA too,
+so a deployment issued an EC certificate by X9 could not start — the application context failed with
+the same "not RSA" message before it served anything. Verifying a counterparty's EC signature and
+signing with an EC key of our own are separate code paths, and both assumed RSA.
+
+Both now follow the key. A configured `alg` the key cannot produce fails at startup naming both
+halves, rather than substituting an algorithm the operator did not choose or failing later at the
+first signature.
+
 ---
 
 ## Reporting

@@ -311,4 +311,50 @@ class CaIssuedSignatureApiTest extends AbstractIntegrationTest {
         assertEquals("ACTIVE", statusOf(qrCodeId));
     }
 
+    // ------------------------------------------------- the other inbound JWS: fetching a payload
+
+    /**
+     * A payment notification is not the only thing a payer signs. Fetching the payload from the
+     * {@code loc} URL is a JWS too, and it runs through the same {@code validateSignature} — so the
+     * EC defect refused a conformant payer at the very first step, before any payment was discussed.
+     *
+     * <p>Worth its own test rather than assumed from the notification one: same method, different
+     * caller, and this path additionally binds the signature to the location id.
+     */
+    @Test
+    void anEcPayerCanFetchThePayload() throws Exception {
+        String created = given().contentType("application/json").body("""
+            {
+              "validUntil": "2030-12-31T23:59:59Z",
+              "creditor": {
+                "name": "CA Issued Payload", "phone": "+14155550100", "email": "test@example.com",
+                "address": { "line1": "1 A St", "city": "Springfield", "state": "CA", "postalCode": "90001", "country": "US" },
+                "MCC": "5999"
+              },
+              "bill": { "description": "payload fetch", "amountDue": { "amount": 25000, "currency": "USD" } },
+              "paymentNotification": { "kind": "DEFAULT" },
+              "paymentMethods": [
+                { "currency": "USD", "validUntil": "2030-12-31T23:59:59Z", "amount": 25000,
+                  "networks": { "ach": { "routingNumber": "021000021", "accountNumber": "1234567890", "protectionType": "tokenized" } } }
+              ]
+            }
+            """)
+                .when().post(CREATE)
+                .then().statusCode(HttpStatus.CREATED.value())
+                .extract().asString();
+
+        String locationId = io.restassured.path.json.JsonPath.from(created).getString("location.id");
+        String qrCodeB64 = io.restassured.path.json.JsonPath.from(created).getString("qrCodeB64");
+
+        Payer payer = Payer.load("x9-test-payer-ec.p12", "x9-test-payer-ec");
+        String request = "{\"qrCodeContent\": \"%s\"}".formatted(qrCodeB64);
+
+        MockMvcResponse response = given().contentType(APPLICATION_JOSE)
+                .body(signAsPayer(payer, request))
+                .when().post("/pub/api/v1/loc/" + locationId);
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode(),
+                "an ES256 payer must be able to fetch the payload: " + response.asString());
+    }
+
 }
