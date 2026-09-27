@@ -12,13 +12,7 @@ public enum NetworkEnum {
     RTP("RTP"),
     FEDNOW("FedNow"),
     ACH("ACH"),
-    POLYGON("Polygon"),
-    SOLANA("Solana"),
-    ETHEREUM("Ethereum"),
-    BITCOIN("Bitcoin"),
-    BASE("Base"),
-    XRP("XRP"),
-    ARC("Arc");
+    SOLANA("Solana");
 
     private final String value;
 
@@ -50,7 +44,7 @@ public enum NetworkEnum {
     public boolean isBlockchain() {
         return switch (this) {
             case RTP, FEDNOW, ACH -> false;
-            case POLYGON, SOLANA, ETHEREUM, BITCOIN, BASE, XRP, ARC -> true;
+            case SOLANA -> true;
         };
     }
 

@@ -990,6 +990,9 @@ components:
         uninterpreted**, and is fully conformant that way. The paying PSP interprets it bilaterally.
 
         A network graduates to a typed object below only once its owner has published the embedding.
+        **Today that is Solana alone.** Bitcoin, Ethereum, Polygon, Base, XRP and Arc are *not*
+        modelled: a payment method on any of them is carried here verbatim, exactly like Pix or Zelle,
+        and is fully conformant that way.
       properties:
         FedNow:
           $ref: "#/components/schemas/FedNow"
@@ -997,20 +1000,8 @@ components:
           $ref: "#/components/schemas/RTP"
         ACH:
           $ref: "#/components/schemas/ACH"
-        Polygon:
-          $ref: "#/components/schemas/Polygon"
         Solana:
           $ref: "#/components/schemas/Solana"
-        Ethereum:
-          $ref: "#/components/schemas/Ethereum"
-        Bitcoin:
-          $ref: "#/components/schemas/Bitcoin"
-        Base:
-          $ref: "#/components/schemas/Base"
-        XRP:
-          $ref: "#/components/schemas/XRP"
-        Arc:
-          $ref: "#/components/schemas/Arc"
       additionalProperties: true
 
     RTP:
@@ -1025,67 +1016,20 @@ components:
       allOf:
         - $ref: "#/components/schemas/BankAddress"
 
-    Polygon:
-      description: |-
-        **Provisional — modelled ahead of a published embedding.** The Polygon community has not yet published how
-        Polygon is embedded in X9.150, so this shape is our reading, not the network owner's statement.
-        A single `walletAddress` is almost certainly right and matches the EVM convention, but if the published embedding
-        differs, this object changes to match it — the publication wins, not this file.
-      allOf:
-        - $ref: "#/components/schemas/CryptoWalletAddress"
 
     Solana:
       description: |-
-        **Published embedding.** Solana has indicated how X9.150 should be used with it, so this shape
-        rests on the network owner's own statement rather than on inference. It is the reference
-        blockchain rail and the one the blockchain flow tests exercise.
+        **The only interpreted blockchain.** Solana has indicated how X9.150 should be used with it,
+        so this shape rests on the network owner's own statement rather than on inference. Every other
+        chain is carried uninterpreted in `additionalProperties` until its owner publishes an
+        embedding — see the `NetworksSimple` description.
       allOf:
         - $ref: "#/components/schemas/CryptoWalletAddress"
 
-    Ethereum:
-      description: |-
-        **Provisional — modelled ahead of a published embedding.** The Ethereum community has not yet published how
-        Ethereum is embedded in X9.150, so this shape is our reading, not the network owner's statement.
-        A single `walletAddress` is almost certainly right and matches the EVM convention, but if the published embedding
-        differs, this object changes to match it — the publication wins, not this file.
-      allOf:
-        - $ref: "#/components/schemas/CryptoWalletAddress"
 
-    Bitcoin:
-      description: |-
-        **Provisional — modelled ahead of a published embedding.** The Bitcoin community has not yet published how
-        Bitcoin is embedded in X9.150, so this shape is our reading, not the network owner's statement.
-        A single `walletAddress` is almost certainly right, but if the published embedding
-        differs, this object changes to match it — the publication wins, not this file.
-      allOf:
-        - $ref: "#/components/schemas/CryptoWalletAddress"
 
-    Base:
-      description: |-
-        **Provisional — modelled ahead of a published embedding.** Base (Coinbase) has not yet published how
-        Base is embedded in X9.150, so this shape is our reading, not the network owner's statement.
-        A single `walletAddress` is almost certainly right and matches the EVM convention, but if the published embedding
-        differs, this object changes to match it — the publication wins, not this file.
-      allOf:
-        - $ref: "#/components/schemas/CryptoWalletAddress"
 
-    XRP:
-      description: |-
-        **Provisional — modelled ahead of a published embedding.** The XRP Ledger community has not yet published how
-        XRP is embedded in X9.150, so this shape is our reading, not the network owner's statement.
-        A single `walletAddress` is almost certainly right, but if the published embedding
-        differs, this object changes to match it — the publication wins, not this file.
-      allOf:
-        - $ref: "#/components/schemas/CryptoWalletAddress"
 
-    Arc:
-      description: |-
-        **Provisional — modelled ahead of a published embedding.** Arc (Circle) has not yet published how
-        Arc is embedded in X9.150, so this shape is our reading, not the network owner's statement.
-        A single `walletAddress` is almost certainly right and matches the EVM convention, but if the published embedding
-        differs, this object changes to match it — the publication wins, not this file.
-      allOf:
-        - $ref: "#/components/schemas/CryptoWalletAddress"
 
     BankAddress:
       type: object
@@ -1127,9 +1071,8 @@ components:
         Blockchain payment method. The presence of the network object selects the chain; only the
         receiving wallet address is carried — no memo/tag fields.
 
-        Of the chains modelled below, **only Solana rests on a published embedding**; the others are
-        provisional (see each schema). The single-`walletAddress` shape is our reading for those, and
-        yields to the network owner's publication if it differs.
+        **Solana is the only chain modelled**, because it is the only one whose owner has published
+        how it embeds in X9.150. Any other chain is carried uninterpreted in `additionalProperties`.
       required:
         - walletAddress
       properties:
@@ -1139,9 +1082,15 @@ components:
 
     CryptoAddressHash:
       type: string
-      pattern: ^(0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}|bc1[a-zA-HJ-NP-Z0-9]{25,87}|r[1-9A-HJ-NP-Za-km-z]{24,34})$
-      description: "Cryptocurrency wallet address that receives the funds. Supports EVM 0x (Ethereum, Polygon, Base, Arc), Base58 (Solana), Bitcoin Bech32 (bc1), and XRP Ledger (r-prefixed)."
-      example: "0x1234567890abcdef1234567890abcdef12345678"
+      pattern: ^[1-9A-HJ-NP-Za-km-z]{32,44}$
+      description: |-
+        Solana wallet address (Base58, 32-44 characters) that receives the funds.
+
+        Solana is the only blockchain this service interprets, because it is the only one whose owner
+        has published how it embeds in X9.150. A payment method on any other chain travels
+        uninterpreted through the networks object's `additionalProperties`, where its address format
+        is the payer's business, not ours.
+      example: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
 
     PaymentRequestResponse:
       type: object
@@ -1728,33 +1677,9 @@ components:
           allOf:
             - $ref: "#/components/schemas/ACH"
           nullable: true
-        Polygon:
-          allOf:
-            - $ref: "#/components/schemas/Polygon"
-          nullable: true
         Solana:
           allOf:
             - $ref: "#/components/schemas/Solana"
-          nullable: true
-        Ethereum:
-          allOf:
-            - $ref: "#/components/schemas/Ethereum"
-          nullable: true
-        Bitcoin:
-          allOf:
-            - $ref: "#/components/schemas/Bitcoin"
-          nullable: true
-        Base:
-          allOf:
-            - $ref: "#/components/schemas/Base"
-          nullable: true
-        XRP:
-          allOf:
-            - $ref: "#/components/schemas/XRP"
-          nullable: true
-        Arc:
-          allOf:
-            - $ref: "#/components/schemas/Arc"
           nullable: true
       additionalProperties: true
 

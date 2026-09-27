@@ -294,13 +294,7 @@ public final class QRCodeMongoDocumentMapper {
         networksDocument.setFedNow(buildBankPaymentAddress(networks.fedNow()));
         networksDocument.setAch(buildBankPaymentAddress(networks.ach()));
         networksDocument.setRtp(buildBankPaymentAddress(networks.rtp()));
-        networksDocument.setPolygon(buildCryptoWalletPaymentAddress(networks.polygon()));
         networksDocument.setSolana(buildCryptoWalletPaymentAddress(networks.solana()));
-        networksDocument.setEthereum(buildCryptoWalletPaymentAddress(networks.ethereum()));
-        networksDocument.setBitcoin(buildCryptoWalletPaymentAddress(networks.bitcoin()));
-        networksDocument.setBase(buildCryptoWalletPaymentAddress(networks.base()));
-        networksDocument.setXrp(buildCryptoWalletPaymentAddress(networks.xrp()));
-        networksDocument.setArc(buildCryptoWalletPaymentAddress(networks.arc()));
         networksDocument.setAdditionalProperties(networks.additionalProperties());
 
         return networksDocument;

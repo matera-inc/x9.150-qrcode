@@ -37,14 +37,8 @@ import com.matera.x9qrcode.infrastructure.generated.dto.FedNowDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.IntegerRangeDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.KeyValuePairDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentRequestInputDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.PolygonDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.RTPDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.SolanaDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.EthereumDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.BitcoinDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.BaseDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.XRPDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.ArcDTO;
 
 import java.util.HashMap;
 import java.util.List;
@@ -295,26 +289,14 @@ public final class CreateQRCodeRequestMapper {
         FedNowDTO fedNow = networksSimple.getFedNow();
         RTPDTO rtp = networksSimple.getRTP();
         ACHDTO ach = networksSimple.getACH();
-        PolygonDTO polygon = networksSimple.getPolygon();
         SolanaDTO solana = networksSimple.getSolana();
-        EthereumDTO ethereum = networksSimple.getEthereum();
-        BitcoinDTO bitcoin = networksSimple.getBitcoin();
-        BaseDTO base = networksSimple.getBase();
-        XRPDTO xrp = networksSimple.getXRP();
-        ArcDTO arc = networksSimple.getArc();
 
         return NetworksDTO.builder()
                 .fedNow(isNull(fedNow) ? null
                         : new BankPaymentAddressDTO(fedNow.getRoutingNumber(), fedNow.getAccountNumber()))
                 .rtp(isNull(rtp) ? null : new BankPaymentAddressDTO(rtp.getRoutingNumber(), rtp.getAccountNumber()))
                 .ach(isNull(ach) ? null : new BankPaymentAddressDTO(ach.getRoutingNumber(), ach.getAccountNumber()))
-                .polygon(isNull(polygon) ? null : new CryptoWalletPaymentAddressDTO(polygon.getWalletAddress()))
                 .solana(isNull(solana) ? null : new CryptoWalletPaymentAddressDTO(solana.getWalletAddress()))
-                .ethereum(isNull(ethereum) ? null : new CryptoWalletPaymentAddressDTO(ethereum.getWalletAddress()))
-                .bitcoin(isNull(bitcoin) ? null : new CryptoWalletPaymentAddressDTO(bitcoin.getWalletAddress()))
-                .base(isNull(base) ? null : new CryptoWalletPaymentAddressDTO(base.getWalletAddress()))
-                .xrp(isNull(xrp) ? null : new CryptoWalletPaymentAddressDTO(xrp.getWalletAddress()))
-                .arc(isNull(arc) ? null : new CryptoWalletPaymentAddressDTO(arc.getWalletAddress()))
                 .additionalProperties(networksSimple.getAdditionalProperties())
                 .build();
     }

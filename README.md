@@ -1,7 +1,7 @@
 X9 QRCode Backend
 ========================
 
-This application is a backend implementation of the **ANSI X9.150-2026 Payment QR Code Standard** — it generates and manages merchant-presented payment QR codes across US bank rails (RTP, FedNow, ACH) and public blockchains, and is currency-agnostic (any ISO 4217 code or digital-asset ticker is carried through as-is).
+This application is a backend implementation of the **ANSI X9.150-2026 Payment QR Code Standard** — it generates and manages merchant-presented payment QR codes across US bank rails (RTP, FedNow, ACH) and Solana, and is currency-agnostic (any ISO 4217 code or digital-asset ticker is carried through as-is).
 
 The X9.150 standard itself is copyrighted by ASC X9 and is **not** distributed with this repository. To obtain it, purchase it from the [ANSI Web Store](https://webstore.ansi.org/standards/ascx9/ansix91502026). See [`official-spec/README.md`](official-spec/README.md) for details.
 
@@ -409,11 +409,11 @@ Account numbers on these rails use the **tokenized** protection approach **only*
 
 ### Blockchain networks & currencies
 
-For blockchain payment methods, the implementation interprets a fixed set of **public blockchains** — Bitcoin, Ethereum, Solana, Polygon, Base, XRP, and Arc — each carrying a single `walletAddress` (no memo/tag field). Any other network name (private brands, unknown chains) is accepted and stored verbatim under the networks object's `additionalProperties`, and is never interpreted.
+For blockchain payment methods, the implementation interprets **Solana only** — carrying a single `walletAddress` (no memo/tag field). Every other chain, and every other network name (private brands, unknown rails), is accepted and stored verbatim under the networks object's `additionalProperties`, and is never interpreted.
 
 **X9.150 specifies the style and the root of a payment method; the inner JSON of each network object belongs to that network's owner.** The standard does not attempt to define, in one document, the format of every blockchain and payment network in the world — a network's own authority publishes how it is embedded. If Pix is to become an X9.150 payment method for Brazilians, Banco Central do Brasil is the body that publishes how Pix is embedded; the same holds for every chain.
 
-Of the blockchains above, **only Solana rests on a published embedding** — it has indicated how X9.150 should be used with it. The others are **provisional**: modelled ahead of any publication, so the single-`walletAddress` shape is our reading rather than the owner's statement, and it yields to the publication if the two differ. This is why `additionalProperties` is `true` on the networks object: a rail whose owner has not published is carried verbatim and is fully conformant that way. See [ADR-0010](docs/adr/0010-networks-are-interpreted-only-once-their-authority-publishes.md).
+**Solana is modelled because it is the only chain whose owner has published** how X9.150 should be used with it. A chain we modelled without such a publication would be our guess wearing X9.150's name, and would meet a different guess from the next implementer — the interoperability failure the standard exists to prevent. So Bitcoin, Ethereum, Polygon, Base, XRP and Arc are **not** modelled: a payment method on any of them is carried verbatim in `additionalProperties`, exactly like Pix or Zelle, and is fully conformant that way. Each becomes a typed object when — and only when — its owner publishes an embedding. See [ADR-0010](docs/adr/0010-networks-are-interpreted-only-once-their-authority-publishes.md).
 
 Monetary amounts are **64-bit integers in a currency's minor units** (never floating-point). The currency is an open string — an ISO 4217 code such as `USD`/`JPY`, or a digital-asset ticker such as `USDC`/`BTC` — that the module repeats verbatim; the paying PSP resolves its decimals.
 

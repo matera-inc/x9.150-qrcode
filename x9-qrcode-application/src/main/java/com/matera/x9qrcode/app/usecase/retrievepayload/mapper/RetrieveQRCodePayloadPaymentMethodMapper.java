@@ -101,13 +101,7 @@ public class RetrieveQRCodePayloadPaymentMethodMapper {
             .fedNow(buildBankPaymentAddress(output.fedNow()))
             .ach(buildBankPaymentAddress(output.ach()))
             .rtp(buildBankPaymentAddress(output.rtp()))
-            .polygon(buildCryptoWalletPaymentAddress(output.polygon()))
             .solana(buildCryptoWalletPaymentAddress(output.solana()))
-            .ethereum(buildCryptoWalletPaymentAddress(output.ethereum()))
-            .bitcoin(buildCryptoWalletPaymentAddress(output.bitcoin()))
-            .base(buildCryptoWalletPaymentAddress(output.base()))
-            .xrp(buildCryptoWalletPaymentAddress(output.xrp()))
-            .arc(buildCryptoWalletPaymentAddress(output.arc()))
             .additionalProperties(output.additionalProperties())
             .build();
     }

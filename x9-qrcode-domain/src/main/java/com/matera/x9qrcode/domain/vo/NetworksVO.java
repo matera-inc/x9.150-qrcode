@@ -23,13 +23,7 @@ public record NetworksVO(
     BankPaymentAddressVO fedNow,
     BankPaymentAddressVO ach,
     BankPaymentAddressVO rtp,
-    CryptoWalletPaymentAddressVO polygon,
     CryptoWalletPaymentAddressVO solana,
-    CryptoWalletPaymentAddressVO ethereum,
-    CryptoWalletPaymentAddressVO bitcoin,
-    CryptoWalletPaymentAddressVO base,
-    CryptoWalletPaymentAddressVO xrp,
-    CryptoWalletPaymentAddressVO arc,
     Map<String, Object> additionalProperties
 ) {
 
@@ -37,13 +31,7 @@ public record NetworksVO(
         if (isNull(fedNow) &&
             isNull(ach) &&
             isNull(rtp) &&
-            isNull(polygon) &&
             isNull(solana) &&
-            isNull(ethereum) &&
-            isNull(bitcoin) &&
-            isNull(base) &&
-            isNull(xrp) &&
-            isNull(arc) &&
             (isNull(additionalProperties) || additionalProperties.isEmpty())) {
             throw new ValueObjectRuleException("At least one network must be provided.");
         }
@@ -56,13 +44,7 @@ public record NetworksVO(
      */
     public CryptoWalletPaymentAddressVO cryptoAddressFor(NetworkEnum network) {
         return switch (network) {
-            case POLYGON -> polygon;
             case SOLANA -> solana;
-            case ETHEREUM -> ethereum;
-            case BITCOIN -> bitcoin;
-            case BASE -> base;
-            case XRP -> xrp;
-            case ARC -> arc;
             case FEDNOW, RTP, ACH -> null;
         };
     }
@@ -73,7 +55,7 @@ public record NetworksVO(
             case FEDNOW -> fedNow;
             case RTP -> rtp;
             case ACH -> ach;
-            case POLYGON, SOLANA, ETHEREUM, BITCOIN, BASE, XRP, ARC -> null;
+            case SOLANA -> null;
         };
     }
 

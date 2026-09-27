@@ -56,15 +56,9 @@ import com.matera.x9qrcode.infrastructure.generated.dto.PaymentNotificationDataP
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentRequestAdditionalInfoPaymentNotificationDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentRequestInformationDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentRequestLocationDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.PolygonDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.QRCodeStatusDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.RTPDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.SolanaDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.EthereumDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.BitcoinDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.BaseDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.XRPDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.ArcDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.BillDTO.PaymentTimingEnum;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
@@ -383,13 +377,7 @@ public class RetrieveQRCodeResponseMapper {
                 .fedNow(buildFedNow(networks.getFedNow()))
                 .ACH(buildACH(networks.getAch()))
                 .RTP(buildRTP(networks.getRtp()))
-                .polygon(buildPolygon(networks.getPolygon()))
-                .solana(buildSolana(networks.getSolana()))
-                .ethereum(buildEthereum(networks.getEthereum()))
-                .bitcoin(buildBitcoin(networks.getBitcoin()))
-                .base(buildBase(networks.getBase()))
-                .XRP(buildXRP(networks.getXrp()))
-                .arc(buildArc(networks.getArc()));
+                .solana(buildSolana(networks.getSolana()));
 
         if (isNull(networks.getAdditionalProperties())) {
             return networksDTO;
@@ -435,60 +423,12 @@ public class RetrieveQRCodeResponseMapper {
             .protectionType(com.matera.x9qrcode.infrastructure.generated.dto.ProtectionTypeEnumDTO.TOKENIZED);
     }
 
-    private static PolygonDTO buildPolygon(CryptoWalletPaymentAddressDTO cryptoWalletPaymentAddress) {
-        if (isNull(cryptoWalletPaymentAddress)) {
-            return null;
-        }
-
-        return new PolygonDTO().walletAddress(cryptoWalletPaymentAddress.walletAddress());
-    }
-
     private static SolanaDTO buildSolana(CryptoWalletPaymentAddressDTO cryptoWalletPaymentAddress) {
         if (isNull(cryptoWalletPaymentAddress)) {
             return null;
         }
 
         return new SolanaDTO().walletAddress(cryptoWalletPaymentAddress.walletAddress());
-    }
-
-    private static EthereumDTO buildEthereum(CryptoWalletPaymentAddressDTO cryptoWalletPaymentAddress) {
-        if (isNull(cryptoWalletPaymentAddress)) {
-            return null;
-        }
-
-        return new EthereumDTO().walletAddress(cryptoWalletPaymentAddress.walletAddress());
-    }
-
-    private static BitcoinDTO buildBitcoin(CryptoWalletPaymentAddressDTO cryptoWalletPaymentAddress) {
-        if (isNull(cryptoWalletPaymentAddress)) {
-            return null;
-        }
-
-        return new BitcoinDTO().walletAddress(cryptoWalletPaymentAddress.walletAddress());
-    }
-
-    private static BaseDTO buildBase(CryptoWalletPaymentAddressDTO cryptoWalletPaymentAddress) {
-        if (isNull(cryptoWalletPaymentAddress)) {
-            return null;
-        }
-
-        return new BaseDTO().walletAddress(cryptoWalletPaymentAddress.walletAddress());
-    }
-
-    private static XRPDTO buildXRP(CryptoWalletPaymentAddressDTO cryptoWalletPaymentAddress) {
-        if (isNull(cryptoWalletPaymentAddress)) {
-            return null;
-        }
-
-        return new XRPDTO().walletAddress(cryptoWalletPaymentAddress.walletAddress());
-    }
-
-    private static ArcDTO buildArc(CryptoWalletPaymentAddressDTO cryptoWalletPaymentAddress) {
-        if (isNull(cryptoWalletPaymentAddress)) {
-            return null;
-        }
-
-        return new ArcDTO().walletAddress(cryptoWalletPaymentAddress.walletAddress());
     }
 
     private static BasePaymentDetailsDTO buildPaymentDetails(PaymentDetailsDTO paymentDetails) {

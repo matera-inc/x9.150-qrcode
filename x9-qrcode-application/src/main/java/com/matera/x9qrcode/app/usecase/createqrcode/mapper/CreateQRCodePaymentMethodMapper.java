@@ -66,13 +66,7 @@ public final class CreateQRCodePaymentMethodMapper {
             buildBankPaymentAddress(input.getFedNow()),
             buildBankPaymentAddress(input.getAch()),
             buildBankPaymentAddress(input.getRtp()),
-            buildCryptoWalletPaymentAddress(input.getPolygon()),
             buildCryptoWalletPaymentAddress(input.getSolana()),
-            buildCryptoWalletPaymentAddress(input.getEthereum()),
-            buildCryptoWalletPaymentAddress(input.getBitcoin()),
-            buildCryptoWalletPaymentAddress(input.getBase()),
-            buildCryptoWalletPaymentAddress(input.getXrp()),
-            buildCryptoWalletPaymentAddress(input.getArc()),
             input.getAdditionalProperties()
         );
     }

@@ -10,8 +10,6 @@ import com.matera.x9qrcode.infrastructure.AbstractIntegrationTest;
 
 import io.restassured.module.mockmvc.response.MockMvcResponse;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.http.HttpStatus;
 
 import java.util.UUID;
@@ -21,13 +19,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 /**
- * Notification dispatch across every blockchain rail.
+ * Notification dispatch, now that Solana is the only interpreted blockchain (ADR-0010).
  *
- * <p>The dispatch switch used to list only Solana, Polygon, Ethereum and Bitcoin, with no
- * {@code default}. A notification on Base, XRP or Arc therefore fell straight through: never
- * validated, never applied, and answered <b>200 OK</b> for a payment it ignored. These tests pin
- * both halves of the fix — the forgotten rails now work, and a rail the QR Code does not offer is
- * refused rather than accepted.
+ * <p>The dispatch switch used to list four blockchains with no {@code default}, so a notification on
+ * a rail it had forgotten fell straight through — never validated, never applied, answered
+ * <b>200 OK</b> for a payment it ignored. Both halves of that fix are pinned here: an unsupported
+ * rail is refused rather than accepted, and every refusal leaves the QR Code untouched.
+ *
+ * <p>Note the assertions check the resulting STATUS, not just the response code. A bare 200 check
+ * would not have caught the original bug, because the original bug returned 200.
  */
 class PaymentNotificationDispatchApiTest extends AbstractIntegrationTest {
 
@@ -35,11 +35,9 @@ class PaymentNotificationDispatchApiTest extends AbstractIntegrationTest {
     private static final String NOTIFY = "/pub/api/v1/payment-notification";
     private static final String APPLICATION_JOSE = "application/jose";
 
-    private static final String EVM_WALLET = "0x742d35Cc6634C0539Ff82c466ae367A6097dE123";
     private static final String SOLANA_WALLET = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
-    private static final String XRP_WALLET = "rP5ZkexZgLXXkqfRRzuwSAmSjaWmHgD9Ha";
 
-    private static String createBody(String network, String wallet) {
+    private static String solanaQRCode() {
         return """
             {
               "validUntil": "2030-12-31T23:59:59Z",
@@ -54,13 +52,34 @@ class PaymentNotificationDispatchApiTest extends AbstractIntegrationTest {
               "paymentNotification": { "kind": "DEFAULT" },
               "paymentMethods": [
                 { "currency": "USDC", "validUntil": "2030-12-31T23:59:59Z", "amount": 25000000,
-                  "networks": { "%s": { "walletAddress": "%s" } } }
+                  "networks": { "Solana": { "walletAddress": "%s" } } }
               ]
             }
-            """.formatted(network, wallet);
+            """.formatted(SOLANA_WALLET);
     }
 
-    private static String notificationBody(String qrCodeId, String network, String wallet) {
+    private static String bankOnlyQRCode() {
+        return """
+            {
+              "validUntil": "2030-12-31T23:59:59Z",
+              "creditor": {
+                "name": "Dispatch Test",
+                "phone": "+14155550100",
+                "email": "test@example.com",
+                "address": { "line1": "1 A St", "city": "Springfield", "state": "CA", "postalCode": "90001", "country": "US" },
+                "MCC": "5999"
+              },
+              "bill": { "description": "bank only", "amountDue": { "amount": 5000, "currency": "USD" } },
+              "paymentNotification": { "kind": "DEFAULT" },
+              "paymentMethods": [
+                { "currency": "USD", "validUntil": "2030-12-31T23:59:59Z", "amount": 5000,
+                  "networks": { "FedNow": { "routingNumber": "021000021", "accountNumber": "1234567890", "protectionType": "tokenized" } } }
+              ]
+            }
+            """;
+    }
+
+    private static String notification(String qrCodeId, String network) {
         return """
             {
               "payment": {
@@ -72,11 +91,11 @@ class PaymentNotificationDispatchApiTest extends AbstractIntegrationTest {
               "expectedDate": "2030-10-08T06:59:59Z",
               "blockchain": { "action": "PAYMENT_INITIATED", "to": "%s", "from": "%s" }
             }
-            """.formatted(qrCodeId, network, wallet, wallet);
+            """.formatted(qrCodeId, network, SOLANA_WALLET, SOLANA_WALLET);
     }
 
-    private String createQRCode(String network, String wallet) {
-        return given().contentType("application/json").body(createBody(network, wallet))
+    private String create(String body) {
+        return given().contentType("application/json").body(body)
                 .when().post(CREATE)
                 .then().statusCode(HttpStatus.CREATED.value())
                 .extract().path("id");
@@ -92,9 +111,9 @@ class PaymentNotificationDispatchApiTest extends AbstractIntegrationTest {
                 .extract().body().asString();
     }
 
-    private MockMvcResponse notify(String qrCodeId, String network, String wallet) {
+    private MockMvcResponse notify(String qrCodeId, String network) {
         return given().contentType(APPLICATION_JOSE)
-                .body(sign(notificationBody(qrCodeId, network, wallet)))
+                .body(sign(notification(qrCodeId, network)))
                 .when().post(NOTIFY);
     }
 
@@ -104,57 +123,48 @@ class PaymentNotificationDispatchApiTest extends AbstractIntegrationTest {
                 .extract().path("status");
     }
 
-    /**
-     * Base, XRP and Arc are the three rails the old switch forgot. Each must now be dispatched: a
-     * pre-commit notification takes the QR Code out of circulation.
-     */
-    @ParameterizedTest(name = "{0} pre-commit notification initiates payment")
-    @CsvSource({
-            "Base,     " + EVM_WALLET,
-            "XRP,      " + XRP_WALLET,
-            "Arc,      " + EVM_WALLET,
-            "Solana,   " + SOLANA_WALLET,
-            "Ethereum, " + EVM_WALLET,
-    })
-    void preCommitNotificationInitiatesPaymentOnEveryBlockchainRail(String network, String wallet) {
-        String qrCodeId = createQRCode(network, wallet);
+    @Test
+    void solanaPreCommitNotificationInitiatesPayment() {
+        String qrCodeId = create(solanaQRCode());
         assertEquals("ACTIVE", statusOf(qrCodeId));
 
-        MockMvcResponse response = notify(qrCodeId, network, wallet);
+        MockMvcResponse response = notify(qrCodeId, "Solana");
 
         assertEquals(HttpStatus.OK.value(), response.statusCode(), response.asString());
         assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId),
-                "%s notification must move the QR Code, not be silently ignored".formatted(network));
+                "a pre-commit notification must take the QR Code out of circulation");
     }
 
     /**
-     * The regression itself: before the fix these rails answered 200 while leaving the QR Code
-     * ACTIVE. A green 200 alone would not have caught it — the status is the tell.
-     */
-    @ParameterizedTest(name = "{0} notification is not silently ignored")
-    @CsvSource({"Base, " + EVM_WALLET, "XRP, " + XRP_WALLET, "Arc, " + EVM_WALLET})
-    void aForgottenRailNoLongerReturnsOkWhileDoingNothing(String network, String wallet) {
-        String qrCodeId = createQRCode(network, wallet);
-
-        notify(qrCodeId, network, wallet);
-
-        assertNotEquals("ACTIVE", statusOf(qrCodeId),
-                "%s used to answer 200 and leave the QR Code untouched".formatted(network));
-    }
-
-    /**
-     * The old check asked only whether the QR Code supported <em>some</em> blockchain, so a QR Code
-     * offering one chain accepted a notification for another.
+     * A rail the QR Code does not offer must be refused. The old check asked only whether the QR
+     * Code supported <em>some</em> blockchain, so a bank-only QR Code was the one case it caught —
+     * a chain mismatch between two blockchains slipped through.
      */
     @Test
-    void aQRCodeOfferingOneChainRefusesANotificationForAnother() {
-        String qrCodeId = createQRCode("Solana", SOLANA_WALLET);
+    void aBankOnlyQRCodeRefusesASolanaNotification() {
+        String qrCodeId = create(bankOnlyQRCode());
 
-        MockMvcResponse response = notify(qrCodeId, "Base", EVM_WALLET);
+        MockMvcResponse response = notify(qrCodeId, "Solana");
 
         assertNotEquals(HttpStatus.OK.value(), response.statusCode(),
-                "a Solana-only QR Code must not accept a Base payment: " + response.asString());
+                "a QR Code without Solana must not accept a Solana payment: " + response.asString());
         assertEquals("ACTIVE", statusOf(qrCodeId), "a refused notification must change nothing");
+    }
+
+    /**
+     * Chains X9.150 does not interpret cannot even be named in {@code payment.network} — they travel
+     * in the networks object's additionalProperties instead (ADR-0010). A notification naming one is
+     * rejected at the contract boundary rather than silently accepted.
+     */
+    @Test
+    void anUninterpretedChainIsRejectedNotIgnored() {
+        String qrCodeId = create(solanaQRCode());
+
+        MockMvcResponse response = notify(qrCodeId, "Ethereum");
+
+        assertNotEquals(HttpStatus.OK.value(), response.statusCode(),
+                "Ethereum is not an interpreted rail: " + response.asString());
+        assertEquals("ACTIVE", statusOf(qrCodeId));
     }
 
 }

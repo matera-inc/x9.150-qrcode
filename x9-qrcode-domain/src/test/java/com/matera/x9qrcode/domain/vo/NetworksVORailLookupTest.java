@@ -24,21 +24,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Rail lookup on {@link NetworksVO}, and the classification on {@link NetworkEnum}.
  *
- * <p>These exist because the previous code hardcoded a partial list of blockchains in several
- * places. Base, XRP and Arc were missing from all of them, so a notification on those rails was
- * accepted and silently ignored. Every rail in the enum is exercised here, by {@code @EnumSource},
- * so a rail added later is covered without anyone remembering to add a case.
+ * <p>Driven by {@code @EnumSource} rather than a hand-written list, so a rail added to the enum is
+ * covered without anyone remembering to add a case. That matters here: the code this replaces
+ * hardcoded a partial list of blockchains in several places, and the rails missing from those lists
+ * were accepted and silently ignored.
  */
 class NetworksVORailLookupTest extends AbstractTest {
 
     private static NetworksVO onlySolana() {
-        return new NetworksVO(null, null, null, null,
-                NETWORKS_FIXTURE.solana(), null, null, null, null, null, Map.of());
+        return new NetworksVO(null, null, null, NETWORKS_FIXTURE.solana(), Map.of());
     }
 
     private static NetworksVO onlyAch() {
-        return new NetworksVO(null, NETWORKS_FIXTURE.ach(), null, null,
-                null, null, null, null, null, null, Map.of());
+        return new NetworksVO(null, NETWORKS_FIXTURE.ach(), null, null, Map.of());
     }
 
     @ParameterizedTest
@@ -61,28 +59,27 @@ class NetworksVORailLookupTest extends AbstractTest {
         networks.supports(network);
     }
 
-    @ParameterizedTest
-    @EnumSource(value = NetworkEnum.class, names = {"BASE", "XRP", "ARC"})
-    void theThreeRailsThatUsedToBeForgottenAreSupportedWhenPresent(NetworkEnum network) {
-        NetworksVO networks = new NetworksVO(null, null, null, null, null, null, null,
-                NETWORKS_FIXTURE.base(), NETWORKS_FIXTURE.xrp(), NETWORKS_FIXTURE.arc(), Map.of());
-
-        assertTrue(networks.supports(network), "%s must be recognised".formatted(network));
-        assertNotNull(networks.cryptoAddressFor(network));
+    @Test
+    void solanaIsTheOnlyInterpretedBlockchain() {
+        // ADR-0010: a chain is modelled only once its owner has published how it embeds in X9.150.
+        // Any other chain travels uninterpreted through additionalProperties instead.
+        assertEquals(4, NetworkEnum.values().length,
+                "only FedNow, RTP, ACH and Solana are interpreted");
+        assertTrue(NetworkEnum.SOLANA.isBlockchain());
     }
 
     @Test
-    void aQRCodeOfferingOneChainDoesNotTherebyAcceptAnother() {
+    void aQRCodeOfferingSolanaSupportsNoBankRail() {
         NetworksVO networks = onlySolana();
 
         assertTrue(networks.supports(NetworkEnum.SOLANA));
-        assertFalse(networks.supports(NetworkEnum.BITCOIN), "offering Solana must not imply Bitcoin");
-        assertFalse(networks.supports(NetworkEnum.ETHEREUM));
-        assertFalse(networks.supports(NetworkEnum.BASE));
+        assertFalse(networks.supports(NetworkEnum.ACH));
+        assertFalse(networks.supports(NetworkEnum.FEDNOW));
+        assertFalse(networks.supports(NetworkEnum.RTP));
     }
 
     @Test
-    void bankRailsCarryNoWalletAndBlockchainsCarryNoBankAddress() {
+    void bankRailsCarryNoWalletAndSolanaCarriesNoBankAddress() {
         assertNull(onlyAch().cryptoAddressFor(NetworkEnum.ACH));
         assertNull(onlySolana().bankAddressFor(NetworkEnum.SOLANA));
 
