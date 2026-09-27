@@ -37,6 +37,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.env.PropertyResolver;
+import com.matera.x9qrcode.app.service.QRCodeOutboundNotificationService;
+import com.matera.x9qrcode.infrastructure.service.thirdparty.notification.RestClientOutboundNotificationService;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import java.net.http.HttpClient;
+import java.time.Duration;
 import org.springframework.web.client.RestClient;
 
 import java.util.HashMap;
@@ -76,6 +81,39 @@ public class ServiceConfiguration {
     public QRCodeEMVService qrCodeEMVGateway(X9Properties x9Properties,
                                              QRCodeLocationService qrCodeLocationService) {
         return new MateraAdoptQRCodeEMVService(x9Properties, qrCodeLocationService);
+    }
+
+    /**
+     * A client of its own for outbound notifications, rather than the shared one.
+     *
+     * <p>Two behaviours matter enough to state rather than inherit. <b>Timeouts</b>, because a payer
+     * is waiting on this call before deciding whether to move money, and an unbounded wait is worse
+     * than a refusal. And <b>no redirects</b>: the destination is trusted because it arrived inside a
+     * digitally signed payload, and a redirect leads somewhere that signature never attested — so
+     * following one would quietly spend the trust somewhere else.
+     *
+     * <p>There is deliberately no allow list of destinations. The signature is the trust mechanism,
+     * and a list of permitted URLs would refuse payees we can perfectly well pay — the
+     * interoperability failure the standard exists to prevent, arrived at from the other direction.
+     */
+    @Bean
+    public RestClient notificationRestClient() {
+        HttpClient httpClient = HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.NEVER)
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
+
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(Duration.ofSeconds(15));
+
+        return RestClient.builder().requestFactory(requestFactory).build();
+    }
+
+    @Bean
+    public QRCodeOutboundNotificationService outboundNotificationGateway(
+        RestClient notificationRestClient, QRCodeSignatureService qrCodeSignatureService) {
+
+        return new RestClientOutboundNotificationService(notificationRestClient, qrCodeSignatureService);
     }
 
     @Bean

@@ -120,6 +120,16 @@ These describe how our software behaves; they're enforced in `openapi.yaml` + th
   is a capacity choice again. `payment_events` has a **30-day TTL** and is never emptied on
   acknowledgement — the log belongs to its readers, who may rewind.
 
+- **X9.150 serves the payer too**
+  ([ADR-0015](docs/adr/0015-x9150-signs-the-payers-notification-too.md)).
+  `POST /api/v1/payment-notification/{pre,post}-payment` take plain JSON, sign with this
+  deployment's own X9 certificate and deliver to the payee — so a PSP never builds a JWS. The
+  payee's verdict comes back untouched (**200 + `accepted:false`** for a refusal; **502** only when
+  we could not reach them at all — never collapse those two). Retry belongs to the caller: an outbox
+  here would not help, because the failure is the *payee* being down. A pre-payment carrying a
+  `transactionId` is refused before sending — the payee would read it as a payment already made and
+  never reserve the QR Code.
+
 ## Build / test / run
 
 ```bash
