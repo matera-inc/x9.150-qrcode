@@ -7,10 +7,12 @@
 package com.matera.x9qrcode.domain.vo;
 
 import com.matera.x9qrcode.domain.exception.ValueObjectRuleException;
+import com.matera.x9qrcode.domain.vo.enumerated.NetworkEnum;
 
 import java.util.Map;
 
 import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Payment networks for a payment method. The bank rails (FedNow, RTP, ACH) and the interpreted
@@ -45,6 +47,39 @@ public record NetworksVO(
             (isNull(additionalProperties) || additionalProperties.isEmpty())) {
             throw new ValueObjectRuleException("At least one network must be provided.");
         }
+    }
+
+
+    /**
+     * The crypto wallet this QR publishes for {@code network}, or null — including for bank rails,
+     * which have no wallet. Exhaustive by construction, so a new rail cannot be forgotten here.
+     */
+    public CryptoWalletPaymentAddressVO cryptoAddressFor(NetworkEnum network) {
+        return switch (network) {
+            case POLYGON -> polygon;
+            case SOLANA -> solana;
+            case ETHEREUM -> ethereum;
+            case BITCOIN -> bitcoin;
+            case BASE -> base;
+            case XRP -> xrp;
+            case ARC -> arc;
+            case FEDNOW, RTP, ACH -> null;
+        };
+    }
+
+    /** The bank address this QR publishes for {@code network}, or null for blockchain rails. */
+    public BankPaymentAddressVO bankAddressFor(NetworkEnum network) {
+        return switch (network) {
+            case FEDNOW -> fedNow;
+            case RTP -> rtp;
+            case ACH -> ach;
+            case POLYGON, SOLANA, ETHEREUM, BITCOIN, BASE, XRP, ARC -> null;
+        };
+    }
+
+    /** Whether this QR offers {@code network} at all. */
+    public boolean supports(NetworkEnum network) {
+        return nonNull(cryptoAddressFor(network)) || nonNull(bankAddressFor(network));
     }
 
 }
