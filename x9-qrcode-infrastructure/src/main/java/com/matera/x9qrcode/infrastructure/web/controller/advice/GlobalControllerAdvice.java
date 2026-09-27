@@ -8,6 +8,7 @@ package com.matera.x9qrcode.infrastructure.web.controller.advice;
 
 import com.matera.x9qrcode.app.exception.EntityNotFoundException;
 import com.matera.x9qrcode.app.exception.InvalidSignatureException;
+import com.matera.x9qrcode.app.exception.NotificationUndeliverableException;
 import com.matera.x9qrcode.app.exception.ServiceException;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 import com.matera.x9qrcode.domain.exception.QRCodeStatusConflictException;
@@ -31,6 +32,7 @@ import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.Err
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.CONSTRAINT_VALIDATION;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.HTTP_MESSAGE_NOT_READABLE;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.INVALID_SIGNATURE;
+import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.NOTIFICATION_UNDELIVERABLE;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.INVALID_HTTP_HEADER;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.METHOD_ARGUMENT_NOT_VALID;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.RESOURCE_NOT_FOUND;
@@ -160,6 +162,25 @@ public class GlobalControllerAdvice {
         logExceptionStacktrace(ex);
 
         return createArgumentNotValidProblemDetail(ex.getMessage());
+    }
+
+    /**
+     * The payee's server did not answer, which is not the caller's fault.
+     *
+     * <p>Declared ahead of the {@link ServiceException} handler it inherits from, because that one
+     * answers 400 — and telling a payer their request was malformed when the truth is that somebody
+     * else is down would send them looking in the wrong place.
+     */
+    @ExceptionHandler(NotificationUndeliverableException.class)
+    public ProblemDetail handleNotificationUndeliverableException(NotificationUndeliverableException ex) {
+        logExceptionStacktrace(ex);
+
+        ProblemDetail problemDetail = ProblemDetail.forStatus(NOTIFICATION_UNDELIVERABLE.status());
+        problemDetail.setTitle(NOTIFICATION_UNDELIVERABLE.title());
+        problemDetail.setType(NOTIFICATION_UNDELIVERABLE.uriType());
+        problemDetail.setDetail(NOTIFICATION_UNDELIVERABLE.description());
+
+        return problemDetail;
     }
 
     @ExceptionHandler(ServiceException.class)

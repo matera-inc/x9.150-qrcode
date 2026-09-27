@@ -63,3 +63,35 @@ an ANSI X9.150 requirement — the standard defines the notification contract, n
 ---
 
 <sub>Copyright © 2026 Matera Systems, Inc. Licensed under the Matera Source License v1.0 (source-available; not open source) — see LICENSE.md at the repository root.</sub>
+
+## Prove a scanned payload survives networks we do not interpret
+
+The issuer side and the payer side treat an unknown network **oppositely**, and only one of them is
+currently tested.
+
+As **issuer**, a network this deployment cannot interpret is refused at creation, by name
+([ADR-0012](docs/adr/0012-refuse-what-this-deployment-cannot-honour.md)): a QR Code advertising a
+rail we cannot validate a payment against is a promise we cannot keep.
+
+As **payer-side transport**, the opposite must hold. When somebody else's QR Code is scanned and
+decoded, a network we do not understand is **not an error**. We do not own that payload, we are not
+validating a payment against it, and the software that asked us to decode it may understand that rail
+perfectly well and pay it. X9.150 does not need to know the syntax and semantics of every payment
+network in the world in order to carry one — §14.5 says as much by deferring each network's contents
+to its own documentation.
+
+So the payload must reach the caller **intact, including the parts we cannot read**, with the unknown
+network opaque rather than stripped, rejected or "helpfully" normalised.
+
+Add a test that:
+
+- decodes a payload whose `paymentMethods[].networks` contains a rail this build does not interpret
+  (Pix, Zelle, a chain with no published embedding)
+- asserts the decode **succeeds**
+- asserts the unknown network object is returned to the caller **byte-for-byte**, keys and values
+  unchanged — losing a field here would silently strip the only thing the payer needed in order to pay
+- asserts the rails we *do* interpret in the same payload are still parsed normally alongside it
+
+Worth stating in `official-spec/INTERPRETATION.md` too, since "we refuse it" and "we pass it through"
+appearing in the same codebase looks like an inconsistency until you notice which side of the
+transaction each one is on.

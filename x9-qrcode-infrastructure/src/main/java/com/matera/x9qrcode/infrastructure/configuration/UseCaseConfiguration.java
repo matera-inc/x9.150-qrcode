@@ -12,6 +12,8 @@ import com.matera.x9qrcode.app.service.QRCodeExternalPayloadService;
 import com.matera.x9qrcode.app.service.QRCodeLocationService;
 import com.matera.x9qrcode.app.service.QRCodeSignatureService;
 import com.matera.x9qrcode.app.usecase.createqrcode.CreateQRCodeUseCase;
+import com.matera.x9qrcode.app.service.QRCodeOutboundNotificationService;
+import com.matera.x9qrcode.app.usecase.sendpaymentnotification.SendPaymentNotificationUseCase;
 import com.matera.x9qrcode.app.usecase.decodeemv.DecoveEmvUseCase;
 import com.matera.x9qrcode.app.usecase.generatesignature.GenerationSignatureUseCase;
 import com.matera.x9qrcode.app.usecase.patchqrcode.PatchQRCodeUseCase;
@@ -83,6 +85,13 @@ public class UseCaseConfiguration {
                                                  SupportedCurrencyPolicy supportedCurrencyPolicy) {
         return new PatchQRCodeUseCase(qrCodeRepository, qrCodeEMVService, qrCodeLocationService, currencyMixPolicy,
             supportedCurrencyPolicy);
+    }
+
+    @Bean
+    public SendPaymentNotificationUseCase sendPaymentNotificationUseCase(
+        QRCodeOutboundNotificationService outboundNotificationService) {
+
+        return new SendPaymentNotificationUseCase(outboundNotificationService);
     }
 
     @Bean

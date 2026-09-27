@@ -37,6 +37,7 @@ the history of why we changed our minds — the part that is usually lost.
 | [0012](0012-refuse-what-this-deployment-cannot-honour.md) | **Refuse at creation what this deployment cannot honour** — unsupported networks and currencies are rejected by name, not carried verbatim | Accepted |
 | [0013](0013-retry-what-mongodb-says-to-retry.md) | **Retry what MongoDB says to retry** — on the `TransientTransactionError` label only, outside the transaction; a duplicate key still fails at once | Accepted |
 | [0014](0014-we-transport-and-sequence-the-consumer-reconciles.md) | **We transport and sequence; the consumer reconciles** — a post-commit that differs from its pre-commit is forwarded, not judged | Accepted |
+| [0015](0015-x9150-signs-the-payers-notification-too.md) | **X9.150 signs the payer's notification too** — a plain REST API for pre/post-payment, so a PSP never builds a JWS | Accepted |
 
 ## Writing a new one
 

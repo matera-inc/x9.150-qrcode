@@ -179,6 +179,106 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerErrorResponse"
 
+  /api/v1/payment-notification/pre-payment:
+    post:
+      summary: "Announce a payment to the payee, before making it"
+      description: |-
+        The payer's side of the two-phase flow: **announce, wait for the answer, then pay exactly what
+        was announced.**
+
+        This service composes the message, signs it with this deployment's own X9 certificate and
+        delivers it to the payee, so a PSP integrating here never builds a JWS, manages a keystore or
+        learns the `crit` header rules.
+
+        **The payee's verdict is returned untouched.** A pre-payment is a request for permission, and
+        the answer belongs to the payer: `accepted: true` means the QR Code is now reserved and the
+        payment may proceed *for the amount announced*. Anything else means do not pay.
+
+        A pre-payment **must not** carry a `transactionId`. The payee infers the phase from its
+        absence (the standard has no phase marker), so one here would be read as a payment already
+        made — the QR Code would never be reserved, and the payer would pay against something another
+        payer could still claim.
+
+        Note the rails differ. ACH and Solana reserve the QR Code on a pre-payment. FedNow and RTP
+        carry the QR Code id inside the ISO 20022 message and reconcile from it, so a notification
+        there is a courtesy that requires the End-to-End ID — which exists only once the payment has
+        been initiated. For those rails, go straight to `post-payment`.
+      operationId: sendPrePaymentNotification
+      tags:
+        - Payment Notification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OutboundPaymentNotification"
+      responses:
+        "200":
+          description: "The payee answered. Check `accepted` before paying."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutboundPaymentNotificationResult"
+        "400":
+          description: "Malformed request, or a phase that contradicts its content"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/BaseError"
+        "502":
+          description: "The payee could not be reached at all. Nothing was delivered; retry."
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/BaseError"
+
+  /api/v1/payment-notification/post-payment:
+    post:
+      summary: "Report a payment to the payee, after making it"
+      description: |-
+        The second half: the payment happened, and this carries its reference — the on-chain hash, or
+        the End-to-End ID for an ISO 20022 rail.
+
+        A post-payment **must** carry a `transactionId`. Reporting a payment without its reference
+        gives the payee nothing to reconcile against.
+
+        **This does not clear the QR Code.** X9.150 never touches money and cannot observe
+        settlement, so a payer's report leaves the QR Code `PAYMENT_INITIATED`; whatever system
+        actually receives the funds marks it paid.
+
+        **Delivery is the caller's to retry.** If the payee is unreachable — their outage, not a
+        refusal — this answers `502` and nothing was delivered. Hold the report and send it later:
+        the durable copy has to live with the caller, because an outbox on this side would be no help
+        when the caller cannot reach this service either.
+      operationId: sendPostPaymentNotification
+      tags:
+        - Payment Notification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OutboundPaymentNotification"
+      responses:
+        "200":
+          description: "The payee answered."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutboundPaymentNotificationResult"
+        "400":
+          description: "Malformed request, or a phase that contradicts its content"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/BaseError"
+        "502":
+          description: "The payee could not be reached at all. Nothing was delivered; retry."
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/BaseError"
+
   /api/v1/signature/generate:
     post:
       summary: "Generate a valid signature for json content"
@@ -1307,6 +1407,53 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/PaymentNotificationData"
+
+    OutboundPaymentNotification:
+      type: object
+      required:
+        - endpoint
+        - notification
+      properties:
+        endpoint:
+          type: string
+          format: uri
+          description: |-
+            Where the payee said to send it — `paymentNotification.endpoint` from the payload the
+            payer fetched in the decode step.
+
+            Taken on trust, deliberately. It arrived inside a **digitally signed** payload, and the
+            signature is the trust mechanism; an allow list of permitted destinations would refuse
+            payees this service can perfectly well pay, which is the interoperability failure the
+            standard exists to prevent. Redirects are not followed, for the same reason rather than a
+            contrary one: a redirect leads somewhere the signature never attested.
+          example: "https://psp.example.com/pub/api/v1/payment-notification"
+        correlationId:
+          type: string
+          format: uuid
+          description: "Ties this call to the payer's own request. Generated if omitted."
+        notification:
+          $ref: "#/components/schemas/PaymentNotificationData"
+
+    OutboundPaymentNotificationResult:
+      type: object
+      required:
+        - statusCode
+        - accepted
+      properties:
+        statusCode:
+          type: integer
+          description: "The payee's own HTTP status, passed through rather than interpreted."
+          example: 200
+        accepted:
+          type: boolean
+          description: |-
+            Whether the payee accepted. On a pre-payment this is the decision to act on: pay only if
+            it is `true`, and only the amount that was announced.
+          example: true
+        body:
+          type: string
+          nullable: true
+          description: "Whatever the payee returned, verbatim — usually a problem detail on refusal."
 
     PaymentNotificationData:
       type: object
