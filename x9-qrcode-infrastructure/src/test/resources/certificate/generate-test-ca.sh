@@ -74,6 +74,10 @@ issue() {
     -keystore "$LEAF_STORE" -storepass "$STOREPASS"
   keytool -importcert -noprompt -alias "$LEAF_ALIAS" -file "$LEAF_ALIAS-chain.pem" \
     -keystore "$LEAF_STORE" -storepass "$STOREPASS"
+  # The CA entry was only needed so keytool could validate the certificate reply. Drop it: the full
+  # chain now lives on the private-key entry itself, and PrivateKeyRetriever refuses a keystore that
+  # holds more than one entry — which is what makes these usable as a deployment's own identity.
+  keytool -delete -alias "$CA_ALIAS" -keystore "$LEAF_STORE" -storepass "$STOREPASS"
 }
 
 say "3/8  RSA payer leaf issued BY the Test Root CA (signs PS512)"

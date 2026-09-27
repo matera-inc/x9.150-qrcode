@@ -24,6 +24,11 @@ using only `keytool` (plus `bc` for one hex→decimal conversion) if you ever ne
 
 Password for all of them: `x9test123`.
 
+Each payer keystore holds **exactly one entry**, with its full chain attached to the private-key
+entry. That is deliberate: `PrivateKeyRetriever` refuses a keystore containing more than one entry,
+so a single-entry store can double as a *deployment's own identity* — which is how
+`EcSigningIdentityApiTest` runs the service with an EC certificate of its own.
+
 ## Why this exists
 
 The shipped demo keystore (`src/main/resources/certificate/x9-demo.jks`) is **self-signed**, and

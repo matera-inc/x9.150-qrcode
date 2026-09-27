@@ -95,10 +95,12 @@ These describe how our software behaves; they're enforced in `openapi.yaml` + th
   (`USD` by default, in exactly that spelling); an empty list disables the check. Separate from the peg-mixing rule, which asks
   whether currencies may appear *together*.
 
-- **JWS signature verification accepts both RSA and EC.** `alg` is read from the JWS header and the
-  verifier chosen from it (`RS*`/`PS*` → RSA, `ES*` → ECDSA). X9.150 names no algorithm — it defers
-  to the X9-approved suite (SD-34) and its own examples use `ES256` — so refusing either key type is
-  an interoperability bug, not a policy. `PS512` is only what this service signs *with*.
+- **JWS works with both RSA and EC, in both directions.** Verification reads `alg` from the header
+  and picks the verifier (`RS*`/`PS*` → RSA, `ES*` → ECDSA). Signing follows the key this deployment
+  was issued, so an EC identity works — `x9.certificate.jwk-algorithm` must then be an `ES*` value,
+  and a mismatch fails at startup naming both halves. X9.150 names no algorithm (it defers to the
+  X9-approved suite SD-34) and its own examples use `ES256`, so assuming RSA anywhere is an
+  interoperability bug rather than a policy.
 
 ## Build / test / run
 

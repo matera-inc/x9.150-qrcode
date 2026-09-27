@@ -97,7 +97,7 @@ Honor these current decisions — do **not** reintroduce older patterns:
 - **Tip**: integer percentages `0–999` (`TipRange`); presets are a `1–10` element integer array.
 - **Timestamps**: UTC, `Z`-terminated, with an optional 1–3 digit fractional part.
 - **Bill adjustments** amounts are signed (discount negative, late fee positive).
-- **JWS validation**: certificate revocation is auto-skipped for self-signed certs (no CRL/OCSP) and enforced for CA-issued certs — decided by the cert, no config flag. Verification accepts **both RSA and EC** keys: `alg` comes from the JWS header (`RS*`/`PS*` → RSASSAVerifier, `ES*` → ECDSAVerifier). X9.150 names no algorithm and its Annex A examples use `ES256`, so refusing a key type is an interoperability bug. CA-issued paths are covered by `CaIssuedSignatureApiTest` against a committed test PKI — never by signing with our own endpoint, which only ever verifies our own signature.
+- **JWS validation**: certificate revocation is auto-skipped for self-signed certs (no CRL/OCSP) and enforced for CA-issued certs — decided by the cert, no config flag. **Both RSA and EC** work in both directions: verification picks the verifier from the header's `alg` (`RS*`/`PS*` → RSASSAVerifier, `ES*` → ECDSAVerifier), and signing follows whichever key type this deployment was issued (`JwkSetFacadeBean`). `x9.certificate.jwk-algorithm` must match the key, and a mismatch fails at startup. X9.150 names no algorithm and its Annex A examples use `ES256`, so refusing a key type is an interoperability bug. CA-issued paths are covered by `CaIssuedSignatureApiTest` against a committed test PKI — never by signing with our own endpoint, which only ever verifies our own signature.
 
 ### Build Commands
 
