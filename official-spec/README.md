@@ -17,5 +17,9 @@ The standard leaves a handful of things ambiguous, and in a couple of places con
 the text says, which way we went, and why — so that anyone holding both the standard and this repo
 can see our decisions as decisions rather than mistake them for the standard's.
 
+[**ACCOUNT-NUMBERS-US.md**](ACCOUNT-NUMBERS-US.md) goes deeper on one field that reliably surprises
+people: why `accountNumber` accepts letters as well as digits, what ANSI X9.150 and the Nacha ACH
+file format each require, and what to do about upper- versus lower-case.
+
 Decisions that are ours alone, rather than readings of the standard, are in
 [`docs/adr/`](../docs/adr/README.md).

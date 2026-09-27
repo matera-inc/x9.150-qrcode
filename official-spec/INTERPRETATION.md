@@ -261,6 +261,11 @@ pattern excludes `-`, `_` and space rather than tolerating them.
 
 Routing numbers are unaffected: Table 2 requires exactly 9 digits there, which is what we enforce.
 
+The full rationale, including what Nacha does and does not say about upper- versus lower-case and
+what that means for anyone comparing account numbers, is in
+[ACCOUNT-NUMBERS-US.md](ACCOUNT-NUMBERS-US.md) — written so that a reader who meets
+`^[0-9A-Za-z]{4,17}$` in the code does not have to wonder whether the letters are a bug.
+
 One known gap remains, deliberately. The `encrypted` protection approach yields base64url ciphertext,
 which contains `-` and `_` and so would not satisfy this pattern. This build implements `tokenized`
 only (see the README), so the question does not arise yet; it must be revisited if `encrypted` is
