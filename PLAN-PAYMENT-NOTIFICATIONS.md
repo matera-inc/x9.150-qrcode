@@ -417,6 +417,54 @@ believing it was implementing ADR-0007.
   verdict, which is the biller's side of the exchange. Rule 5 constrains the payer's side. A token
   minted at QR creation gates the voter, never the payer.
 
+#### 3.4.0.4 Network naming: what the standard actually says
+
+Checked against the normative text — the field tables and the per-field section headings that carry
+each JSON path, not the examples.
+
+**The `networks` object key is unambiguous, and we have it wrong.** Every normative path uses
+camelCase:
+
+> `$.paymentMethods[].networks.fednow` · `.rtp` · `.ach` · `.zelle` · `.visa` · `.americanExpress`
+> — ANSI X9.150-2026 §14.5
+
+`americanExpress` is the tell: the convention is camelCase, matching every other key in the payload
+(`routingNumber`, `protectionType`, `amountDue`). **We publish `FedNow`, `RTP`, `ACH`.** A conformant
+payer sending `fednow` has it fall into `additionalProperties` as an uninterpreted network, and our
+payloads advertise a key a conformant payer may not recognise. Interoperability bug, both directions.
+
+**The notification's network value is genuinely ambiguous, and its own definition contradicts
+itself.** §2.4 says the field:
+
+> "**SHALL** contain only one of the following exact, all-uppercase values: **FedNow**, **RTP**,
+> **ACH**" … "Example: `"FedNow"`"
+
+`FedNow` is not all-uppercase. The adjective and the list disagree; the example sides with the list.
+*(The section heading also reads `$.paymet.network` — a typo for `payment`.)*
+
+**And that field is explicitly an open set:**
+
+> "Note: The data structure of the payment notification is network-agnostic and **MAY** also carry a
+> network not listed above for early adopters." — ANSI X9.150-2026 §2.4
+
+which sits in the same definition as "SHALL contain only one of the following". A closed set and an
+open set, one paragraph apart.
+
+##### What we should do
+
+| | Decision |
+|---|---|
+| **Emit** `networks` keys | `fednow`, `rtp`, `ach` — the normative path is unambiguous |
+| **Emit** `payment.network` | `FedNow`, `RTP`, `ACH` — follow the listed values and the example, since "all-uppercase" is contradicted by its own list |
+| **Accept** either, on input | Case-insensitively, for both. The project already does exactly this for `paymentTiming`: *"input is accepted case-insensitively but always emitted lowercase"* (`AGENTS.md`). Same rule, same reason — be liberal in what you accept when the standard is ambiguous, and strict in what you emit. |
+| **`payment.network` must not be a closed enum** | The spec explicitly permits unlisted networks. Our enum currently rejects them, which is non-conformant — and was made *more* restrictive by the recent Solana-only change. |
+
+##### Feedback worth sending to ASC X9
+
+Three defects in §2.4 alone: the `$.paymet.network` typo, "all-uppercase" contradicting its own
+`FedNow`, and SHALL-closed-set contradicting MAY-open-set. The first is cosmetic; the other two make
+independent implementations diverge, which is precisely what the standard exists to prevent.
+
 #### 3.4.1 Is a notification wanted at all?
 
 Notifications are **not universally necessary**, because on several rails the QR id travels inside the

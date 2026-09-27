@@ -24,7 +24,7 @@ public class PaymentNotificationPaymentMapper {
             new AmountVO(input.amount()),
             isNull(input.tipAmount()) ? null : new AmountVO(input.tipAmount()),
             input.currency(),
-            NetworkEnum.fromValue(input.network().value()),
+            input.network(),
             input.transactionId()
         );
     }

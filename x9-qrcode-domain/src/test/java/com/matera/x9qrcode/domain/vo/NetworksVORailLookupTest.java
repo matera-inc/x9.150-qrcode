@@ -12,6 +12,7 @@ import com.matera.x9qrcode.domain.vo.enumerated.NetworkEnum;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Map;
 
@@ -22,69 +23,75 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Rail lookup on {@link NetworksVO}, and the classification on {@link NetworkEnum}.
+ * Network lookup, now that only the standard's own rails are typed.
  *
- * <p>Driven by {@code @EnumSource} rather than a hand-written list, so a rail added to the enum is
- * covered without anyone remembering to add a case. That matters here: the code this replaces
- * hardcoded a partial list of blockchains in several places, and the rails missing from those lists
- * were accepted and silently ignored.
+ * <p>ANSI X9.150-2026 defines FedNow, RTP and ACH and fixes their structure, so those are an enum.
+ * Every other network is open by design — §2.4 says the notification "MAY also carry a network not
+ * listed above" — so it is carried by NAME in `additionalProperties` and looked up by name. A closed
+ * enum over an open set is what once made Base, XRP and Arc silently unpayable.
  */
 class NetworksVORailLookupTest extends AbstractTest {
 
+    private static final String SOLANA_WALLET = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
+
     private static NetworksVO onlySolana() {
-        return new NetworksVO(null, null, null, NETWORKS_FIXTURE.solana(), Map.of());
+        return new NetworksVO(null, null, null, Map.of("solana", Map.of("walletAddress", SOLANA_WALLET)));
     }
 
     private static NetworksVO onlyAch() {
-        return new NetworksVO(null, NETWORKS_FIXTURE.ach(), null, null, Map.of());
+        return new NetworksVO(null, NETWORKS_FIXTURE.ach(), null, Map.of());
+    }
+
+    @Test
+    void onlyTheStandardsOwnRailsAreEnumerated() {
+        assertEquals(3, NetworkEnum.values().length,
+                "the enum holds exactly what ANSI X9.150 defines: FedNow, RTP, ACH");
     }
 
     @ParameterizedTest
     @EnumSource(NetworkEnum.class)
-    void everyRailIsClassifiedAsBankOrBlockchain(NetworkEnum network) {
-        boolean bankRail = network == NetworkEnum.FEDNOW || network == NetworkEnum.RTP || network == NetworkEnum.ACH;
-
-        assertEquals(!bankRail, network.isBlockchain(),
-                "%s must be classified deliberately, not by omission".formatted(network));
+    void noStandardRailIsClassifiedAsABlockchain(NetworkEnum rail) {
+        assertFalse(rail.isBlockchain(), "%s is a US bank rail".formatted(rail));
     }
 
+    /** The spec contradicts itself on case, so every spelling has to resolve. */
     @ParameterizedTest
-    @EnumSource(NetworkEnum.class)
-    void lookupNeverThrowsForAnyRail(NetworkEnum network) {
-        NetworksVO networks = onlySolana();
+    @ValueSource(strings = {"FedNow", "fednow", "FEDNOW", "fedNow"})
+    void aStandardRailResolvesWhateverTheCase(String spelling) {
+        assertEquals(NetworkEnum.FEDNOW, NetworkEnum.fromValue(spelling));
+        assertTrue(NetworkEnum.find(spelling).isPresent());
+    }
 
-        // The point is total coverage: no rail may fall through a switch.
-        networks.cryptoAddressFor(network);
-        networks.bankAddressFor(network);
-        networks.supports(network);
+    /** Not an error: an unrecognised name is a network we do not interpret, not a malformed one. */
+    @ParameterizedTest
+    @ValueSource(strings = {"Solana", "Pix", "Zelle", "Tron"})
+    void anUnlistedNetworkSimplyDoesNotResolveToAStandardRail(String name) {
+        assertTrue(NetworkEnum.find(name).isEmpty());
     }
 
     @Test
-    void solanaIsTheOnlyInterpretedBlockchain() {
-        // ADR-0010: a chain is modelled only once its owner has published how it embeds in X9.150.
-        // Any other chain travels uninterpreted through additionalProperties instead.
-        assertEquals(4, NetworkEnum.values().length,
-                "only FedNow, RTP, ACH and Solana are interpreted");
-        assertTrue(NetworkEnum.SOLANA.isBlockchain());
+    void aNetworkCarriedByNameIsFoundByName() {
+        NetworksVO networks = onlySolana();
+
+        assertTrue(networks.supports("solana"));
+        assertTrue(networks.supports("Solana"), "lookup is case-insensitive");
+        assertEquals(SOLANA_WALLET, networks.destinationAddressFor("solana"));
     }
 
     @Test
-    void aQRCodeOfferingSolanaSupportsNoBankRail() {
+    void aQRCodeOfferingOneNetworkDoesNotTherebyOfferAnother() {
         NetworksVO networks = onlySolana();
 
-        assertTrue(networks.supports(NetworkEnum.SOLANA));
+        assertFalse(networks.supports("Pix"));
         assertFalse(networks.supports(NetworkEnum.ACH));
-        assertFalse(networks.supports(NetworkEnum.FEDNOW));
-        assertFalse(networks.supports(NetworkEnum.RTP));
+        assertNull(networks.destinationAddressFor("Pix"));
     }
 
     @Test
-    void bankRailsCarryNoWalletAndSolanaCarriesNoBankAddress() {
-        assertNull(onlyAch().cryptoAddressFor(NetworkEnum.ACH));
-        assertNull(onlySolana().bankAddressFor(NetworkEnum.SOLANA));
-
+    void bankRailsCarryNoDestinationAddress() {
+        assertNull(onlyAch().destinationAddressFor("ach"));
         assertNotNull(onlyAch().bankAddressFor(NetworkEnum.ACH));
-        assertNotNull(onlySolana().cryptoAddressFor(NetworkEnum.SOLANA));
+        assertTrue(onlyAch().supports("ACH"));
     }
 
 }

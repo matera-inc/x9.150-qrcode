@@ -33,9 +33,7 @@ public class UpdateQRCodeStatusUseCase extends UseCase<UpdateQRCodeStatusInput, 
 
         QRCodeEntity qrCodeEntity = retrieveQRCodeEntity(qrCodeIdVO);
 
-        NetworkEnum network = isNull(updateQRCodeStatusInput.paymentNetwork())
-            ? null
-            : NetworkEnum.fromValue(updateQRCodeStatusInput.paymentNetwork().value());
+        String network = updateQRCodeStatusInput.paymentNetwork();
 
         if (nonNull(network)) {
             checkNetworkIsValidPaymentMethod(qrCodeEntity.getPaymentMethods(), network);
@@ -66,9 +64,9 @@ public class UpdateQRCodeStatusUseCase extends UseCase<UpdateQRCodeStatusInput, 
         }
     }
 
-    private void checkNetworkIsValidPaymentMethod(List<PaymentMethodVO> paymentMethods, NetworkEnum network) {
+    private void checkNetworkIsValidPaymentMethod(List<PaymentMethodVO> paymentMethods, String network) {
         if (paymentMethods.stream().noneMatch(paymentMethod -> paymentMethod.networks().supports(network))) {
-            throw new BusinessRuleException("Network %s is not a valid payment method.".formatted(network.value()));
+            throw new BusinessRuleException("Network %s is not a valid payment method.".formatted(network));
         }
     }
 
@@ -80,7 +78,7 @@ public class UpdateQRCodeStatusUseCase extends UseCase<UpdateQRCodeStatusInput, 
 
         return new PaymentDetailsVO(
             input.endToEndId(),
-            isNull(input.paymentNetwork()) ? null : NetworkEnum.fromValue(input.paymentNetwork().value())
+            input.paymentNetwork()
         );
     }
 

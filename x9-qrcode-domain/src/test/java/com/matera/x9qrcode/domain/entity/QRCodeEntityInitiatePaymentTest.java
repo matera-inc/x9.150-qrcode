@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class QRCodeEntityInitiatePaymentTest extends AbstractTest {
 
     private static final PaymentDetailsVO PAYMENT_DETAILS =
-        new PaymentDetailsVO("XYZ.USBK.X9aTf72qLm.1", NetworkEnum.FEDNOW);
+        new PaymentDetailsVO("XYZ.USBK.X9aTf72qLm.1", NetworkEnum.FEDNOW.value());
 
     @Test
     void shouldInitiatePaymentWhenQRCodeIsActive() {

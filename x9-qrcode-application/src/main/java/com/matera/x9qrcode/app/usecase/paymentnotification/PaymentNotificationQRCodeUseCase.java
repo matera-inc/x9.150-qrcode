@@ -80,13 +80,14 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
      */
     private NotificationIntent resolveIntent(PaymentNotificationDataDTO notificationDataDTO,
                                              PaymentNotificationDataVO paymentNotificationDataVO) {
-        // The VO carries the DOMAIN enum; the DTO carries the wire enum. Classification lives on the
-        // domain enum, so resolve from the mapped VO.
-        NetworkEnum network = paymentNotificationDataVO.payment().network();
-
-        if (network.isBlockchain()) {
+        // Only the rails ANSI X9.150 itself defines are typed. Everything else arrives as a name
+        // (§2.4: the notification "MAY also carry a network not listed above"), and a network we do
+        // not have a standard rule for is handled by the generic path.
+        if (!paymentNotificationDataVO.payment().isStandardRail()) {
             if (isNull(paymentNotificationDataVO.blockchain())) {
-                throw new BusinessRuleException("Blockchain action is required for crypto payments.");
+                throw new BusinessRuleException(
+                    "Blockchain data is required for a notification on the %s network."
+                        .formatted(paymentNotificationDataVO.payment().network()));
             }
 
             return switch (notificationDataDTO.blockchain().action()) {
@@ -100,12 +101,11 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
             };
         }
 
-        return switch (network) {
+        return switch (paymentNotificationDataVO.payment().standardRail().orElseThrow()) {
             // The QR Code id travels inside the ISO 20022 message, so the payee reconciles from the
             // message itself; a notification on these rails is a courtesy and changes no status.
             case FEDNOW, RTP -> NotificationIntent.RECORD;
             case ACH -> NotificationIntent.INITIATE;
-            case SOLANA -> throw new IllegalStateException("Blockchain rails are handled above: " + network);
         };
     }
 

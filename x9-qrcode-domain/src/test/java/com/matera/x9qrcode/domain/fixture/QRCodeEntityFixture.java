@@ -81,7 +81,7 @@ public final class QRCodeEntityFixture {
     }
 
     public PaymentDetailsVO paymentDetails() {
-        return new PaymentDetailsVO(faker.lorem().characters(36), faker.random().nextEnum(NetworkEnum.class));
+        return new PaymentDetailsVO(faker.lorem().characters(36), faker.random().nextEnum(NetworkEnum.class).value());
     }
 
 }

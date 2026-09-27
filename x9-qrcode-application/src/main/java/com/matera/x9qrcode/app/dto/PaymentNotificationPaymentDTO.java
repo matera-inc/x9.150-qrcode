@@ -6,13 +6,12 @@
  */
 package com.matera.x9qrcode.app.dto;
 
-import com.matera.x9qrcode.app.dto.enumerated.NetworkEnumDTO;
 
 public record PaymentNotificationPaymentDTO(
     Long amount,
     Long tipAmount,
     String currency,
-    NetworkEnumDTO network,
+    String network,
     String transactionId
 ) {
 

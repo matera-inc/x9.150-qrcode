@@ -81,7 +81,7 @@ public class PaymentNotificationAcceptancePolicy {
      */
     private PaymentMethodVO matchPaymentMethod(QRCodeEntity qrCode, PaymentNotificationDataVO notification) {
         String notifiedCurrency = notification.payment().currency();
-        NetworkEnum notifiedNetwork = notification.payment().network();
+        String notifiedNetwork = notification.payment().network();
 
         List<PaymentMethodVO> methods = qrCode.getPaymentMethods();
 
@@ -100,25 +100,25 @@ public class PaymentNotificationAcceptancePolicy {
 
         return matched.orElseThrow(() -> new BusinessRuleException(
             "paymentNotification.data",
-            notifiedNetwork.isBlockchain()
-                ? ("No %s payment method on this QR Code publishes the destination address %s. "
+            notification.payment().isStandardRail()
+                ? "This QR Code offers no %s payment method on the %s rail."
+                      .formatted(notifiedCurrency, notifiedNetwork)
+                : ("No %s payment method on this QR Code publishes the destination address %s. "
                    + "The currency, the rail and the address must belong to the same payment method.")
-                      .formatted(notifiedCurrency, destinationOf(notification))
-                : "This QR Code offers no %s payment method on the %s rail."
-                      .formatted(notifiedCurrency, notifiedNetwork.value())));
+                      .formatted(notifiedCurrency, destinationOf(notification))));
     }
 
     private boolean destinationMatches(PaymentMethodVO method,
                                        PaymentNotificationDataVO notification,
-                                       NetworkEnum notifiedNetwork) {
-        if (!notifiedNetwork.isBlockchain()) {
+                                       String notifiedNetwork) {
+        if (notification.payment().isStandardRail()) {
             // A bank-rail notification names no destination account; the rail check above is the match.
             return true;
         }
 
-        CryptoWalletPaymentAddressVO published = method.networks().cryptoAddressFor(notifiedNetwork);
+        String published = method.networks().destinationAddressFor(notifiedNetwork);
 
-        return nonNull(published) && published.walletAddress().equals(destinationOf(notification));
+        return nonNull(published) && published.equals(destinationOf(notification));
     }
 
     private String destinationOf(PaymentNotificationDataVO notification) {

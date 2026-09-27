@@ -6,14 +6,13 @@
  */
 package com.matera.x9qrcode.app.usecase.updatestatus;
 
-import com.matera.x9qrcode.app.dto.enumerated.NetworkEnumDTO;
 import com.matera.x9qrcode.app.dto.enumerated.QRCodeStatusEnumDTO;
 
 public record UpdateQRCodeStatusInput(
     String id,
     QRCodeStatusEnumDTO status,
     String endToEndId,
-    NetworkEnumDTO paymentNetwork
+    String paymentNetwork
 ) {
 
 }

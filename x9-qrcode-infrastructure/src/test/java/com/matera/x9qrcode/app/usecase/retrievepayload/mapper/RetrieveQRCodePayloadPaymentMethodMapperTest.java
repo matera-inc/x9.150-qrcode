@@ -34,12 +34,13 @@ class RetrieveQRCodePayloadPaymentMethodMapperTest {
     // USD 50.00 -> 5000 minor units (2 decimals); USDC 50.00 -> 50000000 minor units (6 decimals).
     private static final PaymentMethodVO USD_METHOD = new PaymentMethodVO(
         "USD", VALID_UNTIL, new AmountVO(5000L), null,
-        new NetworksVO(new BankPaymentAddressVO("121000248", "4455667788"), null, null, null, null));
+        new NetworksVO(new BankPaymentAddressVO("121000248", "4455667788"), null, null, java.util.Map.of()));
 
     private static final PaymentMethodVO USDC_METHOD = new PaymentMethodVO(
         "USDC", VALID_UNTIL, new AmountVO(50000000L), null,
         new NetworksVO(null, null, null,
-            new CryptoWalletPaymentAddressVO("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"), null));
+            java.util.Map.of("solana", java.util.Map.of(
+                "walletAddress", "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"))));
 
     private long amountOf(List<PaymentMethodDTO> methods, String currency) {
         return methods.stream().filter(m -> currency.equals(m.currency())).findFirst().orElseThrow().amount();

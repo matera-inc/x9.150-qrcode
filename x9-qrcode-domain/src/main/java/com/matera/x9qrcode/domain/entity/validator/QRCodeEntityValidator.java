@@ -237,14 +237,17 @@ public final class QRCodeEntityValidator {
     }
 
     private void validatePaymentNotificationNetwork(PaymentNotificationDataVO newPaymentNotification) {
-        NetworkEnum network = newPaymentNotification.payment().network();
-
-        // Exhaustive: a rail added to NetworkEnum without a validation path fails to compile.
-        switch (network) {
-            case FEDNOW, RTP -> validatePaymentNotificationFromInstantPayments(newPaymentNotification);
-            case ACH -> validatePaymentNotificationFromACH(newPaymentNotification);
-            case SOLANA -> validatePaymentNotificationFromBlockchain(newPaymentNotification);
-        }
+        // The standard's own rails have rules the standard fixes. Every other network is carried by
+        // name (§2.4), so it gets the generic path: we validate what any rail must satisfy and leave
+        // the rest to the embedding its owner published.
+        newPaymentNotification.payment().standardRail().ifPresentOrElse(
+            rail -> {
+                switch (rail) {
+                    case FEDNOW, RTP -> validatePaymentNotificationFromInstantPayments(newPaymentNotification);
+                    case ACH -> validatePaymentNotificationFromACH(newPaymentNotification);
+                }
+            },
+            () -> validatePaymentNotificationFromBlockchain(newPaymentNotification));
     }
 
     private void validatePaymentNotificationFromInstantPayments(PaymentNotificationDataVO newPaymentNotification) {
@@ -321,7 +324,7 @@ public final class QRCodeEntityValidator {
         List<PaymentMethodVO> paymentMethods = this.entity.getPaymentMethods();
         boolean networkFounded = false;
 
-        NetworkEnum notifiedNetwork = newPaymentNotification.payment().network();
+        String notifiedNetwork = newPaymentNotification.payment().network();
 
         for (PaymentMethodVO paymentMethod : paymentMethods) {
             // The rail actually notified, not merely "some blockchain": a QR offering Solana does not
@@ -334,7 +337,7 @@ public final class QRCodeEntityValidator {
 
         if (!networkFounded) {
             throw new BusinessRuleException("paymentNotification.data.payment.network",
-                "This QRCode does not support the %s network.".formatted(notifiedNetwork.value()));
+                "This QRCode does not support the %s network.".formatted(notifiedNetwork));
         }
 
         if (isNull(newPaymentNotification.blockchain())) {

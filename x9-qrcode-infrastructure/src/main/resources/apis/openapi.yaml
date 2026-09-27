@@ -1076,13 +1076,13 @@ components:
               min: 10000
               max: 18834
           networks:
-            FedNow:
+            fednow:
               routingNumber: "021000021"
               accountNumber: "1234567890"
-            RTP:
+            rtp:
               routingNumber: "021000021"
               accountNumber: "1234567890"
-            ACH:
+            ach:
               routingNumber: "021000021"
               accountNumber: "1234567890"
         - currency: "USDC"
@@ -1129,6 +1129,14 @@ components:
       description: |-
         Available payment methods for this currency.
 
+        **Key casing.** The normative JSON paths in ANSI X9.150-2026 §14.5 are lowercase —
+        `$.paymentMethods[].networks.fednow`, `.rtp`, `.ach` — and the standard's own example payload
+        agrees. That is what this service emits by default. Because the standard is ambiguous
+        elsewhere (§2.4 calls the *notification's* network value "all-uppercase" while listing
+        `FedNow`), implementations in the wild differ, so **the emitted key is configurable** per
+        network via `x9.networks.emitted-keys`. Input is always accepted case-insensitively,
+        whatever the emitted form.
+
         **X9.150 specifies the style and the root of a payment method; the inner JSON of each network
         object belongs to that network's owner.** The standard does not attempt to define, in one
         document, the format of every blockchain and payment network in the world — a network's own
@@ -1141,14 +1149,12 @@ components:
         modelled: a payment method on any of them is carried here verbatim, exactly like Pix or Zelle,
         and is fully conformant that way.
       properties:
-        FedNow:
+        fednow:
           $ref: "#/components/schemas/FedNow"
-        RTP:
+        rtp:
           $ref: "#/components/schemas/RTP"
-        ACH:
+        ach:
           $ref: "#/components/schemas/ACH"
-        Solana:
-          $ref: "#/components/schemas/Solana"
       additionalProperties: true
 
     RTP:
@@ -1164,14 +1170,6 @@ components:
         - $ref: "#/components/schemas/BankAddress"
 
 
-    Solana:
-      description: |-
-        **The only interpreted blockchain.** Solana has indicated how X9.150 should be used with it,
-        so this shape rests on the network owner's own statement rather than on inference. Every other
-        chain is carried uninterpreted in `additionalProperties` until its owner publishes an
-        embedding — see the `NetworksSimple` description.
-      allOf:
-        - $ref: "#/components/schemas/CryptoWalletAddress"
 
 
 
@@ -1500,21 +1498,22 @@ components:
 
     NetworkEnum:
       type: string
-      enum:
-        - FedNow
-        - RTP
-        - ACH
-        - Solana
+      maxLength: 64
       description: |-
-        The rail a payment used. Mandatory when the status is PAID.
+        The rail a payment used.
 
-        **Closed by design.** These are the rails X9.150 interprets — the US bank rails from the
-        standard, plus Solana, the only blockchain whose owner has published how it embeds
-        (ADR-0010). A payment method on any other network can be *advertised* on a QR Code, carried
-        verbatim in the networks object's `additionalProperties` with no configuration whatsoever,
-        but it cannot appear here: a notification we could not validate is worse than one we decline
-        to accept, because we do not know that rail's address format or its settlement semantics.
-        Such a rail reconciles bilaterally between the PSPs, as FedNow and RTP already do.
+        **An open set, by design.** ANSI X9.150-2026 §2.4 lists `FedNow`, `RTP` and `ACH`, then states
+        the notification "**MAY** also carry a network not listed above for early adopters". So this
+        is a string, not an enum: rejecting an unlisted network would refuse payments the standard
+        permits.
+
+        The three listed rails are the ones this service *interprets* — their structure is fixed by
+        the standard. Any other name is accepted and matched against whatever that QR Code published
+        in its `networks` object, which is carried verbatim.
+
+        **Case.** The standard is not self-consistent: §14.5's normative JSON paths are lowercase
+        (`networks.fednow`) while this section calls its values "all-uppercase" and then lists
+        `FedNow`. Input is therefore accepted in any case; output uses the configured form.
       example: "FedNow"
     Name:
       type: string
@@ -1815,21 +1814,17 @@ components:
       type: object
       description: "Available payment methods for this currency."
       properties:
-        FedNow:
+        fednow:
           allOf:
             - $ref: "#/components/schemas/FedNow"
           nullable: true
-        RTP:
+        rtp:
           allOf:
             - $ref: "#/components/schemas/RTP"
           nullable: true
-        ACH:
+        ach:
           allOf:
             - $ref: "#/components/schemas/ACH"
-          nullable: true
-        Solana:
-          allOf:
-            - $ref: "#/components/schemas/Solana"
           nullable: true
       additionalProperties: true
 
