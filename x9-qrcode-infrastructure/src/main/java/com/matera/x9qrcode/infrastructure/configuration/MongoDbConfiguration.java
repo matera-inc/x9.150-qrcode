@@ -20,6 +20,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.data.mongodb.MongoDatabaseFactory;
+import com.matera.x9qrcode.infrastructure.persistence.mongodb.TransientTransactionRetry;
 import org.springframework.data.mongodb.MongoTransactionManager;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.convert.MongoCustomConversions;
@@ -35,6 +36,21 @@ import static java.util.Objects.isNull;
 @Configuration(proxyBeanMethods = false)
 @EnableMongoRepositories(basePackages = "com.matera.x9qrcode.infrastructure.persistence.mongodb.repository")
 public class MongoDbConfiguration {
+
+    /**
+     * Retries a transaction MongoDB labelled {@code TransientTransactionError}.
+     *
+     * <p>Wired explicitly rather than component-scanned, so the one thing that makes it correct —
+     * that it orders <em>outside</em> Spring's transaction advice — is visible here next to the
+     * transaction manager rather than hidden in an annotation on the class.
+     */
+    @Bean
+    public TransientTransactionRetry transientTransactionRetry() {
+        log.info("Initializing transient transaction retry (max {} attempts).",
+            TransientTransactionRetry.MAX_ATTEMPTS);
+
+        return new TransientTransactionRetry();
+    }
 
     @Bean
     public QRCodeRepository qrCodeMongoRepository(QRCodeMongoModelRepository qrCodeMongoModelRepository) {

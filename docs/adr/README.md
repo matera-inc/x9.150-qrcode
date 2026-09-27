@@ -35,6 +35,7 @@ the history of why we changed our minds — the part that is usually lost.
 | [0010](0010-networks-are-interpreted-only-once-their-authority-publishes.md) | **A network is interpreted only once its authority publishes** how it embeds in X9.150 | Accepted — *carried verbatim* consequence superseded by [0012](0012-refuse-what-this-deployment-cannot-honour.md) |
 | [0011](0011-store-the-quote-rather-than-recalculate-it.md) | **Store the quote we presented**, uniformly, rather than recalculating it — FX forces a store, so one rule beats two | Accepted |
 | [0012](0012-refuse-what-this-deployment-cannot-honour.md) | **Refuse at creation what this deployment cannot honour** — unsupported networks and currencies are rejected by name, not carried verbatim | Accepted |
+| [0013](0013-retry-what-mongodb-says-to-retry.md) | **Retry what MongoDB says to retry** — on the `TransientTransactionError` label only, outside the transaction; a duplicate key still fails at once | Accepted |
 
 ## Writing a new one
 
