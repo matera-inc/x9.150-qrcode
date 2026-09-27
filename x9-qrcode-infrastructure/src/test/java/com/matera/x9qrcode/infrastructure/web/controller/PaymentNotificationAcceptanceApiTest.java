@@ -9,9 +9,12 @@ package com.matera.x9qrcode.infrastructure.web.controller;
 import com.matera.x9qrcode.infrastructure.AbstractIntegrationTest;
 
 import io.restassured.module.mockmvc.response.MockMvcResponse;
+import io.restassured.path.json.JsonPath;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
@@ -155,24 +158,51 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
 
     // ---------------------------------------------------------------------------- expiry
 
+    /**
+     * The scenario that matters: a payer who legitimately holds a valid, signed payload and tries to
+     * pay it after it expired.
+     *
+     * <p>Creating an already-doomed QR Code and notifying it proves very little — no real payer ever
+     * obtains a payload that way. Here the payload is <b>fetched while the QR Code is still valid</b>,
+     * exactly as a payer's app would, and only then does time pass. The payer is holding something
+     * genuine and correctly signed; what must stop the payment is the QR Code's own expiry, not any
+     * defect in what the payer presents.
+     */
     @Test
-    void anExpiredQRCodeIsRefused() throws InterruptedException {
-        // Expires almost immediately, but stays readable: the TTL reaper only removes the document
-        // 30 seconds after validUntil, so the refusal is observable rather than a 404 race.
-        String soon = java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC).plusSeconds(2)
-                .withNano(0).toString().replace("+00:00", "Z");
-        String qrCodeId = createQRCode(soon, soon);
+    void aPayloadFetchedWhileValidCannotBePaidOnceItExpires() throws InterruptedException {
+        String expiresSoon = OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(3).withNano(0)
+                .toString().replace("+00:00", "Z");
 
-        Thread.sleep(2500);
+        String createResponse = given().contentType("application/json")
+                .body(qrCodeBody(expiresSoon, expiresSoon))
+                .when().post(CREATE)
+                .then().statusCode(HttpStatus.CREATED.value())
+                .extract().body().asString();
+
+        String qrCodeId = JsonPath.from(createResponse).getString("id");
+        String qrCodeB64 = JsonPath.from(createResponse).getString("qrCodeB64");
+        String locationId = JsonPath.from(createResponse).getString("location.id");
+
+        // The payer scans and fetches the payload — while the QR Code is unambiguously valid.
+        MockMvcResponse payload = given().contentType(APPLICATION_JOSE)
+                .body(sign("{\"qrCodeContent\": \"%s\"}".formatted(qrCodeB64)))
+                .when().post("/pub/api/v1/loc/" + locationId);
+
+        assertEquals(HttpStatus.OK.value(), payload.statusCode(),
+                "the payer must be able to fetch the payload while the QR Code is valid: " + payload.asString());
+
+        // Time passes. The payer still holds a genuine, correctly signed payload.
+        Thread.sleep(3500);
 
         MockMvcResponse response = notify(notification(qrCodeId, AMOUNT, "USDC", WALLET));
 
         assertNotEquals(HttpStatus.OK.value(), response.statusCode(),
-                "an expired QR Code must not be payable: " + response.asString());
+                "a payload fetched while valid must not remain payable after the QR Code expires: "
+                        + response.asString());
         assertTrue(response.asString().contains("ValidUntil"),
                 "the reason should point at validUntil: " + response.asString());
 
-        // Two things are deliberately not asserted here, both recorded as Q19 in
+        // Two things are deliberately not asserted, both recorded as Q19 in
         // PLAN-PAYMENT-NOTIFICATIONS.md.
         //
         // The status is not read back through GET: an expired QR Code stops being readable at all,
@@ -184,6 +214,21 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
         // entity refuses to exist before any policy runs. The payment is correctly refused, but the
         // reason a caller sees is a field-validation message rather than "this QR Code expired",
         // which is a worse diagnostic than the rule deserves.
+    }
+
+    /** The same expiry rule, without the payer ever having fetched anything. */
+    @Test
+    void anExpiredQRCodeIsRefused() throws InterruptedException {
+        String expiresSoon = OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(2).withNano(0)
+                .toString().replace("+00:00", "Z");
+        String qrCodeId = createQRCode(expiresSoon, expiresSoon);
+
+        Thread.sleep(2500);
+
+        MockMvcResponse response = notify(notification(qrCodeId, AMOUNT, "USDC", WALLET));
+
+        assertNotEquals(HttpStatus.OK.value(), response.statusCode(),
+                "an expired QR Code must not be payable: " + response.asString());
     }
 
     // ------------------------------------------------------------------------ QR Code state
