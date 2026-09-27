@@ -15,12 +15,14 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertThrowsExactly;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PeggedCurrencyMixPolicyTest {
 
     private final CurrencyMixPolicy policy =
-        new PeggedCurrencyMixPolicy(List.of(Set.of("USD", "USDC", "USDT"), Set.of("BRL", "BRL1")));
+        new PeggedCurrencyMixPolicy(List.of(Set.of("USD", "USDC", "USDT", "FRNT"), Set.of("BRL", "BRL1")));
 
     @Test
     void shouldAllowAnyMixWithinASinglePegGroup() {
@@ -76,6 +78,29 @@ class PeggedCurrencyMixPolicyTest {
     @Test
     void shouldIgnoreNullAndBlankCurrencies() {
         assertDoesNotThrow(() -> policy.validate(java.util.Arrays.asList("BTC", null, "  ", "btc")));
+    }
+
+    /**
+     * Three dollar-pegged tokens on one request, which is the shape this deployment actually ships:
+     * a USD bank method beside a USDC or FRNT method on Solana.
+     *
+     * <p>FRNT is the Frontier Stable Token issued by the State of Wyoming — pegged to the dollar and
+     * redeemable at par. That redeemability is why it sits in the dollar group rather than merely
+     * near it: the peg rule is about whether two amounts on one QR Code denote the same value, not
+     * about whether two tokens happen to trade at a similar price.
+     */
+    @Test
+    void severalDollarPeggedTokensMayShareARequest() {
+        assertDoesNotThrow(() -> policy.validate(List.of("USD", "USDC", "FRNT")));
+    }
+
+    @Test
+    void aDollarPeggedTokenStillCannotJoinAnotherGroup() {
+        BusinessRuleException thrown = assertThrows(BusinessRuleException.class,
+            () -> policy.validate(List.of("FRNT", "BRL")));
+
+        assertTrue(thrown.getMessage().contains("FRNT") && thrown.getMessage().contains("BRL"),
+            thrown.getMessage());
     }
 
 }
