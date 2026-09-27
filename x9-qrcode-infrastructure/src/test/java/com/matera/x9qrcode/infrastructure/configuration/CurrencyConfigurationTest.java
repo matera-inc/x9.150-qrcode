@@ -22,7 +22,7 @@ class CurrencyConfigurationTest {
         List<Set<String>> peggedGroups = CurrencyConfiguration.loadPeggedCurrencyGroups(
             new ClassPathResource("pegged-currencies.json"), new ObjectMapper());
 
-        assertEquals(List.of(Set.of("USD", "USDC", "USDT"), Set.of("BRL", "BRL1")), peggedGroups);
+        assertEquals(List.of(Set.of("USD", "USDC", "USDT", "FRNT"), Set.of("BRL", "BRL1")), peggedGroups);
     }
 
 }

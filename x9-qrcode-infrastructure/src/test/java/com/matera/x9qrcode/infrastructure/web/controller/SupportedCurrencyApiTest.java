@@ -59,10 +59,17 @@ class SupportedCurrencyApiTest extends AbstractIntegrationTest {
             """.formatted(currency, currency);
     }
 
-    /** Solana settles USDC, so USDC is payable here — the allow list grew with the rail. */
-    @Test
-    void usdcIsAcceptedNowThatSolanaSettlesIt() {
-        given().contentType("application/json").body(body("USDC"))
+    /**
+     * Solana settles both dollar stablecoins this deployment accepts, so both are payable — the
+     * allow list grew with the rail, which is exactly what it is for.
+     *
+     * <p>FRNT is the Frontier Stable Token issued by the State of Wyoming through its Stable Token
+     * Commission: dollar-pegged, redeemable at par, and live on Solana.
+     */
+    @ParameterizedTest(name = "{0} is accepted because Solana settles it")
+    @ValueSource(strings = {"USDC", "FRNT"})
+    void aStablecoinSolanaSettlesIsAccepted(String currency) {
+        given().contentType("application/json").body(body(currency))
                 .when().post(CREATE)
                 .then().statusCode(HttpStatus.CREATED.value());
     }
