@@ -83,6 +83,57 @@ public class QRCodeMongoPersistenceModel implements Persistable<UUID> {
     @Field(name = "qrcode_emv")
     private String qrcodeEmv;
 
+    /**
+     * Events produced by state changes, written in the same document as the change itself.
+     *
+     * <p>Embedded rather than a separate collection so the two are one atomic write: an event cannot
+     * be lost without also losing the state change that caused it, and cannot be published for a
+     * state change that did not happen — with no multi-document transaction.
+     */
+    @Field(name = "outbox")
+    private List<OutboxEvent> outbox;
+
+    @Data
+    public static class OutboxEvent {
+
+        @Field(name = "event_id")
+        private UUID eventId;
+
+        @Field(name = "type")
+        private String type;
+
+        @Field(name = "occurred_at")
+        private Instant occurredAt;
+
+        @Field(name = "qrcode_revision")
+        private Integer qrCodeRevision;
+
+        @Field(name = "location_id")
+        private String locationId;
+
+        @Field(name = "amount")
+        private Long amount;
+
+        @Field(name = "currency")
+        private String currency;
+
+        @Field(name = "network")
+        private String network;
+
+        @Field(name = "transaction_id")
+        private String transactionId;
+
+        @Field(name = "invoice_number")
+        private String invoiceNumber;
+
+        @Field(name = "order_number")
+        private String orderNumber;
+
+        @Field(name = "reason")
+        private String reason;
+
+    }
+
     @Data
     public static class Creditor {
 

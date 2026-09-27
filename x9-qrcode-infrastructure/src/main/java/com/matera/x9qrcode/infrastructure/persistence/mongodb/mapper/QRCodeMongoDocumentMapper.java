@@ -39,6 +39,7 @@ import com.matera.x9qrcode.infrastructure.persistence.mongodb.model.QRCodeMongoP
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static java.util.Objects.isNull;
@@ -52,6 +53,7 @@ public final class QRCodeMongoDocumentMapper {
         qrCodeMongoPersistenceModel.setId(entity.getId().value());
         qrCodeMongoPersistenceModel.setLocationId(entity.getLocationId().value());
         qrCodeMongoPersistenceModel.setTtl(entity.getValidUntil().toInstant());
+        qrCodeMongoPersistenceModel.setOutbox(buildOutbox(entity));
         qrCodeMongoPersistenceModel.setRevision(entity.getRevision());
         qrCodeMongoPersistenceModel.setCreatedAt(entity.getCreatedAt());
         qrCodeMongoPersistenceModel.setRevisedAt(entity.getRevisedAt());
@@ -412,6 +414,34 @@ public final class QRCodeMongoDocumentMapper {
         cryptoWalletPaymentAddressDocument.setWalletAddress(cryptoWalletPaymentAddress.walletAddress());
 
         return cryptoWalletPaymentAddressDocument;
+    }
+
+
+    /**
+     * Maps the events THIS unit of work produced. Merging them with entries the document already
+     * carries is the repository's job — a mapper has no business knowing what is already stored.
+     */
+    private static List<QRCodeMongoPersistenceModel.OutboxEvent> buildOutbox(QRCodeEntity entity) {
+        List<QRCodeMongoPersistenceModel.OutboxEvent> outbox = new ArrayList<>();
+
+        entity.getPendingEvents().forEach(event -> {
+            QRCodeMongoPersistenceModel.OutboxEvent document = new QRCodeMongoPersistenceModel.OutboxEvent();
+            document.setEventId(event.eventId());
+            document.setType(event.type().value());
+            document.setOccurredAt(event.occurredAt().toInstant());
+            document.setQrCodeRevision(event.qrCodeRevision());
+            document.setLocationId(event.locationId());
+            document.setAmount(event.amount());
+            document.setCurrency(event.currency());
+            document.setNetwork(event.network());
+            document.setTransactionId(event.transactionId());
+            document.setInvoiceNumber(event.invoiceNumber());
+            document.setOrderNumber(event.orderNumber());
+            document.setReason(event.reason());
+            outbox.add(document);
+        });
+
+        return outbox;
     }
 
 }

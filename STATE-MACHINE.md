@@ -70,11 +70,17 @@ all reject a QR Code that is not ACTIVE or INITIATED.
 > way to convey **segregation between the principal amount and the tip** (see
 > `$.payment.amount` vs `$.payment.tipAmount`).
 
-> Settlement note: reaching **PAID** today happens through the biller lifecycle
-> endpoint `PUT /api/v1/payment-request/{id}/status-update` (`pay()`). A payment
-> notification on its own moves a QR to `INITIATED` (ACH, blockchain pre-commit)
-> or records details without changing status; whether a blockchain post-commit
-> (`SENT`) notification should auto-transition `INITIATED → PAID` is under review.
+> **Settlement note — answered: a post-commit notification never marks a QR paid.**
+> X9.150 does not touch money and cannot observe settlement; it only knows what a
+> payer *claimed*. So a `SENT` notification carrying a transaction hash publishes
+> `payment.sent` and leaves the QR at `PAYMENT_INITIATED`.
+>
+> Reaching **PAID** requires a system that actually received the funds: it matches
+> the reported transaction against what arrived and calls
+> `PUT /api/v1/payment-request/{id}/status-update`, which is what emits
+> `payment.cleared`. Auto-clearing on a payer's say-so would let a payer mark a QR
+> paid by asserting a transaction — the QR's own defence against double payment
+> would then rest on the word of the party it is defending against.
 
 ## Blockchain: pre-commit vs post-commit
 

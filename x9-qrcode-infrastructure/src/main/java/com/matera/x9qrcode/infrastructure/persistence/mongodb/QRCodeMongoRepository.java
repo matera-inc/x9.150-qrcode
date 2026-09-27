@@ -13,6 +13,7 @@ import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 import com.matera.x9qrcode.domain.vo.LocationIdVO;
 import com.matera.x9qrcode.domain.vo.QRCodeIdVO;
 import com.matera.x9qrcode.infrastructure.persistence.mongodb.mapper.QRCodeMongoDocumentMapper;
+import com.matera.x9qrcode.infrastructure.persistence.mongodb.model.QRCodeMongoPersistenceModel;
 import com.matera.x9qrcode.infrastructure.persistence.mongodb.mapper.QRCodeMongoEntityMapper;
 import com.matera.x9qrcode.infrastructure.persistence.mongodb.repository.QRCodeMongoModelRepository;
 
@@ -20,7 +21,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
+
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -31,7 +37,11 @@ public class QRCodeMongoRepository implements QRCodeRepository {
     @Override
     public QRCodeEntity save(QRCodeEntity qrCodeEntity) throws BusinessRuleException {
         try {
-            qrCodeMongoModelRepository.save(QRCodeMongoDocumentMapper.map(qrCodeEntity));
+            QRCodeMongoPersistenceModel model = QRCodeMongoDocumentMapper.map(qrCodeEntity);
+
+            preserveUndrainedOutbox(model);
+
+            qrCodeMongoModelRepository.save(model);
 
             return qrCodeEntity;
         } catch (DuplicateKeyException ex) {
@@ -44,6 +54,34 @@ public class QRCodeMongoRepository implements QRCodeRepository {
 
             throw new BusinessRuleException(ex, "Illegal duplicate QRCode persistence within Id : " + qrCodeEntity.getId());
         }
+    }
+
+    /**
+     * A save writes the whole document, so events the relay has not drained yet would be lost unless
+     * they are carried forward. Reads the stored outbox and puts it in front of this unit of work's
+     * new events, keeping emission order.
+     *
+     * <p>A drain running between this read and the write can resurrect an event it just removed.
+     * That is harmless and deliberate: delivery is at-least-once, the event log keys on eventId, and
+     * consumers deduplicate on it — so a resurrected event costs one redundant publish, never a
+     * duplicate downstream. Losing an event would not be recoverable; re-sending one is.
+     */
+    private void preserveUndrainedOutbox(QRCodeMongoPersistenceModel model) {
+        if (model.isNew()) {
+            return;
+        }
+
+        qrCodeMongoModelRepository.findById(model.getId()).ifPresent(stored -> {
+            if (isNull(stored.getOutbox()) || stored.getOutbox().isEmpty()) {
+                return;
+            }
+
+            List<QRCodeMongoPersistenceModel.OutboxEvent> merged = new ArrayList<>(stored.getOutbox());
+            if (nonNull(model.getOutbox())) {
+                merged.addAll(model.getOutbox());
+            }
+            model.setOutbox(merged);
+        });
     }
 
     @Override

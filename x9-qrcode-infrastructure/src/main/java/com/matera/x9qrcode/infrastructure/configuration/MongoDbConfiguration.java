@@ -8,7 +8,10 @@ package com.matera.x9qrcode.infrastructure.configuration;
 
 import com.matera.x9qrcode.app.repository.QRCodeRepository;
 import com.matera.x9qrcode.infrastructure.persistence.mongodb.QRCodeMongoRepository;
+import com.matera.x9qrcode.infrastructure.persistence.mongodb.repository.PaymentEventMongoModelRepository;
 import com.matera.x9qrcode.infrastructure.persistence.mongodb.repository.QRCodeMongoModelRepository;
+import com.matera.x9qrcode.infrastructure.service.events.PaymentEventDrain;
+import com.matera.x9qrcode.infrastructure.service.events.PaymentEventReader;
 
 import lombok.extern.slf4j.Slf4j;
 import org.bson.Document;
@@ -37,6 +40,17 @@ public class MongoDbConfiguration {
     public QRCodeRepository qrCodeMongoRepository(QRCodeMongoModelRepository qrCodeMongoModelRepository) {
         log.info("Initializing MongoDB QRCodeRepository.");
         return new QRCodeMongoRepository(qrCodeMongoModelRepository);
+    }
+
+    @Bean
+    public PaymentEventDrain paymentEventDrain(MongoTemplate mongoTemplate,
+                                               PaymentEventMongoModelRepository eventRepository) {
+        return new PaymentEventDrain(mongoTemplate, eventRepository);
+    }
+
+    @Bean
+    public PaymentEventReader paymentEventReader(PaymentEventMongoModelRepository eventRepository) {
+        return new PaymentEventReader(eventRepository);
     }
 
     @Bean
