@@ -979,7 +979,17 @@ components:
 
     NetworksSimple:
       type: object
-      description: "Available payment methods for this currency."
+      description: |-
+        Available payment methods for this currency.
+
+        **X9.150 specifies the style and the root of a payment method; the inner JSON of each network
+        object belongs to that network's owner.** The standard does not attempt to define, in one
+        document, the format of every blockchain and payment network in the world — a network's own
+        authority publishes how it is embedded. That is why `additionalProperties` is `true`: a rail
+        whose owner has not published (Pix, Zelle, Tron, …) is carried here **verbatim and
+        uninterpreted**, and is fully conformant that way. The paying PSP interprets it bilaterally.
+
+        A network graduates to a typed object below only once its owner has published the embedding.
       properties:
         FedNow:
           $ref: "#/components/schemas/FedNow"
@@ -1016,30 +1026,64 @@ components:
         - $ref: "#/components/schemas/BankAddress"
 
     Polygon:
+      description: |-
+        **Provisional — modelled ahead of a published embedding.** The Polygon community has not yet published how
+        Polygon is embedded in X9.150, so this shape is our reading, not the network owner's statement.
+        A single `walletAddress` is almost certainly right and matches the EVM convention, but if the published embedding
+        differs, this object changes to match it — the publication wins, not this file.
       allOf:
         - $ref: "#/components/schemas/CryptoWalletAddress"
 
     Solana:
+      description: |-
+        **Published embedding.** Solana has indicated how X9.150 should be used with it, so this shape
+        rests on the network owner's own statement rather than on inference. It is the reference
+        blockchain rail and the one the blockchain flow tests exercise.
       allOf:
         - $ref: "#/components/schemas/CryptoWalletAddress"
 
     Ethereum:
+      description: |-
+        **Provisional — modelled ahead of a published embedding.** The Ethereum community has not yet published how
+        Ethereum is embedded in X9.150, so this shape is our reading, not the network owner's statement.
+        A single `walletAddress` is almost certainly right and matches the EVM convention, but if the published embedding
+        differs, this object changes to match it — the publication wins, not this file.
       allOf:
         - $ref: "#/components/schemas/CryptoWalletAddress"
 
     Bitcoin:
+      description: |-
+        **Provisional — modelled ahead of a published embedding.** The Bitcoin community has not yet published how
+        Bitcoin is embedded in X9.150, so this shape is our reading, not the network owner's statement.
+        A single `walletAddress` is almost certainly right, but if the published embedding
+        differs, this object changes to match it — the publication wins, not this file.
       allOf:
         - $ref: "#/components/schemas/CryptoWalletAddress"
 
     Base:
+      description: |-
+        **Provisional — modelled ahead of a published embedding.** Base (Coinbase) has not yet published how
+        Base is embedded in X9.150, so this shape is our reading, not the network owner's statement.
+        A single `walletAddress` is almost certainly right and matches the EVM convention, but if the published embedding
+        differs, this object changes to match it — the publication wins, not this file.
       allOf:
         - $ref: "#/components/schemas/CryptoWalletAddress"
 
     XRP:
+      description: |-
+        **Provisional — modelled ahead of a published embedding.** The XRP Ledger community has not yet published how
+        XRP is embedded in X9.150, so this shape is our reading, not the network owner's statement.
+        A single `walletAddress` is almost certainly right, but if the published embedding
+        differs, this object changes to match it — the publication wins, not this file.
       allOf:
         - $ref: "#/components/schemas/CryptoWalletAddress"
 
     Arc:
+      description: |-
+        **Provisional — modelled ahead of a published embedding.** Arc (Circle) has not yet published how
+        Arc is embedded in X9.150, so this shape is our reading, not the network owner's statement.
+        A single `walletAddress` is almost certainly right and matches the EVM convention, but if the published embedding
+        differs, this object changes to match it — the publication wins, not this file.
       allOf:
         - $ref: "#/components/schemas/CryptoWalletAddress"
 
@@ -1079,7 +1123,13 @@ components:
 
     CryptoWalletAddress:
       type: object
-      description: "Blockchain payment method. The presence of the network object (e.g. Ethereum, Solana, Bitcoin, Base, XRP, Arc) selects the chain; only the receiving wallet address is carried — no memo/tag fields."
+      description: |-
+        Blockchain payment method. The presence of the network object selects the chain; only the
+        receiving wallet address is carried — no memo/tag fields.
+
+        Of the chains modelled below, **only Solana rests on a published embedding**; the others are
+        provisional (see each schema). The single-`walletAddress` shape is our reading for those, and
+        yields to the network owner's publication if it differs.
       required:
         - walletAddress
       properties:

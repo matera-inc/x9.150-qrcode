@@ -66,6 +66,17 @@ These describe how our software behaves; they're enforced in `openapi.yaml` + th
   (`pegged-currencies.json`; `domain/service/PeggedCurrencyMixPolicy.java`).
 - **`protectionType`** (bank rails) is lowercase and always `tokenized`; **tips** are integer
   percentages `0–999`; **timestamps** are UTC, `Z`-terminated.
+- **Networks: X9.150 specifies the style and the root; the inner JSON belongs to the network's
+  owner.** The standard does not define, in one document, the format of every rail in the world — a
+  network's own authority publishes how it is embedded. So of the blockchains we model, **only
+  `Solana` rests on a published embedding**; `Bitcoin`, `Ethereum`, `Polygon`, `Base`, `XRP` and
+  `Arc` are **provisional** — a single `walletAddress` is our reading, and yields to the owner's
+  publication if it differs. A rail whose owner has not published (Pix, Zelle, Tron, …) is carried
+  verbatim in the networks object's `additionalProperties` and is fully conformant that way; promoting
+  it to a typed object requires pointing at the publication. See
+  [ADR-0010](docs/adr/0010-networks-are-interpreted-only-once-their-authority-publishes.md).
+  **Blockchain flow tests use Solana only**, because a test of an unspecified rail asserts only that
+  our code matches our own invention.
 
 ## Build / test / run
 
