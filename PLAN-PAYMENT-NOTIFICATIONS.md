@@ -226,6 +226,177 @@ This is the heart of the branch. A payment notification is **not a fact being re
 first notification it is a **request for permission**, and X9.150 brokers it between the payer's PSP
 and the biller. The shape is a two-phase commit, with X9.150 as coordinator.
 
+#### 3.4.0 The acceptance rules
+
+Three rules the implementation must satisfy, stated by the product owner. They govern everything in
+§3.4; where the current code already satisfies one it is marked, because most of this is not built yet.
+
+**Rule 1 — Notifications are opt-in at creation.** Ask for a payment notification when creating the QR
+Code and it exists; say nothing and it does not. ✅ **Already true**: `paymentNotification` is optional
+on the create request and `QRCodeEntityValidator.validatePaymentNotification` rejects a notification
+for a QR that has none (§3.4.1, ADR-0006). Only the `mode: APPROVE` dimension is new.
+
+**Rule 2 — A pre-commit notification is accepted only if everything checks out.** Before replying OK,
+validate against the QR itself:
+
+| Check | Today |
+|---|---|
+| Amount is a valid amount (> 0) | ✅ `validatePaymentNotificationAmounts` |
+| **Amount is the *correct* amount** for the matched payment method | ❌ never compared |
+| **Currency is one this QR offers** | ❌ not checked |
+| **Destination address exists on this QR** (`blockchain.to` matches a wallet the QR published) | ❌ not checked |
+| **Destination address is compatible with the currency** — same payment method carries both | ❌ not checked |
+| **No `validUntil` has expired** — neither the QR's nor the matched payment method's | ❌ not checked on this path |
+| QR supports the notified rail | ⚠️ checked, but the blockchain list is hardcoded and omits Base/XRP/Arc |
+| Status is ACTIVE for a pre-commit | ✅ |
+
+**Only if all of it passes do we reply OK.** Five of eight checks do not exist yet, and they are the
+substantive ones. Note the expiry gap in particular: `RetrieveQRCodePayloadUseCase` filters expired
+payment methods when serving a payload, but the notification path does not, so today a payment can be
+notified against an expired QR.
+
+The matching is one lookup, not several independent checks: **find the payment method whose currency
+equals the notification's currency and whose network object for the notified rail carries the
+notification's destination address.** If no such method exists, the notification is refused — that
+single predicate covers currency validity, address existence and address/currency compatibility at
+once, and leaves amount and expiry to compare against the method it found.
+
+**Rule 3 — An invalid JWS signature is never processed.** If the signature does not verify, stop. Do
+not parse the payload, do not look up the QR, do not touch the database. The input is unauthenticated
+and may be an exploit attempt, so nothing beyond signature verification may act on it.
+⚠️ **The order is already right** — `PublicEndpointsController.processPaymentNotification` verifies
+before parsing — but three things are wrong around it (§3.4.0.1).
+
+##### 3.4.0.1 What Rule 3 requires changing
+
+1. **An invalid signature answers 400.** It is thrown as a `BusinessRuleException`, which the advice
+   maps to *Validation Failed*. An unverifiable signature is not a malformed business request; it is
+   an authenticity failure and belongs in the **401/403** class. A caller cannot currently tell
+   "your JSON is wrong" from "your signature is forged".
+2. **`catch (Exception e)` swallows the distinction.** Every failure — signature, parse, business rule
+   — is rewrapped as *"Error processing payment notification."*, so the one case we most want to see
+   in logs and metrics is indistinguishable from a typo in a field.
+3. **Verification itself fetches attacker-controlled URLs.** The signer certificate is fetched from
+   the `jku`/`x5u` URL *in the header of the unverified JWS* (`RestClientExternalJwkService`). That is
+   an outbound request on unauthenticated input — an SSRF and DoS surface that exists **before** any
+   signature is verified, and Rule 3's "don't even try to process it" does not reach it.
+   Mitigations, all cheap: apply the **issuer/host allowlist (ADR-0007) to the URL before fetching**,
+   forbid redirects and credentials (which the standard's verification steps already require), set
+   tight connect/read timeouts, and bound response size. Prefer `x5c`/a cached thumbprint (`x5t#S256`)
+   over a fetch where the payer offers one.
+
+Rule 3 therefore lands in **phase 4b** alongside the CA allowlist, not as an afterthought.
+
+#### 3.4.0.2 Rule 4 — every unhappy path is tested
+
+A happy-path test proves the feature works once. **The unhappy paths are the feature**: a payment
+notification is a gate, and a gate is defined by what it refuses. Each row below gets a test, and the
+assertion covers the **status code, the reason, and that nothing changed** — no status transition, no
+event in the outbox, no lock taken.
+
+**QR state**
+
+| Condition | Expected |
+|---|---|
+| QR does not exist | 404 |
+| QR is `PAID` | 409, `currentStatus: PAID` |
+| QR is `CANCELLED` | 409, `currentStatus: CANCELLED` |
+| QR is `PAYMENT_INITIATED` by another payment | 409 "already being paid" |
+| QR is `PAYMENT_INITIATED` by *this* payment (replay) | **200**, same `paymentId`, no second event |
+| QR past its `validUntil` | see **Q19** |
+| Matched payment method past *its* `validUntil` | refused |
+
+**Notification content**
+
+| Condition | Expected |
+|---|---|
+| Amount ≤ 0 | 400 |
+| Amount ≠ the matched method's expected amount | 400 |
+| Currency not offered by this QR | 400 |
+| Destination address not published by this QR | 400 |
+| Address published, but on a method of a different currency | 400 — the compatibility case |
+| Rail not offered by this QR | 400 |
+| Blockchain data missing on a crypto rail | 400 |
+| `SENT` with no `transactionId` | 400 (ADR-0004: a committed tx with no hash cannot exist) |
+| Post-commit while QR is not `PAYMENT_INITIATED` | 409 |
+| ACH with no payer info or no `expectedDate` | 400 |
+| Rail absent from `NetworkEnum` | 400 — **not** a silent 200 (phase 0) |
+
+**Signature and trust** — all of these refuse *before* any lookup or state change (Rule 3)
+
+| Condition | Expected |
+|---|---|
+| Signature does not verify | 401/403, payload never parsed |
+| Signer CA not on the allowlist | 403, distinct from "invalid" (ADR-0007) |
+| Certificate expired or revoked | 403 |
+| JWS past `iat + ttl` | 401/403 — the standard requires rejecting these |
+| `crit` header lists something we do not understand | reject |
+| Replayed `correlationId` | see the standard's SHOULD; decide with Q20 |
+
+**Opt-in and concurrency**
+
+| Condition | Expected |
+|---|---|
+| QR created with no `paymentNotification` | refused (Rule 1) |
+| `paymentNotification.kind: EXTERNAL` | refused — X9.150 does not handle that callback |
+| N concurrent notifications, same QR | exactly one 200, N−1 × 409, exactly one event |
+
+##### Two questions this raises
+
+- **Q19 — What does an expired QR return, and is it even distinguishable?** A QR past `validUntil`
+  could reasonably be `409` (conflict with current state, consistent with the other refusals) or `410
+  Gone`. But there is a sharper problem underneath: **the TTL index deletes the document 30 seconds
+  after `validUntil`** (§3.8), so the *same* logical condition answers `409` before the reaper runs
+  and `404` after. A caller cannot tell "expired" from "never existed", and the answer changes with
+  timing. **Recommendation: refuse expired with `409` and a distinct reason, and raise the TTL grace
+  far above 30s** so the distinction survives long enough to be useful. Today's 30s makes expiry
+  effectively unobservable.
+- **Q20 — Do we enforce `correlationId` replay detection?** The standard says a verifier SHOULD check
+  a `correlationId` has not been processed recently. That needs a store with a retention window.
+  **Recommendation: defer, and note it** — Rule 2's idempotency already makes a replayed *notification*
+  safe, so this guards only against a replayed *envelope*, which the `iat + ttl` check largely covers.
+
+#### 3.4.0.3 Rule 5 — there is no payer allowlist. Anybody can pay.
+
+**X9.150 never decides *who* may pay.** A payment QR Code is presented in public and is payable by
+anyone holding a valid X9-issued certificate; that is what the artefact is for. The only gate on the
+payer side is a **valid digital signature**.
+
+So the service holds no list of permitted payers, no payer identity check, and no per-payer policy.
+If the signature verifies against a trusted CA and the notification satisfies Rule 2, the payer is
+entitled to pay, full stop.
+
+##### This is not in tension with the CA allowlist — they gate different things
+
+The two are easy to confuse, and confusing them would turn ADR-0007 into exactly the thing Rule 5
+forbids:
+
+| | Gates | Rule |
+|---|---|---|
+| **CA allowlist** (ADR-0007) | Which **issuer** we trust to have signed *any* certificate — a trust-anchor setting | Allowed, configurable |
+| **Payer allowlist** | Which **subjects** may pay this QR Code — an identity check on the signer | **Never** |
+
+The allowlist constrains the **issuer**, not the **subject**. Every payer holding a certificate from
+an allowed CA is accepted; we never look at *which* payer it is. An implementation that filtered on
+certificate subject, organisation, or any payer-identifying field would be violating Rule 5 while
+believing it was implementing ADR-0007.
+
+##### Consequences
+
+- **The approval verdict may not be based on payer identity.** The consuming system votes on the
+  *payment* — amount, timing, and in future the source wallet's screening status — never on a list of
+  permitted counterparties. Screening a wallet is a risk decision about a transaction; an allowlist is
+  a decision about a party, and X9.150 makes neither, but only the first is even available to the
+  consuming system.
+- **This is why the API is open.** The unauthenticated posture is not an unfinished access-control
+  story; it follows from the artefact being publicly payable. Signature verification, not
+  authentication, is the security boundary on the payer side.
+- **Anti-abuse cannot key on payer identity inside X9.150** — no per-payer rate limiting or quotas.
+  That belongs at the deployer's edge, which is consistent with the rest of the project's posture.
+- **Q15 is unaffected.** That question is about authorizing the *consuming system* to cast an approval
+  verdict, which is the biller's side of the exchange. Rule 5 constrains the payer's side. A token
+  minted at QR creation gates the voter, never the payer.
+
 #### 3.4.1 Is a notification wanted at all?
 
 Notifications are **not universally necessary**, because on several rails the QR id travels inside the
