@@ -17,30 +17,36 @@
     "description": "Table 7 - dine-in",
     "paymentTiming": "immediate",
     "tip": {
-      "range": { "min": 150, "max": 250 },
-      "presets": [ 180, 200, 220, 250 ]
+      "range": {
+        "min": 150,
+        "max": 250
+      },
+      "presets": [
+        180,
+        200,
+        220,
+        250
+      ]
     },
     "amountDue": {
       "amount": 2450,
       "currency": "USD"
     }
   },
-  "paymentNotification": { "kind": "DEFAULT" },
+  "paymentNotification": {
+    "kind": "DEFAULT"
+  },
   "paymentMethods": [
     {
       "currency": "USD",
       "validUntil": "2030-12-31T23:59:59Z",
       "amount": 2450,
       "networks": {
-        "FedNow": { "routingNumber": "021000021", "accountNumber": "5540118820", "protectionType": "tokenized" }
-      }
-    },
-    {
-      "currency": "USDC",
-      "validUntil": "2030-12-31T23:59:59Z",
-      "amount": 24500000,
-      "networks": {
-        "Solana": { "walletAddress": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM" }
+        "FedNow": {
+          "routingNumber": "021000021",
+          "accountNumber": "5540118820",
+          "protectionType": "tokenized"
+        }
       }
     }
   ]

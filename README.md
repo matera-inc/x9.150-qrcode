@@ -1,7 +1,7 @@
 X9 QRCode Backend
 ========================
 
-This application is a backend implementation of the **ANSI X9.150-2026 Payment QR Code Standard** — it generates and manages merchant-presented payment QR codes across US bank rails (RTP, FedNow, ACH) and Solana, and is currency-agnostic (any ISO 4217 code or digital-asset ticker is carried through as-is).
+This application is a backend implementation of the **ANSI X9.150-2026 Payment QR Code Standard** — it generates and manages merchant-presented payment QR codes across the US bank rails the standard defines: **FedNow, RTP and ACH**, settling in USD. Every reading we make of an ambiguous passage in the standard, and every deliberate departure from a literal one, is recorded in [official-spec/INTERPRETATION.md](official-spec/INTERPRETATION.md).
 
 The X9.150 standard itself is copyrighted by ASC X9 and is **not** distributed with this repository. To obtain it, purchase it from the [ANSI Web Store](https://webstore.ansi.org/standards/ascx9/ansix91502026). See [`official-spec/README.md`](official-spec/README.md) for details.
 
@@ -133,7 +133,7 @@ Architecture, standard-alignment, and integration design notes:
 
 - [Running & Testing](RUNNING.md) — first-run guide: prerequisites, host-JVM vs Docker, building the image, smoke test
 - [Endpoints & Local Scan Testing](ENDPOINTS.md) — public/management endpoints, the single-origin URL model, and Cloudflare-tunnel setup for phone-scan testing
-- [QR Code State Machine](STATE-MACHINE.md) — lifecycle states, transitions, and blockchain pre/post-commit
+- [QR Code State Machine](STATE-MACHINE.md) — lifecycle states and transitions
 - [High Availability](HIGH-AVAILABILITY.md) — MongoDB replica sets, application failover, and license limits
 - [Plan: Non-USD-Pegged Currencies](PLAN-NON-USD-PEGGED-CURRENCIES.md) — request-time FX and per-currency `validUntil` *(proposed)*
 
@@ -405,17 +405,23 @@ This section describes how the signing mechanism is applied in the context of X9
 
 For bank-account payment methods, this implementation supports **US bank rails only** — **FedNow**, **RTP**, and **ACH** (each identified by a 9-digit ABA routing number and an account number).
 
-Account numbers on these rails use the **tokenized** protection approach **only**. The `protectionType` field on a bank address is **mandatory** and is always **`tokenized`** — the software does not implement the `encrypted` or `plaintext` approaches. Making the field required and always present means anyone reading a created QR payload can see the account number is tokenized, never assumed to be in the clear. `protectionType` applies **only** to the bank networks (FedNow, RTP, ACH); it does not apply to blockchain payment methods.
+Account numbers on these rails use the **tokenized** protection approach **only**. The `protectionType` field on a bank address is **mandatory** and is always **`tokenized`** — the software does not implement the `encrypted` or `plaintext` approaches. Making the field required and always present means anyone reading a created QR payload can see the account number is tokenized, never assumed to be in the clear. `protectionType` applies to the bank networks (FedNow, RTP, ACH), which are the only networks this build interprets.
 
-### Blockchain networks & currencies
+### The supported network set
 
-For blockchain payment methods, the implementation interprets **Solana only** — carrying a single `walletAddress` (no memo/tag field). Every other chain, and every other network name (private brands, unknown rails), is accepted and stored verbatim under the networks object's `additionalProperties`, and is never interpreted.
+**This build interprets three networks: `fednow`, `rtp` and `ach`.** Any other key in the networks object — a chain, a private brand, a P2P service — is **refused at creation, with a 400 that names it**. It is not carried verbatim, and it is certainly not dropped in silence: a dropped network looks exactly like a working one from the caller's side, right up until nobody can pay.
 
-**X9.150 specifies the style and the root of a payment method; the inner JSON of each network object belongs to that network's owner.** The standard does not attempt to define, in one document, the format of every blockchain and payment network in the world — a network's own authority publishes how it is embedded. If Pix is to become an X9.150 payment method for Brazilians, Banco Central do Brasil is the body that publishes how Pix is embedded; the same holds for every chain.
+**X9.150 specifies the style and the root of a payment method; the inner JSON of each network object belongs to that network's owner.** The standard does not attempt to define, in one document, the format of every payment network in the world — a network's own authority publishes how it is embedded. If Pix is to become an X9.150 payment method for Brazilians, Banco Central do Brasil is the body that publishes how Pix is embedded; the same holds for every chain. Until that publication exists, a typed object for it would be our guess wearing X9.150's name, and would meet a different guess from the next implementer — the interoperability failure the standard exists to prevent. See [ADR-0010](docs/adr/0010-networks-are-interpreted-only-once-their-authority-publishes.md).
 
-**Solana is modelled because it is the only chain whose owner has published** how X9.150 should be used with it. A chain we modelled without such a publication would be our guess wearing X9.150's name, and would meet a different guess from the next implementer — the interoperability failure the standard exists to prevent. So Bitcoin, Ethereum, Polygon, Base, XRP and Arc are **not** modelled: a payment method on any of them is carried verbatim in `additionalProperties`, exactly like Pix or Zelle, and is fully conformant that way. Each becomes a typed object when — and only when — its owner publishes an embedding. See [ADR-0010](docs/adr/0010-networks-are-interpreted-only-once-their-authority-publishes.md).
+Refusing rather than carrying is a deployment-level judgement on top of that: a network we cannot interpret is one we cannot validate a payment notification against, so a QR Code advertising it is a promise we cannot keep. See [ADR-0012](docs/adr/0012-refuse-what-this-deployment-cannot-honour.md). The supported set is configuration — a network becomes acceptable when it is added to it, never because a caller sent it.
 
-Monetary amounts are **64-bit integers in a currency's minor units** (never floating-point). The currency is an open string — an ISO 4217 code such as `USD`/`JPY`, or a digital-asset ticker such as `USDC`/`BTC` — that the module repeats verbatim; the paying PSP resolves its decimals.
+Network names are **read leniently and written strictly**: any casing is accepted on input, and the emitted key is the standard's own lowercase spelling, itself configurable via `x9.networks.emitted-keys`. The standard is not self-consistent on this point; the reasoning is in [official-spec/INTERPRETATION.md](official-spec/INTERPRETATION.md).
+
+### Currencies
+
+Monetary amounts are **64-bit integers in a currency's minor units** (never floating-point). The currency is an open string in the payload — an ISO 4217 code such as `USD`/`JPY`, or a digital-asset ticker such as `USDC`/`BTC` — that the module repeats verbatim; the paying PSP resolves its decimals.
+
+What a **deployment** will accept is narrower, because it is decided by the rails: FedNow, RTP and ACH move dollars, so `supported-currencies.json` lists `USD` alone and a QR Code denominated in anything else is refused at creation. An empty list disables the check. This is separate from the peg-mixing rule (`pegged-currencies.json`), which asks whether the currencies on one request may appear *together*.
 
 ### Implementation
 

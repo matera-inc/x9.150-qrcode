@@ -60,8 +60,8 @@ all reject a QR Code that is not ACTIVE or INITIATED.
 | Network | Precondition | Status effect | `transactionId` |
 |---------|--------------|---------------|-----------------|
 | **FedNow / RTP** (instant) | QR = ACTIVE | records (status unchanged) | ISO 20022 End-to-End ID |
-| **ACH** | QR = ACTIVE; payer info + expectedDate present; no blockchain data | ACTIVE → **INITIATED** | optional |
-| **Blockchain** (Polygon/Solana/Ethereum/Bitcoin) | QR supports a crypto network; blockchain data present | see below | see below |
+| **ACH** | QR = ACTIVE; payer info + expectedDate present | ACTIVE → **INITIATED** (goes through the acceptance gate) | Trace Number, optional |
+| Anything else | — | **refused at creation**, so no notification can name it ([ADR-0012](docs/adr/0012-refuse-what-this-deployment-cannot-honour.md)) | — |
 
 > FedNow / RTP note: the payment notification is **not required for reconciliation**
 > on these rails — the QR Code ID travels inside the ISO 20022 payment message
@@ -82,45 +82,52 @@ all reject a QR Code that is not ACTIVE or INITIATED.
 > paid by asserting a transaction — the QR's own defence against double payment
 > would then rest on the word of the party it is defending against.
 
-## Blockchain: pre-commit vs post-commit
+## Pre-commit vs post-commit — dormant in this build
 
-For blockchain networks the notification's `blockchain.action` distinguishes the
-on-chain stage, and this maps directly to whether a transaction reference exists:
+A notification can arrive at two moments: before the money moves, and after. The
+first is a **request for permission** and goes through the acceptance gate; the
+second merely **reports** what already happened.
 
-- **Pre-commit** = **no txHash yet**. `action = PAYMENT_INITIATED`. The transaction
-  has not been committed to the chain, so there is no transaction hash. Requires the
-  QR to be `ACTIVE`; moves it to `INITIATED`.
-- **Post-commit** = **txHash present**. `action = SENT`. The transaction has been
-  committed to the chain and therefore has a transaction hash. Requires the QR to be
-  `INITIATED`, and the transaction hash **must** be supplied.
-- `action = NOT_SENT` — the payment did not proceed; requires the QR to be `INITIATED`.
+Distinguishing them needs evidence, and the evidence is a transaction reference:
 
-### ⚠️ Where the txHash goes
+> **Pre-commit** ⇔ `$.payment.transactionId` is absent.
+> **Post-commit** ⇔ `$.payment.transactionId` is present.
 
-There is **no dedicated `txHash` field**. For blockchains, the on-chain
-**transaction hash is carried in the network-agnostic `$.payment.transactionId`
-field** (ANSI X9.150-2026 §2.5, "Payment Transaction ID"). The same field carries
-the ISO 20022 End-to-End ID for FedNow/RTP and the Trace Number for ACH.
+The committee rejected an explicit phase marker, so this inference is the only
+mechanism available ([ADR-0004](docs/adr/0004-phase-inferred-from-transaction-id.md)).
 
-So the pre/post-commit rule, stated precisely:
+**No rail in this build exercises the post-commit half.** It reports a transaction
+already committed to a public ledger — a distinction only a blockchain offers,
+because the payer can point at a txHash anyone can verify. An ACH debit has no
+evidenced moment between "announced" and "settled" that the payer could produce.
+So `payment.sent` and `payment.failed` are never emitted here; the events, the
+`ActionEnum` values and the two-phase dispatch remain in place, unemitted, until an
+interpreted chain returns.
 
-> **Blockchain pre-commit** ⇔ `$.payment.transactionId` is absent (`action = PAYMENT_INITIATED`).
-> **Blockchain post-commit** ⇔ `$.payment.transactionId` is present (`action = SENT`) — this is the txHash.
+### ⚠️ Where a transaction reference goes
+
+There is **no dedicated `txHash` field**. The network-agnostic
+`$.payment.transactionId` (ANSI X9.150-2026 §2.5, "Payment Transaction ID") carries
+whatever reference the rail uses: the ISO 20022 End-to-End ID for FedNow/RTP, the
+Trace Number for ACH, and — when an interpreted chain returns — the on-chain
+transaction hash.
 
 ```mermaid
 stateDiagram-v2
     direction LR
     [*] --> ACTIVE
-    ACTIVE --> INITIATED : PAYMENT_INITIATED (pre-commit, no transactionId/txHash)
-    INITIATED --> INITIATED : SENT (post-commit, transactionId = txHash REQUIRED)
-    INITIATED --> INITIATED : NOT_SENT
+    ACTIVE --> INITIATED : ACH notification (accepted by the gate)
+    ACTIVE --> ACTIVE : FedNow / RTP notification (recorded, courtesy)
     INITIATED --> ACTIVE : reactivate()
     INITIATED --> PAID : pay() via status-update
+    ACTIVE --> CANCELLED : cancel()
+    INITIATED --> CANCELLED : cancel()
 
     note right of INITIATED
-        SENT/NOT_SENT are recorded on the QR
-        (revision bumped) without changing status
-        in the current implementation.
+        Only a system that actually received the
+        funds may call status-update to reach PAID.
+        X9.150 never marks a QR paid on a payer's
+        say-so.
     end note
 ```
 

@@ -30,10 +30,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * The whole payment-notification loop, end to end, with a stand-in for the consuming system.
  *
  * <p>The point of the test is the division of responsibility. X9.150 never touches money, so it
- * cannot know a payment settled — it only knows what a payer claimed. A post-commit notification
- * therefore publishes {@code payment.sent} and leaves the QR Code PAYMENT_INITIATED. Some other
- * system watches the funds arrive, matches the transaction it was told about, and calls back to say
- * the QR Code is paid. Only that produces {@code payment.cleared}.
+ * cannot know a payment settled — it only knows what a payer claimed. An ACH notification announces
+ * a debit the payer has not yet originated: it publishes {@code payment.initiated} and takes the QR
+ * Code out of circulation, and there it stops. Some other system watches the funds arrive, matches
+ * the trace number it was told about, and calls back to say the QR Code is paid. Only that produces
+ * {@code payment.cleared}.
+ *
+ * <p>{@code payment.sent} has no bank-rail trigger. It reports a transaction already committed on a
+ * public ledger, which is a distinction only a blockchain offers — the payer can point at a txHash
+ * anyone can verify. An ACH debit has no such moment between "announced" and "settled" that the
+ * payer could evidence, so the event stays unemitted until an interpreted chain returns.
  *
  * <p>The consumer here is deliberately dumb — poll, read, act — because that is all a consumer has
  * to be: X9.150 pushes nothing and holds no consumer state beyond the cursor the consumer itself
@@ -46,9 +52,8 @@ class PaymentEventConsumerFlowTest extends AbstractIntegrationTest {
     private static final String EVENTS = "/pub/api/v1/events";
     private static final String APPLICATION_JOSE = "application/jose";
 
-    private static final String WALLET = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
-    private static final String TX_HASH = "5VfydnLu4XwV2FquzyFbENPBqbCyJLxq5wRhtZ8rLraBdHfDDmWXnc8nBtCqPU4f";
-    private static final long AMOUNT = 25_000_000L;
+    private static final String TRACE_NUMBER = "021000021.0000001";
+    private static final long AMOUNT = 25_000L;
 
     @Autowired
     private PaymentEventDrain paymentEventDrain;
@@ -69,15 +74,16 @@ class PaymentEventConsumerFlowTest extends AbstractIntegrationTest {
               "bill": {
                 "description": "consumer flow",
                 "invoice": { "number": "INV-2030-77", "date": "2030-01-10", "dueDate": "2030-12-31T23:59:59Z" },
-                "amountDue": { "amount": %d, "currency": "USDC" }
+                "amountDue": { "amount": %d, "currency": "USD" }
               },
               "paymentNotification": { "kind": "DEFAULT" },
               "paymentMethods": [
-                { "currency": "USDC", "validUntil": "2030-12-31T23:59:59Z", "amount": %d,
-                  "networks": { "Solana": { "walletAddress": "%s" } } }
+                { "currency": "USD", "validUntil": "2030-12-31T23:59:59Z", "amount": %d,
+                  "networks": { "ach": { "routingNumber": "021000021", "accountNumber": "1234567890",
+                                         "protectionType": "tokenized" } } }
               ]
             }
-            """.formatted(AMOUNT, AMOUNT, WALLET);
+            """.formatted(AMOUNT, AMOUNT);
 
         return given().contentType("application/json").body(body)
                 .when().post(CREATE)
@@ -97,15 +103,15 @@ class PaymentEventConsumerFlowTest extends AbstractIntegrationTest {
                 .extract().body().asString();
     }
 
-    private MockMvcResponse notify(String qrCodeId, String action, String transactionId) {
-        String transactionField = transactionId == null ? "" : "\"transactionId\": \"%s\",".formatted(transactionId);
+    private MockMvcResponse notify(String qrCodeId) {
         String body = """
             {
-              "payment": { "qrcodeId": "%s", %s "amount": %d, "currency": "USDC", "network": "Solana" },
-              "expectedDate": "2030-10-08T06:59:59Z",
-              "blockchain": { "action": "%s", "to": "%s", "from": "%s" }
+              "payment": { "qrcodeId": "%s", "transactionId": "%s", "amount": %d, "currency": "USD",
+                           "network": "ACH" },
+              "payer": { "info": "Jane Payer, Springfield Savings" },
+              "expectedDate": "2030-10-08T06:59:59Z"
             }
-            """.formatted(qrCodeId, transactionField, AMOUNT, action, WALLET, WALLET);
+            """.formatted(qrCodeId, TRACE_NUMBER, AMOUNT);
 
         return given().contentType(APPLICATION_JOSE).body(sign(body)).when().post(NOTIFY);
     }
@@ -156,35 +162,29 @@ class PaymentEventConsumerFlowTest extends AbstractIntegrationTest {
 
         // 1. Pre-commit. Funds have not moved; this is the notification that takes the QR Code out
         //    of circulation.
-        assertEquals(HttpStatus.OK.value(), notify(qrCodeId, "PAYMENT_INITIATED", null).statusCode());
+        assertEquals(HttpStatus.OK.value(), notify(qrCodeId).statusCode());
         assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
 
         consumer = poll(consumer);
         assertEquals(List.of("payment.initiated"), typesFor(consumer, qrCodeId),
                 "the consumer should learn the payment started");
 
-        // 2. Post-commit. The payer reports a transaction — and the QR Code STAYS initiated, because
-        //    X9.150 cannot see money and will not claim a payment settled on a payer's say-so.
-        assertEquals(HttpStatus.OK.value(), notify(qrCodeId, "SENT", TX_HASH).statusCode());
-        assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId),
-                "a reported transaction is not settlement: only a system that saw the funds may say paid");
-
-        consumer = poll(consumer);
-        assertEquals(List.of("payment.initiated", "payment.sent"), typesFor(consumer, qrCodeId));
-
-        // 3. The consuming system matched the reported transaction against funds it actually
-        //    received, and tells X9.150 the QR Code is paid.
-        Map<String, Object> sent = consumer.seen().stream()
-                .filter(e -> qrCodeId.equals(e.get("qrCodeId")) && "payment.sent".equals(e.get("type")))
+        // 2. The payer's report is not settlement. X9.150 never touches money and cannot see funds
+        //    arrive, so nothing here may move the QR Code to PAID on a payer's say-so. The consuming
+        //    system matches the trace number against funds it actually received, and only then calls
+        //    the status API.
+        Map<String, Object> initiated = consumer.seen().stream()
+                .filter(e -> qrCodeId.equals(e.get("qrCodeId")) && "payment.initiated".equals(e.get("type")))
                 .findFirst().orElseThrow();
 
-        assertEquals(TX_HASH, sent.get("transactionId"),
+        assertEquals(TRACE_NUMBER, initiated.get("transactionId"),
                 "the event must carry the transaction the consumer has to match on");
-        assertEquals("INV-2030-77", sent.get("invoiceNumber"),
+        assertEquals("INV-2030-77", initiated.get("invoiceNumber"),
                 "the event must carry the biller's own reference, so the consumer can route it");
 
+        // 3. Settlement observed elsewhere, reported back here.
         given().contentType("application/json")
-                .body("{\"status\": \"PAID\", \"endToEndId\": \"%s\", \"network\": \"Solana\"}".formatted(TX_HASH))
+                .body("{\"status\": \"PAID\", \"endToEndId\": \"%s\", \"network\": \"ACH\"}".formatted(TRACE_NUMBER))
                 .when().put(CREATE + "/" + qrCodeId + "/status-update")
                 .then().statusCode(HttpStatus.OK.value());
 
@@ -192,7 +192,7 @@ class PaymentEventConsumerFlowTest extends AbstractIntegrationTest {
 
         // 4. And only now is the QR Code cleared.
         consumer = poll(consumer);
-        assertEquals(List.of("payment.initiated", "payment.sent", "payment.cleared"), typesFor(consumer, qrCodeId));
+        assertEquals(List.of("payment.initiated", "payment.cleared"), typesFor(consumer, qrCodeId));
     }
 
     @Test
@@ -200,7 +200,7 @@ class PaymentEventConsumerFlowTest extends AbstractIntegrationTest {
         Consumer consumer = new Consumer(List.of(), null);
         String qrCodeId = createQRCode();
 
-        notify(qrCodeId, "PAYMENT_INITIATED", null);
+        notify(qrCodeId);
         consumer = poll(consumer);
 
         Map<String, Object> event = consumer.seen().stream()
@@ -219,7 +219,7 @@ class PaymentEventConsumerFlowTest extends AbstractIntegrationTest {
     @Test
     void aDrainedEventIsNotDrainedTwice() {
         String qrCodeId = createQRCode();
-        notify(qrCodeId, "PAYMENT_INITIATED", null);
+        notify(qrCodeId);
 
         paymentEventDrain.drainOnce();
         int secondPass = paymentEventDrain.drainOnce();

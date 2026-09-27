@@ -36,9 +36,9 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
     private static final String NOTIFY = "/pub/api/v1/payment-notification";
     private static final String APPLICATION_JOSE = "application/jose";
 
-    private static final String WALLET = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
-    private static final String OTHER_WALLET = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
-    private static final long AMOUNT = 25_000_000L;
+    private static final String ROUTING_NUMBER = "021000021";
+    private static final String ACCOUNT_NUMBER = "1234567890";
+    private static final long AMOUNT = 25_000L;
 
     private static String qrCodeBody(String validUntil, String methodValidUntil) {
         return """
@@ -51,24 +51,35 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
                 "address": { "line1": "1 A St", "city": "Springfield", "state": "CA", "postalCode": "90001", "country": "US" },
                 "MCC": "5999"
               },
-              "bill": { "description": "acceptance test", "amountDue": { "amount": %d, "currency": "USDC" } },
+              "bill": { "description": "acceptance test", "amountDue": { "amount": %d, "currency": "USD" } },
               "paymentNotification": { "kind": "DEFAULT" },
               "paymentMethods": [
-                { "currency": "USDC", "validUntil": "%s", "amount": %d,
-                  "networks": { "Solana": { "walletAddress": "%s" } } }
+                { "currency": "USD", "validUntil": "%s", "amount": %d,
+                  "networks": { "ach": { "routingNumber": "%s", "accountNumber": "%s", "protectionType": "tokenized" } } }
               ]
             }
-            """.formatted(validUntil, AMOUNT, methodValidUntil, AMOUNT, WALLET);
+            """.formatted(validUntil, AMOUNT, methodValidUntil, AMOUNT, ROUTING_NUMBER, ACCOUNT_NUMBER);
     }
 
-    private static String notification(String qrCodeId, long amount, String currency, String destination) {
+    private static String notification(String qrCodeId, long amount, String currency) {
+        return notification(qrCodeId, amount, currency, "ACH");
+    }
+
+    /**
+     * An ACH notification. ACH is the rail that goes through the acceptance gate: the payer is
+     * announcing a debit it has not yet originated, so the QR Code comes out of circulation only if
+     * everything checks out. FedNow and RTP carry the QR Code id inside the ISO 20022 message and
+     * reconcile from it, so a notification there is a courtesy and changes no status.
+     */
+    private static String notification(String qrCodeId, long amount, String currency, String network) {
         return """
             {
-              "payment": { "qrcodeId": "%s", "amount": %d, "currency": "%s", "network": "Solana" },
-              "expectedDate": "2030-10-08T06:59:59Z",
-              "blockchain": { "action": "PAYMENT_INITIATED", "to": "%s", "from": "%s" }
+              "payment": { "qrcodeId": "%s", "amount": %d, "currency": "%s", "network": "%s",
+                           "transactionId": "021000021.0000001" },
+              "payer": { "info": "Jane Payer, Springfield Savings" },
+              "expectedDate": "2030-10-08T06:59:59Z"
             }
-            """.formatted(qrCodeId, amount, currency, destination, WALLET);
+            """.formatted(qrCodeId, amount, currency, network);
     }
 
     private String createQRCode() {
@@ -131,7 +142,7 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
     void aFullyValidNotificationIsAccepted() {
         String qrCodeId = createQRCode();
 
-        MockMvcResponse response = notify(notification(qrCodeId, AMOUNT, "USDC", WALLET));
+        MockMvcResponse response = notify(notification(qrCodeId, AMOUNT, "USD"));
 
         assertEquals(HttpStatus.OK.value(), response.statusCode(), response.asString());
         assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
@@ -143,14 +154,14 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
     void anIncorrectAmountIsRefused() {
         String qrCodeId = createQRCode();
 
-        assertRefusedAndUntouched(notify(notification(qrCodeId, AMOUNT + 1, "USDC", WALLET)), qrCodeId, "amount");
+        assertRefusedAndUntouched(notify(notification(qrCodeId, AMOUNT + 1, "USD")), qrCodeId, "amount");
     }
 
     @Test
     void anUnderpaymentIsRefused() {
         String qrCodeId = createQRCode();
 
-        assertRefusedAndUntouched(notify(notification(qrCodeId, 1L, "USDC", WALLET)), qrCodeId, "amount");
+        assertRefusedAndUntouched(notify(notification(qrCodeId, 1L, "USD")), qrCodeId, "amount");
     }
 
     // -------------------------------------------------------------------------- currency
@@ -159,17 +170,22 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
     void aCurrencyThisQRCodeDoesNotOfferIsRefused() {
         String qrCodeId = createQRCode();
 
-        assertRefusedAndUntouched(notify(notification(qrCodeId, AMOUNT, "USD", WALLET)), qrCodeId, "currency");
+        assertRefusedAndUntouched(notify(notification(qrCodeId, AMOUNT, "EUR")), qrCodeId, "currency");
     }
 
-    // ------------------------------------------------------------------ destination address
+    // ------------------------------------------------------------------------------ rail
 
+    /**
+     * A bank rail names no destination account in a notification — the account is in the payment
+     * message, not here — so the address check that guards a wallet has no equivalent. What is left
+     * to guard is the rail itself: a QR Code offering ACH has not thereby offered FedNow.
+     */
     @Test
-    void aDestinationAddressThisQRCodeNeverPublishedIsRefused() {
+    void aRailThisQRCodeDoesNotOfferIsRefused() {
         String qrCodeId = createQRCode();
 
         assertRefusedAndUntouched(
-                notify(notification(qrCodeId, AMOUNT, "USDC", OTHER_WALLET)), qrCodeId, "destination address");
+                notify(notification(qrCodeId, AMOUNT, "USD", "FedNow")), qrCodeId, "network");
     }
 
     // ---------------------------------------------------------------------------- expiry
@@ -210,7 +226,7 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
         // Time passes. The payer still holds a genuine, correctly signed payload.
         sleepUntilAfter(expiresSoon);
 
-        MockMvcResponse response = notify(notification(qrCodeId, AMOUNT, "USDC", WALLET));
+        MockMvcResponse response = notify(notification(qrCodeId, AMOUNT, "USD"));
 
         assertNotEquals(HttpStatus.OK.value(), response.statusCode(),
                 "a payload fetched while valid must not remain payable after the QR Code expires: "
@@ -229,7 +245,7 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
 
         sleepUntilAfter(expiresSoon);
 
-        MockMvcResponse response = notify(notification(qrCodeId, AMOUNT, "USDC", WALLET));
+        MockMvcResponse response = notify(notification(qrCodeId, AMOUNT, "USD"));
 
         assertNotEquals(HttpStatus.OK.value(), response.statusCode(),
                 "an expired QR Code must not be payable: " + response.asString());
@@ -240,10 +256,10 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
     @Test
     void aQRCodeAlreadyBeingPaidIsRefused() {
         String qrCodeId = createQRCode();
-        notify(notification(qrCodeId, AMOUNT, "USDC", WALLET));
+        notify(notification(qrCodeId, AMOUNT, "USD"));
         assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
 
-        MockMvcResponse second = notify(notification(qrCodeId, AMOUNT, "USDC", WALLET));
+        MockMvcResponse second = notify(notification(qrCodeId, AMOUNT, "USD"));
 
         assertNotEquals(HttpStatus.OK.value(), second.statusCode(),
                 "a second payer must not be able to initiate the same QR Code: " + second.asString());
@@ -257,7 +273,7 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
                 .when().put(CREATE + "/" + qrCodeId + "/status-update")
                 .then().statusCode(HttpStatus.OK.value());
 
-        MockMvcResponse response = notify(notification(qrCodeId, AMOUNT, "USDC", WALLET));
+        MockMvcResponse response = notify(notification(qrCodeId, AMOUNT, "USD"));
 
         assertNotEquals(HttpStatus.OK.value(), response.statusCode(), response.asString());
         assertEquals("CANCELLED", statusOf(qrCodeId));
@@ -265,7 +281,7 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
 
     @Test
     void anUnknownQRCodeIsRefused() {
-        MockMvcResponse response = notify(notification(UUID.randomUUID().toString(), AMOUNT, "USDC", WALLET));
+        MockMvcResponse response = notify(notification(UUID.randomUUID().toString(), AMOUNT, "USD"));
 
         assertNotEquals(HttpStatus.OK.value(), response.statusCode(), response.asString());
     }
@@ -287,7 +303,7 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
                 .then().statusCode(HttpStatus.CREATED.value())
                 .extract().path("id");
 
-        MockMvcResponse response = notify(notification(qrCodeId, AMOUNT, "USDC", WALLET));
+        MockMvcResponse response = notify(notification(qrCodeId, AMOUNT, "USD"));
 
         assertRefusedAndUntouched(response, qrCodeId, "paymentNotification");
     }
@@ -307,7 +323,7 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
                 .then().statusCode(HttpStatus.CREATED.value())
                 .extract().path("id");
 
-        MockMvcResponse response = notify(notification(qrCodeId, AMOUNT, "USDC", WALLET));
+        MockMvcResponse response = notify(notification(qrCodeId, AMOUNT, "USD"));
 
         assertRefusedAndUntouched(response, qrCodeId, "EXTERNAL");
     }
@@ -319,7 +335,7 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
         String qrCodeId = createQRCode();
 
         MockMvcResponse response = given().contentType(APPLICATION_JOSE)
-                .body(notification(qrCodeId, AMOUNT, "USDC", WALLET))
+                .body(notification(qrCodeId, AMOUNT, "USD"))
                 .when().post(NOTIFY);
 
         assertNotEquals(HttpStatus.OK.value(), response.statusCode(),
@@ -330,7 +346,7 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
     @Test
     void aTamperedSignatureIsRefused() {
         String qrCodeId = createQRCode();
-        String jws = sign(notification(qrCodeId, AMOUNT, "USDC", WALLET));
+        String jws = sign(notification(qrCodeId, AMOUNT, "USD"));
 
         // Same header and payload, one byte of the signature flipped.
         String tampered = jws.substring(0, jws.length() - 2) + (jws.endsWith("A") ? "B" : "A");

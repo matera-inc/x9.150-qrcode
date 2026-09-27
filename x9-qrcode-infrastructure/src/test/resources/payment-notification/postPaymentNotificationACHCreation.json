@@ -1,0 +1,13 @@
+{
+  "payment": {
+    "qrcodeId": "{{qrcodeId}}",
+    "amount": 18834,
+    "currency": "USD",
+    "network": "ACH",
+    "transactionId": "021000021.0000001"
+  },
+  "payer": {
+    "info": "Jane Payer, Springfield Savings"
+  },
+  "expectedDate": "2030-10-08T06:59:59Z"
+}

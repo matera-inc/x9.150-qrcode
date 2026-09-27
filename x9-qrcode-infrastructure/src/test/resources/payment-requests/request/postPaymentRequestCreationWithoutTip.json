@@ -116,16 +116,6 @@
           "protectionType": "tokenized"
         }
       }
-    },
-    {
-      "currency": "USDC",
-      "validUntil": "2030-05-10T23:59:59Z",
-      "amount": 25000000,
-      "networks": {
-        "Solana": {
-          "walletAddress": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
-        }
-      }
     }
   ]
 }

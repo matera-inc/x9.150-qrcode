@@ -7,6 +7,7 @@
 package com.matera.x9qrcode.infrastructure.web.controller.mapper.request;
 
 import com.matera.x9qrcode.app.dto.BankPaymentAddressDTO;
+import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
@@ -79,7 +80,8 @@ public final class StandardRailKeys {
         return (Map<String, Object>) value;
     }
 
-    private static BankPaymentAddressDTO toBankAddress(Map<String, Object> fields) {
+    /** A rail's address from its raw JSON object, or null when the required fields are missing. */
+    public static BankPaymentAddressDTO toBankAddress(Map<String, Object> fields) {
         Object routingNumber = fields.get("routingNumber");
         Object accountNumber = fields.get("accountNumber");
 
@@ -88,6 +90,27 @@ public final class StandardRailKeys {
         }
 
         return new BankPaymentAddressDTO(routing, account);
+    }
+
+    /**
+     * Refuses any network left over once the supported rails have been taken.
+     *
+     * <p>Rejecting rather than ignoring matters because this mapper runs behind an ObjectMapper with
+     * {@code FAIL_ON_UNKNOWN_PROPERTIES} disabled: an unsupported network would otherwise be dropped
+     * in silence, and the biller would believe a rail was live that nothing here understands.
+     *
+     * <p>A network becomes supported when its owner has published an embedding and it is added to
+     * the configuration — never because a caller sent it.
+     */
+    public static void rejectUnsupported(Map<String, Object> leftovers) {
+        if (isNull(leftovers) || leftovers.isEmpty()) {
+            return;
+        }
+
+        throw new BusinessRuleException(
+            "paymentMethods.networks",
+            "Unsupported network(s): %s. This service supports fednow, rtp and ach."
+                .formatted(String.join(", ", leftovers.keySet())));
     }
 
     /** The canonical, lower-case name of a rail, for map lookups. */

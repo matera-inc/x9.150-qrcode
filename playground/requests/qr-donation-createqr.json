@@ -17,21 +17,30 @@
     "description": "Donation - reforestation fund (choose your amount)",
     "paymentTiming": "immediate",
     "amountDue": {
-      "amount": 250000,
-      "currency": "BTC"
+      "amount": 2500,
+      "currency": "USD"
     }
   },
-  "paymentNotification": { "kind": "DEFAULT" },
+  "paymentNotification": {
+    "kind": "DEFAULT"
+  },
   "paymentMethods": [
     {
-      "currency": "BTC",
+      "currency": "USD",
       "validUntil": "2030-12-31T23:59:59Z",
-      "amount": 250000,
+      "amount": 2500,
       "editable": {
-        "range": { "min": 50000, "max": 50000000 }
+        "range": {
+          "min": 500,
+          "max": 500000
+        }
       },
       "networks": {
-        "Bitcoin": { "walletAddress": "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq" }
+        "fednow": {
+          "routingNumber": "021000021",
+          "accountNumber": "1234567890",
+          "protectionType": "tokenized"
+        }
       }
     }
   ]

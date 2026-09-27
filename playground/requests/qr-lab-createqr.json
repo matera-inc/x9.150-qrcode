@@ -27,22 +27,20 @@
       "currency": "USD"
     }
   },
-  "paymentNotification": { "kind": "DEFAULT" },
+  "paymentNotification": {
+    "kind": "DEFAULT"
+  },
   "paymentMethods": [
     {
       "currency": "USD",
       "validUntil": "2030-12-31T23:59:59Z",
       "amount": 31200,
       "networks": {
-        "FedNow": { "routingNumber": "011000015", "accountNumber": "7712004590", "protectionType": "tokenized" }
-      }
-    },
-    {
-      "currency": "USDC",
-      "validUntil": "2030-12-31T23:59:59Z",
-      "amount": 312000000,
-      "networks": {
-        "Ethereum": { "walletAddress": "0x71C7656EC7ab88b098defB751B7401B5f6d8976F" }
+        "FedNow": {
+          "routingNumber": "011000015",
+          "accountNumber": "7712004590",
+          "protectionType": "tokenized"
+        }
       }
     }
   ]

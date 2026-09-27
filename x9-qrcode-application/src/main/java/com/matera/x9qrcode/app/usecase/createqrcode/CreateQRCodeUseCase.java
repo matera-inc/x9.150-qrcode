@@ -20,6 +20,7 @@ import com.matera.x9qrcode.domain.entity.QRCodeEntity;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 import com.matera.x9qrcode.domain.generator.IdGenerator;
 import com.matera.x9qrcode.domain.service.CurrencyMixPolicy;
+import com.matera.x9qrcode.domain.service.SupportedCurrencyPolicy;
 import com.matera.x9qrcode.domain.vo.CreditorVO;
 import com.matera.x9qrcode.domain.vo.LocationIdVO;
 import com.matera.x9qrcode.domain.vo.PaymentMethodVO;
@@ -43,6 +44,7 @@ public class CreateQRCodeUseCase extends UseCase<CreateQRCodeInput, CreateQRCode
     private final QRCodeLocationService qrCodeLocationService;
     private final IdGenerator<UUID> idGenerator;
     private final CurrencyMixPolicy currencyMixPolicy;
+    private final SupportedCurrencyPolicy supportedCurrencyPolicy;
 
     @Override
     public CreateQRCodeOutput execute(CreateQRCodeInput input) {
@@ -60,7 +62,10 @@ public class CreateQRCodeUseCase extends UseCase<CreateQRCodeInput, CreateQRCode
             CreateQRCodePaymentMethodMapper.map(input.paymentMethods())
         );
 
-        currencyMixPolicy.validate(collectCurrencies(qrCodeEntity));
+        List<String> currencies = collectCurrencies(qrCodeEntity);
+
+        supportedCurrencyPolicy.validate(currencies);
+        currencyMixPolicy.validate(currencies);
 
         String qrCodeContent = qrCodeEMVService.generateQrCodeContent(qrCodeEntity);
 

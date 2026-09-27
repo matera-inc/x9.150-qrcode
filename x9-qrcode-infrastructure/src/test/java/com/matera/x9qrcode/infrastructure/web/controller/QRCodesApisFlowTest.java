@@ -7,11 +7,9 @@
 package com.matera.x9qrcode.infrastructure.web.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.matera.x9qrcode.app.dto.enumerated.ActionEnumDTO;
 import com.matera.x9qrcode.domain.dto.CertificateEndpointTypeEnum;
 import com.matera.x9qrcode.infrastructure.AbstractIntegrationTest;
 import com.matera.x9qrcode.infrastructure.configuration.property.X9Properties;
-import com.matera.x9qrcode.infrastructure.generated.dto.PaymentNotificationDataBlockchainDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentNotificationDataDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentPayloadRequestDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentPayloadResponseDTO;
@@ -82,8 +80,7 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
             String networkName,
             String createRequestJsonPath,
             String statusUpdateJsonPath,
-            String notificationJsonPath,
-            boolean isCrypto) {
+            String notificationJsonPath) {
         @Override
         public String toString() {
             return networkName;
@@ -101,14 +98,12 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
                         "FedNow",
                         "/payment-requests/request/postPaymentRequestCreationWithoutLocation.json",
                         "/payment-requests/request/putPaymentRequestStatusChange.json",
-                        "/payment-notification/postPaymentNotificationCreation.json",
-                        false),
+                        "/payment-notification/postPaymentNotificationCreation.json"),
                 new PaymentRailTestConfig(
-                        "Solana",
-                        "/payment-requests/request/postPaymentRequestCreationSolana.json",
-                        "/payment-requests/request/putPaymentRequestStatusChangeSolana.json",
-                        "/payment-notification/postPaymentNotificationSolanaCreation.json",
-                        true));
+                        "ACH",
+                        "/payment-requests/request/postPaymentRequestCreationACH.json",
+                        "/payment-requests/request/putPaymentRequestStatusChangeACH.json",
+                        "/payment-notification/postPaymentNotificationACHCreation.json"));
     }
 
     // ===========================================================================================
@@ -415,41 +410,8 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         assertEquals(expected.getExpectedDate(), result.getExpectedDate());
     }
 
-    @ParameterizedTest
-    @EnumSource(value = ActionEnumDTO.class, names = { "SENT", "NOT_SENT" })
-    @Order(81)
-    void testPostPaymentNotificationBlockchain(ActionEnumDTO action) throws Exception {
-        createNewPaymentRequest("/payment-requests/request/postPaymentRequestCreationWithoutLocation.json");
-
-        String jsonInitiated = readJson("/payment-notification/postPaymentNotificationBlockchainCreation.json")
-                .replace("{{qrcodeId}}", qrcodeId)
-                .replace("{{action}}", ActionEnumDTO.PAYMENT_INITIATED.value());
-
-        String jsonPost = readJson("/payment-notification/postPaymentNotificationBlockchainCreation.json")
-                .replace("{{qrcodeId}}", qrcodeId)
-                .replace("{{action}}", action.value());
-
-        PaymentNotificationDataBlockchainDTO expected = objectMapper
-                .readValue(jsonPost, PaymentNotificationDataDTO.class).getBlockchain();
-
-        // The first notification must be PAYMENT_INITIATED
-        createPaymentNotification(jsonInitiated);
-
-        // The second notification must be SENT or NOT_SENT
-        createPaymentNotification(jsonPost);
-
-        PaymentNotificationDataBlockchainDTO result = getPaymentRequest(qrcodeId).getPaymentNotification().getData()
-                .getBlockchain();
-
-        assertNotNull(expected);
-        assertNotNull(result);
-        assertEquals(expected.getAction(), result.getAction());
-        assertEquals(expected.getFrom(), result.getFrom());
-        assertEquals(expected.getTo(), result.getTo());
-    }
-
     // ===========================================================================================
-    // Parameterized full-flow tests for each payment rail (FedNow, Solana)
+    // Parameterized full-flow tests for each payment rail (FedNow, ACH)
     // ===========================================================================================
 
     @ParameterizedTest(name = "Full flow: {0}")
@@ -571,11 +533,6 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         String notificationJson = readJson(config.notificationJsonPath())
                 .replace("{{qrcodeId}}", qrcodeId);
 
-        if (config.isCrypto()) {
-            // For crypto rails, replace the action placeholder
-            notificationJson = notificationJson.replace("{{action}}", ActionEnumDTO.PAYMENT_INITIATED.value());
-        }
-
         PaymentNotificationDataDTO expected = objectMapper.readValue(notificationJson,
                 PaymentNotificationDataDTO.class);
 
@@ -591,176 +548,6 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         assertEquals(expected.getPayment().getNetwork(), result.getPayment().getNetwork());
         assertEquals(expected.getPayment().getTransactionId(), result.getPayment().getTransactionId());
         assertEquals(expected.getExpectedDate(), result.getExpectedDate());
-
-        // For crypto rails, verify blockchain info is present
-        if (config.isCrypto()) {
-            PaymentNotificationDataBlockchainDTO blockchain = result.getBlockchain();
-            assertNotNull(blockchain, "Blockchain info should be present for crypto rail: " + config.networkName());
-            assertNotNull(blockchain.getAction());
-            assertNotNull(blockchain.getFrom());
-            assertNotNull(blockchain.getTo());
-        }
-    }
-
-    // ===========================================================================================
-    // Solana additional properties tests — unknown networks and fields must be persisted and
-    // returned as well
-    // ===========================================================================================
-
-    @Test
-    @Order(93)
-    @SneakyThrows
-    void testSolanaAdditionalPropertiesOnCreate() {
-        // Create Solana QR code with additional "Tron" network
-        PaymentRequestResponseDTO createResponse = createNewPaymentRequest(
-                "/payment-requests/request/postPaymentRequestCreationSolana.json");
-
-        String solQrcodeId = createResponse.getId();
-        assertNotNull(solQrcodeId);
-
-        // GET and verify "Tron" additional property is present in the networks
-        PaymentRequestInformationDTO getResponse = getPaymentRequest(solQrcodeId);
-        assertNotNull(getResponse.getPaymentMethods());
-
-        Object solanaDTO = getResponse.getPaymentMethods().get(0)
-                .getNetworks().getAdditionalProperties().get("Solana");
-
-        assertNotNull(solanaDTO, "Solana should be present on GET");
-
-        Map<String, Object> additionalProps = getResponse.getPaymentMethods().get(0)
-                .getNetworks().getAdditionalProperties();
-
-        assertNotNull(additionalProps, "Additional properties should be present on GET");
-        assertTrue(additionalProps.containsKey("Tron"), "Tron should be present as additional property");
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> tronMap = (Map<String, Object>) additionalProps.get("Tron");
-        assertEquals("TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7", tronMap.get("address"),
-                "Tron address should match the one sent in the creation request");
-    }
-
-    @Test
-    @Order(94)
-    @SneakyThrows
-    void testSolanaAdditionalPropertiesOnPayload() {
-        // Use the QR code created in Order 93
-        String jwsRequest = createPayloadRequestJws(qrcodeB64);
-
-        String jwsResponse = given()
-                .contentType(APPLICATION_JOSE)
-                .body(jwsRequest)
-                .when()
-                .post("/pub/api/v1/loc/" + locationId)
-                .then()
-                .log().all()
-                .statusCode(HttpStatus.OK.value())
-                .extract()
-                .body().asString();
-
-        PaymentPayloadResponseDTO payloadResponse = extractPayloadFromJws(jwsResponse);
-
-        Map<String, Object> payloadAdditionalProps = payloadResponse.getPaymentMethods().get(0)
-                .getNetworks().getAdditionalProperties();
-
-        assertNotNull(payloadAdditionalProps, "Additional properties should be present in payload");
-        assertTrue(payloadAdditionalProps.containsKey("Tron"),
-                "Tron should be present in payload additional properties");
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> tronMap = (Map<String, Object>) payloadAdditionalProps.get("Tron");
-        assertEquals("TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7", tronMap.get("address"));
-
-        Object payloadSolana = payloadResponse.getPaymentMethods().get(0)
-                .getNetworks().getAdditionalProperties().get("Solana");
-        assertNotNull(payloadSolana, "Solana should be present in payload");
-    }
-
-    @Test
-    @Order(95)
-    @SneakyThrows
-    void testSolanaAdditionalPropertiesOnDecoding() {
-        // Decode the EMV QR code and verify additional properties
-        QRCodeEmvDecoderDTO request = new QRCodeEmvDecoderDTO();
-        request.setQrCode(qrcodeEmv);
-        request.setDateForPayment(LocalDate.now().plusDays(30));
-        request.setCorrelationID(UUID.randomUUID());
-
-        PaymentPayloadResponseDTO response = given()
-                .contentType("application/json")
-                .body(request)
-                .when()
-                .post("/api/v1/qrcode-emv-decoder")
-                .then()
-                .statusCode(HttpStatus.OK.value())
-                .log().all()
-                .extract()
-                .body().as(PaymentPayloadResponseDTO.class);
-
-        Map<String, Object> decodingAdditionalProps = response.getPaymentMethods().get(0)
-                .getNetworks().getAdditionalProperties();
-
-        assertNotNull(decodingAdditionalProps, "Additional properties should be present in decoded payload");
-        assertTrue(decodingAdditionalProps.containsKey("Tron"),
-                "Tron should be present in decoded additional properties");
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> tronMap = (Map<String, Object>) decodingAdditionalProps.get("Tron");
-        assertEquals("TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7", tronMap.get("address"));
-
-        Object decodingSolana = response.getPaymentMethods().get(0)
-                .getNetworks().getAdditionalProperties().get("Solana");
-        assertNotNull(decodingSolana, "Solana should be present in decoded payload");
-    }
-
-    @Test
-    @Order(96)
-    @SneakyThrows
-    void testSolanaAdditionalPropertiesOnPatch() {
-        // Create a fresh Solana QR code for the PATCH test
-        PaymentRequestResponseDTO freshCreate = createNewPaymentRequest(
-                "/payment-requests/request/postPaymentRequestCreationSolana.json");
-
-        String patchTargetId = freshCreate.getId();
-
-        // Patch with an additional "Avalanche" network, keeping "Tron"
-        String patchJson = readJson("/payment-requests/request/patchPaymentRequestDataSolana.json");
-
-        PaymentRequestResponseDTO patchResponse = given()
-                .contentType("application/json")
-                .body(patchJson)
-                .when()
-                .patch("/api/v1/payment-request/" + patchTargetId)
-                .then()
-                .log().all()
-                .statusCode(HttpStatus.OK.value())
-                .extract()
-                .body().as(PaymentRequestResponseDTO.class);
-
-        assertNotNull(patchResponse.getId());
-
-        // GET and verify both "Tron" and "Avalanche" are present
-        PaymentRequestInformationDTO getAfterPatch = getPaymentRequest(patchTargetId);
-
-        Map<String, Object> patchAdditionalProps = getAfterPatch.getPaymentMethods().get(0)
-                .getNetworks().getAdditionalProperties();
-
-        assertNotNull(patchAdditionalProps, "Additional properties should be present after PATCH");
-        assertTrue(patchAdditionalProps.containsKey("Tron"),
-                "Tron should be present after PATCH");
-        assertTrue(patchAdditionalProps.containsKey("Avalanche"),
-                "Avalanche should be present after PATCH");
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> tronMap = (Map<String, Object>) patchAdditionalProps.get("Tron");
-        assertEquals("TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7", tronMap.get("address"));
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> avalancheMap = (Map<String, Object>) patchAdditionalProps.get("Avalanche");
-        assertEquals("0xABCd35Cc6634C0539Ff82c466ae367A6097dEFFF", avalancheMap.get("address"));
-
-        Object patchSolana = getAfterPatch.getPaymentMethods().get(0)
-                .getNetworks().getAdditionalProperties().get("Solana");
-        assertNotNull(patchSolana, "Solana should be present after PATCH");
     }
 
     // ===========================================================================================

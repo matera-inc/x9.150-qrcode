@@ -77,9 +77,9 @@ The only committed source: the create-request bodies. Edit them or add your own
 |------|----------|-----------|
 | `qr-burger-createqr.json` | Burger joint, $24.50 | **tip** presets/range |
 | `qr-waterbill-createqr.json` | Water utility, $87.30 | **discount + late-fee formula**, 3 bank rails (FedNow/RTP/ACH) |
-| `qr-lab-createqr.json` | Helix Diagnostics Lab, $312.00 | invoice + USDC on Ethereum |
-| `qr-parking-createqr.json` | Parking, $6.00 | tiny amount, USDC on Polygon |
-| `qr-donation-createqr.json` | Charity | **editable amount** + **Bitcoin-only** (non-pegged can't mix) |
+| `qr-lab-createqr.json` | Helix Diagnostics Lab, $312.00 | **invoice** with a due date |
+| `qr-parking-createqr.json` | Parking, $6.00 | tiny amount |
+| `qr-donation-createqr.json` | Charity | **editable amount** — the payer picks, within a published range |
 
 > A `qr-*-createqr.json` is the **create request** — the merchant's input to *make* a QR. It is
 > **not** a full X9.150 payload: it may carry a **late-fee formula** (the server computes the amount)
@@ -92,8 +92,9 @@ Committed: the two `simulate_*` scripts, `dumpjws.py`, `requests/qr-*-createqr.j
 
 ## 6. Ideas
 - **Edit a bill** in `requests/` — amount, tip, networks, adjustments. (They omit `locationId`, so the
-  server mints a fresh QR each run — no collisions.) Remember: USD-pegged currencies (USD/USDC) may
-  share a QR; a non-pegged currency (BTC) must be the only one.
+  server mints a fresh QR each run — no collisions.) Remember: this build interprets `fednow`, `rtp`
+  and `ach` and settles `USD`; anything else is refused at creation with a 400 naming it. Both lists
+  are configuration — see [`../official-spec/INTERPRETATION.md`](../official-spec/INTERPRETATION.md).
 - **Decode any EMV**: `POST /api/v1/qrcode-emv-decoder` with `{"qrCode":"…"}`.
 - **Scan from a phone on 5G** — point `x9.public-endpoints.host` at a tunnel; see [`../ENDPOINTS.md`](../ENDPOINTS.md).
 - **Point the scripts elsewhere:** `X9_BASE_URL=http://host:port python3 simulate_payer.py`.

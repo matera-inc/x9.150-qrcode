@@ -22,6 +22,7 @@ import com.matera.x9qrcode.app.usecase.updatestatus.UpdateQRCodeStatusUseCase;
 import com.matera.x9qrcode.app.usecase.validatesignature.ValidateSignatureUseCase;
 import com.matera.x9qrcode.domain.generator.IdGenerator;
 import com.matera.x9qrcode.domain.service.CurrencyMixPolicy;
+import com.matera.x9qrcode.domain.service.SupportedCurrencyPolicy;
 import com.matera.x9qrcode.domain.service.PaymentNotificationAcceptancePolicy;
 import com.matera.x9qrcode.domain.service.factory.FormulaFactory;
 
@@ -38,9 +39,10 @@ public class UseCaseConfiguration {
                                                    QRCodeEMVService qrCodeEMVService,
                                                    QRCodeLocationService qrCodeLocationService,
                                                    IdGenerator<UUID> idGenerator,
-                                                   CurrencyMixPolicy currencyMixPolicy) {
+                                                   CurrencyMixPolicy currencyMixPolicy,
+                                                   SupportedCurrencyPolicy supportedCurrencyPolicy) {
         return new CreateQRCodeUseCase(qrCodeRepository, qrCodeEMVService, qrCodeLocationService, idGenerator,
-            currencyMixPolicy);
+            currencyMixPolicy, supportedCurrencyPolicy);
     }
 
     @Bean
@@ -77,8 +79,10 @@ public class UseCaseConfiguration {
     public PatchQRCodeUseCase patchQRCodeUseCase(QRCodeRepository qrCodeRepository,
                                                  QRCodeEMVService qrCodeEMVService,
                                                  QRCodeLocationService qrCodeLocationService,
-                                                 CurrencyMixPolicy currencyMixPolicy) {
-        return new PatchQRCodeUseCase(qrCodeRepository, qrCodeEMVService, qrCodeLocationService, currencyMixPolicy);
+                                                 CurrencyMixPolicy currencyMixPolicy,
+                                                 SupportedCurrencyPolicy supportedCurrencyPolicy) {
+        return new PatchQRCodeUseCase(qrCodeRepository, qrCodeEMVService, qrCodeLocationService, currencyMixPolicy,
+            supportedCurrencyPolicy);
     }
 
     @Bean

@@ -21,22 +21,20 @@
       "currency": "USD"
     }
   },
-  "paymentNotification": { "kind": "DEFAULT" },
+  "paymentNotification": {
+    "kind": "DEFAULT"
+  },
   "paymentMethods": [
     {
       "currency": "USD",
       "validUntil": "2030-12-31T23:59:59Z",
       "amount": 600,
       "networks": {
-        "FedNow": { "routingNumber": "071000013", "accountNumber": "4402219980", "protectionType": "tokenized" }
-      }
-    },
-    {
-      "currency": "USDC",
-      "validUntil": "2030-12-31T23:59:59Z",
-      "amount": 6000000,
-      "networks": {
-        "Polygon": { "walletAddress": "0x742d35Cc6634C0539Ff82c466ae367A6097dE123" }
+        "FedNow": {
+          "routingNumber": "071000013",
+          "accountNumber": "4402219980",
+          "protectionType": "tokenized"
+        }
       }
     }
   ]
