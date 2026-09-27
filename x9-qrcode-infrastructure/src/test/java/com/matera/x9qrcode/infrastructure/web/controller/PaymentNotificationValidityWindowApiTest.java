@@ -59,7 +59,7 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
     private static final String NOTIFY = "/pub/api/v1/payment-notification";
     private static final String APPLICATION_JOSE = "application/jose";
 
-    private static final String WALLET = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
+    private static final String ACH = "\"ach\": { \"routingNumber\": \"021000021\", \"accountNumber\": \"1234567890\", \"protectionType\": \"tokenized\" }";
     private static final long FACE_AMOUNT = 10_000_000L;
     private static final long DISCOUNT = 1_000_000L;
     private static final long LATE_FEE_FIXED = 500_000L;
@@ -97,7 +97,7 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
                 "invoice": { "number": "INV-1", "date": "%s", "dueDate": "%s" },
                 "amountDue": {
                   "amount": %d,
-                  "currency": "USDC",
+                  "currency": "USD",
                   "adjustments": {
                     "formula": "FixedDiscountLateFeeLinearInterest",
                     "parameters": {
@@ -109,12 +109,11 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
               },
               "paymentNotification": { "kind": "DEFAULT" },
               "paymentMethods": [
-                { "currency": "USDC", "validUntil": "%s", "amount": %d,
-                  "networks": { "Solana": { "walletAddress": "%s" } } }
+                { "currency": "USD", "validUntil": "%s", "amount": %d, "networks": { %s } }
               ]
             }
             """.formatted(validUntil, LocalDate.now(ZoneOffset.UTC), dueDate, FACE_AMOUNT, discounts,
-                          LATE_FEE_FIXED, methodValidUntil, FACE_AMOUNT, WALLET);
+                          LATE_FEE_FIXED, methodValidUntil, FACE_AMOUNT, ACH);
     }
 
     private String create(String validUntil, String dueDate, String methodValidUntil, int daysBefore) {
@@ -139,11 +138,12 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
     private MockMvcResponse notify(String qrCodeId, long amount) {
         String body = """
             {
-              "payment": { "qrcodeId": "%s", "amount": %d, "currency": "USDC", "network": "Solana" },
-              "expectedDate": "2030-10-08T06:59:59Z",
-              "blockchain": { "action": "PAYMENT_INITIATED", "to": "%s", "from": "%s" }
+              "payment": { "qrcodeId": "%s", "amount": %d, "currency": "USD", "network": "ACH",
+                           "transactionId": "021000021.0000001" },
+              "payer": { "info": "Jane Payer, Springfield Savings" },
+              "expectedDate": "2030-10-08T06:59:59Z"
             }
-            """.formatted(qrCodeId, amount, WALLET, WALLET);
+            """.formatted(qrCodeId, amount);
 
         return given().contentType(APPLICATION_JOSE).body(sign(body)).when().post(NOTIFY);
     }
@@ -188,15 +188,15 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
                 "address": { "line1": "1 A St", "city": "Springfield", "state": "CA", "postalCode": "90001", "country": "US" },
                 "MCC": "5999"
               },
-              "bill": { "description": "donation", "amountDue": { "amount": %d, "currency": "USDC" } },
+              "bill": { "description": "donation", "amountDue": { "amount": %d, "currency": "USD" } },
               "paymentNotification": { "kind": "DEFAULT" },
               "paymentMethods": [
-                { "currency": "USDC", "validUntil": "%s", "amount": %d,
+                { "currency": "USD", "validUntil": "%s", "amount": %d,
                   "editable": { "range": { "min": %d, "max": %d } },
-                  "networks": { "Solana": { "walletAddress": "%s" } } }
+                  "networks": { %s } }
               ]
             }
-            """.formatted(utc(now.plusDays(30)), FACE_AMOUNT, utc(now.plusDays(30)), FACE_AMOUNT, min, max, WALLET);
+            """.formatted(utc(now.plusDays(30)), FACE_AMOUNT, utc(now.plusDays(30)), FACE_AMOUNT, min, max, ACH);
 
         return given().contentType("application/json").body(body)
                 .when().post(CREATE)

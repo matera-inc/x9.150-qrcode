@@ -6,8 +6,10 @@
  */
 package com.matera.x9qrcode.infrastructure.configuration;
 
+import com.matera.x9qrcode.domain.service.AllowListSupportedCurrencyPolicy;
 import com.matera.x9qrcode.domain.service.CurrencyMixPolicy;
 import com.matera.x9qrcode.domain.service.PeggedCurrencyMixPolicy;
+import com.matera.x9qrcode.domain.service.SupportedCurrencyPolicy;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,18 +31,20 @@ import java.util.stream.Collectors;
 import static java.util.Objects.isNull;
 
 /**
- * Loads the configured pegged-currency groups from JSON and wires the domain {@link CurrencyMixPolicy}.
+ * Loads the currency configuration from JSON and wires the two domain currency policies:
+ * {@link CurrencyMixPolicy} (which currencies may appear together) and
+ * {@link SupportedCurrencyPolicy} (which currencies are accepted at all).
  * <p>
- * The file is strict, standard JSON: an object with a {@code groups} array (each group an array of
- * currency codes) and an optional {@code _comment} documentation key that the loader ignores. Its
- * location is overridable via {@code x9.currency.pegged-currencies-location}, defaulting to
- * {@code classpath:pegged-currencies.json}. No relaxed-parser features (e.g. comment parsing) are
- * required.
+ * Both files are strict, standard JSON — an object with one array plus an optional {@code _comment}
+ * documentation key that the loader ignores; no relaxed-parser features (e.g. comment parsing) are
+ * required. Their locations are overridable via {@code x9.currency.pegged-currencies-location} and
+ * {@code x9.currency.supported-currencies-location}.
  */
 @Configuration(proxyBeanMethods = false)
 public class CurrencyConfiguration {
 
     static final String DEFAULT_PEGGED_CURRENCIES_LOCATION = "classpath:pegged-currencies.json";
+    static final String DEFAULT_SUPPORTED_CURRENCIES_LOCATION = "classpath:supported-currencies.json";
 
     @Bean
     public CurrencyMixPolicy currencyMixPolicy(
@@ -51,6 +55,35 @@ public class CurrencyConfiguration {
         List<Set<String>> peggedGroups = loadPeggedCurrencyGroups(resourceLoader.getResource(location), objectMapper);
 
         return new PeggedCurrencyMixPolicy(peggedGroups);
+    }
+
+    @Bean
+    public SupportedCurrencyPolicy supportedCurrencyPolicy(
+        ResourceLoader resourceLoader,
+        ObjectMapper objectMapper,
+        @Value("${x9.currency.supported-currencies-location:" + DEFAULT_SUPPORTED_CURRENCIES_LOCATION + "}") String location) {
+
+        return new AllowListSupportedCurrencyPolicy(
+            loadSupportedCurrencies(resourceLoader.getResource(location), objectMapper));
+    }
+
+    /**
+     * Reads the supported-currencies JSON. A missing or empty {@code supported} array leaves the
+     * policy with an empty allow list, which disables the check.
+     */
+    static List<String> loadSupportedCurrencies(Resource resource, ObjectMapper objectMapper) {
+        try (InputStream inputStream = resource.getInputStream()) {
+            SupportedCurrenciesFile file = objectMapper.readValue(inputStream, SupportedCurrenciesFile.class);
+
+            if (isNull(file) || isNull(file.supported())) {
+                return List.of();
+            }
+
+            return List.copyOf(file.supported());
+        } catch (IOException e) {
+            throw new UncheckedIOException(
+                "Unable to load supported currencies from resource: " + resource, e);
+        }
     }
 
     /**
@@ -89,6 +122,14 @@ public class CurrencyConfiguration {
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     private record PeggedCurrenciesFile(List<List<String>> groups) {
+    }
+
+    /**
+     * Strict-JSON shape of the supported-currencies file. The {@code _comment} documentation key is
+     * intentionally not mapped and ignored via {@link JsonIgnoreProperties}.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record SupportedCurrenciesFile(List<String> supported) {
     }
 
 }

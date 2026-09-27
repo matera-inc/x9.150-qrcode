@@ -106,35 +106,68 @@ class NetworkNamingApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * The standard defines three rails. Everything else — a chain whose owner published an
-     * embedding, Pix, Zelle — is carried verbatim with no configuration at all, which is what makes
-     * the open set work (§2.4: the notification "MAY also carry a network not listed above").
+     * The standard names rails it does not define — Zelle and the card brands, each deferred to
+     * "network documentation" that does not exist yet — and §2.4 adds that a notification "MAY also
+     * carry a network not listed above". This build reads that as permission the <em>format</em>
+     * grants, not an obligation the implementation carries: a network we cannot interpret is one we
+     * cannot validate a payment against, so it is refused at creation rather than advertised on a QR
+     * Code nobody can honour. See official-spec/INTERPRETATION.md (I-2).
      */
     @Test
-    void anUnknownNetworkIsCarriedVerbatim() {
+    void anUnsupportedNetworkIsRefusedByName() {
         String body = qrCodeWithNetworkKey("fednow").replace(
                 "\"networks\": {",
                 "\"networks\": { \"Pix\": { \"pixKey\": \"carlos@example.com\" },");
 
-        JsonPath qrCode = createAndRead(body);
+        String response = given().contentType("application/json").body(body)
+                .when().post(CREATE)
+                .then().statusCode(HttpStatus.BAD_REQUEST.value())
+                .extract().asString();
 
-        assertNotNull(qrCode.get("paymentMethods[0].networks.fednow"), "the standard rail still works");
-        assertEquals("carlos@example.com", qrCode.getString("paymentMethods[0].networks.Pix.pixKey"),
-                "Pix must survive round-trip unchanged, key and value: " + qrCode.prettify());
+        assertTrue(response.contains("Pix"),
+                "the refusal must name the network it refused, so the biller can fix it: " + response);
     }
 
+    /**
+     * Silence is the dangerous answer. This mapper runs behind an ObjectMapper with
+     * {@code FAIL_ON_UNKNOWN_PROPERTIES} disabled, so an unsupported network would otherwise be
+     * dropped without a word — and the biller would believe a rail was live that nothing here
+     * understands, discovering otherwise only when a payer cannot pay.
+     */
     @Test
-    void anUnknownNetworkKeepsItsOwnCase() {
+    void anUnsupportedNetworkIsNotSilentlyDropped() {
         String body = qrCodeWithNetworkKey("fednow").replace(
                 "\"networks\": {",
                 "\"networks\": { \"SomeChain\": { \"walletAddress\": \"9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM\" },");
 
-        JsonPath qrCode = createAndRead(body);
+        given().contentType("application/json").body(body)
+                .when().post(CREATE)
+                .then().statusCode(HttpStatus.BAD_REQUEST.value());
+    }
 
-        // We normalise only what the standard names. Everything else belongs to its owner, including
-        // how it is spelled.
-        assertTrue(qrCode.getMap("paymentMethods[0].networks").containsKey("SomeChain"),
-                "an unknown network's key is not ours to rewrite: " + qrCode.prettify());
+    /** A patch may not smuggle in what a create would have refused. */
+    @Test
+    void aPatchMayNotIntroduceAnUnsupportedNetwork() {
+        String id = given().contentType("application/json").body(qrCodeWithNetworkKey("fednow"))
+                .when().post(CREATE)
+                .then().statusCode(HttpStatus.CREATED.value())
+                .extract().path("id");
+
+        String patch = """
+            {
+              "paymentMethods": [
+                { "currency": "USD", "validUntil": "2030-12-31T23:59:59Z", "amount": 5000,
+                  "networks": { "Pix": { "pixKey": "carlos@example.com" } } }
+              ]
+            }
+            """;
+
+        String response = given().contentType("application/json").body(patch)
+                .when().patch(CREATE + "/" + id)
+                .then().statusCode(HttpStatus.BAD_REQUEST.value())
+                .extract().asString();
+
+        assertTrue(response.contains("Pix"), response);
     }
 
 }

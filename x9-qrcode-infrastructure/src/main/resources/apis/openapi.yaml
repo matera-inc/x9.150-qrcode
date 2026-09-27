@@ -1085,16 +1085,6 @@ components:
             ach:
               routingNumber: "021000021"
               accountNumber: "1234567890"
-        - currency: "USDC"
-          validUntil: "2030-05-10T23:59:59Z"
-          amount: 26282
-          editable:
-            range:
-              min: 13952
-              max: 26282
-          networks:
-            Ethereum:
-              walletAddress: "0x1234567890abcdef1234567890abcdef12345678"
 
     PaymentMethod:
       type: object
@@ -1129,25 +1119,24 @@ components:
       description: |-
         Available payment methods for this currency.
 
-        **Key casing.** The normative JSON paths in ANSI X9.150-2026 §14.5 are lowercase —
-        `$.paymentMethods[].networks.fednow`, `.rtp`, `.ach` — and the standard's own example payload
-        agrees. That is what this service emits by default. Because the standard is ambiguous
-        elsewhere (§2.4 calls the *notification's* network value "all-uppercase" while listing
-        `FedNow`), implementations in the wild differ, so **the emitted key is configurable** per
-        network via `x9.networks.emitted-keys`. Input is always accepted case-insensitively,
-        whatever the emitted form.
+        **Only the rails this service supports may appear.** ANSI X9.150-2026 §14.5 names eight —
+        `fednow`, `rtp`, `ach`, `zelle`, `visa`, `mastercard`, `americanExpress`, `discover` — but
+        defines the structure of only the first three. For the rest it says, in full: *"Refer to
+        network documentation on required fields and processing requirements."* The inner JSON
+        belongs to each network's owner, not to the standard.
 
-        **X9.150 specifies the style and the root of a payment method; the inner JSON of each network
-        object belongs to that network's owner.** The standard does not attempt to define, in one
-        document, the format of every blockchain and payment network in the world — a network's own
-        authority publishes how it is embedded. That is why `additionalProperties` is `true`: a rail
-        whose owner has not published (Pix, Zelle, Tron, …) is carried here **verbatim and
-        uninterpreted**, and is fully conformant that way. The paying PSP interprets it bilaterally.
+        This service therefore supports **`fednow`, `rtp` and `ach`**, whose fields the standard does
+        fix. Any other network key is **rejected**, rather than carried through uninterpreted: a
+        payment method we cannot validate is one we cannot honour, and accepting it silently would
+        let a biller believe a rail is live when nothing here understands it.
 
-        A network graduates to a typed object below only once its owner has published the embedding.
-        **Today that is Solana alone.** Bitcoin, Ethereum, Polygon, Base, XRP and Arc are *not*
-        modelled: a payment method on any of them is carried here verbatim, exactly like Pix or Zelle,
-        and is fully conformant that way.
+        A network joins this list once its owner has published an embedding and it has been added to
+        the supported-networks configuration — never by a payer simply sending it.
+
+        **Key casing.** The normative JSON paths are lowercase, and that is what this service emits.
+        Input is accepted in any case (`fednow`, `FedNow`, `FEDNOW`), because the standard is not
+        self-consistent: §2.4 calls the notification's network value "all-uppercase" and then lists
+        `FedNow`, which is not. The emitted form is configurable via `x9.networks.emitted-keys`.
       properties:
         fednow:
           $ref: "#/components/schemas/FedNow"
@@ -1155,6 +1144,9 @@ components:
           $ref: "#/components/schemas/RTP"
         ach:
           $ref: "#/components/schemas/ACH"
+      # Structurally open, deliberately: the object has to be able to RECEIVE an unsupported network
+      # in order to refuse it by name. Closing it here would make Jackson drop the key silently, and
+      # the biller would never learn that the rail they published is not understood.
       additionalProperties: true
 
     RTP:
@@ -1216,8 +1208,9 @@ components:
         Blockchain payment method. The presence of the network object selects the chain; only the
         receiving wallet address is carried — no memo/tag fields.
 
-        **Solana is the only chain modelled**, because it is the only one whose owner has published
-        how it embeds in X9.150. Any other chain is carried uninterpreted in `additionalProperties`.
+        **No blockchain is modelled in this version.** A chain is supported once its owner has
+        published how it embeds in X9.150 and it has been added to the supported-networks
+        configuration; until then it cannot appear on a QR Code at all.
       required:
         - walletAddress
       properties:
@@ -1229,12 +1222,10 @@ components:
       type: string
       pattern: ^[1-9A-HJ-NP-Za-km-z]{32,44}$
       description: |-
-        Solana wallet address (Base58, 32-44 characters) that receives the funds.
+        A blockchain wallet address that receives the funds.
 
-        Solana is the only blockchain this service interprets, because it is the only one whose owner
-        has published how it embeds in X9.150. A payment method on any other chain travels
-        uninterpreted through the networks object's `additionalProperties`, where its address format
-        is the payer's business, not ours.
+        Retained for the notification contract; no blockchain rail is supported in this version, so
+        no QR Code can currently carry one.
       example: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
 
     PaymentRequestResponse:
@@ -1826,6 +1817,8 @@ components:
           allOf:
             - $ref: "#/components/schemas/ACH"
           nullable: true
+      # Open for the same reason as NetworksSimple: an unsupported network must be receivable in
+      # order to be refused by name rather than dropped in silence.
       additionalProperties: true
 
     PatchPaymentMethod:

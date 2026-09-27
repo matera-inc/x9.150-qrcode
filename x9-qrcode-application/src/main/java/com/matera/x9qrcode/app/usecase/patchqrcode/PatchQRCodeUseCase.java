@@ -17,6 +17,7 @@ import com.matera.x9qrcode.app.usecase.patchqrcode.mapper.PatchQRCodePaymentMeth
 import com.matera.x9qrcode.domain.entity.QRCodeEntity;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 import com.matera.x9qrcode.domain.service.CurrencyMixPolicy;
+import com.matera.x9qrcode.domain.service.SupportedCurrencyPolicy;
 import com.matera.x9qrcode.domain.vo.LocationIdVO;
 import com.matera.x9qrcode.domain.vo.PaymentMethodVO;
 import com.matera.x9qrcode.domain.vo.QRCodeIdVO;
@@ -37,6 +38,7 @@ public class PatchQRCodeUseCase extends UseCase<PatchQRCodeInput, PatchQRCodeOut
     private final QRCodeEMVService qrCodeEMVService;
     private final QRCodeLocationService qrCodeLocationService;
     private final CurrencyMixPolicy currencyMixPolicy;
+    private final SupportedCurrencyPolicy supportedCurrencyPolicy;
 
     @Override
     public PatchQRCodeOutput execute(PatchQRCodeInput input) {
@@ -60,7 +62,10 @@ public class PatchQRCodeUseCase extends UseCase<PatchQRCodeInput, PatchQRCodeOut
 
         qrCodeEntity.updatePaymentMethods(updatedPaymentMethods);
 
-        currencyMixPolicy.validate(collectCurrencies(qrCodeEntity));
+        List<String> currencies = collectCurrencies(qrCodeEntity);
+
+        supportedCurrencyPolicy.validate(currencies);
+        currencyMixPolicy.validate(currencies);
 
         String qrCodeContent = qrCodeEMVService.generateQrCodeContent(qrCodeEntity);
 

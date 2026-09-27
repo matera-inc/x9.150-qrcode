@@ -283,6 +283,12 @@ public final class CreateQRCodeRequestMapper {
                 paymentNotification.getEndpoint(), null);
     }
 
+    private static Map<String, Object> rejectAnythingElse(Map<String, Object> leftovers) {
+        StandardRailKeys.rejectUnsupported(leftovers);
+
+        return leftovers;
+    }
+
     private static NetworksDTO createNetworksInput(
             com.matera.x9qrcode.infrastructure.generated.dto.NetworksSimpleDTO networksSimple) {
         FedNowDTO fedNow = networksSimple.getFednow();
@@ -303,7 +309,7 @@ public final class CreateQRCodeRequestMapper {
                 .ach(StandardRailKeys.bankAddress(
                     isNull(ach) ? null : new BankPaymentAddressDTO(ach.getRoutingNumber(), ach.getAccountNumber()),
                     "ach", others))
-                .additionalProperties(others)
+                .additionalProperties(rejectAnythingElse(others))
                 .build();
     }
 

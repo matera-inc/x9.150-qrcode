@@ -23,7 +23,8 @@ import java.util.Map;
  * <p>An ambiguous standard produces implementations that disagree, and a disagreement about a key
  * name is an interoperability failure with a trivial cause. So the emitted name is configuration:
  * when a partner turns out to expect {@code FedNow}, that is a config change and a restart, not a
- * release. Defaults follow the normative paths, which is the reading with no contradiction in it.
+ * release. With nothing configured we emit the normative paths' own spelling, which is the reading
+ * with no contradiction in it.
  *
  * <p>Input is always accepted case-insensitively regardless of what we emit — liberal in what we
  * accept, strict in what we send.
@@ -32,18 +33,16 @@ import java.util.Map;
 public class NetworksProperties {
 
     /**
-     * Canonical (lower-case) network name to the exact string to emit as the object key.
+     * Overrides only: canonical (lower-case) network name to the exact string to emit as the object
+     * key. Empty by default, because the canonical name <em>is</em> the normative spelling — mapping
+     * {@code "rtp"} to {@code "rtp"} would only restate the fallback below. An entry appears here
+     * when a deployment needs to emit something else, e.g. {@code fednow: FedNow}.
      *
-     * <p>An explicit string rather than a case *style*, because a style cannot settle every case:
-     * "camel" gives no answer for FedNow — {@code fedNow}? {@code FedNow}? — and the standard
+     * <p>An exact string rather than a case <em>style</em>, because a style cannot settle every
+     * case: "camel" gives no answer for FedNow — {@code fedNow}? {@code FedNow}? — and the standard
      * happens to want neither.
      */
-    private Map<String, String> emittedKeys = new LinkedHashMap<>(Map.of(
-        "fednow", "fednow",
-        "rtp", "rtp",
-        "ach", "ach",
-        "solana", "solana"
-    ));
+    private Map<String, String> emittedKeys = new LinkedHashMap<>();
 
     /** The wire name for a canonical network, falling back to the canonical name itself. */
     public String emittedKeyFor(String canonicalName) {

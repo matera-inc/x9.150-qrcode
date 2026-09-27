@@ -9,3 +9,13 @@ Reference to the **ANSI X9.150-2026 Payment QR Code Standard** that this project
 
 The official ASC X9 document for the Merchant-Presented Payment QR Code Standard is sold by ANSI as
 a PDF and is not part of this repository — purchase it from the link above.
+
+## Our reading of it
+
+The standard leaves a handful of things ambiguous, and in a couple of places contradicts itself.
+[**INTERPRETATION.md**](INTERPRETATION.md) records every such call this implementation makes — what
+the text says, which way we went, and why — so that anyone holding both the standard and this repo
+can see our decisions as decisions rather than mistake them for the standard's.
+
+Decisions that are ours alone, rather than readings of the standard, are in
+[`docs/adr/`](../docs/adr/README.md).

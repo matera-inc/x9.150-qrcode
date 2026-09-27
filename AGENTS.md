@@ -68,15 +68,25 @@ These describe how our software behaves; they're enforced in `openapi.yaml` + th
   percentages `0–999`; **timestamps** are UTC, `Z`-terminated.
 - **Networks: X9.150 specifies the style and the root; the inner JSON belongs to the network's
   owner.** The standard does not define, in one document, the format of every rail in the world — a
-  network's own authority publishes how it is embedded. **`NetworkEnum` therefore holds exactly four
-  rails: `FedNow`, `RTP`, `ACH` and `Solana`** — Solana being the only blockchain whose owner has
-  published an embedding. Every other rail, chain or brand (Pix, Zelle, Tron, Ethereum, Bitcoin, …)
-  is carried verbatim in the networks object's `additionalProperties` and is fully conformant that
-  way; a rail becomes a typed object only when its owner publishes. See
-  [ADR-0010](docs/adr/0010-networks-are-interpreted-only-once-their-authority-publishes.md).
-  Classification lives on `NetworkEnum.isBlockchain()` and `NetworksVO.supports(...)` as exhaustive
-  switch **expressions**, so adding a rail without handling it is a compile error — a silent
-  fall-through is exactly how Base, XRP and Arc were once accepted and ignored.
+  network's own authority publishes how it is embedded, and until it does we have no basis to
+  interpret it ([ADR-0010](docs/adr/0010-networks-are-interpreted-only-once-their-authority-publishes.md)).
+  **`NetworkEnum` therefore holds exactly three rails: `fednow`, `rtp` and `ach`.** Every other rail,
+  chain or brand (Pix, Zelle, Tron, Ethereum, …) is **refused at creation, by name** — not carried
+  verbatim, and never silently dropped
+  ([ADR-0012](docs/adr/0012-refuse-what-this-deployment-cannot-honour.md)). A rail becomes acceptable
+  when it is added to the configuration, never because a caller sent it.
+  Dispatch lives on `NetworksVO.supports(...)` and the notification use case as exhaustive switch
+  **expressions**, so adding a rail without handling it is a compile error — a silent fall-through is
+  exactly how Base, XRP and Arc were once accepted and ignored.
+- **Network names are read leniently and written strictly.** Any casing is accepted on input
+  (`FedNow`, `FEDNOW`, `fednow`); the emitted key is the standard's own lowercase spelling and is
+  configurable (`x9.networks.emitted-keys`). The standard contradicts itself here — see
+  [official-spec/INTERPRETATION.md](official-spec/INTERPRETATION.md), which records every such
+  reading we make.
+- **Currencies are gated by what the rails settle.** The payload format is currency-agnostic and
+  carries any code verbatim, but this deployment accepts only what `supported-currencies.json` lists
+  (`USD` by default); an empty list disables the check. Separate from the peg-mixing rule, which asks
+  whether currencies may appear *together*.
 
 ## Build / test / run
 
