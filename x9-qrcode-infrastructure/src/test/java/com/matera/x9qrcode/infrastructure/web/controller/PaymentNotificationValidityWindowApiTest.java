@@ -224,6 +224,72 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
         assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
     }
 
+    // ------------------------------------------------------------- the payer-chosen amount
+
+    private String createEditable(long min, long max) {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        String body = """
+            {
+              "validUntil": "%s",
+              "creditor": {
+                "name": "Editable Test",
+                "phone": "+14155550100",
+                "email": "test@example.com",
+                "address": { "line1": "1 A St", "city": "Springfield", "state": "CA", "postalCode": "90001", "country": "US" },
+                "MCC": "5999"
+              },
+              "bill": { "description": "donation", "amountDue": { "amount": %d, "currency": "USDC" } },
+              "paymentNotification": { "kind": "DEFAULT" },
+              "paymentMethods": [
+                { "currency": "USDC", "validUntil": "%s", "amount": %d,
+                  "editable": { "range": { "min": %d, "max": %d } },
+                  "networks": { "Solana": { "walletAddress": "%s" } } }
+              ]
+            }
+            """.formatted(utc(now.plusDays(30)), FACE_AMOUNT, utc(now.plusDays(30)), FACE_AMOUNT, min, max, WALLET);
+
+        return given().contentType("application/json").body(body)
+                .when().post(CREATE)
+                .then().statusCode(HttpStatus.CREATED.value())
+                .extract().path("id");
+    }
+
+    /**
+     * When the payload advertises {@code editable.range}, the payer picks the amount — a donation, a
+     * top-up, an open tab. Demanding the face amount back would refuse every legitimate use of the
+     * feature.
+     */
+    @Test
+    void anAmountThePayerChoseWithinThePublishedRangeIsAccepted() {
+        String qrCodeId = createEditable(1_000_000L, 50_000_000L);
+
+        MockMvcResponse response = notify(qrCodeId, 7_777_777L);
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode(), response.asString());
+        assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
+    }
+
+    @Test
+    void anAmountBelowThePublishedRangeIsRefused() {
+        String qrCodeId = createEditable(1_000_000L, 50_000_000L);
+
+        MockMvcResponse response = notify(qrCodeId, 999_999L);
+
+        assertNotEquals(HttpStatus.OK.value(), response.statusCode(), response.asString());
+        assertTrue(response.asString().contains("editable"), response.asString());
+        assertEquals("ACTIVE", statusOf(qrCodeId));
+    }
+
+    @Test
+    void anAmountAboveThePublishedRangeIsRefused() {
+        String qrCodeId = createEditable(1_000_000L, 50_000_000L);
+
+        MockMvcResponse response = notify(qrCodeId, 50_000_001L);
+
+        assertNotEquals(HttpStatus.OK.value(), response.statusCode(), response.asString());
+        assertEquals("ACTIVE", statusOf(qrCodeId));
+    }
+
     // ------------------------------------------------- window 3: the per-currency payment method
 
     /**
