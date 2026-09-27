@@ -102,6 +102,12 @@ These describe how our software behaves; they're enforced in `openapi.yaml` + th
   X9-approved suite SD-34) and its own examples use `ES256`, so assuming RSA anywhere is an
   interoperability bug rather than a policy.
 
+- **Transient transaction conflicts are retried** (`TransientTransactionRetry`, ADR-0013) — but only
+  when MongoDB labelled the failure `TransientTransactionError`, never by exception type: Spring
+  maps a write conflict and a duplicate key to the same `DataIntegrityViolationException`, and
+  retrying a duplicate key can only fail slowly. The advice orders OUTSIDE `@Transactional` so each
+  attempt gets a fresh transaction; that ordering is asserted by a test, not assumed.
+
 ## Build / test / run
 
 ```bash
