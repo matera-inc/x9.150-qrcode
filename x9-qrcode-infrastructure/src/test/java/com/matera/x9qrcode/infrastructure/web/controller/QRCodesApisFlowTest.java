@@ -11,7 +11,7 @@ import com.matera.x9qrcode.app.dto.enumerated.ActionEnumDTO;
 import com.matera.x9qrcode.domain.dto.CertificateEndpointTypeEnum;
 import com.matera.x9qrcode.infrastructure.AbstractIntegrationTest;
 import com.matera.x9qrcode.infrastructure.configuration.property.X9Properties;
-import com.matera.x9qrcode.infrastructure.generated.dto.EthereumDTO;
+import com.matera.x9qrcode.infrastructure.generated.dto.SolanaDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentNotificationDataBlockchainDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentNotificationDataDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentPayloadRequestDTO;
@@ -105,16 +105,10 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
                         "/payment-notification/postPaymentNotificationCreation.json",
                         false),
                 new PaymentRailTestConfig(
-                        "Ethereum",
-                        "/payment-requests/request/postPaymentRequestCreationEthereum.json",
-                        "/payment-requests/request/putPaymentRequestStatusChangeEthereum.json",
-                        "/payment-notification/postPaymentNotificationEthereumCreation.json",
-                        true),
-                new PaymentRailTestConfig(
-                        "Bitcoin",
-                        "/payment-requests/request/postPaymentRequestCreationBitcoin.json",
-                        "/payment-requests/request/putPaymentRequestStatusChangeBitcoin.json",
-                        "/payment-notification/postPaymentNotificationBitcoinCreation.json",
+                        "Solana",
+                        "/payment-requests/request/postPaymentRequestCreationSolana.json",
+                        "/payment-requests/request/putPaymentRequestStatusChangeSolana.json",
+                        "/payment-notification/postPaymentNotificationSolanaCreation.json",
                         true));
     }
 
@@ -456,8 +450,7 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
     }
 
     // ===========================================================================================
-    // Parameterized full-flow tests for each payment rail (FedNow, Ethereum,
-    // Bitcoin)
+    // Parameterized full-flow tests for each payment rail (FedNow, Solana)
     // ===========================================================================================
 
     @ParameterizedTest(name = "Full flow: {0}")
@@ -611,29 +604,29 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
     }
 
     // ===========================================================================================
-    // Ethereum additional properties tests — unknown networks and fields must be persisted and
+    // Solana additional properties tests — unknown networks and fields must be persisted and
     // returned as well
     // ===========================================================================================
 
     @Test
     @Order(93)
     @SneakyThrows
-    void testEthereumAdditionalPropertiesOnCreate() {
-        // Create Ethereum QR code with additional "Tron" network
+    void testSolanaAdditionalPropertiesOnCreate() {
+        // Create Solana QR code with additional "Tron" network
         PaymentRequestResponseDTO createResponse = createNewPaymentRequest(
-                "/payment-requests/request/postPaymentRequestCreationEthereum.json");
+                "/payment-requests/request/postPaymentRequestCreationSolana.json");
 
-        String ethQrcodeId = createResponse.getId();
-        assertNotNull(ethQrcodeId);
+        String solQrcodeId = createResponse.getId();
+        assertNotNull(solQrcodeId);
 
         // GET and verify "Tron" additional property is present in the networks
-        PaymentRequestInformationDTO getResponse = getPaymentRequest(ethQrcodeId);
+        PaymentRequestInformationDTO getResponse = getPaymentRequest(solQrcodeId);
         assertNotNull(getResponse.getPaymentMethods());
 
-        EthereumDTO ethereumDTO = getResponse.getPaymentMethods().get(0)
-                                             .getNetworks().getEthereum();
+        SolanaDTO solanaDTO = getResponse.getPaymentMethods().get(0)
+                                             .getNetworks().getSolana();
 
-        assertNotNull(ethereumDTO, "Ethereum should be present on GET");
+        assertNotNull(solanaDTO, "Solana should be present on GET");
 
         Map<String, Object> additionalProps = getResponse.getPaymentMethods().get(0)
                 .getNetworks().getAdditionalProperties();
@@ -650,7 +643,7 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
     @Test
     @Order(94)
     @SneakyThrows
-    void testEthereumAdditionalPropertiesOnPayload() {
+    void testSolanaAdditionalPropertiesOnPayload() {
         // Use the QR code created in Order 93
         String jwsRequest = createPayloadRequestJws(qrcodeB64);
 
@@ -678,15 +671,15 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         Map<String, Object> tronMap = (Map<String, Object>) payloadAdditionalProps.get("Tron");
         assertEquals("TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7", tronMap.get("address"));
 
-        EthereumDTO payloadEthereum = payloadResponse.getPaymentMethods().get(0)
-                .getNetworks().getEthereum();
-        assertNotNull(payloadEthereum, "Ethereum should be present in payload");
+        SolanaDTO payloadSolana = payloadResponse.getPaymentMethods().get(0)
+                .getNetworks().getSolana();
+        assertNotNull(payloadSolana, "Solana should be present in payload");
     }
 
     @Test
     @Order(95)
     @SneakyThrows
-    void testEthereumAdditionalPropertiesOnDecoding() {
+    void testSolanaAdditionalPropertiesOnDecoding() {
         // Decode the EMV QR code and verify additional properties
         QRCodeEmvDecoderDTO request = new QRCodeEmvDecoderDTO();
         request.setQrCode(qrcodeEmv);
@@ -715,23 +708,23 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         Map<String, Object> tronMap = (Map<String, Object>) decodingAdditionalProps.get("Tron");
         assertEquals("TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7", tronMap.get("address"));
 
-        EthereumDTO decodingEthereum = response.getPaymentMethods().get(0)
-                .getNetworks().getEthereum();
-        assertNotNull(decodingEthereum, "Ethereum should be present in decoded payload");
+        SolanaDTO decodingSolana = response.getPaymentMethods().get(0)
+                .getNetworks().getSolana();
+        assertNotNull(decodingSolana, "Solana should be present in decoded payload");
     }
 
     @Test
     @Order(96)
     @SneakyThrows
-    void testEthereumAdditionalPropertiesOnPatch() {
-        // Create a fresh Ethereum QR code for the PATCH test
+    void testSolanaAdditionalPropertiesOnPatch() {
+        // Create a fresh Solana QR code for the PATCH test
         PaymentRequestResponseDTO freshCreate = createNewPaymentRequest(
-                "/payment-requests/request/postPaymentRequestCreationEthereum.json");
+                "/payment-requests/request/postPaymentRequestCreationSolana.json");
 
         String patchTargetId = freshCreate.getId();
 
         // Patch with an additional "Avalanche" network, keeping "Tron"
-        String patchJson = readJson("/payment-requests/request/patchPaymentRequestDataEthereum.json");
+        String patchJson = readJson("/payment-requests/request/patchPaymentRequestDataSolana.json");
 
         PaymentRequestResponseDTO patchResponse = given()
                 .contentType("application/json")
@@ -766,9 +759,9 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         Map<String, Object> avalancheMap = (Map<String, Object>) patchAdditionalProps.get("Avalanche");
         assertEquals("0xABCd35Cc6634C0539Ff82c466ae367A6097dEFFF", avalancheMap.get("address"));
 
-        EthereumDTO patchEthereum = getAfterPatch.getPaymentMethods().get(0)
-                .getNetworks().getEthereum();
-        assertNotNull(patchEthereum, "Ethereum should be present after PATCH");
+        SolanaDTO patchSolana = getAfterPatch.getPaymentMethods().get(0)
+                .getNetworks().getSolana();
+        assertNotNull(patchSolana, "Solana should be present after PATCH");
     }
 
     // ===========================================================================================

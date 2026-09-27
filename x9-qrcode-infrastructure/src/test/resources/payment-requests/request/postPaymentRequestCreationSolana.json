@@ -101,8 +101,11 @@
       "validUntil": "2030-05-10T23:59:59Z",
       "amount": 25000000,
       "networks": {
-        "Bitcoin": {
-          "walletAddress": "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+        "Solana": {
+          "walletAddress": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+        },
+        "Tron": {
+          "address": "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7"
         }
       }
     }
