@@ -311,6 +311,44 @@ Both now follow the key. A configured `alg` the key cannot produce fails at star
 halves, rather than substituting an algorithm the operator did not choose or failing later at the
 first signature.
 
+## I-8 — Two judgement calls in Solana's published fields
+
+**Where:** [SOLANA-FIELDS.md](SOLANA-FIELDS.md) — the Solana Foundation's embedding, not ANSI X9.150
+
+The Foundation's table is short and mostly unambiguous. Two things it leaves to the implementer.
+
+### The address length is a maximum, not a width
+
+The table gives `recipient` as "44 characters, Base 58". Read literally that is an exact width, and
+we do not read it that way.
+
+Base58 is variable-length. A Solana address is a 32-byte public key, and 32 bytes encode to **43 or
+44** Base58 characters depending on magnitude — roughly one address in twenty-nine falls in the
+43-character case. Enforcing exactly 44 would reject those wallets outright: a conformance failure
+against real addresses, in the name of a stricter reading of a table.
+
+So the pattern is `^[1-9A-HJ-NP-Za-km-z]{32,44}$`. The floor of 32 admits the all-zero system
+address. A test pins the 43-character case, because the rule is easy to "simplify" back to 44 by
+someone who has only read the table.
+
+### We carry the memo, we do not compose it
+
+The table says `memo` may hold "anything from the payload", and that the payload ID **should** be
+included as `{QRCD:"payloadID"}`. That marker is what lets an on-chain transfer be matched back to
+the QR Code that asked for it, so a memo without it makes reconciliation a manual job.
+
+It would therefore be tempting to inject the payload ID automatically. **We do not.** The memo is a
+field the biller composed, with a 100-character budget they are spending; silently rewriting it — or
+appending to it — would be a surprising thing for a transport to do, and would quietly overwrite a
+value somebody chose for a reason we cannot see.
+
+So the memo round-trips exactly as supplied, and the responsibility for including `{QRCD:...}` stays
+with the party that knows what else belongs in those 100 characters. The field description in
+`openapi.yaml` says so, which is where an integrator will actually read it.
+
+This is a *should*, not a *shall*. If it were a *shall* the calculus would change: refusing a memo
+without the marker would then be enforcing the publication rather than second-guessing the biller.
+
 ---
 
 ## Reporting

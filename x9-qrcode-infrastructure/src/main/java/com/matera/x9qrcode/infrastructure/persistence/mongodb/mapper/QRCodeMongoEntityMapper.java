@@ -321,8 +321,19 @@ public final class QRCodeMongoEntityMapper {
             buildBankPaymentAddress(doc.getFedNow()),
             buildBankPaymentAddress(doc.getAch()),
             buildBankPaymentAddress(doc.getRtp()),
+            buildSolanaPaymentAddress(doc.getSolana()),
             doc.getAdditionalProperties()
         );
+    }
+
+    private static com.matera.x9qrcode.domain.vo.SolanaPaymentAddressVO buildSolanaPaymentAddress(
+        QRCodeMongoPersistenceModel.SolanaPaymentAddress doc) {
+
+        if (isNull(doc)) {
+            return null;
+        }
+
+        return new com.matera.x9qrcode.domain.vo.SolanaPaymentAddressVO(doc.getRecipient(), doc.getMemo());
     }
 
     private static BankPaymentAddressVO buildBankPaymentAddress(QRCodeMongoPersistenceModel.BankPaymentAddress doc) {

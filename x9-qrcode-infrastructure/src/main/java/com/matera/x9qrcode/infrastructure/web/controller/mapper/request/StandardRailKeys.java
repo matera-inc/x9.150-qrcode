@@ -23,7 +23,7 @@ import static java.util.Objects.isNull;
  * throughout — so a caller working from the contract sends lower-case and binds to the generated
  * properties. Anything else, including a rail written {@code FedNow}, simply is not one of those
  * properties and lands in {@code additionalProperties}, where this refuses it by name. One rule
- * covers an unsupported network and a mis-spelled supported one, and the message names the three
+ * covers an unsupported network and a mis-spelled supported one, and the message names the
  * keys that do work.
  *
  * <p>(§2.4 does contradict itself on case, but that governs {@code $.payment.network} — the string
@@ -49,7 +49,7 @@ public final class StandardRailKeys {
 
         throw new BusinessRuleException(
             "paymentMethods.networks",
-            "Unsupported network(s): %s. This service supports fednow, rtp and ach."
+            "Unsupported network(s): %s. This service supports fednow, rtp, ach and solana."
                 .formatted(String.join(", ", leftovers.keySet())));
     }
 

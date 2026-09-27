@@ -409,9 +409,11 @@ Account numbers on these rails use the **tokenized** protection approach **only*
 
 ### The supported network set
 
-**This build interprets three networks: `fednow`, `rtp` and `ach`.** Any other key in the networks object — a chain, a private brand, a P2P service — is **refused at creation, with a 400 that names it**. It is not carried verbatim, and it is certainly not dropped in silence: a dropped network looks exactly like a working one from the caller's side, right up until nobody can pay.
+**This build interprets four networks: `fednow`, `rtp`, `ach` and `solana`.** Any other key in the networks object — a chain, a private brand, a P2P service — is **refused at creation, with a 400 that names it**. It is not carried verbatim, and it is certainly not dropped in silence: a dropped network looks exactly like a working one from the caller's side, right up until nobody can pay.
 
 **X9.150 specifies the style and the root of a payment method; the inner JSON of each network object belongs to that network's owner.** The standard does not attempt to define, in one document, the format of every payment network in the world — a network's own authority publishes how it is embedded. If Pix is to become an X9.150 payment method for Brazilians, Banco Central do Brasil is the body that publishes how Pix is embedded; the same holds for every chain. Until that publication exists, a typed object for it would be our guess wearing X9.150's name, and would meet a different guess from the next implementer — the interoperability failure the standard exists to prevent. See [ADR-0010](docs/adr/0010-networks-are-interpreted-only-once-their-authority-publishes.md).
+
+Solana is here on the second authority: the **Solana Foundation** published its fields for X9.150 (`recipient` and an optional `memo` — see [official-spec/SOLANA-FIELDS.md](official-spec/SOLANA-FIELDS.md)), which is exactly the bar ADR-0010 sets. Worth knowing how that bar earns its keep: before the publication existed this repository had guessed at a lone `walletAddress` with no memo, and **both halves of the guess were wrong**.
 
 Refusing rather than carrying is a deployment-level judgement on top of that: a network we cannot interpret is one we cannot validate a payment notification against, so a QR Code advertising it is a promise we cannot keep. See [ADR-0012](docs/adr/0012-refuse-what-this-deployment-cannot-honour.md). The supported set is configuration — a network becomes acceptable when it is added to it, never because a caller sent it.
 
@@ -423,7 +425,7 @@ The standard's one casing contradiction — §2.4 calls its values “all-upperc
 
 Monetary amounts are **64-bit integers in a currency's minor units** (never floating-point). The currency is an open string in the payload — an ISO 4217 code such as `USD`/`JPY`, or a digital-asset ticker such as `USDC`/`BTC` — that the module repeats verbatim; the paying PSP resolves its decimals.
 
-What a **deployment** will accept is narrower, because it is decided by the rails: FedNow, RTP and ACH move dollars, so `supported-currencies.json` lists `USD` alone and a QR Code denominated in anything else — or in the wrong case, `usd` — is refused at creation. An empty list disables the check. This is separate from the peg-mixing rule (`pegged-currencies.json`), which asks whether the currencies on one request may appear *together*.
+What a **deployment** will accept is narrower, because it is decided by the rails: FedNow, RTP and ACH move dollars, and Solana settles `USDC`, so `supported-currencies.json` lists both and a QR Code denominated in anything else — or in the wrong case, `usd` — is refused at creation. An empty list disables the check. This is separate from the peg-mixing rule (`pegged-currencies.json`), which asks whether the currencies on one request may appear *together*.
 
 ### Implementation
 

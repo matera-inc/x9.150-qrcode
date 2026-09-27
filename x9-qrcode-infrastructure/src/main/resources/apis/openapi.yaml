@@ -1125,13 +1125,16 @@ components:
         network documentation on required fields and processing requirements."* The inner JSON
         belongs to each network's owner, not to the standard.
 
-        This service therefore supports **`fednow`, `rtp` and `ach`**, whose fields the standard does
-        fix. Any other network key is **rejected**, rather than carried through uninterpreted: a
-        payment method we cannot validate is one we cannot honour, and accepting it silently would
-        let a biller believe a rail is live when nothing here understands it.
+        This service supports **`fednow`, `rtp` and `ach`**, whose fields the standard does fix, plus
+        **`solana`**, whose fields are supported as indicated by the **Solana Foundation**
+        (`official-spec/SOLANA-FIELDS.md`).
+        Any other network key is **rejected**, rather than carried through uninterpreted: a payment
+        method we cannot validate is one we cannot honour, and accepting it silently would let a
+        biller believe a rail is live when nothing here understands it.
 
-        A network joins this list once its owner has published an embedding and it has been added to
-        the supported-networks configuration — never by a payer simply sending it.
+        A network joins this list once its owner has published an embedding — never by a payer simply
+        sending it. Solana is here because it published; that is the whole bar, and the earlier
+        unpublished guess at its fields was wrong in both of them.
 
         **Key casing.** The normative JSON paths are lowercase, and that is what this service emits.
         Input is accepted in any case (`fednow`, `FedNow`, `FEDNOW`), because the standard is not
@@ -1144,6 +1147,8 @@ components:
           $ref: "#/components/schemas/RTP"
         ach:
           $ref: "#/components/schemas/ACH"
+        solana:
+          $ref: "#/components/schemas/Solana"
       # Structurally open, deliberately: the object has to be able to RECEIVE an unsupported network
       # in order to refuse it by name. Closing it here would make Jackson drop the key silently, and
       # the biller would never learn that the rail they published is not understood.
@@ -1207,30 +1212,73 @@ components:
       description: "How the bank account number is protected for the bank rails (FedNow, RTP, ACH), per ANSI X9.150-2026 (Protection Type, §14.5.x): `tokenized`, `encrypted`, or `plaintext`. This implementation always secures account numbers by tokenization and therefore always emits `tokenized`. Applies only to bank networks — not to card or blockchain payment methods."
       example: "tokenized"
 
-    CryptoWalletAddress:
+    Solana:
       type: object
       description: |-
-        Blockchain payment method. The presence of the network object selects the chain; only the
-        receiving wallet address is carried — no memo/tag fields.
+        Solana payment method.
 
-        **No blockchain is modelled in this version.** A chain is supported once its owner has
-        published how it embeds in X9.150 and it has been added to the supported-networks
-        configuration; until then it cannot appear on a QR Code at all.
+        **These fields are supported as indicated by the Solana Foundation** — see
+        `official-spec/SOLANA-FIELDS.md` for the published table, reproduced with attribution.
+
+        ANSI X9.150-2026 fixes only *where* a network object hangs; its inner fields belong to the
+        network's owner, and §14.5 says so in as many words by deferring to "network documentation".
+        So the authority for everything below is the Foundation's, not the standard's, and not ours.
+
+        They are not an inference. An earlier, unpublished guess in this repository used a single
+        `walletAddress` and no memo — wrong in both halves. That is why ADR-0010 requires a
+        publication to point at before a network is interpreted here.
       required:
-        - walletAddress
+        - recipient
       properties:
-        walletAddress:
-          $ref: "#/components/schemas/CryptoAddressHash"
+        recipient:
+          $ref: "#/components/schemas/SolanaRecipient"
+        memo:
+          $ref: "#/components/schemas/SolanaMemo"
       additionalProperties: false
+
+    SolanaRecipient:
+      type: string
+      pattern: ^[1-9A-HJ-NP-Za-km-z]{32,44}$
+      minLength: 32
+      maxLength: 44
+      description: |-
+        Base58 wallet address that receives the funds. Mandatory.
+
+        The published table gives the length as 44, which is read here as a **maximum** rather than an
+        exact width. Base58 is variable-length: a 32-byte Solana public key encodes to 43 or 44
+        characters, and roughly one address in twenty-nine falls in the 43-character case. Demanding
+        exactly 44 would reject those wallets outright — a conformance failure against real
+        addresses, in the name of a stricter reading of the table. The floor of 32 admits the
+        all-zero system address (`111...1`). See `official-spec/INTERPRETATION.md` I-8.
+      example: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+
+    SolanaMemo:
+      type: string
+      minLength: 1
+      maxLength: 100
+      description: |-
+        Optional UTF-8 memo carried with the payment, up to 100 characters.
+
+        Solana's table says it may hold "anything from the payload", and that the payload ID **should**
+        be included as `{QRCD:"payloadID"}`. That marker is what lets an on-chain transfer be matched
+        back to the QR Code that asked for it, so a memo without it makes reconciliation a manual job.
+
+        This service carries the memo **verbatim**, exactly as the biller supplied it, and does not
+        inject the payload ID. Rewriting a field whose contents the biller chose would be a surprising
+        thing for a transport to do, and the value is theirs to compose. See
+        `official-spec/INTERPRETATION.md` I-8.
+      example: "{QRCD:\"01A0E3A12805CB382EF4687F18CDC43A\"}"
 
     CryptoAddressHash:
       type: string
       pattern: ^[1-9A-HJ-NP-Za-km-z]{32,44}$
       description: |-
-        A blockchain wallet address that receives the funds.
+        A blockchain wallet address, as reported on a payment **notification** — the account a payer
+        says the funds moved from, or to.
 
-        Retained for the notification contract; no blockchain rail is supported in this version, so
-        no QR Code can currently carry one.
+        Distinct from `Solana.recipient`, which is the address a QR Code *publishes* as the place to
+        pay. This one is a claim about a transfer that has happened or is about to; that one is an
+        instruction. They share a format because they name the same kind of thing.
       example: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
 
     PaymentRequestResponse:
@@ -1829,6 +1877,10 @@ components:
         ach:
           allOf:
             - $ref: "#/components/schemas/ACH"
+          nullable: true
+        solana:
+          allOf:
+            - $ref: "#/components/schemas/Solana"
           nullable: true
       # Open for the same reason as NetworksSimple: an unsupported network must be receivable in
       # order to be refused by name rather than dropped in silence.

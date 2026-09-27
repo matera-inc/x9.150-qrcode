@@ -11,7 +11,8 @@ import com.matera.x9qrcode.domain.exception.ValueObjectRuleException;
 public enum NetworkEnum {
     RTP("RTP"),
     FEDNOW("FedNow"),
-    ACH("ACH");
+    ACH("ACH"),
+    SOLANA("Solana");
 
     private final String value;
 
@@ -73,10 +74,10 @@ public enum NetworkEnum {
      * here. A closed enum for an open set is what made Base, XRP and Arc silently unpayable.
      */
     public boolean isBlockchain() {
-        // Every rail the STANDARD defines is a US bank rail. Anything else — Solana, Pix, a chain
-        // whose owner has published an embedding — is carried by name rather than by enum, so it
-        // never reaches this method.
-        return false;
+        // The rails ANSI X9.150 itself defines are US bank rails. Solana is here on a different
+        // authority: its own published embedding (official-spec/SOLANA-FIELDS.md), which is the bar
+        // ADR-0010 sets. Anything without one is still carried by name rather than by enum.
+        return this == SOLANA;
     }
 
 }

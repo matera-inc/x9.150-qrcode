@@ -2,12 +2,16 @@
   "_comment": [
     "Currencies this deployment will accept on a payment request. The X9.150 payload format is",
     "currency-agnostic and carries any code verbatim, but a deployment can only honour what its",
-    "payment rails settle. This build interprets the US bank rails (FedNow, RTP, ACH), which move",
-    "USD, so USD is the only code listed here; a QR Code denominated in anything else would be",
-    "unpayable and is refused at creation instead. Add a code here when a rail that settles it is",
-    "added. An empty \"supported\" array disables the check entirely, accepting every code the format",
-    "can carry. This '_comment' key is documentation only and is ignored by the loader, keeping the",
-    "file strict, standard JSON."
+    "payment rails settle. The US bank rails (FedNow, RTP, ACH) move USD; Solana settles USDC, the",
+    "dollar-pegged stablecoin it is overwhelmingly used for. Both are listed, and pegged-currencies.json",
+    "already groups them, so a single QR Code may offer a USD bank method and a USDC Solana method",
+    "side by side. A code that is not listed is refused at creation rather than advertised on a QR",
+    "Code nobody can pay. Add one here when a rail that settles it is added. An empty \"supported\"",
+    "array disables the check entirely. This '_comment' key is documentation only and is ignored by",
+    "the loader, keeping the file strict, standard JSON."
   ],
-  "supported": ["USD"]
+  "supported": [
+    "USD",
+    "USDC"
+  ]
 }

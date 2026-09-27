@@ -20,13 +20,9 @@ public class NetworksUpdateDTO {
     private PartialInput<BankPaymentAddressDTO> fedNow;
     private PartialInput<BankPaymentAddressDTO> rtp;
     private PartialInput<BankPaymentAddressDTO> ach;
-    private PartialInput<CryptoWalletPaymentAddressDTO> polygon;
-    private PartialInput<CryptoWalletPaymentAddressDTO> solana;
-    private PartialInput<CryptoWalletPaymentAddressDTO> ethereum;
-    private PartialInput<CryptoWalletPaymentAddressDTO> bitcoin;
-    private PartialInput<CryptoWalletPaymentAddressDTO> base;
-    private PartialInput<CryptoWalletPaymentAddressDTO> xrp;
-    private PartialInput<CryptoWalletPaymentAddressDTO> arc;
+    // As in NetworksDTO: the six unpublished chains went with ADR-0010, and Solana stays in the
+    // shape its Foundation published rather than as a bare wallet address.
+    private PartialInput<SolanaPaymentAddressDTO> solana;
     private PartialInput<Map<String, Object>> additionalProperties;
 
 }

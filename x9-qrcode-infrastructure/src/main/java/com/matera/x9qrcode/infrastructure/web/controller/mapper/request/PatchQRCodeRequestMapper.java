@@ -12,6 +12,7 @@ import com.matera.x9qrcode.app.dto.AdjustmentUpdateDTO;
 import com.matera.x9qrcode.app.dto.AmountDueUpdateDTO;
 import com.matera.x9qrcode.app.dto.AmountRangeDTO;
 import com.matera.x9qrcode.app.dto.BankPaymentAddressDTO;
+import com.matera.x9qrcode.app.dto.SolanaPaymentAddressDTO;
 import com.matera.x9qrcode.app.dto.BillUpdateDTO;
 import com.matera.x9qrcode.app.dto.CryptoWalletPaymentAddressDTO;
 import com.matera.x9qrcode.app.dto.CurrencyEditableUpdateDTO;
@@ -28,6 +29,7 @@ import com.matera.x9qrcode.app.dto.enumerated.PaymentTimingEnumDTO;
 import com.matera.x9qrcode.app.usecase.PartialInput;
 import com.matera.x9qrcode.app.usecase.patchqrcode.PatchQRCodeInput;
 import com.matera.x9qrcode.infrastructure.generated.dto.ACHDTO;
+import com.matera.x9qrcode.infrastructure.generated.dto.SolanaDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.AdjustmentParametersDiscountsInnerDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.AdjustmentParametersLateFeesDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.FedNowDTO;
@@ -259,6 +261,7 @@ public final class PatchQRCodeRequestMapper {
         JsonNullable<FedNowDTO> fedNow = patchNetworksSimpleDTO.getFednow();
         JsonNullable<RTPDTO> rtp = patchNetworksSimpleDTO.getRtp();
         JsonNullable<ACHDTO> ach = patchNetworksSimpleDTO.getAch();
+        JsonNullable<SolanaDTO> solana = patchNetworksSimpleDTO.getSolana();
 
         StandardRailKeys.rejectUnsupported(patchNetworksSimpleDTO.getAdditionalProperties());
 
@@ -266,8 +269,17 @@ public final class PatchQRCodeRequestMapper {
             .fedNow(fedNow.isPresent() ? buildBankPaymentAddressDTO(fedNow.get()) : PartialInput.absent())
             .rtp(rtp.isPresent() ? buildBankPaymentAddressDTO(rtp.get()) : PartialInput.absent())
             .ach(ach.isPresent() ? buildBankPaymentAddressDTO(ach.get()) : PartialInput.absent())
+            .solana(solana.isPresent() ? buildSolanaPaymentAddressDTO(solana.get()) : PartialInput.absent())
             .additionalProperties(PartialInput.of(patchNetworksSimpleDTO.getAdditionalProperties()))
             .build();
+    }
+
+    private static PartialInput<SolanaPaymentAddressDTO> buildSolanaPaymentAddressDTO(SolanaDTO solana) {
+        if (isNull(solana)) {
+            return PartialInput.of(null);
+        }
+
+        return PartialInput.of(new SolanaPaymentAddressDTO(solana.getRecipient(), solana.getMemo()));
     }
 
     private static PartialInput<BankPaymentAddressDTO> buildBankPaymentAddressDTO(Object bankPaymentAddress) {

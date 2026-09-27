@@ -290,12 +290,29 @@ public final class QRCodeMongoDocumentMapper {
         return paymentDetailsDocument;
     }
 
+    private static QRCodeMongoPersistenceModel.SolanaPaymentAddress buildSolanaPaymentAddress(
+        com.matera.x9qrcode.domain.vo.SolanaPaymentAddressVO solana) {
+
+        if (isNull(solana)) {
+            return null;
+        }
+
+        QRCodeMongoPersistenceModel.SolanaPaymentAddress document =
+            new QRCodeMongoPersistenceModel.SolanaPaymentAddress();
+
+        document.setRecipient(solana.recipient());
+        document.setMemo(solana.memo());
+
+        return document;
+    }
+
     private static QRCodeMongoPersistenceModel.Networks buildNetworks(NetworksVO networks) {
         QRCodeMongoPersistenceModel.Networks networksDocument = new QRCodeMongoPersistenceModel.Networks();
 
         networksDocument.setFedNow(buildBankPaymentAddress(networks.fedNow()));
         networksDocument.setAch(buildBankPaymentAddress(networks.ach()));
         networksDocument.setRtp(buildBankPaymentAddress(networks.rtp()));
+        networksDocument.setSolana(buildSolanaPaymentAddress(networks.solana()));
         networksDocument.setAdditionalProperties(networks.additionalProperties());
 
         return networksDocument;

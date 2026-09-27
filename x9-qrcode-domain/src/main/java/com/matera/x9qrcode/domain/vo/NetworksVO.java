@@ -23,6 +23,7 @@ public record NetworksVO(
     BankPaymentAddressVO fedNow,
     BankPaymentAddressVO ach,
     BankPaymentAddressVO rtp,
+    SolanaPaymentAddressVO solana,
     Map<String, Object> additionalProperties
 ) {
 
@@ -30,6 +31,7 @@ public record NetworksVO(
         if (isNull(fedNow) &&
             isNull(ach) &&
             isNull(rtp) &&
+            isNull(solana) &&
             (isNull(additionalProperties) || additionalProperties.isEmpty())) {
             throw new ValueObjectRuleException("At least one network must be provided.");
         }
@@ -53,7 +55,17 @@ public record NetworksVO(
      */
     @SuppressWarnings("unchecked")
     public String destinationAddressFor(String networkName) {
-        if (isNull(networkName) || isNull(additionalProperties)) {
+        if (isNull(networkName)) {
+            return null;
+        }
+
+        // Solana is interpreted, so its destination comes from the field its own publication names
+        // — `recipient` — rather than from a convention we invented. See SOLANA-FIELDS.md.
+        if (NetworkEnum.SOLANA.value().equalsIgnoreCase(networkName)) {
+            return isNull(solana) ? null : solana.recipient();
+        }
+
+        if (isNull(additionalProperties)) {
             return null;
         }
 
@@ -78,19 +90,27 @@ public record NetworksVO(
             case FEDNOW -> fedNow;
             case RTP -> rtp;
             case ACH -> ach;
+            // Solana is a rail this service interprets, but not a bank one: it publishes a Base58
+            // recipient, not a routing and account number. Callers asking for a bank address get
+            // nothing, which is the truthful answer.
+            case SOLANA -> null;
         };
     }
 
-    /** Whether this QR Code offers {@code networkName}, whether or not the standard defines it. */
+    /** Whether this QR Code offers {@code networkName}, interpreted rail or not. */
     public boolean supports(String networkName) {
         return NetworkEnum.find(networkName)
-            .map(rail -> nonNull(bankAddressFor(rail)))
+            .map(this::supports)
             .orElseGet(() -> nonNull(destinationAddressFor(networkName)));
     }
 
-    /** Whether this QR Code offers one of the standard's own rails. */
+    /** Whether this QR Code offers a rail this service interprets. */
     public boolean supports(NetworkEnum network) {
-        return nonNull(bankAddressFor(network));
+        return switch (network) {
+            case FEDNOW, RTP, ACH -> nonNull(bankAddressFor(network));
+            // Not a bank address, so asking bankAddressFor would always answer no.
+            case SOLANA -> nonNull(solana);
+        };
     }
 
 }

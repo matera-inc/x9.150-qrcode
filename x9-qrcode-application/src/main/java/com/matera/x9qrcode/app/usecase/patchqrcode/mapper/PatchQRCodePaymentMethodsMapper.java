@@ -15,6 +15,8 @@ import com.matera.x9qrcode.app.dto.PaymentMethodUpdateDTO;
 import com.matera.x9qrcode.app.usecase.PartialInput;
 import com.matera.x9qrcode.domain.vo.AmountRangeVO;
 import com.matera.x9qrcode.domain.vo.AmountVO;
+import com.matera.x9qrcode.app.dto.SolanaPaymentAddressDTO;
+import com.matera.x9qrcode.domain.vo.SolanaPaymentAddressVO;
 import com.matera.x9qrcode.domain.vo.BankPaymentAddressVO;
 import com.matera.x9qrcode.domain.vo.CryptoWalletPaymentAddressVO;
 import com.matera.x9qrcode.domain.vo.EditableAmountVO;
@@ -84,12 +86,14 @@ public final class PatchQRCodePaymentMethodsMapper {
         PartialInput<BankPaymentAddressDTO> fedNow = networksUpdateDTO.getFedNow();
         PartialInput<BankPaymentAddressDTO> rtp = networksUpdateDTO.getRtp();
         PartialInput<BankPaymentAddressDTO> ach = networksUpdateDTO.getAch();
+        PartialInput<SolanaPaymentAddressDTO> solana = networksUpdateDTO.getSolana();
         PartialInput<Map<String, Object>> additionalProperties = networksUpdateDTO.getAdditionalProperties();
 
         return new NetworksVO(
             fedNow.isPresent() ? buildBankPaymentAddress(fedNow.get()) : networks.fedNow(),
             ach.isPresent() ? buildBankPaymentAddress(ach.get()) : networks.ach(),
             rtp.isPresent() ? buildBankPaymentAddress(rtp.get()) : networks.rtp(),
+            solana.isPresent() ? buildSolanaPaymentAddress(solana.get()) : networks.solana(),
             additionalProperties.isPresent() ? additionalProperties.get() : networks.additionalProperties()
         );
     }
@@ -103,6 +107,14 @@ public final class PatchQRCodePaymentMethodsMapper {
             amountRangeDTO.min(),
             amountRangeDTO.max()
         );
+    }
+
+    private static SolanaPaymentAddressVO buildSolanaPaymentAddress(SolanaPaymentAddressDTO input) {
+        if (isNull(input)) {
+            return null;
+        }
+
+        return new SolanaPaymentAddressVO(input.recipient(), input.memo());
     }
 
     private static BankPaymentAddressVO buildBankPaymentAddress(BankPaymentAddressDTO bankPaymentAddressDTO) {
