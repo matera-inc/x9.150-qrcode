@@ -102,6 +102,22 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
                 .extract().path("status");
     }
 
+    /**
+     * Waits for a moment to actually pass, rather than sleeping a fixed span.
+     *
+     * <p>A fixed sleep assumes the setup before it was instant. It is not: on a loaded runner the
+     * create call alone can consume the window, and the test then fails during setup for reasons
+     * that have nothing to do with the rule under test. Waiting on the clock is the only version
+     * that measures the rule instead of the machine.
+     */
+    private void sleepUntilAfter(String instant) throws InterruptedException {
+        OffsetDateTime expiry = OffsetDateTime.parse(instant);
+
+        long remaining = java.time.Duration.between(OffsetDateTime.now(ZoneOffset.UTC), expiry).toMillis();
+
+        Thread.sleep(Math.max(remaining, 0) + 500);
+    }
+
     private void assertRefusedAndUntouched(MockMvcResponse response, String qrCodeId, String expectedInBody) {
         assertNotEquals(HttpStatus.OK.value(), response.statusCode(), response.asString());
         assertTrue(response.asString().contains(expectedInBody),
@@ -170,7 +186,7 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
      */
     @Test
     void aPayloadFetchedWhileValidCannotBePaidOnceItExpires() throws InterruptedException {
-        String expiresSoon = OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(3).withNano(0)
+        String expiresSoon = OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(12).withNano(0)
                 .toString().replace("+00:00", "Z");
 
         String createResponse = given().contentType("application/json")
@@ -192,7 +208,7 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
                 "the payer must be able to fetch the payload while the QR Code is valid: " + payload.asString());
 
         // Time passes. The payer still holds a genuine, correctly signed payload.
-        Thread.sleep(3500);
+        sleepUntilAfter(expiresSoon);
 
         MockMvcResponse response = notify(notification(qrCodeId, AMOUNT, "USDC", WALLET));
 
@@ -207,11 +223,11 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
     /** The same expiry rule, without the payer ever having fetched anything. */
     @Test
     void anExpiredQRCodeIsRefused() throws InterruptedException {
-        String expiresSoon = OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(2).withNano(0)
+        String expiresSoon = OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(10).withNano(0)
                 .toString().replace("+00:00", "Z");
         String qrCodeId = createQRCode(expiresSoon, expiresSoon);
 
-        Thread.sleep(2500);
+        sleepUntilAfter(expiresSoon);
 
         MockMvcResponse response = notify(notification(qrCodeId, AMOUNT, "USDC", WALLET));
 
