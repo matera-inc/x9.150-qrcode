@@ -79,10 +79,10 @@ less forgiving than a 400. The published OpenAPI contract already declares the p
 so a generated client is correct by construction; only a hand-rolled one can get this wrong.
 
 **Scope.** This governs the `networks` object keys and the currency code on our own create/patch API.
-It says nothing about `$.payment.network` — the notification field §2.4 calls "all-uppercase" before
-listing `FedNow` — which arrives from a third-party payer whose implementation is not ours to
-correct. That is a different boundary with different reasoning, and it is settled with the
-payment-notification work rather than here.
+`$.payment.network` on an inbound notification is the opposite case and gets the opposite rule: it
+arrives from a third-party payer whose implementation is not ours to correct, so it is matched
+case-insensitively and echoed back verbatim. Both follow from one question — whose implementation is
+it? See [official-spec/INTERPRETATION.md](../../official-spec/INTERPRETATION.md) I-1.
 
 ## Alternatives rejected
 

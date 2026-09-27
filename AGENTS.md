@@ -82,7 +82,13 @@ These describe how our software behaves; they're enforced in `openapi.yaml` + th
   OpenAPI contract declares them that way, so a conformant caller binds to the generated properties
   and no casing logic is needed; anything else falls into `additionalProperties` and is refused by
   the unsupported-network rule. §2.4's "all-uppercase" contradiction governs `$.payment.network`,
-  the notification VALUE — a different field, settled with the notification work. See
+  the notification VALUE — a different field, and one that gets the opposite rule.
+- **A third-party payer's notification is matched case-insensitively**, on both the rail and the
+  currency, and its `$.payment.network` is echoed back verbatim. Their implementation is not ours to
+  correct and refusing a payment over the case of a string would be indefensible; a notification
+  records what somebody claimed, so normalising it would rewrite their words. Leniency is about
+  spelling only — a wrong amount, an unoffered currency or an uninterpreted rail still refuses, and
+  still leaves the QR Code untouched. See
   [official-spec/INTERPRETATION.md](official-spec/INTERPRETATION.md) I-1.
 - **Currencies are gated by what the rails settle.** The payload format is currency-agnostic and
   carries any code verbatim, but this deployment accepts only what `supported-currencies.json` lists

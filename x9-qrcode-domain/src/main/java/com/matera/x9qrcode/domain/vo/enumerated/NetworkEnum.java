@@ -19,23 +19,30 @@ public enum NetworkEnum {
         this.value = value;
     }
 
-    /**
-     * Resolves one of the standard's rails, case-insensitively.
-     *
-     * <p>Case-insensitive because ANSI X9.150-2026 contradicts itself: §14.5's normative JSON paths
-     * are lowercase ({@code networks.fednow}) while §2.4 calls the notification's network value
-     * "all-uppercase" and then lists {@code FedNow}. Implementations will read one or the other, so
-     * we accept every spelling and emit one.
-     */
+    /** As {@link #find}, but for callers to whom an unrecognised name is an error. */
     public static NetworkEnum fromValue(String value) {
         return find(value).orElseThrow(
             () -> new ValueObjectRuleException("Unexpected value '" + value + "'"));
     }
 
     /**
-     * The standard's rail of that name, if it is one.
+     * The standard's rail of that name, if it is one — matched <b>case-insensitively</b>.
      *
-     * <p>Empty is not an error: §2.4 states the notification "**MAY** also carry a network not
+     * <p>This resolves the {@code $.payment.network} <em>value</em> of §2.4, which is the one field
+     * ANSI X9.150-2026 is genuinely ambiguous about: §2.4 introduces its list as "exact,
+     * all-uppercase values" and then gives {@code FedNow}, which is not. An implementer reading that
+     * section can reasonably produce {@code FEDNOW} or {@code FedNow}, and both are defensible.
+     *
+     * <p>That value reaches us only from <b>outside</b> — a payer's notification, a settlement
+     * system's status update. Their implementations are not ours to correct, and refusing a payment
+     * over the case of a string we can resolve unambiguously would be indefensible. So we resolve
+     * every spelling.
+     *
+     * <p>This says nothing about the {@code networks} object <b>keys</b>, a different field that
+     * §14.5 spells {@code fednow}/{@code rtp}/{@code ach} throughout with no contradiction. Those
+     * are declared in the OpenAPI contract and are not matched here at all.
+     *
+     * <p>Empty is not an error: §2.4 states the notification "<b>MAY</b> also carry a network not
      * listed above for early adopters", so an unrecognised name is a network this service does not
      * interpret rather than a malformed one.
      */
@@ -45,7 +52,7 @@ public enum NetworkEnum {
         }
 
         for (NetworkEnum b : NetworkEnum.values()) {
-            if (b.value.equals(value)) {
+            if (b.value.equalsIgnoreCase(value)) {
                 return java.util.Optional.of(b);
             }
         }
