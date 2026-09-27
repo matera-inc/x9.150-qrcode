@@ -77,9 +77,17 @@ public class RestClientOutboundNotificationService implements QRCodeOutboundNoti
         }
     }
 
+    /**
+     * Signs the notification in the shape the standard defines, not the shape we hold it in.
+     *
+     * <p>{@link OutboundPaymentNotificationPayloadMapper} exists for one reason: the application
+     * record keeps the QR Code id beside the payment, while the wire format keeps it inside it.
+     * What we sign has to be something a payee can actually read.
+     */
     private String sign(PaymentNotificationDataDTO notification, UUID correlationId) {
         SignatureOutputDataDTO signed = qrCodeSignatureService.signData(
-            new SignatureInputDataDTO(SignatureTypeEnumDTO.X9, notification, correlationId, null, null));
+            new SignatureInputDataDTO(SignatureTypeEnumDTO.X9,
+                OutboundPaymentNotificationPayloadMapper.map(notification), correlationId, null, null));
 
         return signed.jwsToken();
     }

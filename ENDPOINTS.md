@@ -104,6 +104,14 @@ The local `docker-compose.yml` path instead mounts `application-default.yml` as 
 but you can still override any single value by adding an env var to its `environment:` block —
 env vars win over the mounted file (the public host is already wired this way).
 
+## Talking to another deployment (HTTPS required)
+
+A payer normalises any host that is not its own to **`https`** before fetching a payload or a JWK
+set, so two instances cannot complete a payment over plain HTTP — see
+[`others/demo/README.md`](others/demo/README.md), which explains the rule, gives three ways to
+satisfy it (Spring's own TLS, an nginx in front, or a tunnel), and ships a script that plays a whole
+payment between two instances.
+
 ## Testing a real scan: computer → phone on 5G (Cloudflare Tunnel)
 
 **Scenario:** you generate a QR on your laptop (app on `localhost:8080`) and want to scan it with
@@ -136,8 +144,17 @@ serves `/pub/.well-known/jwks` and `/pub/.well-known/certificate/...`, so Payer-
 verification works end to end.
 
 **Notes**
-- Ephemeral `*.trycloudflare.com` names can be long and may blow the 37-char host budget. For a
-  stable, short URL use a **named tunnel with your own domain** (e.g. `x9.mydomain.dev`).
+- **An anonymous quick tunnel will not fit.** `cloudflared tunnel --url` invents a four-word name,
+  and those run 40–50 characters before the domain is counted — a real one, measured:
+  `acne-consists-positions-logs.trycloudflare.com` is 46 against a budget of 37. The app refuses to
+  start rather than emit a QR Code that cannot be scanned. There is no configuration around it:
+  `payload-path` shortens only the *advertised* URL, while the path actually served is fixed by the
+  OpenAPI contract, so a shorter one just 404s. Use a **named tunnel with your own domain** (e.g.
+  `x9.mydomain.dev`), which also survives a restart.
+- A named tunnel takes its ingress from Cloudflare when the account has a remote configuration for
+  it, and then **ignores `--url` and any local config file**. If the hostname 530s while the
+  connector reports healthy connections, check `cloudflared`'s log for `Updated to new
+  configuration` — that is the dashboard's ingress overriding yours.
 - The bundled keystore is **self-signed**, so a strict payment client may not trust the signature
   chain — fine for scan/plumbing tests; supply real X9-issued keys via `secrets/` for full trust.
 - Any equivalent public-HTTPS tool works the same way: `ngrok http 8080`, Tailscale Funnel, etc.

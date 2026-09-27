@@ -8,6 +8,7 @@ package com.matera.x9qrcode.infrastructure.web.config.dto;
 
 import lombok.Builder;
 import lombok.Getter;
+import lombok.Setter;
 
 import java.time.Instant;
 
@@ -18,7 +19,17 @@ public class RequestLoggerFilterDTO {
     private final Instant start;
     private final String httpMethod;
     private final StringBuffer requestURL;
-    private final Integer httpStatus;
     private final String requestServletPath;
+
+    /**
+     * The response status, which is only known once the chain has run.
+     *
+     * <p>Not final for that reason. It used to be read when the DTO was built — before the request
+     * was handled — so it was the servlet's initial 200 every time, and the access log reported
+     * success for responses that were in fact 401 or 500. Whoever is reading these lines during an
+     * incident is entitled to the status that was actually sent.
+     */
+    @Setter
+    private Integer httpStatus;
 
 }

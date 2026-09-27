@@ -368,7 +368,12 @@ public final class QRCodeMongoDocumentMapper {
             new QRCodeMongoPersistenceModel.PaymentNotificationData();
         paymentNotificationDataDocument.setPayment(buildPaymentNotificationPayment(paymentNotificationData.payment()));
         paymentNotificationDataDocument.setPayer(buildPaymentNotificationPayer(paymentNotificationData.payer()));
-        paymentNotificationDataDocument.setExpectedDate(paymentNotificationData.expectedDate().value());
+        // expectedDate is OPTIONAL in the contract, so a notification legitimately arrives without
+        // one and unwrapping it unconditionally turned that into a 500 on the payee. Guarded the way
+        // tipAmount below already is.
+        if (nonNull(paymentNotificationData.expectedDate())) {
+            paymentNotificationDataDocument.setExpectedDate(paymentNotificationData.expectedDate().value());
+        }
         paymentNotificationDataDocument.setBlockchain(buildPaymentNotificationBlockchain(paymentNotificationData.blockchain()));
 
         return paymentNotificationDataDocument;

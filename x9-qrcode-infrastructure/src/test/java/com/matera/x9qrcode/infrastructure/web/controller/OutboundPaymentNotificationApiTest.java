@@ -7,6 +7,9 @@
 package com.matera.x9qrcode.infrastructure.web.controller;
 
 import com.matera.x9qrcode.infrastructure.AbstractIntegrationTest;
+import com.matera.x9qrcode.infrastructure.generated.dto.PaymentNotificationDataDTO;
+
+import com.fasterxml.jackson.databind.JsonNode;
 
 import com.nimbusds.jose.JWSObject;
 import com.sun.net.httpserver.HttpExchange;
@@ -27,6 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -140,8 +144,58 @@ class OutboundPaymentNotificationApiTest extends AbstractIntegrationTest {
         assertTrue(delivered.getHeader().getCriticalParams().containsAll(
                 List.of("correlationId", "iat", "ttl")),
                 "X9.150 requires those three in crit: " + delivered.getHeader().toJSONObject());
-        assertTrue(delivered.getPayload().toString().contains("01A0E3A12805CB382EF4687F18CDC43A"),
-                "the payload must carry the notification the caller composed");
+        assertEquals("01A0E3A12805CB382EF4687F18CDC43A",
+                payloadOf(delivered).path("payment").path("qrcodeId").asText(null),
+                "the payload must carry the notification the caller composed: " + delivered.getPayload());
+    }
+
+    private JsonNode payloadOf(JWSObject jws) throws Exception {
+        return objectMapper.readTree(jws.getPayload().toString());
+    }
+
+    // ------------------------------------------------------------------- the shape on the wire
+
+    /**
+     * Where the QR Code id sits, which is not a detail.
+     *
+     * <p>ANSI X9.150-2026 carries it as {@code payment.qrcodeId} — inside the payment object. This
+     * service holds it one level up, beside the payment, and for a while signed that internal record
+     * directly: the payload went out with a top-level {@code qrCodeId} and a {@code payment} that
+     * had none. Every conformant payee refuses that, ours included, and no test here noticed,
+     * because asserting the id appeared <em>somewhere</em> in the payload passes either way.
+     *
+     * <p>Two instances talking to each other found it in a minute. So this asserts the position.
+     */
+    @Test
+    void theIdTravelsInsideThePaymentObjectWhereTheStandardPutsIt() throws Exception {
+        post("/api/v1/payment-notification/pre-payment", prePayment(PAYEE));
+
+        JsonNode payload = payloadOf(JWSObject.parse(received.getFirst()));
+
+        assertEquals("01A0E3A12805CB382EF4687F18CDC43A", payload.path("payment").path("qrcodeId").asText(null),
+                "the id belongs inside payment: " + payload);
+        assertTrue(payload.path("qrCodeId").isMissingNode(),
+                "and nowhere else — a top-level copy is the bug this test exists for: " + payload);
+    }
+
+    /**
+     * The stronger statement: a payee can deserialise what we sent into the very class our own
+     * contract generates. If this holds, the two sides cannot have drifted apart.
+     */
+    @Test
+    void aPayeeCanReadWhatWeSentUsingTheContractType() throws Exception {
+        post("/api/v1/payment-notification/post-payment", postPayment(PAYEE));
+
+        String payload = JWSObject.parse(received.getFirst()).getPayload().toString();
+
+        PaymentNotificationDataDTO asAPayeeReadsIt = assertDoesNotThrow(
+                () -> objectMapper.readValue(payload, PaymentNotificationDataDTO.class), payload);
+
+        assertEquals("01A0E3A12805CB382EF4687F18CDC43A", asAPayeeReadsIt.getPayment().getQrcodeId());
+        assertEquals("021000021.0000001", asAPayeeReadsIt.getPayment().getTransactionId());
+        assertEquals("ACH", asAPayeeReadsIt.getPayment().getNetwork());
+        assertEquals(25000L, asAPayeeReadsIt.getPayment().getAmount());
+        assertEquals("Jane Payer", asAPayeeReadsIt.getPayer().getInfo());
     }
 
     // --------------------------------------------------------------- the verdict is passed back
