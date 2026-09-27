@@ -199,21 +199,9 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
         assertNotEquals(HttpStatus.OK.value(), response.statusCode(),
                 "a payload fetched while valid must not remain payable after the QR Code expires: "
                         + response.asString());
-        assertTrue(response.asString().contains("ValidUntil"),
-                "the reason should point at validUntil: " + response.asString());
-
-        // Two things are deliberately not asserted, both recorded as Q19 in
-        // PLAN-PAYMENT-NOTIFICATIONS.md.
-        //
-        // The status is not read back through GET: an expired QR Code stops being readable at all,
-        // and the TTL reaper removes the document 30 seconds after validUntil, so the same condition
-        // answers differently depending on timing.
-        //
-        // And the refusal does not come from the acceptance policy. ValidUntilVO rejects a past date
-        // in its constructor, so an expired QR Code cannot even be RESTORED from the database — the
-        // entity refuses to exist before any policy runs. The payment is correctly refused, but the
-        // reason a caller sees is a field-validation message rather than "this QR Code expired",
-        // which is a worse diagnostic than the rule deserves.
+        assertTrue(response.asString().contains("expired"),
+                "the reason should say the QR Code expired, not merely name a field: " + response.asString());
+        assertEquals("ACTIVE", statusOf(qrCodeId), "a refused notification must leave the QR Code untouched");
     }
 
     /** The same expiry rule, without the payer ever having fetched anything. */

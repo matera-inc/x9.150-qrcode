@@ -55,17 +55,11 @@ public record BillVO(
             if (nonNull(discounts)) {
                 IntStream.range(0, discounts.size()).forEach(index -> {
                     DiscountVO discount = discounts.get(index);
-                    OffsetDateTime discountTargetDate = invoice.dueDate().minusDays(discount.daysBefore());
-
                     if (discount.discount() >= amountDue.currencyAmount().amount()) {
                         throw new ValueObjectRuleException(
                             "Bill discount at index %d. Must not be greater than or equal to amount due.".formatted(index));
                     }
 
-                    if (discountTargetDate.isBefore(DateTimeUtils.nowUTC())) {
-                        throw new ValueObjectRuleException(
-                            "Bill discount target date at index %d. Must be after the current date.".formatted(index));
-                    }
                 });
             }
         }
