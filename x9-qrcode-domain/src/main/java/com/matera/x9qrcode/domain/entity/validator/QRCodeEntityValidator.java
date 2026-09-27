@@ -181,8 +181,7 @@ public final class QRCodeEntityValidator {
         switch (network) {
             case FEDNOW, RTP -> validatePaymentNotificationFromInstantPayments(newPaymentNotification);
             case ACH -> validatePaymentNotificationFromACH(newPaymentNotification);
-            case POLYGON, SOLANA, ETHEREUM, BITCOIN, BASE, XRP, ARC ->
-                validatePaymentNotificationFromBlockchain(newPaymentNotification);
+            case SOLANA -> validatePaymentNotificationFromBlockchain(newPaymentNotification);
         }
     }
 

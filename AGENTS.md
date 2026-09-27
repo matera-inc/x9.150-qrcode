@@ -68,15 +68,15 @@ These describe how our software behaves; they're enforced in `openapi.yaml` + th
   percentages `0–999`; **timestamps** are UTC, `Z`-terminated.
 - **Networks: X9.150 specifies the style and the root; the inner JSON belongs to the network's
   owner.** The standard does not define, in one document, the format of every rail in the world — a
-  network's own authority publishes how it is embedded. So of the blockchains we model, **only
-  `Solana` rests on a published embedding**; `Bitcoin`, `Ethereum`, `Polygon`, `Base`, `XRP` and
-  `Arc` are **provisional** — a single `walletAddress` is our reading, and yields to the owner's
-  publication if it differs. A rail whose owner has not published (Pix, Zelle, Tron, …) is carried
-  verbatim in the networks object's `additionalProperties` and is fully conformant that way; promoting
-  it to a typed object requires pointing at the publication. See
+  network's own authority publishes how it is embedded. **`NetworkEnum` therefore holds exactly four
+  rails: `FedNow`, `RTP`, `ACH` and `Solana`** — Solana being the only blockchain whose owner has
+  published an embedding. Every other rail, chain or brand (Pix, Zelle, Tron, Ethereum, Bitcoin, …)
+  is carried verbatim in the networks object's `additionalProperties` and is fully conformant that
+  way; a rail becomes a typed object only when its owner publishes. See
   [ADR-0010](docs/adr/0010-networks-are-interpreted-only-once-their-authority-publishes.md).
-  **Blockchain flow tests use Solana only**, because a test of an unspecified rail asserts only that
-  our code matches our own invention.
+  Classification lives on `NetworkEnum.isBlockchain()` and `NetworksVO.supports(...)` as exhaustive
+  switch **expressions**, so adding a rail without handling it is a compile error — a silent
+  fall-through is exactly how Base, XRP and Arc were once accepted and ignored.
 
 ## Build / test / run
 

@@ -92,8 +92,7 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
             // message itself; a notification on these rails is a courtesy and changes no status.
             case FEDNOW, RTP -> NotificationIntent.RECORD;
             case ACH -> NotificationIntent.INITIATE;
-            case POLYGON, SOLANA, ETHEREUM, BITCOIN, BASE, XRP, ARC ->
-                throw new IllegalStateException("Blockchain rails are handled above: " + network);
+            case SOLANA -> throw new IllegalStateException("Blockchain rails are handled above: " + network);
         };
     }
 

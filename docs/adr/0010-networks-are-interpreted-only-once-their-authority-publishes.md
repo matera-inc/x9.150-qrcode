@@ -86,17 +86,27 @@ change look like a break.
 - **Adding a rail stays cheap and is no longer a judgement call.** The question "should we interpret
   X?" reduces to "has X's authority published?", which anyone can answer without design debate.
 
-## Open question
+## Amendment, 2026-09-26: the unpublished chains were removed, not marked provisional
 
-Should `Bitcoin`, `Ethereum`, `Polygon`, `Base`, `XRP` and `Arc` be **marked provisional** in
-`openapi.yaml` and `CLAUDE.md` until their embeddings are published — or left as they are, on the
-grounds that a single `walletAddress` is the only plausible shape and matching it costs nothing?
+As first accepted, this ADR left open whether `Bitcoin`, `Ethereum`, `Polygon`, `Base`, `XRP` and
+`Arc` — all modelled ahead of any publication — should be **marked provisional** or **removed**. It
+recommended marking them, on the grounds that they are useful, almost certainly right, and that
+removing them would break adopters for a point of principle.
 
-**Recommendation: document them as provisional, do not remove them.** They are useful, almost
-certainly right, and removing them would break adopters for a point of principle. But a reader should
-be able to tell which rails rest on a publication and which rest on our reading — and, per ADR-0004,
-this project has already been bitten once by the difference between what a standard says and what an
-implementer assumes.
+**Decided the other way: they are removed.** `NetworkEnum` now holds exactly `FedNow`, `RTP`, `ACH`
+and `Solana`.
+
+The recommendation underweighted its own argument. A typed object is a claim that *this is how the
+rail embeds in X9.150* — and for six of the seven chains, that claim was ours to make and not ours to
+make. Marking it provisional in a description does not stop an implementer building against it, nor
+stop two implementations diverging; it only records that we knew. The interoperability hazard this
+ADR is about is not reduced by a caveat.
+
+**Nothing is lost in capability.** Those chains remain payable: a payment method on any of them is
+carried verbatim in the networks object's `additionalProperties`, which is fully conformant and is
+precisely the mechanism this ADR describes. What is removed is our unfounded claim to interpret them,
+not the ability to use them. Each returns as a typed object the day its owner publishes — and that
+addition is additive, per the API's own compatibility policy.
 
 ## Alternatives rejected
 

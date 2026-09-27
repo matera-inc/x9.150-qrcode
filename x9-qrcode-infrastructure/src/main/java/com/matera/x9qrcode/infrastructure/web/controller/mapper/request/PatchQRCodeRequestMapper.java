@@ -46,14 +46,8 @@ import com.matera.x9qrcode.infrastructure.generated.dto.PatchOrderDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PatchPaymentMethodDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PatchPaymentRequestReplacementDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PatchTipDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.PolygonDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.RTPDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.SolanaDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.EthereumDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.BitcoinDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.BaseDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.XRPDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.ArcDTO;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
@@ -265,25 +259,13 @@ public final class PatchQRCodeRequestMapper {
         JsonNullable<FedNowDTO> fedNow = patchNetworksSimpleDTO.getFedNow();
         JsonNullable<RTPDTO> rtp = patchNetworksSimpleDTO.getRTP();
         JsonNullable<ACHDTO> ach = patchNetworksSimpleDTO.getACH();
-        JsonNullable<PolygonDTO> polygon = patchNetworksSimpleDTO.getPolygon();
         JsonNullable<SolanaDTO> solana = patchNetworksSimpleDTO.getSolana();
-        JsonNullable<EthereumDTO> ethereum = patchNetworksSimpleDTO.getEthereum();
-        JsonNullable<BitcoinDTO> bitcoin = patchNetworksSimpleDTO.getBitcoin();
-        JsonNullable<BaseDTO> base = patchNetworksSimpleDTO.getBase();
-        JsonNullable<XRPDTO> xrp = patchNetworksSimpleDTO.getXRP();
-        JsonNullable<ArcDTO> arc = patchNetworksSimpleDTO.getArc();
 
         return NetworksUpdateDTO.builder()
             .fedNow(fedNow.isPresent() ? buildBankPaymentAddressDTO(fedNow.get()) : PartialInput.absent())
             .rtp(rtp.isPresent() ? buildBankPaymentAddressDTO(rtp.get()) : PartialInput.absent())
             .ach(ach.isPresent() ? buildBankPaymentAddressDTO(ach.get()) : PartialInput.absent())
-            .polygon(polygon.isPresent() ? buildCryptoWalletPaymentAddressDTO(polygon.get()) : PartialInput.absent())
             .solana(solana.isPresent() ? buildCryptoWalletPaymentAddressDTO(solana.get()) : PartialInput.absent())
-            .ethereum(ethereum.isPresent() ? buildCryptoWalletPaymentAddressDTO(ethereum.get()) : PartialInput.absent())
-            .bitcoin(bitcoin.isPresent() ? buildCryptoWalletPaymentAddressDTO(bitcoin.get()) : PartialInput.absent())
-            .base(base.isPresent() ? buildCryptoWalletPaymentAddressDTO(base.get()) : PartialInput.absent())
-            .xrp(xrp.isPresent() ? buildCryptoWalletPaymentAddressDTO(xrp.get()) : PartialInput.absent())
-            .arc(arc.isPresent() ? buildCryptoWalletPaymentAddressDTO(arc.get()) : PartialInput.absent())
             .additionalProperties(PartialInput.of(patchNetworksSimpleDTO.getAdditionalProperties()))
             .build();
     }
@@ -314,32 +296,8 @@ public final class PatchQRCodeRequestMapper {
             return PartialInput.of(null);
         }
 
-        if (cryptoWalletPaymentAddress instanceof PolygonDTO polygonDTO) {
-            return PartialInput.of(new CryptoWalletPaymentAddressDTO(polygonDTO.getWalletAddress()));
-        }
-
         if (cryptoWalletPaymentAddress instanceof SolanaDTO solanaDTO) {
             return PartialInput.of(new CryptoWalletPaymentAddressDTO(solanaDTO.getWalletAddress()));
-        }
-
-        if (cryptoWalletPaymentAddress instanceof EthereumDTO ethereumDTO) {
-            return PartialInput.of(new CryptoWalletPaymentAddressDTO(ethereumDTO.getWalletAddress()));
-        }
-
-        if (cryptoWalletPaymentAddress instanceof BitcoinDTO bitcoinDTO) {
-            return PartialInput.of(new CryptoWalletPaymentAddressDTO(bitcoinDTO.getWalletAddress()));
-        }
-
-        if (cryptoWalletPaymentAddress instanceof BaseDTO baseDTO) {
-            return PartialInput.of(new CryptoWalletPaymentAddressDTO(baseDTO.getWalletAddress()));
-        }
-
-        if (cryptoWalletPaymentAddress instanceof XRPDTO xrpDTO) {
-            return PartialInput.of(new CryptoWalletPaymentAddressDTO(xrpDTO.getWalletAddress()));
-        }
-
-        if (cryptoWalletPaymentAddress instanceof ArcDTO arcDTO) {
-            return PartialInput.of(new CryptoWalletPaymentAddressDTO(arcDTO.getWalletAddress()));
         }
 
         throw new IllegalArgumentException(

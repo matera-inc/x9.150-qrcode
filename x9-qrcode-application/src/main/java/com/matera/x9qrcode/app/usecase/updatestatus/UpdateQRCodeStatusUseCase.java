@@ -10,7 +10,6 @@ import com.matera.x9qrcode.app.repository.QRCodeRepository;
 import com.matera.x9qrcode.app.usecase.UseCase;
 import com.matera.x9qrcode.domain.entity.QRCodeEntity;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
-import com.matera.x9qrcode.domain.vo.NetworksVO;
 import com.matera.x9qrcode.domain.vo.PaymentDetailsVO;
 import com.matera.x9qrcode.domain.vo.PaymentMethodVO;
 import com.matera.x9qrcode.domain.vo.QRCodeIdVO;
@@ -68,25 +67,11 @@ public class UpdateQRCodeStatusUseCase extends UseCase<UpdateQRCodeStatusInput, 
     }
 
     private void checkNetworkIsValidPaymentMethod(List<PaymentMethodVO> paymentMethods, NetworkEnum network) {
-        if (paymentMethods.stream().noneMatch(paymentMethod -> checkNetworkIsFilled(paymentMethod.networks(), network))) {
+        if (paymentMethods.stream().noneMatch(paymentMethod -> paymentMethod.networks().supports(network))) {
             throw new BusinessRuleException("Network %s is not a valid payment method.".formatted(network.value()));
         }
     }
 
-    private boolean checkNetworkIsFilled(NetworksVO networks, NetworkEnum network) {
-        return switch (network) {
-            case FEDNOW -> nonNull(networks.fedNow());
-            case RTP -> nonNull(networks.rtp());
-            case ACH -> nonNull(networks.ach());
-            case POLYGON -> nonNull(networks.polygon());
-            case SOLANA -> nonNull(networks.solana());
-            case ETHEREUM -> nonNull(networks.ethereum());
-            case BITCOIN -> nonNull(networks.bitcoin());
-            case BASE -> nonNull(networks.base());
-            case XRP -> nonNull(networks.xrp());
-            case ARC -> nonNull(networks.arc());
-        };
-    }
 
     private PaymentDetailsVO buildPaymentDetails(UpdateQRCodeStatusInput input) {
         if (isNull(input.endToEndId()) && isNull(input.paymentNetwork())) {

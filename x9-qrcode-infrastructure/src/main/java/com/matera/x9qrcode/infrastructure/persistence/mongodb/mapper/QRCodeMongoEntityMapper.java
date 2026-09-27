@@ -321,13 +321,7 @@ public final class QRCodeMongoEntityMapper {
             buildBankPaymentAddress(doc.getFedNow()),
             buildBankPaymentAddress(doc.getAch()),
             buildBankPaymentAddress(doc.getRtp()),
-            buildCryptoWalletPaymentAddress(doc.getPolygon()),
             buildCryptoWalletPaymentAddress(doc.getSolana()),
-            buildCryptoWalletPaymentAddress(doc.getEthereum()),
-            buildCryptoWalletPaymentAddress(doc.getBitcoin()),
-            buildCryptoWalletPaymentAddress(doc.getBase()),
-            buildCryptoWalletPaymentAddress(doc.getXrp()),
-            buildCryptoWalletPaymentAddress(doc.getArc()),
             doc.getAdditionalProperties()
         );
     }

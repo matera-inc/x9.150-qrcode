@@ -84,26 +84,14 @@ public final class PatchQRCodePaymentMethodsMapper {
         PartialInput<BankPaymentAddressDTO> fedNow = networksUpdateDTO.getFedNow();
         PartialInput<BankPaymentAddressDTO> rtp = networksUpdateDTO.getRtp();
         PartialInput<BankPaymentAddressDTO> ach = networksUpdateDTO.getAch();
-        PartialInput<CryptoWalletPaymentAddressDTO> polygon = networksUpdateDTO.getPolygon();
         PartialInput<CryptoWalletPaymentAddressDTO> solana = networksUpdateDTO.getSolana();
-        PartialInput<CryptoWalletPaymentAddressDTO> ethereum = networksUpdateDTO.getEthereum();
-        PartialInput<CryptoWalletPaymentAddressDTO> bitcoin = networksUpdateDTO.getBitcoin();
-        PartialInput<CryptoWalletPaymentAddressDTO> base = networksUpdateDTO.getBase();
-        PartialInput<CryptoWalletPaymentAddressDTO> xrp = networksUpdateDTO.getXrp();
-        PartialInput<CryptoWalletPaymentAddressDTO> arc = networksUpdateDTO.getArc();
         PartialInput<Map<String, Object>> additionalProperties = networksUpdateDTO.getAdditionalProperties();
 
         return new NetworksVO(
             fedNow.isPresent() ? buildBankPaymentAddress(fedNow.get()) : networks.fedNow(),
             ach.isPresent() ? buildBankPaymentAddress(ach.get()) : networks.ach(),
             rtp.isPresent() ? buildBankPaymentAddress(rtp.get()) : networks.rtp(),
-            polygon.isPresent() ? buildCryptoWalletPaymentAddress(polygon.get()) : networks.polygon(),
             solana.isPresent() ? buildCryptoWalletPaymentAddress(solana.get()) : networks.solana(),
-            ethereum.isPresent() ? buildCryptoWalletPaymentAddress(ethereum.get()) : networks.ethereum(),
-            bitcoin.isPresent() ? buildCryptoWalletPaymentAddress(bitcoin.get()) : networks.bitcoin(),
-            base.isPresent() ? buildCryptoWalletPaymentAddress(base.get()) : networks.base(),
-            xrp.isPresent() ? buildCryptoWalletPaymentAddress(xrp.get()) : networks.xrp(),
-            arc.isPresent() ? buildCryptoWalletPaymentAddress(arc.get()) : networks.arc(),
             additionalProperties.isPresent() ? additionalProperties.get() : networks.additionalProperties()
         );
     }

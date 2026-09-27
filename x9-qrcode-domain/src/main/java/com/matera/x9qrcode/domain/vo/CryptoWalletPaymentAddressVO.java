@@ -18,28 +18,24 @@ import static java.util.Objects.isNull;
  */
 public record CryptoWalletPaymentAddressVO(String walletAddress) {
 
-    /** EVM-compatible address (0x + 40 hex) — Ethereum, Polygon, Base, Arc */
-    private static final Pattern EVM_PATTERN = Pattern.compile("^0x[a-fA-F0-9]{40}$");
-
-    /** Base58 address (32-44 chars) — Solana */
+    /**
+     * Base58 address, 32-44 chars — Solana.
+     *
+     * <p>Solana is the only blockchain this service interprets, because it is the only one whose
+     * owner has published how it embeds in X9.150 (ADR-0010). Address formats for other chains are
+     * not validated here because those chains are not modelled: they travel uninterpreted through
+     * the networks object's additionalProperties, where their shape is the payer's business.
+     */
     private static final Pattern BASE58_PATTERN = Pattern.compile("^[1-9A-HJ-NP-Za-km-z]{32,44}$");
-
-    /** Bech32 address (bc1 prefix) — Bitcoin */
-    private static final Pattern BECH32_PATTERN = Pattern.compile("^bc1[a-zA-HJ-NP-Z0-9]{25,90}$");
-
-    /** XRP Ledger address (r prefix, Base58) */
-    private static final Pattern XRP_PATTERN = Pattern.compile("^r[1-9A-HJ-NP-Za-km-z]{24,34}$");
 
     public CryptoWalletPaymentAddressVO {
         if (isNull(walletAddress)) {
             throw new ValueObjectRuleException("Crypto wallet address must not be null.");
         }
 
-        if (!EVM_PATTERN.matcher(walletAddress).matches()
-                && !BASE58_PATTERN.matcher(walletAddress).matches()
-                && !BECH32_PATTERN.matcher(walletAddress).matches()
-                && !XRP_PATTERN.matcher(walletAddress).matches()) {
-            throw new ValueObjectRuleException("Crypto wallet address format is invalid.");
+        if (!BASE58_PATTERN.matcher(walletAddress).matches()) {
+            throw new ValueObjectRuleException(
+                "Crypto wallet address format is invalid. Expected a Base58 Solana address.");
         }
     }
 
