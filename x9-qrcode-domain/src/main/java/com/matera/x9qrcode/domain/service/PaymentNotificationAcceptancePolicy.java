@@ -85,7 +85,8 @@ public class PaymentNotificationAcceptancePolicy {
 
         List<PaymentMethodVO> methods = qrCode.getPaymentMethods();
 
-        boolean currencyOffered = methods.stream().anyMatch(m -> m.currency().equals(notifiedCurrency));
+        // Case-insensitively: this is a third-party payer's message, not our own API.
+        boolean currencyOffered = methods.stream().anyMatch(m -> m.currency().equalsIgnoreCase(notifiedCurrency));
 
         if (!currencyOffered) {
             throw new BusinessRuleException("paymentNotification.data.payment.currency",
@@ -93,7 +94,7 @@ public class PaymentNotificationAcceptancePolicy {
         }
 
         Optional<PaymentMethodVO> matched = methods.stream()
-            .filter(m -> m.currency().equals(notifiedCurrency))
+            .filter(m -> m.currency().equalsIgnoreCase(notifiedCurrency))
             .filter(m -> m.networks().supports(notifiedNetwork))
             .filter(m -> destinationMatches(m, notification, notifiedNetwork))
             .findFirst();

@@ -56,10 +56,13 @@
       "validUntil": "2030-05-15T23:59:59Z",
       "amount": 18834,
       "editable": {
-        "range": { "min": 10000, "max": 18834 }
+        "range": {
+          "min": 10000,
+          "max": 18834
+        }
       },
       "networks": {
-        "FedNow": {
+        "fednow": {
           "routingNumber": "021000021",
           "accountNumber": "1234567890",
           "protectionType": "tokenized"

@@ -28,8 +28,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * §2.4, defining the notification's network value, calls it "all-uppercase" and then lists
  * {@code FedNow}, which is not. Implementers will read one or the other.
  *
- * <p>So: accept every spelling, emit one. And since the emitted form is what a partner's parser sees,
- * it is configurable — an interoperability problem should be a config change, not a release.
+ * <p>That ambiguity is handled at the boundary we do not control — a payment notification from a
+ * third-party payer is read case-insensitively. It is <b>not</b> handled here. Our own API has one
+ * spelling of a rail: the configured key, which is also the only one we emit, so what a caller sends
+ * is what they read back. Any other spelling is refused, naming both.
+ *
+ * <p>The emitted (and therefore accepted) form is configurable — an interoperability problem should
+ * be a config change, not a release. {@link ConfiguredNetworkKeyApiTest} covers an override; this
+ * file covers the default.
  */
 class NetworkNamingApiTest extends AbstractIntegrationTest {
 
@@ -67,42 +73,64 @@ class NetworkNamingApiTest extends AbstractIntegrationTest {
                 .extract().jsonPath();
     }
 
-    /**
-     * Every spelling a conformant implementer might send, reading either half of the standard.
-     * All of them mean the same rail, and all must be recognised <em>as</em> that rail — not carried
-     * off into additionalProperties as an unknown network.
-     */
-    @ParameterizedTest(name = "a QR Code sent with networks.{0} is understood")
-    @ValueSource(strings = {"fednow", "FedNow", "FEDNOW", "fedNow"})
-    void aStandardRailIsAcceptedUnderAnySpelling(String spelling) {
-        JsonPath qrCode = createAndRead(qrCodeWithNetworkKey(spelling));
+    @Test
+    void theConfiguredSpellingIsAccepted() {
+        JsonPath qrCode = createAndRead(qrCodeWithNetworkKey("fednow"));
 
-        assertNotNull(qrCode.get("paymentMethods[0].networks.fednow"),
-                "%s must be read as the FedNow rail: %s".formatted(spelling, qrCode.prettify()));
+        assertNotNull(qrCode.get("paymentMethods[0].networks.fednow"), qrCode.prettify());
         assertEquals("021000021", qrCode.getString("paymentMethods[0].networks.fednow.routingNumber"));
     }
 
-    /** Whatever came in, one form goes out — the normative lowercase path. */
-    @ParameterizedTest(name = "networks.{0} is emitted as networks.fednow")
-    @ValueSource(strings = {"fednow", "FedNow", "FEDNOW"})
-    void theEmittedKeyIsAlwaysTheConfiguredOne(String spelling) {
-        JsonPath qrCode = createAndRead(qrCodeWithNetworkKey(spelling));
+    /**
+     * The spellings a conformant implementer might send, having read either half of the standard.
+     * On a payment notification we accept all of them; on our own API we do not.
+     *
+     * <p>Not pedantry. The caller will read this QR Code back as {@code fednow}, so accepting
+     * {@code FedNow} on the way in guarantees their request and our response disagree about the same
+     * field. Refusing costs them one string. Accepting costs them a mismatch they discover somewhere
+     * less forgiving than here.
+     */
+    @ParameterizedTest(name = "networks.{0} is refused, naming the spelling to use")
+    @ValueSource(strings = {"FedNow", "FEDNOW", "fedNow"})
+    void aStandardRailUnderAnyOtherSpellingIsRefused(String spelling) {
+        String response = given().contentType("application/json").body(qrCodeWithNetworkKey(spelling))
+                .when().post(CREATE)
+                .then().statusCode(HttpStatus.BAD_REQUEST.value())
+                .extract().asString();
 
-        assertNotNull(qrCode.get("paymentMethods[0].networks.fednow"));
-        assertNull(qrCode.get("paymentMethods[0].networks.FedNow"),
-                "only the configured spelling should be emitted: " + qrCode.prettify());
+        assertTrue(response.contains(spelling), "the refusal must quote what was sent: " + response);
+        assertTrue(response.contains("fednow"), "and the spelling to use instead: " + response);
     }
 
-    /**
-     * A rail sent under an odd spelling must not ALSO appear as an uninterpreted network — that
-     * would advertise the same account twice, once validated and once not.
-     */
-    @Test
-    void aPromotedRailIsNotAlsoCarriedAsAnUnknownNetwork() {
-        JsonPath qrCode = createAndRead(qrCodeWithNetworkKey("FEDNOW"));
+    /** The payer's notification is the boundary we do not control, so there we stay lenient. */
+    @ParameterizedTest(name = "a notification naming the rail as {0} is still understood")
+    @ValueSource(strings = {"ACH", "ach", "Ach"})
+    void aThirdPartyNotificationIsReadCaseInsensitively(String spelling) {
+        String id = given().contentType("application/json").body(qrCodeWithNetworkKey("ach"))
+                .when().post(CREATE)
+                .then().statusCode(HttpStatus.CREATED.value())
+                .extract().path("id");
 
-        assertNull(qrCode.get("paymentMethods[0].networks.FEDNOW"),
-                "the rail was promoted, so it must not linger in additionalProperties: " + qrCode.prettify());
+        String notification = """
+            {
+              "payment": { "qrcodeId": "%s", "amount": 5000, "currency": "USD", "network": "%s",
+                           "transactionId": "021000021.0000001" },
+              "payer": { "info": "Jane Payer" },
+              "expectedDate": "2030-10-08T06:59:59Z"
+            }
+            """.formatted(id, spelling);
+
+        String jws = given().contentType("application/json")
+                .header("Correlation-Id", java.util.UUID.randomUUID().toString())
+                .header("TTL-Seconds", "300")
+                .body(notification)
+                .when().post("/api/v1/signature/generate")
+                .then().statusCode(HttpStatus.OK.value())
+                .extract().body().asString();
+
+        given().contentType("application/jose").body(jws)
+                .when().post("/pub/api/v1/payment-notification")
+                .then().statusCode(HttpStatus.OK.value());
     }
 
     /**

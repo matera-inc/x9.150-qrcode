@@ -31,9 +31,23 @@ class AllowListSupportedCurrencyPolicyTest {
         assertDoesNotThrow(() -> USD_ONLY.validate(List.of("USD", "USD")));
     }
 
+    /**
+     * Surrounding space is a transport artefact and is forgiven; case is not. ISO 4217 codes are
+     * upper-case, so accepting {@code usd} would mean emitting {@code usd} — and the caller reading
+     * back something other than what they sent.
+     */
     @Test
-    void caseAndSurroundingSpaceAreNotTheBillersProblem() {
-        assertDoesNotThrow(() -> USD_ONLY.validate(List.of("usd", " Usd ")));
+    void surroundingSpaceIsForgiven() {
+        assertDoesNotThrow(() -> USD_ONLY.validate(List.of(" USD ")));
+    }
+
+    @Test
+    void theWrongCaseIsRefusedWithTheSpellingToUse() {
+        BusinessRuleException thrown =
+            assertThrows(BusinessRuleException.class, () -> USD_ONLY.validate(List.of("usd")));
+
+        assertTrue(thrown.getMessage().contains("usd") && thrown.getMessage().contains("USD"),
+            "name both what was sent and what to send: " + thrown.getMessage());
     }
 
     @Test

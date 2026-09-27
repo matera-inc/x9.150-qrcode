@@ -78,14 +78,18 @@ These describe how our software behaves; they're enforced in `openapi.yaml` + th
   Dispatch lives on `NetworksVO.supports(...)` and the notification use case as exhaustive switch
   **expressions**, so adding a rail without handling it is a compile error — a silent fall-through is
   exactly how Base, XRP and Arc were once accepted and ignored.
-- **Network names are read leniently and written strictly.** Any casing is accepted on input
-  (`FedNow`, `FEDNOW`, `fednow`); the emitted key is the standard's own lowercase spelling and is
-  configurable (`x9.networks.emitted-keys`). The standard contradicts itself here — see
-  [official-spec/INTERPRETATION.md](official-spec/INTERPRETATION.md), which records every such
-  reading we make.
+- **Leniency is for the boundary we do not control, not for our own API.** A payment notification
+  from a third-party payer is matched case-insensitively on network and currency, and its
+  `$.payment.network` value is echoed back verbatim — it is a record of what the payer claimed. A
+  create or patch request against our own API must use the exact configured key (`fednow`, `rtp`,
+  `ach`) and the exact configured currency spelling (`USD`); anything else is a 400 naming both what
+  was sent and what to send. The reason is round-trip: whatever we accept, we emit one spelling, and
+  a caller who sends `FedNow` and reads back `fednow` has a mismatch on a field they just set. The
+  emitted key doubles as the accepted key (`x9.networks.emitted-keys`), so changing it moves both.
+  See [official-spec/INTERPRETATION.md](official-spec/INTERPRETATION.md) I-1.
 - **Currencies are gated by what the rails settle.** The payload format is currency-agnostic and
   carries any code verbatim, but this deployment accepts only what `supported-currencies.json` lists
-  (`USD` by default); an empty list disables the check. Separate from the peg-mixing rule, which asks
+  (`USD` by default, in exactly that spelling); an empty list disables the check. Separate from the peg-mixing rule, which asks
   whether currencies may appear *together*.
 
 ## Build / test / run

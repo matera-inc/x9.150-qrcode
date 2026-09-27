@@ -85,13 +85,23 @@ class SupportedCurrencyApiTest extends AbstractIntegrationTest {
                 "and say what is supported, so the biller knows what to send: " + response);
     }
 
-    /** Case is not the biller's problem: {@code usd} is USD. */
-    @ParameterizedTest(name = "{0} is read as USD")
+    /**
+     * Case <em>is</em> the biller's problem, on our own API. ISO 4217 codes are upper-case and §2.3's
+     * example is {@code "USD"}, so accepting {@code usd} would mean emitting {@code usd} — handing
+     * the caller back a non-conformant code that differs from what the next QR Code will carry.
+     * Leniency belongs where we do not control the sender; see
+     * {@link NetworkNamingApiTest#aThirdPartyNotificationIsReadCaseInsensitively}.
+     */
+    @ParameterizedTest(name = "{0} is refused, naming the spelling to use")
     @ValueSource(strings = {"usd", "Usd"})
-    void theAllowListIsCaseInsensitive(String spelling) {
-        given().contentType("application/json").body(body(spelling))
+    void aSupportedCurrencyInTheWrongCaseIsRefused(String spelling) {
+        String response = given().contentType("application/json").body(body(spelling))
                 .when().post(CREATE)
-                .then().statusCode(HttpStatus.CREATED.value());
+                .then().statusCode(HttpStatus.BAD_REQUEST.value())
+                .extract().asString();
+
+        assertTrue(response.contains(spelling), "quote what was sent: " + response);
+        assertTrue(response.contains("USD"), "and the spelling to use: " + response);
     }
 
 }

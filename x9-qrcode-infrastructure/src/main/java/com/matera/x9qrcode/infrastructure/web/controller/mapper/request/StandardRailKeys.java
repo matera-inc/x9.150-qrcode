@@ -8,66 +8,102 @@ package com.matera.x9qrcode.infrastructure.web.controller.mapper.request;
 
 import com.matera.x9qrcode.app.dto.BankPaymentAddressDTO;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
+import com.matera.x9qrcode.infrastructure.configuration.property.NetworksProperties;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
 import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Accepts the standard's rails under any spelling.
  *
  * <p>ANSI X9.150-2026 contradicts itself on case: §14.5's normative JSON paths are lowercase
  * ({@code networks.fednow}) while §2.4 calls the notification's network value "all-uppercase" and
- * then lists {@code FedNow}. Implementers will read one or the other, so a payer may send
- * {@code fednow}, {@code FedNow} or {@code FEDNOW} and mean the same rail.
+ * then lists {@code FedNow}. Implementers will read one or the other.
  *
- * <p>Anything the contract does not name falls into {@code additionalProperties}, so a rail sent
- * under a non-canonical spelling lands there and would silently stop being a bank rail — carried
- * verbatim instead of validated. This lifts it back out.
+ * <p>That ambiguity is a reason to be forgiving <b>at the boundary we do not control</b> — a payment
+ * notification from a third-party payer, which is read case-insensitively elsewhere. It is not a
+ * reason to be forgiving here. A create or patch request comes from inside this ecosystem, and
+ * within it there is exactly one spelling of a rail: the configured key, which is also the only one
+ * we ever emit. Accepting {@code FedNow}, {@code FEDNOW} and {@code fedNow} for a field we will only
+ * ever write as {@code fednow} does not prevent drift, it hides it — until some downstream consumer
+ * that is not so relaxed meets a payload we accepted and it did not.
  *
- * <p>Liberal in what we accept, strict in what we emit: the response always uses the configured
- * key (lowercase by default, per the normative paths).
+ * <p>So: a rail under the wrong spelling is <b>refused, naming both spellings</b>, rather than
+ * quietly promoted. The caller changes one string and is then aligned with what they will read back.
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class StandardRailKeys {
 
     /**
-     * The rail's address if it was sent under any spelling of {@code canonicalKey}, removing it from
-     * {@code additionalProperties} so it is not also carried as an uninterpreted network.
+     * The rail's address, accepted only under {@code expectedKey} — the spelling this deployment
+     * uses. Every spelling of this rail is removed from {@code others} either way, so a rail is
+     * never also carried as an uninterpreted network.
      *
-     * @param typed the value the contract's own property captured, when the spelling matched exactly
+     * @param typed       the value the contract's own property captured, i.e. the canonical spelling
+     * @param network     the rail, in any case
+     * @param expectedKey the one spelling accepted, from {@link NetworksProperties#keyFor}
+     * @throws BusinessRuleException if the rail was sent under any other spelling
      */
     public static BankPaymentAddressDTO bankAddress(BankPaymentAddressDTO typed,
-                                                    String canonicalKey,
-                                                    Map<String, Object> additionalProperties) {
-        if (!isNull(typed)) {
+                                                    String network,
+                                                    String expectedKey,
+                                                    Map<String, Object> others) {
+        String canonicalKey = NetworksProperties.canonical(network);
+
+        // Take every spelling out first, so rejectUnsupported() cannot also complain about a rail
+        // we are about to give a far more useful message for.
+        Map<String, Object> variants = takeAllCaseInsensitively(others, canonicalKey);
+
+        Object underExpectedKey = variants.remove(expectedKey);
+
+        // The generated property captures the canonical spelling and nothing else, so a non-null
+        // `typed` means the caller wrote the canonical key.
+        if (nonNull(typed) && !canonicalKey.equals(expectedKey)) {
+            throw wrongSpelling(canonicalKey, expectedKey);
+        }
+
+        if (!variants.isEmpty()) {
+            throw wrongSpelling(variants.keySet().iterator().next(), expectedKey);
+        }
+
+        if (canonicalKey.equals(expectedKey)) {
             return typed;
         }
 
-        return takeCaseInsensitively(additionalProperties, canonicalKey)
-            .map(StandardRailKeys::toBankAddress)
-            .orElse(null);
+        return isNull(underExpectedKey) ? null : toBankAddress(castToMap(underExpectedKey));
     }
 
-    /** Removes and returns the entry whose key matches {@code canonicalKey} ignoring case. */
-    public static Optional<Map<String, Object>> takeCaseInsensitively(Map<String, Object> source,
-                                                                     String canonicalKey) {
+    /** The refusal both mappers give for a rail written under a spelling we do not accept. */
+    public static BusinessRuleException wrongSpelling(String sent, String expectedKey) {
+        return new BusinessRuleException("paymentMethods.networks",
+            "Network \"%s\" must be written as \"%s\". This service accepts one spelling on its own API — the one it emits."
+                .formatted(sent, expectedKey));
+    }
+
+    /** Removes and returns every entry whose key matches {@code canonicalKey} ignoring case. */
+    public static Map<String, Object> takeAllCaseInsensitively(Map<String, Object> source,
+                                                               String canonicalKey) {
+        Map<String, Object> taken = new LinkedHashMap<>();
+
         if (isNull(source) || source.isEmpty()) {
-            return Optional.empty();
+            return taken;
         }
 
-        return source.keySet().stream()
+        source.keySet().stream()
             .filter(key -> key.equalsIgnoreCase(canonicalKey))
-            .findFirst()
-            .map(source::remove)
-            .filter(Map.class::isInstance)
-            .map(value -> castToMap(value));
+            .toList()
+            .forEach(key -> taken.put(key, source.remove(key)));
+
+        return taken;
     }
 
     /** A mutable copy, so promoting a rail can remove it without touching the caller's map. */

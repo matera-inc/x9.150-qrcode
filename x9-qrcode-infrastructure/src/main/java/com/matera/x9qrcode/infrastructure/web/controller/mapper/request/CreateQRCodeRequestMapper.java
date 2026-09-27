@@ -31,6 +31,8 @@ import com.matera.x9qrcode.app.dto.enumerated.FormulaEnumDTO;
 import com.matera.x9qrcode.app.dto.enumerated.NotificationKindEnumDTO;
 import com.matera.x9qrcode.app.dto.enumerated.PaymentTimingEnumDTO;
 import com.matera.x9qrcode.app.usecase.createqrcode.CreateQRCodeInput;
+import com.matera.x9qrcode.domain.vo.enumerated.NetworkEnum;
+import com.matera.x9qrcode.infrastructure.configuration.property.NetworksProperties;
 import com.matera.x9qrcode.infrastructure.generated.dto.ACHDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.BillDTO.PaymentTimingEnum;
 import com.matera.x9qrcode.infrastructure.generated.dto.FedNowDTO;
@@ -50,7 +52,8 @@ import static java.util.Objects.isNull;
 
 public final class CreateQRCodeRequestMapper {
 
-    public static CreateQRCodeInput map(PaymentRequestInputDTO paymentRequestInput) {
+    public static CreateQRCodeInput map(PaymentRequestInputDTO paymentRequestInput,
+                                        NetworksProperties networkNaming) {
         return new CreateQRCodeInput(
                 paymentRequestInput.getLocationId(),
                 paymentRequestInput.getValidUntil(),
@@ -59,7 +62,7 @@ public final class CreateQRCodeRequestMapper {
                 paymentRequestInput.getUnstructured(),
                 createAdditionalInformationInput(paymentRequestInput.getAdditionalInformation()),
                 createPaymentNotificationInput(paymentRequestInput.getPaymentNotification()),
-                createPaymentMethodsInput(paymentRequestInput.getPaymentMethods()));
+                createPaymentMethodsInput(paymentRequestInput.getPaymentMethods(), networkNaming));
     }
 
     private static CreditorDTO createCreditorInput(
@@ -245,12 +248,13 @@ public final class CreateQRCodeRequestMapper {
     }
 
     private static List<PaymentMethodDTO> createPaymentMethodsInput(
-            List<com.matera.x9qrcode.infrastructure.generated.dto.PaymentMethodDTO> paymentMethods) {
+            List<com.matera.x9qrcode.infrastructure.generated.dto.PaymentMethodDTO> paymentMethods,
+            NetworksProperties networkNaming) {
         return paymentMethods.stream().map(paymentMethod -> new PaymentMethodDTO(paymentMethod.getCurrency(),
                 paymentMethod.getValidUntil(),
                 paymentMethod.getAmount(),
                 createCurrencyEditableAmountInput(paymentMethod.getEditable()),
-                createNetworksInput(paymentMethod.getNetworks()))).toList();
+                createNetworksInput(paymentMethod.getNetworks(), networkNaming))).toList();
     }
 
     private static CurrencyEditableDTO createCurrencyEditableAmountInput(
@@ -290,25 +294,26 @@ public final class CreateQRCodeRequestMapper {
     }
 
     private static NetworksDTO createNetworksInput(
-            com.matera.x9qrcode.infrastructure.generated.dto.NetworksSimpleDTO networksSimple) {
+            com.matera.x9qrcode.infrastructure.generated.dto.NetworksSimpleDTO networksSimple,
+            NetworksProperties networkNaming) {
         FedNowDTO fedNow = networksSimple.getFednow();
         RTPDTO rtp = networksSimple.getRtp();
         ACHDTO ach = networksSimple.getAch();
 
-        // A rail sent under a different spelling landed in additionalProperties; lift it back out so
-        // it is validated as a bank rail rather than carried verbatim as an unknown network.
+        // Inside this ecosystem a rail has exactly one spelling: the one we emit. A rail sent under
+        // any other is refused by name rather than quietly promoted — see StandardRailKeys.
         Map<String, Object> others = StandardRailKeys.mutableCopy(networksSimple.getAdditionalProperties());
 
         return NetworksDTO.builder()
                 .fedNow(StandardRailKeys.bankAddress(
                     isNull(fedNow) ? null : new BankPaymentAddressDTO(fedNow.getRoutingNumber(), fedNow.getAccountNumber()),
-                    "fednow", others))
+                    NetworkEnum.FEDNOW.value(), networkNaming.keyFor(NetworkEnum.FEDNOW.value()), others))
                 .rtp(StandardRailKeys.bankAddress(
                     isNull(rtp) ? null : new BankPaymentAddressDTO(rtp.getRoutingNumber(), rtp.getAccountNumber()),
-                    "rtp", others))
+                    NetworkEnum.RTP.value(), networkNaming.keyFor(NetworkEnum.RTP.value()), others))
                 .ach(StandardRailKeys.bankAddress(
                     isNull(ach) ? null : new BankPaymentAddressDTO(ach.getRoutingNumber(), ach.getAccountNumber()),
-                    "ach", others))
+                    NetworkEnum.ACH.value(), networkNaming.keyFor(NetworkEnum.ACH.value()), others))
                 .additionalProperties(rejectAnythingElse(others))
                 .build();
     }

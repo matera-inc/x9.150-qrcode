@@ -107,17 +107,17 @@
         }
       },
       "networks": {
-        "FedNow": {
+        "fednow": {
           "routingNumber": "021000021",
           "accountNumber": "1234567890",
           "protectionType": "tokenized"
         },
-        "RTP": {
+        "rtp": {
           "routingNumber": "021000021",
           "accountNumber": "1234567890",
           "protectionType": "tokenized"
         },
-        "ACH": {
+        "ach": {
           "routingNumber": "021000021",
           "accountNumber": "1234567890",
           "protectionType": "tokenized"
