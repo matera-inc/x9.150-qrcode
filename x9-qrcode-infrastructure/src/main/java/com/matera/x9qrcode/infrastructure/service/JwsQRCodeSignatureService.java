@@ -191,15 +191,45 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         } else {
             X509Certificate signatureExternalCertificate = validateExternalCertificate(header, externalCertificateOutput.certificates());
 
-            return new RSAKey
-                .Builder(RSAKey.parse(signatureExternalCertificate))
+            return toVerificationJwk(signatureExternalCertificate, algorithm);
+        }
+
+        throw new ServiceException("Could not retrieve JWK information for signature validation");
+    }
+
+    /**
+     * The end-entity certificate's public key, as a JWK to verify with.
+     *
+     * <p>Built from what the certificate actually holds rather than from an assumption. This called
+     * {@code RSAKey.parse} unconditionally, so a payer presenting an EC certificate was refused with
+     * "The public key of the X.509 certificate is not RSA" — while {@link #createVerifier} carried a
+     * perfectly good {@code ECDSAVerifier} branch that this path could never reach.
+     *
+     * <p>That was an interoperability failure, not a missing feature. ANSI X9.150-2026 leaves
+     * {@code alg} to the X9-approved suite (SD-34) rather than naming one, and its own Annex A
+     * examples sign with {@code ES256}; {@code x5c} is an explicitly permitted way to carry the
+     * chain. So the refused payer was the conformant one.
+     */
+    private JWK toVerificationJwk(X509Certificate certificate, JWSAlgorithm algorithm)
+        throws JOSEException {
+
+        JWK certificateKey = JWK.parse(certificate);
+
+        return switch (certificateKey) {
+            case RSAKey rsaKey -> new RSAKey.Builder(rsaKey)
                 .algorithm(algorithm)
                 .keyUse(KeyUse.SIGNATURE)
                 .keyOperations(Set.of(KeyOperation.VERIFY))
                 .build();
-        }
-
-        throw new ServiceException("Could not retrieve JWK information for signature validation");
+            case ECKey ecKey -> new ECKey.Builder(ecKey)
+                .algorithm(algorithm)
+                .keyUse(KeyUse.SIGNATURE)
+                .keyOperations(Set.of(KeyOperation.VERIFY))
+                .build();
+            default -> throw new ServiceException(
+                "Unsupported certificate key type for signature verification: %s"
+                    .formatted(certificateKey.getKeyType()));
+        };
     }
 
     private void fillCertificateData(JWSHeader.Builder headerBuilder) throws ServiceException {
