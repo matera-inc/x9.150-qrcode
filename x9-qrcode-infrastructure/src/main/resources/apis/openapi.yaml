@@ -1249,9 +1249,28 @@ components:
           $ref: "#/components/schemas/ACH"
         solana:
           $ref: "#/components/schemas/Solana"
-      # Structurally open, deliberately: the object has to be able to RECEIVE an unsupported network
-      # in order to refuse it by name. Closing it here would make Jackson drop the key silently, and
-      # the biller would never learn that the rail they published is not understood.
+      # ---------------------------------------------------------------------------------------
+      # THIS IS THE ONE OPAQUE POINT IN THE PAYLOAD. Nowhere else may carry fields we do not
+      # understand: `Solana` is `additionalProperties: false`, and every other payload object
+      # declares its fields exhaustively. A stray `creditor` in the middle of a payment method is
+      # not carried, because X9.150 defines that structure and an unknown key there is a defect,
+      # not an extension.
+      #
+      # Open HERE for two different reasons, one per direction of the transaction:
+      #
+      #   AS ISSUER, the object must be able to RECEIVE an unsupported network in order to refuse
+      #   it BY NAME (ADR-0012). Closing it would make Jackson drop the key in silence, and the
+      #   biller would never learn that the rail they published is not understood.
+      #
+      #   AS PAYER-SIDE TRANSPORT, a payload we decode for somebody else must survive intact,
+      #   including the rails we cannot read. We do not own that payload and are not validating a
+      #   payment against it; the software that asked us to decode it may understand that rail
+      #   perfectly well and pay it. §14.5 says as much by deferring each network's contents to
+      #   its own documentation.
+      #
+      # So the inner JSON of an unknown network is carried byte-for-byte, keys and values
+      # unchanged. See official-spec/INTERPRETATION.md I-9.
+      # ---------------------------------------------------------------------------------------
       additionalProperties: true
 
     RTP:
@@ -1334,6 +1353,9 @@ components:
           $ref: "#/components/schemas/SolanaRecipient"
         memo:
           $ref: "#/components/schemas/SolanaMemo"
+      # Closed, unlike the `networks` object that contains it. Opacity applies to rails we do NOT
+      # interpret; this one we do, on a published embedding, so an unknown field inside it is a
+      # mistake worth reporting rather than a payload to carry.
       additionalProperties: false
 
     SolanaRecipient:
@@ -2029,8 +2051,9 @@ components:
           allOf:
             - $ref: "#/components/schemas/Solana"
           nullable: true
-      # Open for the same reason as NetworksSimple: an unsupported network must be receivable in
-      # order to be refused by name rather than dropped in silence.
+      # Open for the same reasons as NetworksSimple, and equally the only opaque point on a patch:
+      # an unsupported network must be receivable in order to be refused BY NAME rather than dropped
+      # in silence. See the note on NetworksSimple.
       additionalProperties: true
 
     PatchPaymentMethod:
