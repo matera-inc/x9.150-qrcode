@@ -10,7 +10,15 @@ mvn -q package -DskipTests
 ./others/demo/two-instance-payment-cycle.sh --keep     # leave both running to poke at
 ```
 
-It needs a JDK and MongoDB on `localhost:27017`. Nothing else — no Docker, no proxy, no network.
+It needs a JDK and the project's MongoDB — a **replica set**, because the notification write is
+transactional. The bundled one will do:
+
+```bash
+docker compose up -d mongo mongo-setup      # a single-node replica set on localhost:27017
+```
+
+Nothing else: no proxy, no tunnel, no network access, and the two instances themselves run straight
+on the host as plain `java` processes.
 
 ## HTTPS is not optional
 
