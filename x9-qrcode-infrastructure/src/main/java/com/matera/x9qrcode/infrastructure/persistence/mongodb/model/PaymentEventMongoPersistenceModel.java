@@ -39,6 +39,24 @@ public class PaymentEventMongoPersistenceModel {
     @Field(name = "type")
     private String type;
 
+    /**
+     * When the event happened — and, via the TTL index, when it stops being available.
+     *
+     * <p>The log is the consumers' record, not ours, so it cannot be deleted on acknowledgement:
+     * a cursor consumer may legitimately rewind and reprocess, and a second consumer may be added
+     * later. But it cannot grow without bound either, so entries expire on a retention window that
+     * is generous relative to any plausible outage.
+     *
+     * <p>A cursor older than the window resolves to nothing rather than to an error, which is the
+     * right failure: the consumer learns it has fallen too far behind instead of silently skipping.
+     *
+     * <p>Thirty days is a literal rather than a property because {@code @Indexed} does not resolve
+     * placeholders here. That is no great loss: retention is an operational decision, and MongoDB
+     * changes it in place without a deployment —
+     * {@code db.runCommand({collMod: "payment_events", index: {name: "payment_events_ttl",
+     * expireAfterSeconds: <n>}})}.
+     */
+    @Indexed(name = "payment_events_ttl", expireAfter = "P30D")
     @Field(name = "occurred_at")
     private Instant occurredAt;
 
