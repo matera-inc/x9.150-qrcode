@@ -7,6 +7,7 @@
 package com.matera.x9qrcode.infrastructure.web.controller;
 
 import com.matera.x9qrcode.app.dto.SignatureInputDataDTO;
+import com.matera.x9qrcode.app.exception.InvalidSignatureException;
 import com.matera.x9qrcode.app.dto.SignatureOutputDataDTO;
 import com.matera.x9qrcode.app.dto.enumerated.SignatureTypeEnumDTO;
 import com.matera.x9qrcode.app.service.QRCodeSignatureService;
@@ -75,22 +76,46 @@ public class PublicEndpointsController implements PublicEndpointsApi {
 
     @Override
     public ResponseEntity<Void> processPaymentNotification(String body) {
+        // Nothing below the signature check may touch the payload. The body is unauthenticated input
+        // and may be an exploit attempt, so an unverifiable JWS is refused before it is parsed, let
+        // alone before any QR Code is read or written.
+        verifySignatureOrReject(body);
+
+        PaymentNotificationDataDTO notificationData = parseVerifiedPayload(body);
+
+        paymentNotificationQRCodeUseCase.execute(PaymentNotificationRequestMapper.map(notificationData));
+
+        return ResponseEntity.ok().build();
+    }
+
+    private void verifySignatureOrReject(String body) {
+        SignatureValidationOutput validationResult;
+
         try {
-            SignatureValidationInput validationInput = new SignatureValidationInput(SignatureTypeEnumDTO.X9, null, body, null);
-            SignatureValidationOutput validationResult = qrCodeSignatureService.validateSignature(validationInput);
-            if (!validationResult.isValid()) {
-                throw new BusinessRuleException("Payment notification JWS signature is invalid.");
-            }
-
-            JWSObject jwsObject = JWSObject.parse(body);
-            PaymentNotificationDataDTO notificationData = objectMapper.readValue(
-                jwsObject.getPayload().toString(), PaymentNotificationDataDTO.class);
-
-            paymentNotificationQRCodeUseCase.execute(PaymentNotificationRequestMapper.map(notificationData));
-
-            return ResponseEntity.ok().build();
+            validationResult = qrCodeSignatureService.validateSignature(
+                new SignatureValidationInput(SignatureTypeEnumDTO.X9, null, body, null));
         } catch (Exception e) {
-            throw new BusinessRuleException(e, "Error processing payment notification.");
+            // A malformed JWS, an unreachable or unusable signer certificate, an unparseable header:
+            // all of them mean the same thing here — we could not establish that this came from who
+            // it claims. None of them is the caller's JSON being wrong.
+            throw new InvalidSignatureException("Payment notification JWS could not be verified.", e);
+        }
+
+        if (!validationResult.isValid()) {
+            throw new InvalidSignatureException("Payment notification JWS signature is invalid.");
+        }
+    }
+
+    private PaymentNotificationDataDTO parseVerifiedPayload(String body) {
+        try {
+            JWSObject jwsObject = JWSObject.parse(body);
+
+            return objectMapper.readValue(jwsObject.getPayload().toString(), PaymentNotificationDataDTO.class);
+        } catch (Exception e) {
+            // The signature verified, so this is a genuine content problem and belongs in the 400
+            // class — a business-rule failure below this point reaches the advice on its own, which
+            // is the whole point of not catching Exception around the use case.
+            throw new BusinessRuleException(e, "Payment notification payload could not be read.");
         }
     }
 

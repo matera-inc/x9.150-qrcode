@@ -13,6 +13,8 @@ import com.matera.x9qrcode.app.usecase.paymentnotification.mapper.PaymentNotific
 import com.matera.x9qrcode.app.usecase.paymentnotification.mapper.PaymentNotificationPaymentMapper;
 import com.matera.x9qrcode.domain.entity.QRCodeEntity;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
+import com.matera.x9qrcode.domain.service.PaymentNotificationAcceptancePolicy;
+import com.matera.x9qrcode.domain.utils.DateTimeUtils;
 import com.matera.x9qrcode.domain.vo.ExpectedDateVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationDataVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationPayerVO;
@@ -28,6 +30,7 @@ import static java.util.Objects.isNull;
 public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificationQRCodeInput, Boolean> {
 
     private final QRCodeRepository qrCodeRepository;
+    private final PaymentNotificationAcceptancePolicy acceptancePolicy;
 
     public Boolean execute(PaymentNotificationQRCodeInput paymentNotificationQRCodeInput) {
         PaymentNotificationDataDTO notificationDataDTO = paymentNotificationQRCodeInput.paymentNotificationData();
@@ -51,7 +54,17 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
             PaymentNotificationBlockchainMapper.map(notificationDataDTO.blockchain())
         );
 
-        switch (resolveIntent(notificationDataDTO, paymentNotificationDataVO)) {
+        NotificationIntent intent = resolveIntent(notificationDataDTO, paymentNotificationDataVO);
+
+        // A pre-funds notification is a request for permission, so it must earn its OK: correct
+        // amount, a currency and destination this QR Code actually published, nothing expired. A
+        // post-commit notification reports money that has already moved and is only recorded —
+        // refusing it would be a lie about reality, and there is nothing left to permit.
+        if (NotificationIntent.INITIATE.equals(intent)) {
+            acceptancePolicy.accept(qrCodeEntity, paymentNotificationDataVO, DateTimeUtils.nowUTC());
+        }
+
+        switch (intent) {
             case INITIATE -> qrCodeEntity.notifyPayment(paymentNotificationDataVO, QRCodeStatusEnum.PAYMENT_INITIATED);
             case RECORD -> qrCodeEntity.notifyPayment(paymentNotificationDataVO);
         }
