@@ -29,6 +29,22 @@ Validation order is unchanged and still complete: chain to a trust anchor in the
 window, revocation — **then** the allowlist as an additional narrowing filter. The allowlist never
 weakens a check; it only narrows what is accepted.
 
+### Amendment, 2026-09-26: this gates issuers, never payers
+
+As first accepted, this ADR did not say what the allowlist must **not** become. Closing that:
+
+> **The allowlist constrains the certificate's ISSUER, never its SUBJECT.** Every payer holding a
+> certificate from an allowed CA is accepted. X9.150 holds **no list of permitted payers** and never
+> checks payer identity.
+
+A payment QR Code is presented in public and is payable by anyone with a valid X9-issued certificate
+— that is what the artefact is for. The only payer-side gate is a valid signature.
+
+This matters because the word "allowlist" invites the wrong extension. An implementation that filtered
+on certificate subject, organisation or any payer-identifying field would believe it was following
+this ADR while actually introducing the payer allowlist the product forbids. Trust-anchor
+configuration and counterparty gating are different things and only the first is in scope here.
+
 ## Consequences
 
 - A production deployment can restrict to DigiCert without a code change.
