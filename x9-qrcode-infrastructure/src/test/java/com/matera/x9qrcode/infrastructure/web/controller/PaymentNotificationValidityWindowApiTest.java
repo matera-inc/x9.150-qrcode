@@ -23,7 +23,19 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The three independent validity windows on a payload, and what each one refuses.
+ * The validity windows a payer meets through the API.
+ *
+ * <p>The rules that depend on <em>when</em> a notification arrives — a discount window closing, a
+ * late fee accruing, a currency lapsing — live in {@code PaymentNotificationAcceptancePolicyTest}
+ * instead, where the instant is a parameter. Driving those through HTTP means building a QR Code
+ * whose window shuts seconds later and then sleeping, which is slow and genuinely flaky: a loaded
+ * runner can spend those seconds inside the create request and invalidate the fixture before the
+ * test has begun. That is a test measuring the CI machine, not the rule.
+ *
+ * <p>What remains here is what HTTP actually adds: the status code, and that a refusal changes
+ * nothing.
+ *
+ * <p>The three independent validity windows on a payload, and what each one refuses.
  *
  * <p>A payload carries more than one clock, and they expire for different reasons:
  *
@@ -113,14 +125,6 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
                 .extract().path("id");
     }
 
-    /** A QR Code whose invoice falls due in a moment, so the late fee accrues during the test. */
-    private String createDueImminently() {
-        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-
-        // No discount: with the due date seconds away, any daysBefore would put the discount's own
-        // target date in the past, which creation refuses.
-        return create(utc(now.plusDays(30)), utc(now.plusSeconds(3)), utc(now.plusDays(30)), 0);
-    }
 
     private String sign(String payload) {
         return given().contentType("application/json")
@@ -167,62 +171,8 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
         assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
     }
 
-    /**
-     * The scenario worth having: a payer scanned earlier, was quoted a discounted amount, and comes
-     * back after the discount window closed. The amount they hold is no longer the amount owed.
-     */
-    @Test
-    void anAmountCalculatedWithAnExpiredDiscountIsRefused() throws InterruptedException {
-        // The discount earns until (dueDate - 1 day), which is three seconds away. The bill itself
-        // is not due for another day, so when the window shuts the amount returns to face value
-        // rather than accruing a late fee — isolating the discount window from the due date.
-        OffsetDateTime dueDate = OffsetDateTime.now(ZoneOffset.UTC).plusDays(1).plusSeconds(3);
-        String qrCodeId = create(utc(dueDate.plusDays(1)), utc(dueDate), utc(dueDate.plusDays(1)), 1);
 
-        Thread.sleep(3500);
 
-        MockMvcResponse response = notify(qrCodeId, FACE_AMOUNT - DISCOUNT);
-
-        assertNotEquals(HttpStatus.OK.value(), response.statusCode(),
-                "a discount that is no longer earnable must not be honoured: " + response.asString());
-        assertTrue(response.asString().contains("amount"), response.asString());
-        assertEquals("ACTIVE", statusOf(qrCodeId));
-
-        // The amount actually owed is still payable — the QR Code is not poisoned, only the stale quote.
-        assertEquals(HttpStatus.OK.value(), notify(qrCodeId, FACE_AMOUNT).statusCode());
-    }
-
-    /**
-     * Past the due date a late fee accrues, so the face amount is now an <b>underpayment</b>. A quote
-     * taken before the due date does not entitle the payer to pay less than is owed.
-     */
-    @Test
-    void theFaceAmountIsRefusedOnceALateFeeHasAccrued() throws InterruptedException {
-        // A past due date cannot be created — the invoice refuses it — so the only honest way to
-        // reach the late-fee branch is to create a due date moments away and let it pass, exactly as
-        // a real bill does.
-        String qrCodeId = createDueImminently();
-
-        Thread.sleep(3500);
-
-        MockMvcResponse response = notify(qrCodeId, FACE_AMOUNT);
-
-        assertNotEquals(HttpStatus.OK.value(), response.statusCode(),
-                "paying the face amount after a late fee accrued is an underpayment: " + response.asString());
-        assertEquals("ACTIVE", statusOf(qrCodeId));
-    }
-
-    @Test
-    void theAmountIncludingTheLateFeeIsAccepted() throws InterruptedException {
-        String qrCodeId = createDueImminently();
-
-        Thread.sleep(3500);
-
-        MockMvcResponse response = notify(qrCodeId, FACE_AMOUNT + LATE_FEE_FIXED);
-
-        assertEquals(HttpStatus.OK.value(), response.statusCode(), response.asString());
-        assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
-    }
 
     // ------------------------------------------------------------- the payer-chosen amount
 
@@ -292,33 +242,5 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
 
     // ------------------------------------------------- window 3: the per-currency payment method
 
-    /**
-     * The per-currency window is independent of the payload's. It exists for rate and settlement
-     * windows — "I will take this currency for a few minutes, after which you must fetch again" —
-     * so a payload that is still perfectly valid can carry a currency that is not.
-     *
-     * <p>Today's 1:1 currencies rarely need it, and a QR Code often reuses the payload's own
-     * validUntil. The rule still has to hold for the day an exchanged currency does need it.
-     */
-    @Test
-    void aCurrencyWhoseWindowClosedIsRefusedEvenThoughThePayloadIsStillValid() throws InterruptedException {
-        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-        String methodExpiresSoon = utc(now.plusSeconds(3));
-        String payloadValidForAges = utc(now.plusDays(30));
-
-        String qrCodeId = create(payloadValidForAges, utc(now.plusDays(20)), methodExpiresSoon, 0);
-
-        Thread.sleep(3500);
-
-        MockMvcResponse response = notify(qrCodeId, FACE_AMOUNT);
-
-        assertNotEquals(HttpStatus.OK.value(), response.statusCode(),
-                "the currency's own window closed, so it is not payable: " + response.asString());
-        assertTrue(response.asString().contains("expired") || response.asString().contains("validUntil"),
-                "the reason should point at the payment method's window: " + response.asString());
-
-        // The payload itself is untouched and still valid — only that currency lapsed.
-        assertEquals("ACTIVE", statusOf(qrCodeId));
-    }
 
 }
