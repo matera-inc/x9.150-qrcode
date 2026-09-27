@@ -33,6 +33,36 @@ matching the form §2.4 uses for the bank rails. Those are two different fields;
 }
 ```
 
+## The memo is optional — but something has to carry the link
+
+`memo` is **O**, and this service treats it as optional at every layer. That is worth spelling out,
+because a transfer on Solana carries **no inherent reference to the QR Code it settles**.
+
+The payee sees funds arrive at a wallet address. That address is theirs, and it is almost certainly
+reused across many payments, so the address alone identifies nothing. Neither does the amount: two
+payers owing the same sum are indistinguishable, and any adjustment window makes even that unreliable.
+
+So the link has to be carried deliberately, and there are exactly two places to put it:
+
+1. **In the memo**, as `{QRCD:"payloadID"}` — which is what the published table recommends.
+2. **In a payment notification**, naming the `qrcodeId` and the `transactionId` (the on-chain hash).
+
+**If the memo does not carry the QR Code id, the notification is not optional.** It becomes the only
+way the payee can learn that this particular QR Code was paid, and by which transaction. Skip both
+and the failure is quiet and one-sided: the payer has genuinely paid, the funds have genuinely
+arrived, and the payee's QR Code sits unpaid in their books with no way to connect the two except by
+hand.
+
+Sending both is fine and is the safer default. They are different channels with different failure
+modes — a memo survives the payee being offline, and a notification survives a payer whose wallet
+software drops or truncates memos — and the payee can reconcile either way.
+
+The notification API for exactly this is
+[ADR-0015](../docs/adr/0015-x9150-signs-the-payers-notification-too.md):
+`POST /api/v1/payment-notification/post-payment`, carrying the transaction reference. This service
+never composes the memo on the biller's behalf, and never infers the linkage — see
+[INTERPRETATION.md](INTERPRETATION.md) I-8.
+
 ## Why this document exists in this repository
 
 Because we guessed, and the guess was wrong.

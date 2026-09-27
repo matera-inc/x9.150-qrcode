@@ -349,6 +349,53 @@ with the party that knows what else belongs in those 100 characters. The field d
 This is a *should*, not a *shall*. If it were a *shall* the calculus would change: refusing a memo
 without the marker would then be enforcing the publication rather than second-guessing the biller.
 
+## I-9 — An unknown network is refused when we issue, and carried when we transport
+
+**Where:** §14.5 (`$.paymentMethods[].networks.*`)
+
+The payload nests like this, and only the innermost level is ever opaque:
+
+```
+paymentMethods[]          ← one entry per currency
+  ├── currency            ← we define it
+  ├── amount, validUntil  ← we define them
+  └── networks
+        └── <name>        ← we may know this rail, or we may not
+```
+
+A `paymentMethods` entry is fully specified by the standard, so an unexpected key **there** is a
+defect rather than an extension: a stray `creditor` beside `amount` means the sender is confused, and
+carrying it would legitimise the confusion. The contract declares those objects exhaustively and
+nothing else in the payload is open.
+
+Inside `networks` it is the other way round. §14.5 fixes only where a network object hangs and defers
+its contents to "network documentation", so the inner JSON belongs to that network's owner. We may
+know the rail — `fednow`, `rtp`, `ach`, `solana` — or we may never have heard of it.
+
+**What we do with one we do not know depends on which side of the transaction we are on, and the two
+answers are opposites.**
+
+| Role | Unknown network | Why |
+|---|---|---|
+| **Issuer** — someone asks us to mint a QR Code | **Refused, by name** | A QR Code advertising a rail we cannot validate a payment against is a promise we cannot keep. The biller can still fix it; the payer, at the till, cannot. See I-2 and ADR-0012. |
+| **Payer-side transport** — we decode someone else's QR Code | **Ignored, and carried intact** | We do not own that payload and are not validating a payment against it. The software that asked us to decode it may understand that rail perfectly well and pay it. |
+
+That second row needs one word pinned down. **"Ignore" here means *do not interpret*, not *discard*.**
+Dropping the network we cannot read would remove the only thing the payer needed in order to pay,
+and it would do so silently — the caller would receive a payload that looked complete and was not.
+So an unknown network arrives with its keys and values byte-for-byte unchanged, including shapes
+nothing here anticipated: numbers, nested objects, arrays, a key spelled in somebody else's
+convention.
+
+The apparent inconsistency — refuse it here, carry it there — dissolves once you notice that a
+promise and a message are different things. We refuse to *make* a promise we cannot keep. We decline
+to *break* a message that was never ours.
+
+**Where this is visible in the code:** `NetworksSimple` and `PatchNetworksSimple` are the only
+`additionalProperties: true` objects in the payload contract, and `openapi.yaml` says so at the point
+where it matters. `Solana` itself is closed — opacity is for rails we do *not* interpret; a rail we
+do interpret, on a published embedding, should report an unknown field rather than carry it.
+
 ---
 
 ## Reporting
