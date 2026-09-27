@@ -31,12 +31,11 @@ public final class NetworksFixture {
         additionalProperties.put(faker.lorem().word(), faker.lorem().sentence());
         additionalProperties.put(faker.lorem().word(), faker.number().randomNumber());
 
-        return new NetworksVO(
-                fedNow(),
-                ach(),
-                rtp(),
-                solana(),
-                additionalProperties);
+        // Solana rides in additionalProperties like any network the standard does not define —
+        // which is what every non-standard rail looks like on the wire now.
+        additionalProperties.put("solana", Map.of("walletAddress", generateSolanaWallet()));
+
+        return new NetworksVO(fedNow(), ach(), rtp(), additionalProperties);
     }
 
     public BankPaymentAddressVO fedNow() {
@@ -53,6 +52,10 @@ public final class NetworksFixture {
 
     public CryptoWalletPaymentAddressVO solana() {
         return new CryptoWalletPaymentAddressVO(generateSolanaWallet());
+    }
+
+    public String solanaWallet() {
+        return generateSolanaWallet();
     }
 
     private BankPaymentAddressVO createBankPaymentAddressVO() {

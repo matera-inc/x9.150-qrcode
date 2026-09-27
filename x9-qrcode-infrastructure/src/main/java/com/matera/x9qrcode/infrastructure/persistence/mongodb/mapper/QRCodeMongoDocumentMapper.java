@@ -285,7 +285,7 @@ public final class QRCodeMongoDocumentMapper {
 
         QRCodeMongoPersistenceModel.PaymentDetails paymentDetailsDocument = new QRCodeMongoPersistenceModel.PaymentDetails();
         paymentDetailsDocument.setEndToEndId(paymentDetails.endToEndId());
-        paymentDetailsDocument.setPaymentNetwork(isNull(paymentDetails.paymentNetwork()) ? null : paymentDetails.paymentNetwork().value());
+        paymentDetailsDocument.setPaymentNetwork(paymentDetails.paymentNetwork());
 
         return paymentDetailsDocument;
     }
@@ -296,7 +296,6 @@ public final class QRCodeMongoDocumentMapper {
         networksDocument.setFedNow(buildBankPaymentAddress(networks.fedNow()));
         networksDocument.setAch(buildBankPaymentAddress(networks.ach()));
         networksDocument.setRtp(buildBankPaymentAddress(networks.rtp()));
-        networksDocument.setSolana(buildCryptoWalletPaymentAddress(networks.solana()));
         networksDocument.setAdditionalProperties(networks.additionalProperties());
 
         return networksDocument;
@@ -369,7 +368,7 @@ public final class QRCodeMongoDocumentMapper {
         }
 
         paymentDocument.setCurrency(payment.currency());
-        paymentDocument.setNetwork(payment.network().value());
+        paymentDocument.setNetwork(payment.network());
         paymentDocument.setTransactionId(payment.transactionId());
 
         return paymentDocument;

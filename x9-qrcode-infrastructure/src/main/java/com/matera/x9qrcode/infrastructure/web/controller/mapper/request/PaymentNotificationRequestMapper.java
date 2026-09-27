@@ -37,7 +37,7 @@ public final class PaymentNotificationRequestMapper {
             payment.getAmount(),
             payment.getTipAmount(),
             payment.getCurrency(),
-            NetworkEnumDTO.fromValue(payment.getNetwork().getValue()),
+            payment.getNetwork(),
             payment.getTransactionId()
         );
     }

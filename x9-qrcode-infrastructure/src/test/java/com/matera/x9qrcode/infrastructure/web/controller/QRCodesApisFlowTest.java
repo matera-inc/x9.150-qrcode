@@ -11,7 +11,6 @@ import com.matera.x9qrcode.app.dto.enumerated.ActionEnumDTO;
 import com.matera.x9qrcode.domain.dto.CertificateEndpointTypeEnum;
 import com.matera.x9qrcode.infrastructure.AbstractIntegrationTest;
 import com.matera.x9qrcode.infrastructure.configuration.property.X9Properties;
-import com.matera.x9qrcode.infrastructure.generated.dto.SolanaDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentNotificationDataBlockchainDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentNotificationDataDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentPayloadRequestDTO;
@@ -495,7 +494,7 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
 
         assertEquals(QRCodeStatusDTO.PAID, afterStatusUpdate.getStatus());
         assertNotNull(afterStatusUpdate.getPaymentDetails());
-        assertEquals(config.networkName(), afterStatusUpdate.getPaymentDetails().getNetwork().getValue());
+        assertEquals(config.networkName(), afterStatusUpdate.getPaymentDetails().getNetwork());
     }
 
     @ParameterizedTest(name = "Signature payload flow: {0}")
@@ -623,8 +622,8 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         PaymentRequestInformationDTO getResponse = getPaymentRequest(solQrcodeId);
         assertNotNull(getResponse.getPaymentMethods());
 
-        SolanaDTO solanaDTO = getResponse.getPaymentMethods().get(0)
-                                             .getNetworks().getSolana();
+        Object solanaDTO = getResponse.getPaymentMethods().get(0)
+                .getNetworks().getAdditionalProperties().get("Solana");
 
         assertNotNull(solanaDTO, "Solana should be present on GET");
 
@@ -671,8 +670,8 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         Map<String, Object> tronMap = (Map<String, Object>) payloadAdditionalProps.get("Tron");
         assertEquals("TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7", tronMap.get("address"));
 
-        SolanaDTO payloadSolana = payloadResponse.getPaymentMethods().get(0)
-                .getNetworks().getSolana();
+        Object payloadSolana = payloadResponse.getPaymentMethods().get(0)
+                .getNetworks().getAdditionalProperties().get("Solana");
         assertNotNull(payloadSolana, "Solana should be present in payload");
     }
 
@@ -708,8 +707,8 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         Map<String, Object> tronMap = (Map<String, Object>) decodingAdditionalProps.get("Tron");
         assertEquals("TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7", tronMap.get("address"));
 
-        SolanaDTO decodingSolana = response.getPaymentMethods().get(0)
-                .getNetworks().getSolana();
+        Object decodingSolana = response.getPaymentMethods().get(0)
+                .getNetworks().getAdditionalProperties().get("Solana");
         assertNotNull(decodingSolana, "Solana should be present in decoded payload");
     }
 
@@ -759,8 +758,8 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         Map<String, Object> avalancheMap = (Map<String, Object>) patchAdditionalProps.get("Avalanche");
         assertEquals("0xABCd35Cc6634C0539Ff82c466ae367A6097dEFFF", avalancheMap.get("address"));
 
-        SolanaDTO patchSolana = getAfterPatch.getPaymentMethods().get(0)
-                .getNetworks().getSolana();
+        Object patchSolana = getAfterPatch.getPaymentMethods().get(0)
+                .getNetworks().getAdditionalProperties().get("Solana");
         assertNotNull(patchSolana, "Solana should be present after PATCH");
     }
 

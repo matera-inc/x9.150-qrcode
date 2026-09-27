@@ -36,6 +36,8 @@ public class X9Properties implements InitializingBean {
 
     private EmvProperties emv = new EmvProperties();
 
+    private NetworksProperties networks = new NetworksProperties();
+
     @Override
     public void afterPropertiesSet() {
         validatePayloadDomain();

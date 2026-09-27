@@ -101,7 +101,6 @@ public class RetrieveQRCodePayloadPaymentMethodMapper {
             .fedNow(buildBankPaymentAddress(output.fedNow()))
             .ach(buildBankPaymentAddress(output.ach()))
             .rtp(buildBankPaymentAddress(output.rtp()))
-            .solana(buildCryptoWalletPaymentAddress(output.solana()))
             .additionalProperties(output.additionalProperties())
             .build();
     }

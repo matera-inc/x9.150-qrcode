@@ -12,7 +12,6 @@ import com.matera.x9qrcode.app.dto.PaymentNotificationDataDTO;
 import com.matera.x9qrcode.app.dto.PaymentNotificationPayerDTO;
 import com.matera.x9qrcode.app.dto.PaymentNotificationPaymentDTO;
 import com.matera.x9qrcode.app.dto.enumerated.ActionEnumDTO;
-import com.matera.x9qrcode.app.dto.enumerated.NetworkEnumDTO;
 import com.matera.x9qrcode.app.dto.enumerated.NotificationKindEnumDTO;
 import com.matera.x9qrcode.domain.vo.BlockchainVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationDataVO;
@@ -53,7 +52,7 @@ public class RetrieveQRCodePaymentNotificationMapper {
             payment.amount().value(),
             isNull(payment.tipAmount()) ? null : payment.tipAmount().value(),
             payment.currency(),
-            NetworkEnumDTO.fromValue(payment.network().value()),
+            payment.network(),
             payment.transactionId()
         );
     }

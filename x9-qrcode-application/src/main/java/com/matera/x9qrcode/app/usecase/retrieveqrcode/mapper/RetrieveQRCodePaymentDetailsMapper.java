@@ -7,7 +7,6 @@
 package com.matera.x9qrcode.app.usecase.retrieveqrcode.mapper;
 
 import com.matera.x9qrcode.app.dto.PaymentDetailsDTO;
-import com.matera.x9qrcode.app.dto.enumerated.NetworkEnumDTO;
 import com.matera.x9qrcode.domain.vo.PaymentDetailsVO;
 
 import lombok.AccessLevel;
@@ -25,7 +24,7 @@ public class RetrieveQRCodePaymentDetailsMapper {
 
         return new PaymentDetailsDTO(
             output.endToEndId(),
-            isNull(output.paymentNetwork()) ? null : NetworkEnumDTO.fromValue(output.paymentNetwork().value())
+            output.paymentNetwork()
         );
     }
 

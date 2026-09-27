@@ -6,11 +6,17 @@
  */
 package com.matera.x9qrcode.domain.vo;
 
-import com.matera.x9qrcode.domain.vo.enumerated.NetworkEnum;
 
+/**
+ * How a QR Code was paid.
+ *
+ * <p>{@code paymentNetwork} is a name rather than an enum, for the same reason the notification's is
+ * (ANSI X9.150-2026 §2.4): the set of networks is open, so typing it closed would make a QR Code
+ * unpayable on a rail the standard permits.
+ */
 public record PaymentDetailsVO(
     String endToEndId,
-    NetworkEnum paymentNetwork
+    String paymentNetwork
 ) {
 
 }

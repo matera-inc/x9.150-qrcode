@@ -34,7 +34,6 @@ import com.matera.x9qrcode.app.dto.PaymentNotificationPaymentDTO;
 import com.matera.x9qrcode.app.dto.TipDTO;
 import com.matera.x9qrcode.app.dto.TipRangeDTO;
 import com.matera.x9qrcode.app.dto.UltimateCreditorDTO;
-import com.matera.x9qrcode.app.dto.enumerated.NetworkEnumDTO;
 import com.matera.x9qrcode.app.dto.enumerated.PaymentTimingEnumDTO;
 import com.matera.x9qrcode.app.usecase.retrieveqrcode.RetrieveQRCodeOutput;
 import com.matera.x9qrcode.domain.utils.UUIDUtils;
@@ -58,7 +57,6 @@ import com.matera.x9qrcode.infrastructure.generated.dto.PaymentRequestInformatio
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentRequestLocationDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.QRCodeStatusDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.RTPDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.SolanaDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.BillDTO.PaymentTimingEnum;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
@@ -68,7 +66,6 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
-import static com.matera.x9qrcode.infrastructure.generated.dto.NetworkEnumDTO.fromValue;
 import static java.util.Objects.isNull;
 
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
@@ -286,7 +283,7 @@ public class RetrieveQRCodeResponseMapper {
             .amount(payment.amount())
             .tipAmount(payment.tipAmount())
             .currency(payment.currency())
-            .network(com.matera.x9qrcode.infrastructure.generated.dto.NetworkEnumDTO.fromValue(payment.network().value()))
+            .network(payment.network())
             .transactionId(payment.transactionId());
     }
 
@@ -374,10 +371,9 @@ public class RetrieveQRCodeResponseMapper {
     private static NetworksSimpleDTO buildNetworks(NetworksDTO networks) {
         NetworksSimpleDTO networksDTO =
             new NetworksSimpleDTO()
-                .fedNow(buildFedNow(networks.getFedNow()))
-                .ACH(buildACH(networks.getAch()))
-                .RTP(buildRTP(networks.getRtp()))
-                .solana(buildSolana(networks.getSolana()));
+                .fednow(buildFedNow(networks.getFedNow()))
+                .ach(buildACH(networks.getAch()))
+                .rtp(buildRTP(networks.getRtp()));
 
         if (isNull(networks.getAdditionalProperties())) {
             return networksDTO;
@@ -423,24 +419,14 @@ public class RetrieveQRCodeResponseMapper {
             .protectionType(com.matera.x9qrcode.infrastructure.generated.dto.ProtectionTypeEnumDTO.TOKENIZED);
     }
 
-    private static SolanaDTO buildSolana(CryptoWalletPaymentAddressDTO cryptoWalletPaymentAddress) {
-        if (isNull(cryptoWalletPaymentAddress)) {
-            return null;
-        }
-
-        return new SolanaDTO().walletAddress(cryptoWalletPaymentAddress.walletAddress());
-    }
-
     private static BasePaymentDetailsDTO buildPaymentDetails(PaymentDetailsDTO paymentDetails) {
         if (isNull(paymentDetails)) {
             return null;
         }
 
-        NetworkEnumDTO network = paymentDetails.paymentNetwork();
-
         return new BasePaymentDetailsDTO()
-            .endToEndId(isNull(paymentDetails.endToEndId()) ? null : paymentDetails.endToEndId())
-            .network(isNull(network) ? null : fromValue(network.value()));
+            .endToEndId(paymentDetails.endToEndId())
+            .network(paymentDetails.paymentNetwork());
     }
 
 }

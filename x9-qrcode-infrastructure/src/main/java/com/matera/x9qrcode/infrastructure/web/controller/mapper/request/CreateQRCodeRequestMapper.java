@@ -38,7 +38,6 @@ import com.matera.x9qrcode.infrastructure.generated.dto.IntegerRangeDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.KeyValuePairDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentRequestInputDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.RTPDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.SolanaDTO;
 
 import java.util.HashMap;
 import java.util.List;
@@ -286,18 +285,25 @@ public final class CreateQRCodeRequestMapper {
 
     private static NetworksDTO createNetworksInput(
             com.matera.x9qrcode.infrastructure.generated.dto.NetworksSimpleDTO networksSimple) {
-        FedNowDTO fedNow = networksSimple.getFedNow();
-        RTPDTO rtp = networksSimple.getRTP();
-        ACHDTO ach = networksSimple.getACH();
-        SolanaDTO solana = networksSimple.getSolana();
+        FedNowDTO fedNow = networksSimple.getFednow();
+        RTPDTO rtp = networksSimple.getRtp();
+        ACHDTO ach = networksSimple.getAch();
+
+        // A rail sent under a different spelling landed in additionalProperties; lift it back out so
+        // it is validated as a bank rail rather than carried verbatim as an unknown network.
+        Map<String, Object> others = StandardRailKeys.mutableCopy(networksSimple.getAdditionalProperties());
 
         return NetworksDTO.builder()
-                .fedNow(isNull(fedNow) ? null
-                        : new BankPaymentAddressDTO(fedNow.getRoutingNumber(), fedNow.getAccountNumber()))
-                .rtp(isNull(rtp) ? null : new BankPaymentAddressDTO(rtp.getRoutingNumber(), rtp.getAccountNumber()))
-                .ach(isNull(ach) ? null : new BankPaymentAddressDTO(ach.getRoutingNumber(), ach.getAccountNumber()))
-                .solana(isNull(solana) ? null : new CryptoWalletPaymentAddressDTO(solana.getWalletAddress()))
-                .additionalProperties(networksSimple.getAdditionalProperties())
+                .fedNow(StandardRailKeys.bankAddress(
+                    isNull(fedNow) ? null : new BankPaymentAddressDTO(fedNow.getRoutingNumber(), fedNow.getAccountNumber()),
+                    "fednow", others))
+                .rtp(StandardRailKeys.bankAddress(
+                    isNull(rtp) ? null : new BankPaymentAddressDTO(rtp.getRoutingNumber(), rtp.getAccountNumber()),
+                    "rtp", others))
+                .ach(StandardRailKeys.bankAddress(
+                    isNull(ach) ? null : new BankPaymentAddressDTO(ach.getRoutingNumber(), ach.getAccountNumber()),
+                    "ach", others))
+                .additionalProperties(others)
                 .build();
     }
 

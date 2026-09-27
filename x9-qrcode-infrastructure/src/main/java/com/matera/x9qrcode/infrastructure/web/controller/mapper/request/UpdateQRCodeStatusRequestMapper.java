@@ -6,7 +6,6 @@
  */
 package com.matera.x9qrcode.infrastructure.web.controller.mapper.request;
 
-import com.matera.x9qrcode.app.dto.enumerated.NetworkEnumDTO;
 import com.matera.x9qrcode.app.dto.enumerated.QRCodeStatusEnumDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.StatusUpdateDTO;
 import com.matera.x9qrcode.app.usecase.updatestatus.UpdateQRCodeStatusInput;
@@ -20,9 +19,7 @@ public final class UpdateQRCodeStatusRequestMapper {
             ? null
             : statusUpdateDTO.getEndToEndId().toString();
 
-        NetworkEnumDTO paymentNetwork = isNull(statusUpdateDTO.getNetwork())
-            ? null
-            : NetworkEnumDTO.fromValue(statusUpdateDTO.getNetwork().getValue());
+        String paymentNetwork = statusUpdateDTO.getNetwork();
 
         return new UpdateQRCodeStatusInput(
             id,

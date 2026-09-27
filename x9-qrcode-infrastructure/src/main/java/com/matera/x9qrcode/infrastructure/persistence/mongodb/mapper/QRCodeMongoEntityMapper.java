@@ -260,7 +260,7 @@ public final class QRCodeMongoEntityMapper {
 
         return new PaymentDetailsVO(
             doc.getEndToEndId(),
-            isNull(doc.getPaymentNetwork()) ? null : NetworkEnum.fromValue(doc.getPaymentNetwork())
+            doc.getPaymentNetwork()
         );
     }
 
@@ -294,7 +294,7 @@ public final class QRCodeMongoEntityMapper {
             new AmountVO(doc.getAmount()),
             isNull(doc.getTipAmount()) ? null : new AmountVO(doc.getTipAmount()),
             doc.getCurrency(),
-            NetworkEnum.fromValue(doc.getNetwork()),
+            doc.getNetwork(),
             doc.getTransactionId()
         );
     }
@@ -321,7 +321,6 @@ public final class QRCodeMongoEntityMapper {
             buildBankPaymentAddress(doc.getFedNow()),
             buildBankPaymentAddress(doc.getAch()),
             buildBankPaymentAddress(doc.getRtp()),
-            buildCryptoWalletPaymentAddress(doc.getSolana()),
             doc.getAdditionalProperties()
         );
     }

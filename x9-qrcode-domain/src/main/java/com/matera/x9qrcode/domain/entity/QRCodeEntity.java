@@ -411,7 +411,7 @@ public class QRCodeEntity {
             this.locationId.valueAsString(),
             nonNull(data) ? data.payment().amount().value() : amountOfFirstMethod(),
             nonNull(data) ? data.payment().currency() : currencyOfFirstMethod(),
-            nonNull(data) ? data.payment().network().value() : networkOfPaymentDetails(),
+            nonNull(data) ? data.payment().network() : networkOfPaymentDetails(),
             nonNull(data) ? data.payment().transactionId() : endToEndIdOfPaymentDetails(),
             invoiceNumber(),
             orderNumber(),
@@ -428,8 +428,7 @@ public class QRCodeEntity {
     }
 
     private String networkOfPaymentDetails() {
-        return isNull(paymentDetails) || isNull(paymentDetails.paymentNetwork())
-            ? null : paymentDetails.paymentNetwork().value();
+        return isNull(paymentDetails) ? null : paymentDetails.paymentNetwork();
     }
 
     private String endToEndIdOfPaymentDetails() {

@@ -23,7 +23,7 @@ public record PaymentNotificationDataVO(
             throw new ValueObjectRuleException("PaymentNotification Payment must not be null");
         }
 
-        if (NetworkEnum.ACH.equals(payment.network()) && isNull(expectedDate)) {
+        if (payment.standardRail().filter(NetworkEnum.ACH::equals).isPresent() && isNull(expectedDate)) {
             throw new ValueObjectRuleException("PaymentNotification ExpectedDate must not be null when network is ACH");
         }
     }

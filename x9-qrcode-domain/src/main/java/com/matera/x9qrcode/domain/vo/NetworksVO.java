@@ -23,7 +23,6 @@ public record NetworksVO(
     BankPaymentAddressVO fedNow,
     BankPaymentAddressVO ach,
     BankPaymentAddressVO rtp,
-    CryptoWalletPaymentAddressVO solana,
     Map<String, Object> additionalProperties
 ) {
 
@@ -31,7 +30,6 @@ public record NetworksVO(
         if (isNull(fedNow) &&
             isNull(ach) &&
             isNull(rtp) &&
-            isNull(solana) &&
             (isNull(additionalProperties) || additionalProperties.isEmpty())) {
             throw new ValueObjectRuleException("At least one network must be provided.");
         }
@@ -42,11 +40,36 @@ public record NetworksVO(
      * The crypto wallet this QR publishes for {@code network}, or null — including for bank rails,
      * which have no wallet. Exhaustive by construction, so a new rail cannot be forgotten here.
      */
-    public CryptoWalletPaymentAddressVO cryptoAddressFor(NetworkEnum network) {
-        return switch (network) {
-            case SOLANA -> solana;
-            case FEDNOW, RTP, ACH -> null;
-        };
+    /**
+     * The destination address this QR Code publishes for {@code networkName}, or null.
+     *
+     * <p>Looks the network up by NAME rather than by enum, because the set of networks is open:
+     * only the standard's own rails are typed, and everything else — a chain whose owner published
+     * an embedding, Pix, Zelle — travels in {@code additionalProperties} exactly as received.
+     *
+     * <p>The address is read from a {@code walletAddress} member by convention. That convention is
+     * the placeholder for a declared pointer: once a network registry exists, each network states
+     * where its destination lives instead of us assuming.
+     */
+    @SuppressWarnings("unchecked")
+    public String destinationAddressFor(String networkName) {
+        if (isNull(networkName) || isNull(additionalProperties)) {
+            return null;
+        }
+
+        Object entry = additionalProperties.entrySet().stream()
+            .filter(e -> networkName.equalsIgnoreCase(e.getKey()))
+            .map(Map.Entry::getValue)
+            .findFirst()
+            .orElse(null);
+
+        if (!(entry instanceof Map<?, ?> fields)) {
+            return null;
+        }
+
+        Object address = ((Map<String, Object>) fields).get("walletAddress");
+
+        return address instanceof String value ? value : null;
     }
 
     /** The bank address this QR publishes for {@code network}, or null for blockchain rails. */
@@ -55,13 +78,19 @@ public record NetworksVO(
             case FEDNOW -> fedNow;
             case RTP -> rtp;
             case ACH -> ach;
-            case SOLANA -> null;
         };
     }
 
-    /** Whether this QR offers {@code network} at all. */
+    /** Whether this QR Code offers {@code networkName}, whether or not the standard defines it. */
+    public boolean supports(String networkName) {
+        return NetworkEnum.find(networkName)
+            .map(rail -> nonNull(bankAddressFor(rail)))
+            .orElseGet(() -> nonNull(destinationAddressFor(networkName)));
+    }
+
+    /** Whether this QR Code offers one of the standard's own rails. */
     public boolean supports(NetworkEnum network) {
-        return nonNull(cryptoAddressFor(network)) || nonNull(bankAddressFor(network));
+        return nonNull(bankAddressFor(network));
     }
 
 }

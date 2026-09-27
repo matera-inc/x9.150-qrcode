@@ -41,7 +41,6 @@ import com.matera.x9qrcode.infrastructure.generated.dto.PaymentMethodEditableDTO
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentPayloadResponseDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.QRCodeStatusDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.RTPDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.SolanaDTO;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
@@ -263,10 +262,9 @@ public final class RetrieveQRCodePayloadResponseMapper {
     private static NetworksSimpleDTO buildNetworks(NetworksDTO networks) {
         NetworksSimpleDTO networksDTO =
             new NetworksSimpleDTO()
-                .fedNow(buildFedNow(networks.getFedNow()))
-                .ACH(buildACH(networks.getAch()))
-                .RTP(buildRTP(networks.getRtp()))
-                .solana(buildSolana(networks.getSolana()));
+                .fednow(buildFedNow(networks.getFedNow()))
+                .ach(buildACH(networks.getAch()))
+                .rtp(buildRTP(networks.getRtp()));
 
         if (isNull(networks.getAdditionalProperties())) {
             return networksDTO;
@@ -310,13 +308,5 @@ public final class RetrieveQRCodePayloadResponseMapper {
             .accountNumber(bankPaymentAddress.accountNumber())
             .routingNumber(bankPaymentAddress.routingNumber())
             .protectionType(com.matera.x9qrcode.infrastructure.generated.dto.ProtectionTypeEnumDTO.TOKENIZED);
-    }
-
-    private static SolanaDTO buildSolana(CryptoWalletPaymentAddressDTO cryptoWalletPaymentAddress) {
-        if (isNull(cryptoWalletPaymentAddress)) {
-            return null;
-        }
-
-        return new SolanaDTO().walletAddress(cryptoWalletPaymentAddress.walletAddress());
     }
 }

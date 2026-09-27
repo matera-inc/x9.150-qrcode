@@ -84,14 +84,12 @@ public final class PatchQRCodePaymentMethodsMapper {
         PartialInput<BankPaymentAddressDTO> fedNow = networksUpdateDTO.getFedNow();
         PartialInput<BankPaymentAddressDTO> rtp = networksUpdateDTO.getRtp();
         PartialInput<BankPaymentAddressDTO> ach = networksUpdateDTO.getAch();
-        PartialInput<CryptoWalletPaymentAddressDTO> solana = networksUpdateDTO.getSolana();
         PartialInput<Map<String, Object>> additionalProperties = networksUpdateDTO.getAdditionalProperties();
 
         return new NetworksVO(
             fedNow.isPresent() ? buildBankPaymentAddress(fedNow.get()) : networks.fedNow(),
             ach.isPresent() ? buildBankPaymentAddress(ach.get()) : networks.ach(),
             rtp.isPresent() ? buildBankPaymentAddress(rtp.get()) : networks.rtp(),
-            solana.isPresent() ? buildCryptoWalletPaymentAddress(solana.get()) : networks.solana(),
             additionalProperties.isPresent() ? additionalProperties.get() : networks.additionalProperties()
         );
     }

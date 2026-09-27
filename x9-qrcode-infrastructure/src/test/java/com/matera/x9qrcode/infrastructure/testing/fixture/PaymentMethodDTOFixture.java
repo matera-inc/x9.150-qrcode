@@ -48,8 +48,8 @@ public final class PaymentMethodDTOFixture {
 
     public NetworksSimpleDTO networks() {
         return new NetworksSimpleDTO()
-                .fedNow(fedNow())
-                .RTP(rtp());
+                .fednow(fedNow())
+                .rtp(rtp());
     }
 
     public FedNowDTO fedNow() {
