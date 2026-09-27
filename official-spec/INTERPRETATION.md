@@ -273,6 +273,35 @@ which contains `-` and `_` and so would not satisfy this pattern. This build imp
 only (see the README), so the question does not arise yet; it must be revisited if `encrypted` is
 ever implemented.
 
+## I-7 — `alg` is whatever the X9-approved suite allows, so both RSA and EC must verify
+
+**Where:** §9 JWS header table (`alg`), Annex A examples
+
+**What the standard says.** The header table requires `alg` to be *"a value from the X9-approved
+suite (SD-34)"* — a referenced document, not an enumeration in the text. It names no algorithm. Its
+own Annex A examples sign with **`ES256`**.
+
+It also allows the signing chain to arrive three ways: *"jku, x5u or x5c"*, all three permitted.
+
+**What we do.** Verify whatever the payer presents. `alg` is read from the JWS header and the
+verifier is chosen from it — `RS256/384/512` and `PS256/384/512` against an RSA key, `ES256/384/512`
+against an EC key. What this service *signs* with (`PS512`) is a local configuration choice and is
+not imposed on anybody else.
+
+**Why this is not a detail.** It was broken, and the break was invisible. On the `x5c` path the code
+parsed the certificate's key as RSA unconditionally, so an EC payer was refused with *"The public
+key of the X.509 certificate is not RSA"* — while a perfectly good ECDSA branch sat one method away,
+unreachable. The refused payer was the **conformant** one: ES256 is what the standard's own examples
+use, and x5c is one of the three chain mechanisms it permits.
+
+Nothing caught it because every test signed by calling our own signing endpoint, with our own RSA
+demo key. A round trip through one's own implementation cannot detect a disagreement with anybody
+else's — which is the only kind of bug interoperability testing exists to find.
+
+The fixtures under `x9-qrcode-infrastructure/src/test/resources/certificate/` now sign as a third
+party with both key types, issued by a test CA. Their README explains the two PKIX subtleties that
+make that possible.
+
 ---
 
 ## Reporting
