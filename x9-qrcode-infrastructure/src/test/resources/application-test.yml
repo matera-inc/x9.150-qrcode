@@ -4,6 +4,18 @@ spring:
       enabled: false
 
 x9:
+  events:
+    drain:
+      # Effectively off. The drainer is @Scheduled every second in production, and in a test run it
+      # competes with the suite for the ONE lock document: PaymentEventDrainLockTest wipes the
+      # collection and asserts on acquire()/release(), while a tick landing in the same millisecond
+      # takes the lease — or releases it, which sets expiresAt to EPOCH and hands instanceB a lease
+      # the test believes instanceA holds. Either way the assertion fails, intermittently and
+      # nowhere near the code that caused it.
+      #
+      # Nothing in the suite needs the schedule: every test that wants a drain calls drainOnce()
+      # itself, which is also the honest way to test it — the drain happens when the test says so.
+      interval: PT24H
   public-endpoints:
     host: x9-150.example.com
   certificate:
