@@ -159,6 +159,12 @@ public class PaymentNotificationAcceptancePolicy {
                                 PaymentMethodVO method,
                                 OffsetDateTime at) {
         long notified = notification.payment().amount().value();
+
+        if (nonNull(method.editable())) {
+            validateWithinEditableRange(notified, method);
+            return;
+        }
+
         long faceAmount = method.amount().value();
         long adjustedAmount = adjustedAmountFor(qrCode, method, at);
 
@@ -178,6 +184,26 @@ public class PaymentNotificationAcceptancePolicy {
 
         throw new BusinessRuleException("paymentNotification.data.payment.amount",
             "Expected %s %s but the notification carries %d.".formatted(expected, method.currency(), notified));
+    }
+
+    /**
+     * When the payer chooses the amount, the published range is the rule.
+     *
+     * <p>The payload advertises {@code editable.range} precisely so the payer may pick — a donation,
+     * a top-up, an open tab. Demanding the face amount back would refuse every legitimate use of the
+     * feature, so the only question here is whether the chosen figure is inside the range we
+     * published. No adjustment is applied: a discount computed against a fixed bill has no meaning
+     * for an amount the payer sets.
+     */
+    private void validateWithinEditableRange(long notified, PaymentMethodVO method) {
+        long min = method.editable().range().minAmount();
+        long max = method.editable().range().maxAmount();
+
+        if (notified < min || notified > max) {
+            throw new BusinessRuleException("paymentNotification.data.payment.amount",
+                "The %s amount is editable within %d..%d but the notification carries %d."
+                    .formatted(method.currency(), min, max, notified));
+        }
     }
 
     private long adjustedAmountFor(QRCodeEntity qrCode, PaymentMethodVO method, OffsetDateTime at) {
