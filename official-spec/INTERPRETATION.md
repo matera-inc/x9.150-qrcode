@@ -126,6 +126,146 @@ The section heading spells the path `$.paymet.network`. Every other reference in
 including §2.5 directly below it — uses `$.payment.*`. We read it as a typo for `$.payment.network`
 and implement that. Recorded here only so nobody re-derives it from the heading.
 
+## I-5 — `paymentMethods` is an array, whatever the examples show
+
+**Where:** §14 and Table 14 (normative) vs Annex A.2 and A.3 (examples)
+
+**What the standard says.** Both, unfortunately.
+
+§14 is unambiguous: *"Array of Payment Methods objects. At least one entry **SHALL** exist in the
+array."* Every normative JSON path agrees — `$.paymentMethods[].currency`,
+`$.paymentMethods[].networks.fednow.routingNumber`, and 46 others, all carrying the `[]`.
+
+The worked examples in Annex A do not. They write:
+
+```json
+"paymentMethods": {
+  "currency": "USD",
+  "validUntil": "2025-11-30T23:59:59Z",
+  ...
+}
+```
+
+— a bare object. No `[`, no `]`, in either example. An implementer who builds from the examples
+rather than the tables produces a payload that fails against the normative paths, and whose single
+payment method cannot be addressed as `$.paymentMethods[0]` at all.
+
+The same example carries a second defect worth knowing about: one of them sets
+`"currency": "840"`, the ISO 4217 *numeric* code for the dollar — two pages after §14.1 states that
+the field *"**SHALL** adhere to ISO 4217 alphabetic currency codes (non-numeric)"* and that
+*"Numeric codes are not supported in this standard."* The example contradicts the rule it
+illustrates.
+
+**What we do.** Follow the normative text: `paymentMethods` is a JSON array, always, even with a
+single entry. The OpenAPI contract declares it as one, and a bare object is rejected by schema
+validation before it reaches any business rule.
+
+We mention the example defects rather than quietly working around them because an implementer who
+copied them will send us an object and get a schema error that does not, on its face, explain why
+the standard's own example does not work.
+
+**Why an array at all, when this build settles only `USD`?** Because the array's purpose is one
+entry per *currency* (§14.1), not per network — a single entry carries every rail that settles that
+currency. So a USD-only deployment normally has exactly one entry, with up to three rails inside it.
+The array earns its brackets when a second currency becomes payable.
+
+### Correct examples
+
+One currency, one rail — the minimum:
+
+```json
+"paymentMethods": [
+  {
+    "currency": "USD",
+    "validUntil": "2030-12-31T23:59:59Z",
+    "amount": 11845,
+    "networks": {
+      "ach": {
+        "routingNumber": "051000017",
+        "accountNumber": "9876543210",
+        "protectionType": "tokenized"
+      }
+    }
+  }
+]
+```
+
+One currency, all three rails — the shape the Annex A example was reaching for, corrected:
+
+```json
+"paymentMethods": [
+  {
+    "currency": "USD",
+    "validUntil": "2030-12-31T23:59:59Z",
+    "amount": 11845,
+    "networks": {
+      "fednow": {
+        "routingNumber": "121000358",
+        "accountNumber": "12345678987654321",
+        "protectionType": "tokenized"
+      },
+      "rtp": {
+        "routingNumber": "026009593",
+        "accountNumber": "ACME00112233445",
+        "protectionType": "tokenized"
+      },
+      "ach": {
+        "routingNumber": "051000017",
+        "accountNumber": "9876543210",
+        "protectionType": "tokenized"
+      }
+    }
+  }
+]
+```
+
+Note `tokenized` rather than the example's `plaintext`: this build implements the tokenized
+protection approach only, and `protectionType` is mandatory (see the README). The rail keys are
+lower-case, which is also how the standard's own Annex A example writes them — corroborating I-1.
+
+Both blocks above were posted to a running instance while this section was written, and both created
+a QR Code. That is not ceremony: the first draft of the second one did **not** work, and finding out
+why produced I-6.
+
+## I-6 — Bank account numbers are alphanumeric (a bug this document found)
+
+**Where:** Table 2, *Account Number (Bank)*
+
+Running the corrected Annex A example from I-5 against this service failed, on the RTP account number
+`ACME00112233445` — a value the standard itself publishes. Our OpenAPI schema had
+`pattern: ^\d{4,17}$`, digits only.
+
+The standard is explicit, and we were wrong: an Account Number (Bank) *"**SHALL** be a string with a
+minimum of 4 and a maximum of 17 characters **SHALL** consist only of digits (0–9) AND/OR letters
+(A–Z, a–z)"*. Letters are allowed. The pattern is now `^[0-9A-Za-z]{4,17}$`.
+
+This one is recorded not because the standard is ambiguous — it is not — but because of **how it was
+found**. It had survived review, a full test suite and a release, because every fixture we had
+written used a numeric account number. It surfaced the moment an example from the standard was
+*executed* rather than read. Examples in a specification are test cases that nobody has run; running
+them is cheap and finds things.
+
+This was double-checked against the rail that is strictest about it rather than taken from X9.150
+alone. Nacha's ACH Entry Detail Record defines **DFI Account Number as 17 positions, alphanumeric**,
+left-justified and blank-filled — which is plainly where X9.150's maximum of 17 comes from, and it
+permits letters. FedNow and RTP are more permissive still, carrying the account in ISO 20022
+`Othr/Id` (up to 34 characters). So 4–17 alphanumeric is the correct intersection for the three rails
+this build supports.
+
+Most US consumer account numbers are in fact all digits, which is why a digits-only pattern looks
+right and passes every fixture somebody writes from memory. The *field* is not digits-only, and a
+payload is validated against the field.
+
+Nacha also directs that spaces and special characters be omitted from the field, which is why the
+pattern excludes `-`, `_` and space rather than tolerating them.
+
+Routing numbers are unaffected: Table 2 requires exactly 9 digits there, which is what we enforce.
+
+One known gap remains, deliberately. The `encrypted` protection approach yields base64url ciphertext,
+which contains `-` and `_` and so would not satisfy this pattern. This build implements `tokenized`
+only (see the README), so the question does not arise yet; it must be revisited if `encrypted` is
+ever implemented.
+
 ---
 
 ## Reporting
