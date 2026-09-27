@@ -42,15 +42,31 @@ public class PaymentEventDrain {
 
     private final MongoTemplate mongoTemplate;
     private final PaymentEventMongoModelRepository eventRepository;
+    private final PaymentEventDrainLock drainLock;
 
+    /**
+     * The scheduled tick, which drains only if it holds the lease.
+     *
+     * <p>The lease is taken here rather than inside {@link #drainOnce()} so that the mechanism stays
+     * directly callable — tests drive it deterministically instead of waiting for a tick, and they
+     * are not testing leader election when they do.
+     */
     @Scheduled(fixedDelayString = "${x9.events.drain.interval:PT1S}")
     public void drain() {
+        if (!drainLock.acquire()) {
+            // Another instance is draining. Not an error, and not worth logging at info: on a
+            // multi-replica deployment this is the normal outcome for every instance but one.
+            return;
+        }
+
         try {
             drainOnce();
         } catch (Exception e) {
             // Never let a tick's failure kill the scheduler: the next tick retries, and the events
             // are still in their documents until they are safely in the log.
             log.error("Payment event drain failed; will retry on the next tick", e);
+        } finally {
+            drainLock.release();
         }
     }
 

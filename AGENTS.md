@@ -108,6 +108,18 @@ These describe how our software behaves; they're enforced in `openapi.yaml` + th
   retrying a duplicate key can only fail slowly. The advice orders OUTSIDE `@Transactional` so each
   attempt gets a fresh transaction; that ordering is asserted by a test, not assumed.
 
+- **Events leave by pull, and the consumer reconciles**
+  ([ADR-0014](docs/adr/0014-we-transport-and-sequence-the-consumer-reconciles.md)). A post-commit
+  that differs from its pre-commit is **forwarded, not judged** — we compare a claim against an
+  earlier claim, while the consuming system compares against funds that actually arrived, and
+  "9 instead of 10" may be gas, slippage, a tolerated shortfall or fraud. Every event therefore
+  carries its own `amount`; do not hoist that onto a shared parent.
+- **One drainer only** (`PaymentEventDrainLock`). Two would skip events (cursors are stamped before
+  the write, so a later one can become visible first and strand an earlier row behind a consumer's
+  cursor) and relocate them (`append` upserts on event id). The lease enforces it, so `replicaCount`
+  is a capacity choice again. `payment_events` has a **30-day TTL** and is never emptied on
+  acknowledgement — the log belongs to its readers, who may rewind.
+
 ## Build / test / run
 
 ```bash

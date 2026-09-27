@@ -11,6 +11,7 @@ import com.matera.x9qrcode.infrastructure.persistence.mongodb.QRCodeMongoReposit
 import com.matera.x9qrcode.infrastructure.persistence.mongodb.repository.PaymentEventMongoModelRepository;
 import com.matera.x9qrcode.infrastructure.persistence.mongodb.repository.QRCodeMongoModelRepository;
 import com.matera.x9qrcode.infrastructure.service.events.PaymentEventDrain;
+import com.matera.x9qrcode.infrastructure.service.events.PaymentEventDrainLock;
 import com.matera.x9qrcode.infrastructure.service.events.PaymentEventReader;
 
 import lombok.extern.slf4j.Slf4j;
@@ -44,6 +45,16 @@ public class MongoDbConfiguration {
      * that it orders <em>outside</em> Spring's transaction advice — is visible here next to the
      * transaction manager rather than hidden in an annotation on the class.
      */
+    /**
+     * The lease that keeps exactly one instance draining.
+     *
+     * <p>Without it, {@code replicaCount: 1} is correctness rather than capacity — see ADR-0014.
+     */
+    @Bean
+    public PaymentEventDrainLock paymentEventDrainLock(MongoTemplate mongoTemplate) {
+        return new PaymentEventDrainLock(mongoTemplate);
+    }
+
     @Bean
     public TransientTransactionRetry transientTransactionRetry() {
         log.info("Initializing transient transaction retry (max {} attempts).",
@@ -61,7 +72,7 @@ public class MongoDbConfiguration {
     @Bean
     public PaymentEventDrain paymentEventDrain(MongoTemplate mongoTemplate,
                                                PaymentEventMongoModelRepository eventRepository) {
-        return new PaymentEventDrain(mongoTemplate, eventRepository);
+        return new PaymentEventDrain(mongoTemplate, eventRepository, paymentEventDrainLock(mongoTemplate));
     }
 
     @Bean
