@@ -177,12 +177,12 @@ public final class QRCodeEntityValidator {
     private void validatePaymentNotificationNetwork(PaymentNotificationDataVO newPaymentNotification) {
         NetworkEnum network = newPaymentNotification.payment().network();
 
+        // Exhaustive: a rail added to NetworkEnum without a validation path fails to compile.
         switch (network) {
             case FEDNOW, RTP -> validatePaymentNotificationFromInstantPayments(newPaymentNotification);
             case ACH -> validatePaymentNotificationFromACH(newPaymentNotification);
-            case POLYGON, SOLANA, ETHEREUM, BITCOIN -> validatePaymentNotificationFromBlockchain(newPaymentNotification);
-            default ->
-                throw new BusinessRuleException("Unsupported network for payment notification: " + network);
+            case POLYGON, SOLANA, ETHEREUM, BITCOIN, BASE, XRP, ARC ->
+                validatePaymentNotificationFromBlockchain(newPaymentNotification);
         }
     }
 
@@ -260,9 +260,12 @@ public final class QRCodeEntityValidator {
         List<PaymentMethodVO> paymentMethods = this.entity.getPaymentMethods();
         boolean networkFounded = false;
 
+        NetworkEnum notifiedNetwork = newPaymentNotification.payment().network();
+
         for (PaymentMethodVO paymentMethod : paymentMethods) {
-            if (nonNull(paymentMethod.networks().polygon()) || nonNull(paymentMethod.networks().solana())
-                || nonNull(paymentMethod.networks().ethereum()) || nonNull(paymentMethod.networks().bitcoin())) {
+            // The rail actually notified, not merely "some blockchain": a QR offering Solana does not
+            // thereby accept a Bitcoin payment.
+            if (paymentMethod.networks().supports(notifiedNetwork)) {
                 networkFounded = true;
                 break;
             }
@@ -270,7 +273,7 @@ public final class QRCodeEntityValidator {
 
         if (!networkFounded) {
             throw new BusinessRuleException("paymentNotification.data.payment.network",
-                "This QRCode does not support blockchain networks.");
+                "This QRCode does not support the %s network.".formatted(notifiedNetwork.value()));
         }
 
         if (isNull(newPaymentNotification.blockchain())) {
