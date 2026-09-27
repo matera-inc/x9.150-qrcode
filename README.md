@@ -74,6 +74,22 @@ There are three ways to run it:
 3. **Kubernetes** — via the Helm chart under `others/helm/x9-qrcode/`. Keep `replicaCount: 1`
    (see [High Availability](HIGH-AVAILABILITY.md) for the single-active-instance posture).
 
+## See a whole payment happen
+
+To watch an actual payment rather than a single booted service, run two instances against each
+other — one issues a QR Code, the other scans it, announces the payment, pays, and reports it:
+
+```bash
+docker compose up -d mongo mongo-setup     # a replica set for both instances
+mvn -q package -DskipTests
+./others/demo/two-instance-payment-cycle.sh
+```
+
+No Docker for the apps, no proxy and no network: Spring terminates TLS from a throwaway
+certificate the script generates. See [`others/demo/README.md`](others/demo/README.md) — which also
+explains why **two deployments cannot transact over plain HTTP**, and how to satisfy that with
+Spring's own TLS, an nginx in front, or a tunnel.
+
 ## Pull the prebuilt image (Docker Hub)
 
 A multi-architecture image (**linux/amd64 + linux/arm64**) is published on Docker Hub at
@@ -133,6 +149,7 @@ Architecture, standard-alignment, and integration design notes:
 
 - [Running & Testing](RUNNING.md) — first-run guide: prerequisites, host-JVM vs Docker, building the image, smoke test
 - [Endpoints & Local Scan Testing](ENDPOINTS.md) — public/management endpoints, the single-origin URL model, and Cloudflare-tunnel setup for phone-scan testing
+- [Two-Instance Payment Cycle](others/demo/README.md) — a whole payment played between two deployments, why HTTPS is mandatory between them, and three ways to provide it
 - [QR Code State Machine](STATE-MACHINE.md) — lifecycle states and transitions
 - [High Availability](HIGH-AVAILABILITY.md) — MongoDB replica sets, application failover, and license limits
 - [Plan: Non-USD-Pegged Currencies](PLAN-NON-USD-PEGGED-CURRENCIES.md) — request-time FX and per-currency `validUntil` *(proposed)*
