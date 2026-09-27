@@ -12,7 +12,6 @@ import com.matera.x9qrcode.app.dto.AdjustmentUpdateDTO;
 import com.matera.x9qrcode.app.dto.AmountDueUpdateDTO;
 import com.matera.x9qrcode.app.dto.AmountRangeDTO;
 import com.matera.x9qrcode.app.dto.BankPaymentAddressDTO;
-import com.matera.x9qrcode.domain.vo.enumerated.NetworkEnum;
 import com.matera.x9qrcode.app.dto.BillUpdateDTO;
 import com.matera.x9qrcode.app.dto.CryptoWalletPaymentAddressDTO;
 import com.matera.x9qrcode.app.dto.CurrencyEditableUpdateDTO;
@@ -28,7 +27,6 @@ import com.matera.x9qrcode.app.dto.enumerated.FormulaEnumDTO;
 import com.matera.x9qrcode.app.dto.enumerated.PaymentTimingEnumDTO;
 import com.matera.x9qrcode.app.usecase.PartialInput;
 import com.matera.x9qrcode.app.usecase.patchqrcode.PatchQRCodeInput;
-import com.matera.x9qrcode.infrastructure.configuration.property.NetworksProperties;
 import com.matera.x9qrcode.infrastructure.generated.dto.ACHDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.AdjustmentParametersDiscountsInnerDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.AdjustmentParametersLateFeesDTO;
@@ -67,9 +65,7 @@ import static java.util.Objects.isNull;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class PatchQRCodeRequestMapper {
 
-    public static PatchQRCodeInput map(String id,
-                                       PatchPaymentRequestReplacementDTO paymentRequestReplacementDTO,
-                                       NetworksProperties networkNaming) {
+    public static PatchQRCodeInput map(String id, PatchPaymentRequestReplacementDTO paymentRequestReplacementDTO) {
         JsonNullable<String> locationId = paymentRequestReplacementDTO.getLocationId();
         JsonNullable<OffsetDateTime> validUntil = paymentRequestReplacementDTO.getValidUntil();
         JsonNullable<PatchBillUpdateDTO> bill = paymentRequestReplacementDTO.getBill();
@@ -83,7 +79,7 @@ public final class PatchQRCodeRequestMapper {
             bill.isPresent() ? buildBillUpdateDTO(bill.get()) : PartialInput.absent(),
             unstructured.isPresent() ? PartialInput.of(unstructured.get()) : PartialInput.absent(),
             additionalInformation.isPresent() ? buildAdditionalInformationMap(additionalInformation.get()) : PartialInput.absent(),
-            buildPaymentMethodDTOList(paymentRequestReplacementDTO.getPaymentMethods(), networkNaming)
+            buildPaymentMethodDTOList(paymentRequestReplacementDTO.getPaymentMethods())
         );
     }
 
@@ -116,8 +112,7 @@ public final class PatchQRCodeRequestMapper {
         return PartialInput.of(additionalInformationMap);
     }
 
-    private static List<PaymentMethodUpdateDTO> buildPaymentMethodDTOList(
-        List<PatchPaymentMethodDTO> patchPaymentMethodDTOList, NetworksProperties networkNaming) {
+    private static List<PaymentMethodUpdateDTO> buildPaymentMethodDTOList(List<PatchPaymentMethodDTO> patchPaymentMethodDTOList) {
         return patchPaymentMethodDTOList.stream()
             .map(patchPaymentMethodDTO -> {
                 JsonNullable<PatchEditableDTO> editable = patchPaymentMethodDTO.getEditable();
@@ -127,7 +122,7 @@ public final class PatchQRCodeRequestMapper {
                     patchPaymentMethodDTO.getValidUntil(),
                     patchPaymentMethodDTO.getAmount(),
                     editable.isPresent() ? buildCurrencyEditableUpdateDTO(editable.get()) : PartialInput.absent(),
-                    buildNetworksUpdateDTO(patchPaymentMethodDTO.getNetworks(), networkNaming)
+                    buildNetworksUpdateDTO(patchPaymentMethodDTO.getNetworks())
                 );
             }).toList();
     }
@@ -259,70 +254,20 @@ public final class PatchQRCodeRequestMapper {
         return PartialInput.of(new CurrencyEditableUpdateDTO(PartialInput.of(amountRangeDTO)));
     }
 
-    /**
-     * A patch accepts the rails under any spelling, exactly as a create does.
-     *
-     * <p>The generated properties only capture the canonical lower-case keys, so a rail sent as
-     * {@code FedNow} lands in {@code additionalProperties}. It is lifted out first — otherwise the
-     * rejection below would refuse the service's own rail for being written differently.
-     */
-    private static NetworksUpdateDTO buildNetworksUpdateDTO(PatchNetworksSimpleDTO patchNetworksSimpleDTO,
-                                                            NetworksProperties networkNaming) {
-        Map<String, Object> others = StandardRailKeys.mutableCopy(patchNetworksSimpleDTO.getAdditionalProperties());
+    /** A patch may not introduce a rail this service does not support, any more than a create may. */
+    private static NetworksUpdateDTO buildNetworksUpdateDTO(PatchNetworksSimpleDTO patchNetworksSimpleDTO) {
+        JsonNullable<FedNowDTO> fedNow = patchNetworksSimpleDTO.getFednow();
+        JsonNullable<RTPDTO> rtp = patchNetworksSimpleDTO.getRtp();
+        JsonNullable<ACHDTO> ach = patchNetworksSimpleDTO.getAch();
 
-        PartialInput<BankPaymentAddressDTO> fedNow =
-            rail(patchNetworksSimpleDTO.getFednow(), NetworkEnum.FEDNOW.value(), networkNaming, others);
-        PartialInput<BankPaymentAddressDTO> rtp =
-            rail(patchNetworksSimpleDTO.getRtp(), NetworkEnum.RTP.value(), networkNaming, others);
-        PartialInput<BankPaymentAddressDTO> ach =
-            rail(patchNetworksSimpleDTO.getAch(), NetworkEnum.ACH.value(), networkNaming, others);
-
-        StandardRailKeys.rejectUnsupported(others);
+        StandardRailKeys.rejectUnsupported(patchNetworksSimpleDTO.getAdditionalProperties());
 
         return NetworksUpdateDTO.builder()
-            .fedNow(fedNow)
-            .rtp(rtp)
-            .ach(ach)
-            .additionalProperties(PartialInput.of(others))
+            .fedNow(fedNow.isPresent() ? buildBankPaymentAddressDTO(fedNow.get()) : PartialInput.absent())
+            .rtp(rtp.isPresent() ? buildBankPaymentAddressDTO(rtp.get()) : PartialInput.absent())
+            .ach(ach.isPresent() ? buildBankPaymentAddressDTO(ach.get()) : PartialInput.absent())
+            .additionalProperties(PartialInput.of(patchNetworksSimpleDTO.getAdditionalProperties()))
             .build();
-    }
-
-    /**
-     * One rail's patch value, under the one spelling this deployment accepts. Absent from the
-     * request means "no change"; any other spelling is refused, exactly as on create.
-     */
-    private static PartialInput<BankPaymentAddressDTO> rail(JsonNullable<?> typed,
-                                                            String network,
-                                                            NetworksProperties networkNaming,
-                                                            Map<String, Object> others) {
-        String canonicalKey = NetworksProperties.canonical(network);
-        String expectedKey = networkNaming.keyFor(network);
-
-        Map<String, Object> variants = StandardRailKeys.takeAllCaseInsensitively(others, canonicalKey);
-        Object underExpectedKey = variants.remove(expectedKey);
-
-        if (typed.isPresent() && !canonicalKey.equals(expectedKey)) {
-            throw StandardRailKeys.wrongSpelling(canonicalKey, expectedKey);
-        }
-
-        if (!variants.isEmpty()) {
-            throw StandardRailKeys.wrongSpelling(variants.keySet().iterator().next(), expectedKey);
-        }
-
-        if (canonicalKey.equals(expectedKey)) {
-            return typed.isPresent() ? buildBankPaymentAddressDTO(typed.get()) : PartialInput.absent();
-        }
-
-        if (isNull(underExpectedKey)) {
-            return PartialInput.absent();
-        }
-
-        return PartialInput.of(StandardRailKeys.toBankAddress(castToMap(underExpectedKey)));
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> castToMap(Object value) {
-        return (Map<String, Object>) value;
     }
 
     private static PartialInput<BankPaymentAddressDTO> buildBankPaymentAddressDTO(Object bankPaymentAddress) {

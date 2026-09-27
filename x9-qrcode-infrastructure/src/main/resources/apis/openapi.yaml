@@ -1136,7 +1136,7 @@ components:
         **Key casing.** The normative JSON paths are lowercase, and that is what this service emits.
         Input is accepted in any case (`fednow`, `FedNow`, `FEDNOW`), because the standard is not
         self-consistent: §2.4 calls the notification's network value "all-uppercase" and then lists
-        `FedNow`, which is not — but that wording governs the notification's `$.payment.network` VALUE, not this object key, which §14.5 spells `fednow` throughout. This API accepts this key in exactly the spelling it emits (configurable via `x9.networks.emitted-keys`); any other casing is refused. A payment notification, coming from a third party, is matched case-insensitively instead.
+        `FedNow`, which is not — but that wording governs the notification's `$.payment.network` VALUE, a different field. This object key is spelled `fednow` throughout §14.5, with no contradiction, and that is the only spelling this API uses in either direction.
       properties:
         fednow:
           $ref: "#/components/schemas/FedNow"
