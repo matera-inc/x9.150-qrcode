@@ -1504,14 +1504,17 @@ components:
         - FedNow
         - RTP
         - ACH
-        - Polygon
         - Solana
-        - Ethereum
-        - Bitcoin
-        - Base
-        - XRP
-        - Arc
-      description: "Payment method used for payment. Mandatory if status is Paid."
+      description: |-
+        The rail a payment used. Mandatory when the status is PAID.
+
+        **Closed by design.** These are the rails X9.150 interprets — the US bank rails from the
+        standard, plus Solana, the only blockchain whose owner has published how it embeds
+        (ADR-0010). A payment method on any other network can be *advertised* on a QR Code, carried
+        verbatim in the networks object's `additionalProperties` with no configuration whatsoever,
+        but it cannot appear here: a notification we could not validate is worse than one we decline
+        to accept, because we do not know that rail's address format or its settlement semantics.
+        Such a rail reconciles bilaterally between the PSPs, as FedNow and RTP already do.
       example: "FedNow"
     Name:
       type: string
