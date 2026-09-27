@@ -33,6 +33,7 @@ the history of why we changed our minds — the part that is usually lost.
 | [0008](0008-status-update-is-the-iso20022-entry-point.md) | **Status-update is the rail-agnostic entry point** (pacs.008); X9.150 does not parse ISO 20022 | Accepted |
 | [0009](0009-tenant-agnostic-single-system.md) | **X9.150 is tenant-agnostic** — a QR Code exists on its own; no `tenantId`, no filter, one system per deployment | Accepted |
 | [0010](0010-networks-are-interpreted-only-once-their-authority-publishes.md) | **A network is interpreted only once its authority publishes** how it embeds in X9.150 — Solana alone; every other chain is carried uninterpreted | Accepted |
+| [0011](0011-store-the-quote-rather-than-recalculate-it.md) | **Store the quote we presented**, uniformly, rather than recalculating it — FX forces a store, so one rule beats two | Accepted |
 
 ## Writing a new one
 

@@ -24,6 +24,8 @@ docs (`STATE-MACHINE.md`, `ENDPOINTS.md`, a new `EVENTS.md`, `openapi.yaml`).
 | Configurable CA allowlist | [ADR-0007](docs/adr/0007-configurable-ca-allowlist.md) |
 | Status-update as the ISO 20022 (pacs.008) entry point | [ADR-0008](docs/adr/0008-status-update-is-the-iso20022-entry-point.md) |
 | Tenant-agnostic; one system per deployment | [ADR-0009](docs/adr/0009-tenant-agnostic-single-system.md) |
+| A network is interpreted only once its owner publishes | [ADR-0010](docs/adr/0010-networks-are-interpreted-only-once-their-authority-publishes.md) |
+| Store the presented quote rather than recalculating it | [ADR-0011](docs/adr/0011-store-the-quote-rather-than-recalculate-it.md) |
 
 Where this plan and an ADR disagree, **the ADR wins** — it is the accepted decision; the plan is how we
 get there. Open questions (§12) are decisions **not yet made**, and each becomes an ADR when it is.
