@@ -146,6 +146,7 @@ public class QRCodeEntity {
         );
 
         qrCodeEntity.qrCodeEntityValidator.validateIfPaymentMethodsAreExpired();
+        qrCodeEntity.qrCodeEntityValidator.validateCreationDates();
 
         return qrCodeEntity;
     }

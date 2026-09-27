@@ -130,21 +130,29 @@ public class PaymentNotificationAcceptancePolicy {
     }
 
     /**
-     * The notified amount must be an amount this QR Code could legitimately have quoted.
+     * The notified amount must be an amount this QR Code could legitimately have quoted — and must
+     * not be an underpayment.
      *
-     * <p>That is deliberately a set, not a single figure. A payment method carries a face amount,
-     * but the payload applies the bill's adjustment when the payer fetches it — so a payer quoted
-     * during a discount window owes less than the face amount, and a payer quoted after a late fee
-     * accrued owes more. Both are correct payments for the same QR Code.
+     * <p>A payment method carries a face amount, but the payload applies the bill's adjustment when
+     * the payer fetches it, and the adjustment moves with time: a discount window closes, a late fee
+     * accrues. Each fetch can therefore quote a different figure from the same QR Code, which is why
+     * the accepted set is not a single number.
      *
-     * <p>Comparing against the face amount alone would refuse a payer who correctly paid a
-     * discounted price, which is the worst failure available here: the payer did everything right
-     * and the money is already committed on their side. Comparing against the adjusted amount alone
-     * would refuse a payer who fetched before the adjustment applied. So both are accepted, and
-     * anything else — the genuinely wrong amount this rule exists to catch — is refused.
+     * <p>Two amounts are accepted:
+     * <ul>
+     *   <li>the <b>currently adjusted</b> amount — what a payer fetching right now would be quoted;</li>
+     *   <li>the <b>face</b> amount, but only when it is not less than the adjusted one.</li>
+     * </ul>
      *
-     * <p>Tightening this to a single expected figure needs the payer's {@code dateForPayment} to be
-     * carried on the notification so the quote can be reproduced exactly. It is not, today.
+     * <p>That asymmetry is the point. When a discount applies the adjusted amount is lower, so paying
+     * face is an overpayment and harmless to accept — and refusing it would punish a payer who
+     * fetched before the discount applied. When a <b>late fee</b> applies the adjusted amount is
+     * higher, so accepting face would be accepting less than is owed; a stale quote is not a licence
+     * to underpay, and the payer's remedy is to re-fetch, which is what the standard expects of them
+     * once an adjustment window has moved.
+     *
+     * <p>Narrowing this to a single expected figure needs the payer's {@code dateForPayment} on the
+     * notification so the original quote can be reproduced exactly. The contract does not carry it.
      */
     private void validateAmount(QRCodeEntity qrCode,
                                 PaymentNotificationDataVO notification,
@@ -154,13 +162,19 @@ public class PaymentNotificationAcceptancePolicy {
         long faceAmount = method.amount().value();
         long adjustedAmount = adjustedAmountFor(qrCode, method, at);
 
-        if (notified == faceAmount || notified == adjustedAmount) {
+        if (notified == adjustedAmount) {
+            return;
+        }
+
+        if (notified == faceAmount && faceAmount >= adjustedAmount) {
             return;
         }
 
         String expected = faceAmount == adjustedAmount
             ? String.valueOf(faceAmount)
-            : "%d (face) or %d (adjusted)".formatted(faceAmount, adjustedAmount);
+            : (faceAmount > adjustedAmount
+                ? "%d (adjusted) or %d (face)".formatted(adjustedAmount, faceAmount)
+                : "%d (adjusted, including the late fee)".formatted(adjustedAmount));
 
         throw new BusinessRuleException("paymentNotification.data.payment.amount",
             "Expected %s %s but the notification carries %d.".formatted(expected, method.currency(), notified));

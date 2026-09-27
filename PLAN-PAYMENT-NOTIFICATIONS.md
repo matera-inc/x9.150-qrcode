@@ -343,16 +343,24 @@ event in the outbox, no lock taken.
 
 ##### Two questions this raises
 
-- **Q19 — Expiry is refused, but by accident rather than by design.** *(Sharpened while implementing:
-  an expired QR Code cannot be **restored** at all.* `ValidUntilVO` rejects a past date in its
-  constructor, so the entity refuses to exist before any policy runs. The payment is correctly
-  refused — verified by test — but the caller sees a field-validation `400` reading *"ValidUntil must
-  not be less than the current date"* rather than a purposeful "this QR Code expired". Three
-  consequences: the acceptance policy's own expiry check is unreachable for the QR-level case, every
-  other operation on an expired QR fails the same opaque way, and the diagnostic is poor for a payer
-  PSP debugging a rejection. **Recommendation: let an expired QR Code restore, and refuse it at the
-  policy with a distinct reason** — a value object that refuses to represent historical data makes
-  the past unreadable, which is the wrong trade for an audit-bearing record.)*
+- **Q19 — ~~Expiry refused by accident~~ — FIXED, and it was systemic.** Not one value object but
+  **five** enforced "must be in the future" as a *construction* invariant: `ValidUntilVO`,
+  `InvoiceVO` (both `dueDate` and `date`), `OrderVO`, and `BillVO`'s discount target date. A
+  constructor also runs on **restore**, so a QR Code became unreadable the moment any of its own
+  windows moved — and a payment QR Code is precisely the kind of record whose windows are meant to
+  move. The consequences were worse than a poor error message:
+  - **Late fees were unreachable dead code.** `FixedDiscountLateFeeLinearInterestFormulaService`
+    computes them, but a QR Code could not be loaded once past its due date, so the branch could
+    never execute in production.
+  - **Any QR Code carrying an invoice died at midnight UTC**, because `invoice.date` became "before
+    today".
+  - A payment after a discount window closed failed with *"Bill discount target date … must be after
+    the current date"* — a creation rule surfacing as a payment refusal.
+
+  Fixed by moving all of them to `QRCodeEntityValidator.validateCreationDates()`, called only from
+  `create()` — following the precedent already set by `validateIfPaymentMethodsAreExpired`. Creating
+  something already in the past is refused exactly as before; reading something that has since aged
+  now works, and the acceptance policy gives the real reason.
 - **Q19a — What status, and is it distinguishable from unknown?** A QR past `validUntil`
   could reasonably be `409` (conflict with current state, consistent with the other refusals) or `410
   Gone`. But there is a sharper problem underneath: **the TTL index deletes the document 30 seconds

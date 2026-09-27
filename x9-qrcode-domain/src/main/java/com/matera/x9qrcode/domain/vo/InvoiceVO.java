@@ -7,7 +7,6 @@
 package com.matera.x9qrcode.domain.vo;
 
 import com.matera.x9qrcode.domain.exception.ValueObjectRuleException;
-import com.matera.x9qrcode.domain.utils.DateTimeUtils;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -41,14 +40,6 @@ public class InvoiceVO {
 
         if (dueDate.toLocalDate().isBefore(date)) {
             throw new ValueObjectRuleException("Invoice dueDate must be after or equal to creation date.");
-        }
-
-        if (dueDate.isBefore(DateTimeUtils.nowUTC())) {
-            throw new ValueObjectRuleException("Invoice dueDate must be after or equal to actual date.");
-        }
-
-        if (date.isBefore(DateTimeUtils.nowUTC().toLocalDate())) {
-            throw new ValueObjectRuleException("Invoice creation date must be after or equal to actual date.");
         }
 
         String value = this.number.value();

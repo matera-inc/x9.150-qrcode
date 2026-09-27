@@ -7,7 +7,6 @@
 package com.matera.x9qrcode.domain.vo;
 
 import com.matera.x9qrcode.domain.exception.ValueObjectRuleException;
-import com.matera.x9qrcode.domain.utils.DateTimeUtils;
 
 import java.time.LocalDate;
 
@@ -20,9 +19,6 @@ public class OrderVO {
         this.number = number;
         this.date = date;
 
-        if (date.isBefore(DateTimeUtils.nowUTC().toLocalDate())) {
-            throw new ValueObjectRuleException("Order date must be after or equal to actual date.");
-        }
     }
 
     public String number() {

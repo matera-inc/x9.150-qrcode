@@ -11,6 +11,7 @@ import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 import com.matera.x9qrcode.domain.utils.DateTimeUtils;
 import com.matera.x9qrcode.domain.vo.BillVO;
 import com.matera.x9qrcode.domain.vo.BlockchainVO;
+import com.matera.x9qrcode.domain.vo.DiscountVO;
 import com.matera.x9qrcode.domain.vo.InvoiceVO;
 import com.matera.x9qrcode.domain.vo.PaymentMethodVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationDataVO;
@@ -66,6 +67,67 @@ public final class QRCodeEntityValidator {
 
             if (paymentMethod.validUntil().isBefore(DateTimeUtils.nowUTC())) {
                 throw new BusinessRuleException("paymentMethods[%d].validUntil".formatted(i), "must be after or equal to actual date.");
+            }
+        });
+    }
+
+    /**
+     * The "must be in the future" rules, applied only when a QR Code is CREATED.
+     *
+     * <p>These used to live in the value-object constructors, which also run on restore — so a QR
+     * Code became unreadable the moment any of its own windows moved. A payment QR Code is exactly
+     * the kind of record whose windows are meant to move: a discount window closes, a due date
+     * passes and a late fee starts accruing. Enforcing the rules on read made those states
+     * unreachable, which quietly killed the entire adjustment feature: the QR Code stopped being
+     * loadable at precisely the moment its amount was supposed to change.
+     *
+     * <p>Creating something already in the past is still refused, exactly as before.
+     */
+    public void validateCreationDates() {
+        OffsetDateTime now = DateTimeUtils.nowUTC();
+
+        if (this.entity.getValidUntil().isBefore(now)) {
+            throw new BusinessRuleException("validUntil", "must not be less than the current date.");
+        }
+
+        BillVO bill = this.entity.getBill();
+        InvoiceVO invoice = bill.invoice();
+
+        if (nonNull(invoice)) {
+            if (invoice.dueDate().isBefore(now)) {
+                throw new BusinessRuleException("bill.invoice.dueDate", "must be after or equal to actual date.");
+            }
+
+            if (invoice.date().isBefore(now.toLocalDate())) {
+                throw new BusinessRuleException("bill.invoice.date", "must be after or equal to actual date.");
+            }
+
+            validateDiscountTargetDates(bill, invoice, now);
+        }
+
+        if (nonNull(bill.order()) && bill.order().date().isBefore(now.toLocalDate())) {
+            throw new BusinessRuleException("bill.order.date", "must be after or equal to actual date.");
+        }
+    }
+
+    private void validateDiscountTargetDates(BillVO bill, InvoiceVO invoice, OffsetDateTime now) {
+        if (isNull(bill.amountDue().adjustment()) || isNull(bill.amountDue().adjustment().parameters())) {
+            return;
+        }
+
+        List<DiscountVO> discounts = bill.amountDue().adjustment().parameters().discounts();
+
+        if (isNull(discounts)) {
+            return;
+        }
+
+        IntStream.range(0, discounts.size()).forEach(index -> {
+            OffsetDateTime targetDate = invoice.dueDate().minusDays(discounts.get(index).daysBefore());
+
+            if (targetDate.isBefore(now)) {
+                throw new BusinessRuleException(
+                    "bill.amountDue.adjustments.discounts[%d]".formatted(index),
+                    "target date must be after the current date.");
             }
         });
     }
