@@ -35,6 +35,8 @@ import com.matera.x9qrcode.domain.vo.enumerated.NotificationKindEnum;
 import com.matera.x9qrcode.domain.vo.enumerated.PaymentTimingEnum;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -113,10 +115,14 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
     }
 
     private static PaymentNotificationDataVO notificationOf(long amount) {
+        return notificationOf(amount, "USDC");
+    }
+
+    private static PaymentNotificationDataVO notificationOf(long amount, String currency) {
         CryptoWalletPaymentAddressVO wallet = new CryptoWalletPaymentAddressVO(WALLET);
 
         return new PaymentNotificationDataVO(
-            new PaymentNotificationPaymentVO(new AmountVO(amount), null, "USDC", "solana", null),
+            new PaymentNotificationPaymentVO(new AmountVO(amount), null, currency, "solana", null),
             null, null,
             new BlockchainVO(ActionEnum.PAYMENT_INITIATED, wallet, wallet));
     }
@@ -201,6 +207,31 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
             () -> policy.accept(qrCode(), notificationOf(FACE + LATE_FEE), afterTheQRCodeExpired));
 
         assertTrue(exception.getMessage().contains("expired"), exception.getMessage());
+    }
+
+    // ------------------------------------------------------- what a third-party payer may send
+
+    /**
+     * A payer echoing the currency in another case is still paying the right currency.
+     *
+     * <p>The QR Code's own {@code USDC} was held to one spelling when the biller created it —
+     * that is our API, and we control it. What a third-party payer echoes back is not ours to
+     * police, and the fields §2.4 shapes are read the same way the rail is: leniently.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"USDC", "usdc", "Usdc", "uSdC"})
+    void aNotifiedCurrencyMatchesWhateverTheCase(String notifiedCurrency) {
+        assertDoesNotThrow(
+            () -> policy.accept(qrCode(), notificationOf(FACE - DISCOUNT, notifiedCurrency), NOW));
+    }
+
+    /** Leniency is about spelling, not substance: EUR is still not USDC. */
+    @Test
+    void aCurrencyThisQRCodeDoesNotOfferIsStillRefused() {
+        BusinessRuleException thrown = assertThrows(BusinessRuleException.class,
+            () -> policy.accept(qrCode(), notificationOf(FACE - DISCOUNT, "EUR"), NOW));
+
+        assertTrue(thrown.getMessage().contains("EUR"), thrown.getMessage());
     }
 
 }

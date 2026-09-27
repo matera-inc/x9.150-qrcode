@@ -55,20 +55,35 @@ class NetworksVORailLookupTest extends AbstractTest {
     }
 
     /**
-     * {@link NetworkEnum} carries the §2.4 spellings — the values that appear in a payment
-     * notification's {@code network} field — and resolves them exactly.
+     * The §2.4 {@code network} value resolves whatever its case.
      *
-     * <p>Note this is <em>not</em> the spelling of the {@code networks} object key, which §14.5
-     * gives as lower-case {@code fednow}. Whether an inbound notification should resolve leniently
-     * across cases is a question about
-     * §2.4's self-contradiction, and it is answered with the payment-notification work rather than
-     * here.
+     * <p>§2.4 introduces its list as "exact, all-uppercase values" and then gives {@code FedNow},
+     * so an implementer reading it can reasonably send {@code FEDNOW} or {@code FedNow}. That value
+     * only ever reaches us from outside — a payer's notification, a settlement system's status
+     * update — and refusing a payment over the case of a string we can resolve unambiguously would
+     * be indefensible.
+     *
+     * <p>This is <em>not</em> the {@code networks} object key, which §14.5 spells {@code fednow}
+     * throughout and which the OpenAPI contract pins.
      */
     @ParameterizedTest
+    @ValueSource(strings = {"FedNow", "fednow", "FEDNOW", "fedNow", "fEdNoW"})
+    void theNotificationNetworkValueResolvesWhateverTheCase(String spelling) {
+        assertEquals(NetworkEnum.FEDNOW, NetworkEnum.fromValue(spelling));
+        assertTrue(NetworkEnum.find(spelling).isPresent());
+    }
+
+    @ParameterizedTest
     @EnumSource(NetworkEnum.class)
-    void aStandardRailResolvesFromItsOwnValue(NetworkEnum rail) {
+    void everyRailResolvesFromItsOwnValue(NetworkEnum rail) {
         assertEquals(rail, NetworkEnum.fromValue(rail.value()));
-        assertTrue(NetworkEnum.find(rail.value()).isPresent());
+    }
+
+    /** A QR Code offering a rail still offers it when the payer names it differently. */
+    @ParameterizedTest
+    @ValueSource(strings = {"ACH", "ach", "Ach"})
+    void supportsIsCaseInsensitiveForTheNotifiedRail(String spelling) {
+        assertTrue(onlyAch().supports(spelling), spelling);
     }
 
     /** Not an error: an unrecognised name is a network we do not interpret, not a malformed one. */

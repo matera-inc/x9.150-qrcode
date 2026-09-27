@@ -52,9 +52,20 @@ contract already declares the property as `fednow`, so a generated client is cor
 only a hand-rolled one can get this wrong, and it should be told immediately rather than left to
 drift.
 
-This says nothing about what we accept from a **third-party payer**, whose implementation is not ours
-to correct. That is a separate boundary with separate reasoning, and it is handled with the
-notification work.
+**What we do with `$.payment.network`.** The opposite, and for the opposite reason.
+
+That value reaches us only from **outside**: a payer's notification, a settlement system's status
+update. Their implementations are not ours to correct, their reading of §2.4 may legitimately differ
+from ours, and refusing a payment over the case of a string we can resolve unambiguously would be
+indefensible — the payer has already moved, or is about to. So it is matched **case-insensitively**,
+as is the currency on the same message.
+
+The value is then stored and echoed back **verbatim**. A notification is a record of what somebody
+claimed; normalising it would be rewriting their words, and the claim is what a dispute would later
+turn on.
+
+**The two rules are not in tension — they follow from the same question:** whose implementation is
+it? Ours, and the contract binds it. Someone else's, and we meet them where they are.
 
 ## I-2 — We interpret three networks, and refuse the rest by name
 

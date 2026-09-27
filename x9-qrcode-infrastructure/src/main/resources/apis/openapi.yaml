@@ -1507,9 +1507,17 @@ components:
         the standard. Any other name is accepted and matched against whatever that QR Code published
         in its `networks` object, which is carried verbatim.
 
-        **Case.** The standard is not self-consistent: §14.5's normative JSON paths are lowercase
-        (`networks.fednow`) while this section calls its values "all-uppercase" and then lists
-        `FedNow`. Input is therefore accepted in any case; output uses the configured form.
+        **Case — matched case-insensitively.** §2.4 introduces this list as "exact, all-uppercase
+        values" and then gives `FedNow`, which is not, so an implementer reading it can reasonably
+        send `ACH`, `ach` or `Ach` and all three are defensible. This value reaches the service only
+        from outside — a payer's notification, a settlement system's status update — and refusing a
+        payment over the case of a string that resolves unambiguously would be indefensible. The
+        value is stored and echoed back **verbatim**: a notification records what somebody claimed,
+        and normalising it would rewrite their words.
+
+        This is a different field from the `networks` object *keys*, which §14.5 spells `fednow` /
+        `rtp` / `ach` throughout with no contradiction, and which this API accepts in that spelling
+        only.
       example: "FedNow"
     Name:
       type: string
