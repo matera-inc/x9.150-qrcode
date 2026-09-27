@@ -32,6 +32,41 @@ Please give us a reasonable window to remediate before any public disclosure.
   responsibility (API gateway, mTLS, network policy). "The management endpoints are reachable
   without auth" is expected behavior, not a vulnerability — see the README.
 
+## Known advisories we carry deliberately
+
+### GHSA-jgj7-c8vj-w563 / CVE-2026-9370 — jasypt-spring-boot (low)
+
+**Status: accepted, because the affected code is not on our path.** Dependabot alert #1 is dismissed
+as `not_used`.
+
+The flaw is a predictable salt in `SimpleGCMConfig.getSecretKeySaltGenerator`, reached only through
+jasypt's **GCM** encryptor. `StringEncryptorBuilder` selects it if and only if one of three
+properties is non-null:
+
+```java
+private boolean isGCMConfig() {
+    return configProps.getGcmSecretKeyString()   != null
+        || configProps.getGcmSecretKeyLocation() != null
+        || configProps.getGcmSecretKeyPassword() != null;
+}
+```
+
+We set none of them. `application.yml` configures `jasypt.encryptor.algorithm:
+PBEWithHmacSHA512AndAES_256`, so the builder takes the PBE branch and `SimpleGCMConfig` is never
+constructed.
+
+Upgrading is not an option and is not the remedy: the advisory covers `>= 3.0.0, <= 4.0.4`, **4.0.4
+is the newest published release**, and no fixed version exists. Removing the dependency is also not
+free — encrypted `ENC(...)` values are in live use in `secrets/application-secrets.yml` and the Helm
+chart requires `secrets.configEncryption.password`.
+
+`JasyptStaysOffTheGcmPathTest` asserts the three properties stay unset and the PBE algorithm stays
+configured, so the assumption behind the dismissal cannot rot silently.
+
+> **If you deploy with any `JASYPT_ENCRYPTOR_GCMSECRETKEY*` environment variable set, this analysis
+> no longer applies to you.** You would be on the affected code, and the dismissal should be
+> reopened.
+
 ## Supported versions
 
 The project is pre-release; security fixes are applied to `main`.
