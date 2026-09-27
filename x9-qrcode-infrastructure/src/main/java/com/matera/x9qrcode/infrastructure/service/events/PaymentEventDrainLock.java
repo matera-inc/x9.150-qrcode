@@ -97,12 +97,17 @@ public class PaymentEventDrainLock {
     /**
      * Ends the lease early so another instance need not wait it out. Best-effort: if this fails, or
      * the instance dies first, the lease simply expires.
+     *
+     * <p>Expired to {@link Instant#EPOCH} rather than to "now". {@link #acquire()} tests
+     * {@code expiresAt < now}, so releasing to the current instant leaves the lease unavailable to
+     * anyone asking within the same clock tick — a release that does not release, on a machine fast
+     * enough or a clock coarse enough. CI found that; a laptop did not.
      */
     public void release() {
         try {
             mongoTemplate.updateFirst(
                 Query.query(Criteria.where("_id").is(LOCK_ID).and("owner").is(owner)),
-                new Update().set("expiresAt", Instant.now()),
+                new Update().set("expiresAt", Instant.EPOCH),
                 Document.class,
                 COLLECTION);
         } catch (Exception e) {
