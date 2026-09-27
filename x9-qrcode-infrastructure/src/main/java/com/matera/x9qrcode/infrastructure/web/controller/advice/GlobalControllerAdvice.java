@@ -7,6 +7,7 @@
 package com.matera.x9qrcode.infrastructure.web.controller.advice;
 
 import com.matera.x9qrcode.app.exception.EntityNotFoundException;
+import com.matera.x9qrcode.app.exception.InvalidSignatureException;
 import com.matera.x9qrcode.app.exception.ServiceException;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 import com.matera.x9qrcode.domain.exception.QRCodeStatusConflictException;
@@ -29,6 +30,7 @@ import java.util.stream.Collectors;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.BUSINESS_RULE;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.CONSTRAINT_VALIDATION;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.HTTP_MESSAGE_NOT_READABLE;
+import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.INVALID_SIGNATURE;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.INVALID_HTTP_HEADER;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.METHOD_ARGUMENT_NOT_VALID;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.RESOURCE_NOT_FOUND;
@@ -101,6 +103,20 @@ public class GlobalControllerAdvice {
         problemDetail.setType(METHOD_ARGUMENT_NOT_VALID.uriType());
         problemDetail.setDetail(METHOD_ARGUMENT_NOT_VALID.description());
         problemDetail.setProperty(VIOLATIONS_PROPERTY, INVALID_PROPERTY_VIOLATION.formatted(ex.getPropertyName()));
+
+        return problemDetail;
+    }
+
+    @ExceptionHandler(InvalidSignatureException.class)
+    public ProblemDetail handleInvalidSignatureException(InvalidSignatureException ex) {
+        // Deliberately does not echo the exception message: the caller is unauthenticated and the
+        // detail could describe our verification internals. The reason is in the log, not the body.
+        log.warn("Rejected a request whose JWS did not verify: {}", ex.getMessage());
+
+        ProblemDetail problemDetail = ProblemDetail.forStatus(INVALID_SIGNATURE.status());
+        problemDetail.setTitle(INVALID_SIGNATURE.title());
+        problemDetail.setType(INVALID_SIGNATURE.uriType());
+        problemDetail.setDetail(INVALID_SIGNATURE.description());
 
         return problemDetail;
     }

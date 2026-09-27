@@ -346,6 +346,15 @@ paths:
           description: "Notification received and validated"
         "400":
           $ref: "#/components/responses/BadRequestErrorResponse"
+        "401":
+          description: |-
+            The JWS signature could not be verified, so the notification was **not processed** — the
+            payload was never parsed and no QR Code was read or written. Distinct from `400`, which
+            means the request was authentic but its content failed a rule.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaseError"
         "404":
           $ref: "#/components/responses/NotFoundErrorResponse"
         "409":

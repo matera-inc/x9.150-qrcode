@@ -22,6 +22,7 @@ import com.matera.x9qrcode.app.usecase.updatestatus.UpdateQRCodeStatusUseCase;
 import com.matera.x9qrcode.app.usecase.validatesignature.ValidateSignatureUseCase;
 import com.matera.x9qrcode.domain.generator.IdGenerator;
 import com.matera.x9qrcode.domain.service.CurrencyMixPolicy;
+import com.matera.x9qrcode.domain.service.PaymentNotificationAcceptancePolicy;
 import com.matera.x9qrcode.domain.service.factory.FormulaFactory;
 
 import org.springframework.context.annotation.Bean;
@@ -88,8 +89,10 @@ public class UseCaseConfiguration {
     }
 
     @Bean
-    public PaymentNotificationQRCodeUseCase paymentNotificationQRCodeUseCase(QRCodeRepository qrCodeRepository) {
-        return new PaymentNotificationQRCodeUseCase(qrCodeRepository);
+    public PaymentNotificationQRCodeUseCase paymentNotificationQRCodeUseCase(QRCodeRepository qrCodeRepository,
+                                                                             FormulaFactory formulaFactory) {
+        return new PaymentNotificationQRCodeUseCase(
+            qrCodeRepository, new PaymentNotificationAcceptancePolicy(formulaFactory));
     }
 
 }
