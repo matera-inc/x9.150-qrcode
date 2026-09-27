@@ -284,7 +284,10 @@ public final class QRCodeMongoEntityMapper {
         return new PaymentNotificationDataVO(
             buildPaymentNotificationPayment(doc.getPayment()),
             buildPaymentNotificationPayer(doc.getPayer()),
-            new ExpectedDateVO(doc.getExpectedDate()),
+            // Absent on the way in, absent on the way out. Wrapping a null date in a VO would make
+            // it look present to the domain, which reads a null VO as "no expected date" — the
+            // test ACH uses to insist on one.
+            isNull(doc.getExpectedDate()) ? null : new ExpectedDateVO(doc.getExpectedDate()),
             buildBlockchain(doc.getBlockchain())
         );
     }

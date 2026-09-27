@@ -37,7 +37,6 @@ public abstract class AbstractRequestLoggerFilter extends OncePerRequestFilter {
             .start(Instant.now())
             .httpMethod(httpServletRequest.getMethod())
             .requestURL(httpServletRequest.getRequestURL())
-            .httpStatus(httpServletResponse.getStatus())
             .requestServletPath(httpServletRequest.getServletPath())
             .build();
 
@@ -45,6 +44,9 @@ public abstract class AbstractRequestLoggerFilter extends OncePerRequestFilter {
             logStartedExecution(requestLoggerFilterDTO);
             filterChain.doFilter(httpServletRequest, httpServletResponse);
         } finally {
+            // Read now, not at build time: before the chain runs this is always the servlet default.
+            requestLoggerFilterDTO.setHttpStatus(httpServletResponse.getStatus());
+
             long duration = logFinishedExecution(requestLoggerFilterDTO);
             afterRequestLoggerFilterHook.execute(requestLoggerFilterDTO, duration);
         }

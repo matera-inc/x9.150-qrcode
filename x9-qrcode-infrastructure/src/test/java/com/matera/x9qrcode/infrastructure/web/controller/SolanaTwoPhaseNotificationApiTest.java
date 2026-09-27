@@ -141,6 +141,37 @@ class SolanaTwoPhaseNotificationApiTest extends AbstractIntegrationTest {
     }
 
     /**
+     * A notification with no {@code expectedDate}, which the contract marks optional.
+     *
+     * <p>Every other notification in this suite carries one, and that is exactly why this case went
+     * unnoticed: persisting the notification unwrapped the date without checking, so a payer who
+     * omitted an optional field got a 500 from the payee. Two instances talking to each other found
+     * it on the first real payment.
+     *
+     * <p>ACH is the one rail that insists on the date, and it does so in the domain. Solana does
+     * not, so absence here has to be accepted and stored as absent.
+     */
+    @Test
+    void aNotificationWithoutTheOptionalExpectedDateIsAccepted() {
+        String qrCodeId = createSolanaQRCode();
+
+        String body = """
+            {
+              "payment": { "qrcodeId": "%s", "amount": %d, "currency": "USDC", "network": "Solana" },
+              "blockchain": { "action": "PAYMENT_INITIATED", "to": "%s", "from": "%s" }
+            }
+            """.formatted(qrCodeId, AMOUNT, RECIPIENT, PAYER_WALLET);
+
+        MockMvcResponse response =
+                given().contentType(APPLICATION_JOSE).body(sign(body)).when().post(NOTIFY);
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode(),
+                "expectedDate is optional; omitting it is not an error: " + response.asString());
+        assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId),
+                "and the notification must still have taken effect");
+    }
+
+    /**
      * The settlement boundary, restored along with the rail. A payer reporting a transaction is not
      * the same as funds arriving, and X9.150 cannot tell the difference — so it does not pretend to.
      */
