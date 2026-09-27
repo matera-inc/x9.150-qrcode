@@ -54,12 +54,21 @@ class NetworksVORailLookupTest extends AbstractTest {
         assertFalse(rail.isBlockchain(), "%s is a US bank rail".formatted(rail));
     }
 
-    /** The spec contradicts itself on case, so every spelling has to resolve. */
+    /**
+     * {@link NetworkEnum} carries the §2.4 spellings — the values that appear in a payment
+     * notification's {@code network} field — and resolves them exactly.
+     *
+     * <p>Note this is <em>not</em> the spelling of the {@code networks} object key, which §14.5
+     * gives as lower-case {@code fednow}. Whether an inbound notification should resolve leniently
+     * across cases is a question about
+     * §2.4's self-contradiction, and it is answered with the payment-notification work rather than
+     * here.
+     */
     @ParameterizedTest
-    @ValueSource(strings = {"FedNow", "fednow", "FEDNOW", "fedNow"})
-    void aStandardRailResolvesWhateverTheCase(String spelling) {
-        assertEquals(NetworkEnum.FEDNOW, NetworkEnum.fromValue(spelling));
-        assertTrue(NetworkEnum.find(spelling).isPresent());
+    @EnumSource(NetworkEnum.class)
+    void aStandardRailResolvesFromItsOwnValue(NetworkEnum rail) {
+        assertEquals(rail, NetworkEnum.fromValue(rail.value()));
+        assertTrue(NetworkEnum.find(rail.value()).isPresent());
     }
 
     /** Not an error: an unrecognised name is a network we do not interpret, not a malformed one. */

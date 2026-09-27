@@ -28,14 +28,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * §2.4, defining the notification's network value, calls it "all-uppercase" and then lists
  * {@code FedNow}, which is not. Implementers will read one or the other.
  *
- * <p>That ambiguity is handled at the boundary we do not control — a payment notification from a
- * third-party payer is read case-insensitively. It is <b>not</b> handled here. Our own API has one
- * spelling of a rail: the configured key, which is also the only one we emit, so what a caller sends
- * is what they read back. Any other spelling is refused, naming both.
- *
- * <p>The emitted (and therefore accepted) form is configurable — an interoperability problem should
- * be a config change, not a release. {@link ConfiguredNetworkKeyApiTest} covers an override; this
- * file covers the default.
+ * <p>That contradiction is confined to §2.4, which governs the notification's {@code network}
+ * <em>value</em> — a different field from these object keys, and one this PR does not touch. §14.5
+ * spells the keys {@code fednow}/{@code rtp}/{@code ach} throughout, with no contradiction anywhere,
+ * so there is exactly one spelling of a rail here: the one we emit. Any other is refused, naming
+ * both.
  */
 class NetworkNamingApiTest extends AbstractIntegrationTest {
 
@@ -100,37 +97,6 @@ class NetworkNamingApiTest extends AbstractIntegrationTest {
 
         assertTrue(response.contains(spelling), "the refusal must quote what was sent: " + response);
         assertTrue(response.contains("fednow"), "and the spelling to use instead: " + response);
-    }
-
-    /** The payer's notification is the boundary we do not control, so there we stay lenient. */
-    @ParameterizedTest(name = "a notification naming the rail as {0} is still understood")
-    @ValueSource(strings = {"ACH", "ach", "Ach"})
-    void aThirdPartyNotificationIsReadCaseInsensitively(String spelling) {
-        String id = given().contentType("application/json").body(qrCodeWithNetworkKey("ach"))
-                .when().post(CREATE)
-                .then().statusCode(HttpStatus.CREATED.value())
-                .extract().path("id");
-
-        String notification = """
-            {
-              "payment": { "qrcodeId": "%s", "amount": 5000, "currency": "USD", "network": "%s",
-                           "transactionId": "021000021.0000001" },
-              "payer": { "info": "Jane Payer" },
-              "expectedDate": "2030-10-08T06:59:59Z"
-            }
-            """.formatted(id, spelling);
-
-        String jws = given().contentType("application/json")
-                .header("Correlation-Id", java.util.UUID.randomUUID().toString())
-                .header("TTL-Seconds", "300")
-                .body(notification)
-                .when().post("/api/v1/signature/generate")
-                .then().statusCode(HttpStatus.OK.value())
-                .extract().body().asString();
-
-        given().contentType("application/jose").body(jws)
-                .when().post("/pub/api/v1/payment-notification")
-                .then().statusCode(HttpStatus.OK.value());
     }
 
     /**

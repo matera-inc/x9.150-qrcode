@@ -30,8 +30,6 @@ import com.matera.x9qrcode.infrastructure.web.controller.mapper.response.PatchQR
 import com.matera.x9qrcode.infrastructure.web.controller.mapper.response.RetrieveQRCodeResponseMapper;
 import com.matera.x9qrcode.infrastructure.web.controller.mapper.response.UpdateQRCodeStatusResponseMapper;
 
-import com.matera.x9qrcode.infrastructure.configuration.property.X9Properties;
-
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -46,13 +44,12 @@ public class PaymentRequestsController implements PaymentRequestApi {
     private final UpdateQRCodeStatusUseCase updateQRCodeStatusUseCase;
     private final PatchQRCodeUseCase patchQRCodeUseCase;
     private final RetrieveQRCodeUseCase retrieveQRCodeUseCase;
-    private final X9Properties x9Properties;
 
     @Override
     @Transactional
     public ResponseEntity<PaymentRequestResponseDTO> createPaymentRequest(PaymentRequestInputDTO paymentRequestInputDTO) {
         CreateQRCodeOutput createQRCodeOutput =
-            createQRCodeUseCase.execute(CreateQRCodeRequestMapper.map(paymentRequestInputDTO, x9Properties.getNetworks()));
+            createQRCodeUseCase.execute(CreateQRCodeRequestMapper.map(paymentRequestInputDTO));
 
         return ResponseEntity.status(HttpStatus.CREATED).body(CreateQRCodeResponseMapper.map(createQRCodeOutput));
     }
@@ -63,7 +60,7 @@ public class PaymentRequestsController implements PaymentRequestApi {
 
         RetrieveQRCodeOutput retrieveQRCodeOutput = retrieveQRCodeUseCase.execute(retrieveQRCodeInput);
 
-        return ResponseEntity.ok(RetrieveQRCodeResponseMapper.map(retrieveQRCodeOutput, x9Properties.getNetworks()));
+        return ResponseEntity.ok(RetrieveQRCodeResponseMapper.map(retrieveQRCodeOutput));
     }
 
     @Override
@@ -71,7 +68,7 @@ public class PaymentRequestsController implements PaymentRequestApi {
     public ResponseEntity<PaymentRequestResponseDTO> patchPaymentRequest(String id,
                                                                          PatchPaymentRequestReplacementDTO patchPaymentRequestReplacementDTO) {
         PatchQRCodeOutput patchQRCodeOutput =
-            patchQRCodeUseCase.execute(PatchQRCodeRequestMapper.map(id, patchPaymentRequestReplacementDTO, x9Properties.getNetworks()));
+            patchQRCodeUseCase.execute(PatchQRCodeRequestMapper.map(id, patchPaymentRequestReplacementDTO));
 
         return ResponseEntity.status(HttpStatus.OK).body(PatchQRCodeResponseMapper.map(patchQRCodeOutput));
     }

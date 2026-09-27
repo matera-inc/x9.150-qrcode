@@ -18,52 +18,43 @@ Architectural decisions that are *ours alone* — not readings of the standard �
 
 ---
 
-## I-1 — The casing ambiguity is confined to one field, and it is one we only receive
+## I-1 — Network object keys are lower-case, and that is not the ambiguous part
 
-**Where:** §2.4 (`$.payment.network`), §14.5 and Table 14 (`$.paymentMethods[].networks.*`)
+**Where:** §14.5 and Table 14 (`$.paymentMethods[].networks.*`); §2.4 (`$.payment.network`)
 
-**What the standard says.** Two different things in two different places — and, crucially, two
-different *kinds* of thing:
+**What the standard says.** Two fields get confused for one another, so it is worth separating them
+before anything else:
 
 | | Kind | Standard's form | Ambiguous? |
 |---|---|---|---|
-| `$.paymentMethods[].networks.*` | JSON **object key** | `fednow`, `rtp`, `ach` | **No.** §14.5 and Table 14 agree, throughout |
+| `$.paymentMethods[].networks.*` | JSON **object key** | `fednow`, `rtp`, `ach` | **No.** §14.5 and Table 14 agree, throughout, and Annex A's example payload writes them lower-case too |
 | `$.payment.network` | String **value**, in a payment notification | `FedNow`, `RTP`, `ACH` | **Yes.** §2.4 introduces its list as "exact, all-uppercase values" and then gives `FedNow`, which is not |
 
-The object keys have their own quiet surprise — §14.5 uses lowercase for `fednow` but camelCase for
-`americanExpress`, so "lowercase" is not a *convention*, the keys are simply spelled out one by one.
+The object keys have one quiet surprise — §14.5 uses lower-case for `fednow` but camelCase for
+`americanExpress`, so "lower-case" is not a *convention*; the keys are simply spelled out one by one.
 But they are spelled out unambiguously, and that is what matters.
 
-So there is exactly one ambiguous field. And it is one **this build only ever receives**: a payment
-notification arrives from a third-party payer. We do not send notifications, so we never have to
-choose which half of §2.4 to obey.
+**So the casing ambiguity lives in exactly one field, and it is not one this document's other
+sections are about.** `$.payment.network` is a payment-notification field. How we read it is settled
+in the payment-notification work, not here.
 
-**What we do.** Postel's rule at the boundary we do not control; one spelling inside it.
+**What we do with the object keys.** One spelling, used in both directions.
 
-- **`$.payment.network`, inbound from a payer — case-insensitive.** The payer may have read either
-  half of §2.4. Refusing a payment over the case of a string would be absurd, and we have no
-  standing to insist: it is their implementation, not ours. The value is stored and echoed back
-  **verbatim**, because the notification is a record of what the payer claimed, and normalising it
-  would be rewriting their words.
-- **`networks.*` object keys, outbound — lowercase.** No judgement call: §14.5 says so.
-- **`networks.*` object keys, inbound on our own API — the same lowercase, exactly.** A create or
-  patch request comes from inside this ecosystem, against a published OpenAPI contract that declares
-  the property as `fednow`. A generated client sends lowercase already; a hand-rolled one that sends
-  `FedNow` gets a 400 naming both spellings.
-- **Currency codes, on our own API — likewise exact.** `usd` is refused in favour of `USD`. Same
-  field, same reasoning.
+- **Outbound:** lower-case `fednow`/`rtp`/`ach`. No judgement call — §14.5 says so.
+- **Inbound, on our own create/patch API:** the same spelling, exactly. `FedNow`, `FEDNOW` and
+  `fedNow` are refused with a 400 naming both what was sent and what to send.
+- **Currency codes, on our own API:** likewise exact. `usd` is refused in favour of `USD`.
 
-**Why not be lenient on our own API too?** Because we would have to emit *something*, and whatever
-we emit is what the caller reads back. Accepting `FedNow` and returning `fednow` hands them a
-round-trip mismatch on a field they just set — and they find out somewhere less forgiving than our
-400. Leniency is a courtesy to a party whose implementation you cannot change. Our own callers are
-not that party; they have the contract.
+**Why be strict on our own API?** Because we emit *one* form, and whatever we emit is what the caller
+reads back. Accepting `FedNow` and returning `fednow` hands them a round-trip mismatch on a field
+they just set, which they then discover somewhere less forgiving than our 400. The published OpenAPI
+contract already declares the property as `fednow`, so a generated client is correct by construction;
+only a hand-rolled one can get this wrong, and it should be told immediately rather than left to
+drift.
 
-**The emitted key is still configuration** (`x9.networks.emitted-keys`), and since it is also the key
-we *accept*, changing it moves both halves together — a caller always sends what they will read back.
-Given §14.5 is unambiguous, this is insurance rather than a resolution of anything: if a large
-counterparty turns out to have implemented the object key differently, matching them is a deploy
-rather than a release.
+This says nothing about what we accept from a **third-party payer**, whose implementation is not ours
+to correct. That is a separate boundary with separate reasoning, and it is handled with the
+notification work.
 
 ## I-2 — We interpret three networks, and refuse the rest by name
 

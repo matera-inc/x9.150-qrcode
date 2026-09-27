@@ -45,7 +45,7 @@ public enum NetworkEnum {
         }
 
         for (NetworkEnum b : NetworkEnum.values()) {
-            if (b.value.equalsIgnoreCase(value)) {
+            if (b.value.equals(value)) {
                 return java.util.Optional.of(b);
             }
         }

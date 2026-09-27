@@ -69,27 +69,20 @@ side, right up until nobody can pay.
 Closing the set answered *which* networks and currencies. It left open *how they are written*, and
 the same argument settles it.
 
-Our own API now accepts exactly one spelling of each: the configured network key (`fednow`, `rtp`,
-`ach`) and the configured currency code (`USD`). Any other casing is refused, naming both what was
-sent and what to send.
+Our own API now accepts exactly one spelling of each: the network object key (`fednow`, `rtp`, `ach`
+— §14.5's normative paths, unambiguous) and the configured currency code (`USD`). Any other casing
+is refused, naming both what was sent and what to send.
 
-The reason is round-trip, not pedantry. Whatever we accept, we emit **one** form — so a caller who
-sends `FedNow` and reads back `fednow` has a disagreement with us about a field they just set, and
-they discover it somewhere less forgiving than a 400. The published OpenAPI contract already
-declares the property as `fednow`, so a generated client is correct by construction; only a
-hand-rolled one can get this wrong, and it should be told immediately.
+The reason is round-trip, not pedantry. We emit **one** form, so a caller who sends `FedNow` and
+reads back `fednow` has a disagreement with us about a field they just set, and finds out somewhere
+less forgiving than a 400. The published OpenAPI contract already declares the property as `fednow`,
+so a generated client is correct by construction; only a hand-rolled one can get this wrong.
 
-**Leniency is reserved for the boundary we do not control.** A payment notification arrives from a
-third-party payer whose implementation is not ours to correct, and whose reading of §2.4 may
-legitimately differ from ours — that section calls its values "all-uppercase" and then lists
-`FedNow`. So a notification is matched case-insensitively on both network and currency, and its
-`$.payment.network` is stored and echoed **verbatim**: it is a record of what the payer claimed, and
-normalising it would be rewriting their words. Note this ambiguity only ever reaches us inbound —
-this build does not send notifications, so it never has to choose a spelling for that field.
-
-The emitted key and the accepted key are the same configured value, so changing it moves both halves
-together and the round-trip property holds at any setting. Details in
-[official-spec/INTERPRETATION.md](../../official-spec/INTERPRETATION.md) I-1.
+**Scope.** This governs the `networks` object keys and the currency code on our own create/patch API.
+It says nothing about `$.payment.network` — the notification field §2.4 calls "all-uppercase" before
+listing `FedNow` — which arrives from a third-party payer whose implementation is not ours to
+correct. That is a different boundary with different reasoning, and it is settled with the
+payment-notification work rather than here.
 
 ## Alternatives rejected
 

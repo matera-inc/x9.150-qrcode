@@ -31,8 +31,6 @@ import com.matera.x9qrcode.app.dto.enumerated.FormulaEnumDTO;
 import com.matera.x9qrcode.app.dto.enumerated.NotificationKindEnumDTO;
 import com.matera.x9qrcode.app.dto.enumerated.PaymentTimingEnumDTO;
 import com.matera.x9qrcode.app.usecase.createqrcode.CreateQRCodeInput;
-import com.matera.x9qrcode.domain.vo.enumerated.NetworkEnum;
-import com.matera.x9qrcode.infrastructure.configuration.property.NetworksProperties;
 import com.matera.x9qrcode.infrastructure.generated.dto.ACHDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.BillDTO.PaymentTimingEnum;
 import com.matera.x9qrcode.infrastructure.generated.dto.FedNowDTO;
@@ -52,8 +50,7 @@ import static java.util.Objects.isNull;
 
 public final class CreateQRCodeRequestMapper {
 
-    public static CreateQRCodeInput map(PaymentRequestInputDTO paymentRequestInput,
-                                        NetworksProperties networkNaming) {
+    public static CreateQRCodeInput map(PaymentRequestInputDTO paymentRequestInput) {
         return new CreateQRCodeInput(
                 paymentRequestInput.getLocationId(),
                 paymentRequestInput.getValidUntil(),
@@ -62,7 +59,7 @@ public final class CreateQRCodeRequestMapper {
                 paymentRequestInput.getUnstructured(),
                 createAdditionalInformationInput(paymentRequestInput.getAdditionalInformation()),
                 createPaymentNotificationInput(paymentRequestInput.getPaymentNotification()),
-                createPaymentMethodsInput(paymentRequestInput.getPaymentMethods(), networkNaming));
+                createPaymentMethodsInput(paymentRequestInput.getPaymentMethods()));
     }
 
     private static CreditorDTO createCreditorInput(
@@ -248,13 +245,12 @@ public final class CreateQRCodeRequestMapper {
     }
 
     private static List<PaymentMethodDTO> createPaymentMethodsInput(
-            List<com.matera.x9qrcode.infrastructure.generated.dto.PaymentMethodDTO> paymentMethods,
-            NetworksProperties networkNaming) {
+            List<com.matera.x9qrcode.infrastructure.generated.dto.PaymentMethodDTO> paymentMethods) {
         return paymentMethods.stream().map(paymentMethod -> new PaymentMethodDTO(paymentMethod.getCurrency(),
                 paymentMethod.getValidUntil(),
                 paymentMethod.getAmount(),
                 createCurrencyEditableAmountInput(paymentMethod.getEditable()),
-                createNetworksInput(paymentMethod.getNetworks(), networkNaming))).toList();
+                createNetworksInput(paymentMethod.getNetworks()))).toList();
     }
 
     private static CurrencyEditableDTO createCurrencyEditableAmountInput(
@@ -287,34 +283,29 @@ public final class CreateQRCodeRequestMapper {
                 paymentNotification.getEndpoint(), null);
     }
 
-    private static Map<String, Object> rejectAnythingElse(Map<String, Object> leftovers) {
-        StandardRailKeys.rejectUnsupported(leftovers);
-
-        return leftovers;
-    }
-
+    /**
+     * The contract's own rail properties, plus a refusal for anything else.
+     *
+     * <p>No casing logic: the OpenAPI schema declares `fednow`, `rtp` and `ach`, so a conformant
+     * caller binds to these properties directly, and a rail written any other way is not one of
+     * them — it lands in additionalProperties and is refused there, by name.
+     */
     private static NetworksDTO createNetworksInput(
-            com.matera.x9qrcode.infrastructure.generated.dto.NetworksSimpleDTO networksSimple,
-            NetworksProperties networkNaming) {
+            com.matera.x9qrcode.infrastructure.generated.dto.NetworksSimpleDTO networksSimple) {
         FedNowDTO fedNow = networksSimple.getFednow();
         RTPDTO rtp = networksSimple.getRtp();
         ACHDTO ach = networksSimple.getAch();
 
-        // Inside this ecosystem a rail has exactly one spelling: the one we emit. A rail sent under
-        // any other is refused by name rather than quietly promoted — see StandardRailKeys.
-        Map<String, Object> others = StandardRailKeys.mutableCopy(networksSimple.getAdditionalProperties());
+        StandardRailKeys.rejectUnsupported(networksSimple.getAdditionalProperties());
 
         return NetworksDTO.builder()
-                .fedNow(StandardRailKeys.bankAddress(
-                    isNull(fedNow) ? null : new BankPaymentAddressDTO(fedNow.getRoutingNumber(), fedNow.getAccountNumber()),
-                    NetworkEnum.FEDNOW.value(), networkNaming.keyFor(NetworkEnum.FEDNOW.value()), others))
-                .rtp(StandardRailKeys.bankAddress(
-                    isNull(rtp) ? null : new BankPaymentAddressDTO(rtp.getRoutingNumber(), rtp.getAccountNumber()),
-                    NetworkEnum.RTP.value(), networkNaming.keyFor(NetworkEnum.RTP.value()), others))
-                .ach(StandardRailKeys.bankAddress(
-                    isNull(ach) ? null : new BankPaymentAddressDTO(ach.getRoutingNumber(), ach.getAccountNumber()),
-                    NetworkEnum.ACH.value(), networkNaming.keyFor(NetworkEnum.ACH.value()), others))
-                .additionalProperties(rejectAnythingElse(others))
+                .fedNow(isNull(fedNow) ? null
+                    : new BankPaymentAddressDTO(fedNow.getRoutingNumber(), fedNow.getAccountNumber()))
+                .rtp(isNull(rtp) ? null
+                    : new BankPaymentAddressDTO(rtp.getRoutingNumber(), rtp.getAccountNumber()))
+                .ach(isNull(ach) ? null
+                    : new BankPaymentAddressDTO(ach.getRoutingNumber(), ach.getAccountNumber()))
+                .additionalProperties(networksSimple.getAdditionalProperties())
                 .build();
     }
 
