@@ -1187,10 +1187,12 @@ components:
           pattern: ^[0-9A-Za-z]{4,17}$
           minLength: 4
           maxLength: 17
-          description: "Bank account number, 4-17 characters. ANSI X9.150-2026 Table 2 (Account Number (Bank))
-            allows digits AND/OR letters, so this is alphanumeric rather than digits-only: the standard's own
-            Annex A example uses `ACME00112233445`, which a digits-only pattern would reject. Always tokenized
-            here (see `protectionType`)."
+          description: "Bank account number, 4-17 characters, digits and/or letters. Alphanumeric rather than
+            digits-only is deliberate and matches both governing documents: ANSI X9.150-2026 Table 2 permits
+            (0-9) AND/OR (A-Z, a-z), and Nacha's ACH Entry Detail Record defines DFI Account Number as 17
+            positions alphanumeric. The standard's own Annex A example uses `ACME00112233445`. Send uppercase
+            by preference and never treat case as distinguishing two accounts. Full rationale:
+            official-spec/ACCOUNT-NUMBERS-US.md. Always tokenized here (see `protectionType`)."
           example: "1234567890"
         protectionType:
           $ref: "#/components/schemas/ProtectionTypeEnum"
