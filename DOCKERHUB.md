@@ -8,12 +8,21 @@
 
 A backend implementation of the **ANSI X9.150-2026 Payment QR Code Standard**. It plays the
 **Payee-PSP** role: it creates and manages merchant-presented payment QR codes, serves the
-JWS-signed payment payload a payer's app fetches, and receives payment notifications.
+JWS-signed payment payload a payer's app fetches, and receives payment notifications. Your own
+systems learn that a QR Code was paid by reading its **payment event stream**
+(`GET /pub/api/v1/events`) — cursor-paged and long-polling.
 
-- **Rails:** US bank rails — **FedNow, RTP, ACH** — plus public blockchains (Bitcoin, Ethereum,
-  Solana, Polygon, Base, XRP, Arc).
-- **Currency-agnostic:** any ISO 4217 code or digital-asset ticker (USD, JPY, USDC, BTC, …) is
-  carried through as-is.
+It can also play the **payer** side: `/api/v1/payment-notification/pre-payment` and `/post-payment`
+compose, sign and deliver a notification to another deployment, so a PSP integrating here never
+builds a JWS or manages a keystore.
+
+- **Rails:** the US bank rails the standard defines — **FedNow, RTP, ACH** — and **Solana**, on the
+  embedding its Foundation published. Any other network is **refused at creation, by name**, rather
+  than advertised on a QR Code nobody can pay.
+- **Currencies:** the payload format is currency-agnostic and repeats whatever code it is given, but
+  a deployment accepts only what its rails settle. This image ships with **USD, USDC and FRNT**
+  (`supported-currencies.json`); anything else is refused at creation. Add a currency there when you
+  add a rail that settles it.
 - **Stack:** Java 25, Spring Boot 3.5.x, MongoDB. Clean / Hexagonal architecture.
 - **Multi-arch:** `linux/amd64` + `linux/arm64`.
 
