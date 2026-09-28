@@ -150,6 +150,7 @@ Architecture, standard-alignment, and integration design notes:
 - [Running & Testing](RUNNING.md) — first-run guide: prerequisites, host-JVM vs Docker, building the image, smoke test
 - [Endpoints & Local Scan Testing](ENDPOINTS.md) — public/management endpoints, the single-origin URL model, and Cloudflare-tunnel setup for phone-scan testing
 - [Two-Instance Payment Cycle](others/demo/README.md) — a whole payment played between two deployments, why HTTPS is mandatory between them, and three ways to provide it
+- [Integrating with X9.150](.agents/skills/x9150-integration/SKILL.md) — for developers building software that *uses* this service: call sequences for both roles, the event stream, and what X9.150 deliberately will not do for you
 - [QR Code State Machine](STATE-MACHINE.md) — lifecycle states and transitions
 - [High Availability](HIGH-AVAILABILITY.md) — MongoDB replica sets, application failover, and license limits
 - [Plan: Non-USD-Pegged Currencies](PLAN-NON-USD-PEGGED-CURRENCIES.md) — request-time FX and per-currency `validUntil` *(proposed)*

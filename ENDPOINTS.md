@@ -35,6 +35,7 @@ x9:
 | `/pub/api/v1/payment-notification` | POST | Receive a signed **Payment Notification** from the Payer PSP confirming payment status. | Signed payload response (`paymentNotification.endpoint`) |
 | `/pub/.well-known/jwks` | GET | **JWK Set** — the public signing keys. | JWS header `jku` |
 | `/pub/.well-known/certificate/{pemFileName}` | GET | Public **X9 signing certificate** (PEM). | JWS header `x5u` |
+| `/pub/api/v1/events` | GET | **Payment event stream** — cursor-paged, long-polling. How the software around X9.150 learns that a QR Code was paid. | Not advertised; the consuming system is configured with it |
 
 > Only the **loc URL** is embedded in the QR itself. The notification URL travels inside the
 > signed payload response; the JWKS/certificate URLs travel in JWS headers.
@@ -51,12 +52,74 @@ x9:
 | `/api/v1/payment-request/{id}` | GET | Retrieve QR code data by revision |
 | `/api/v1/payment-request/{id}` | PATCH | Update a QR code payment request |
 | `/api/v1/payment-request/{id}/status-update` | PUT | Change QR code status |
-| `/api/v1/qrcode-emv-decoder` | POST | Decode an EMV QR string |
+| `/api/v1/qrcode-emv-decoder` | POST | Decode an EMV QR string, fetching and verifying the payee's signed payload |
+| `/api/v1/payment-notification/pre-payment` | POST | **Payer side.** Announce a payment to the payee and return their verdict |
+| `/api/v1/payment-notification/post-payment` | POST | **Payer side.** Report a completed payment, with its `transactionId` |
 | `/api/v1/signature/generate` | POST | Generate a JWS for JSON content |
 | `/api/v1/signature/validate` | POST | Validate a JWS |
 
+> **Two roles, one service.** Most endpoints serve the **payee** — the side that issues a QR Code
+> and is told about payments. The two under `/api/v1/payment-notification/` serve the **payer**: they
+> compose, sign and deliver a notification to *someone else's* X9.150 deployment, so a PSP
+> integrating here never builds a JWS or manages a keystore. A deployment may play either role, or
+> both. `others/demo/two-instance-payment-cycle.sh` runs one of each against the other.
+
 The authoritative contract is the OpenAPI spec:
 [`x9-qrcode-infrastructure/src/main/resources/apis/openapi.yaml`](x9-qrcode-infrastructure/src/main/resources/apis/openapi.yaml).
+
+## Consuming the payment event stream
+
+This is how the software around X9.150 learns that a QR Code was paid. It is the integration point
+that matters most and the one least visible from the endpoint table, so it gets its own section.
+
+```bash
+curl "https://x9.example.com/pub/api/v1/events?after=&limit=100&wait=25"
+```
+
+```json
+{
+  "events": [
+    { "eventId": "63e79f1f-986e-4564-81d1-f18fd2343752",
+      "type": "payment.sent",
+      "occurredAt": "2026-09-27T22:31:40.230Z",
+      "qrCodeId": "01A0E4FE9141F8EBAA2DB007D4B88A81",
+      "qrCodeRevision": 2,
+      "amount": 22500, "currency": "USDC", "network": "Solana",
+      "transactionId": "5Vfydn…", "invoiceNumber": "INV-2026-09-00124",
+      "schemaVersion": "1.0" }
+  ],
+  "nextCursor": "01M3JFXNB4XNR7P61NZVG8474J",
+  "hasMore": false
+}
+```
+
+| Parameter | Meaning |
+|---|---|
+| `after` | The previous response's `nextCursor`. Omit or send empty to start at the beginning of retained history. |
+| `limit` | 1–500, default 100. |
+| `wait` | Seconds to hold the request open when there is nothing to return (0–30, default 0). An idle consumer costs one parked request instead of a poll loop; virtual threads make the hold nearly free. |
+
+**The five rules that decide whether your integration is correct:**
+
+1. **Deduplicate by `eventId`.** Delivery is at-least-once. A consumer that crashes before
+   persisting its cursor re-reads events, and `eventId` is stable across re-publishes.
+2. **Persist `nextCursor` only after the events are safely stored.** Cursor first means silent loss.
+3. **One poller per deployment.** Two pollers each see everything, which gains no isolation and only
+   invites the belief that it provides some.
+4. **`payment.sent` is not "paid".** It means a payer *reported* a transaction. X9.150 never touches
+   money and cannot observe settlement — only `payment.cleared` says funds arrived, emitted when a
+   system that actually saw them says so via `PUT /api/v1/payment-request/{id}/status-update`.
+5. **Ignore what you do not recognise.** Unknown fields and unknown `type` values are additive
+   within a major version; failing on them will break you on our next release.
+
+Ordering is per `qrCodeId`. Nothing is promised across QR Codes, and `qrCodeRevision` is monotonic
+per QR Code but **not gap-free** — a notification that only records details bumps the revision
+without emitting an event.
+
+The stream is **operator-internal, not merchant-facing**: it returns every QR Code's events for the
+deployment, because X9.150 is tenant-agnostic and has no axis to filter on. Fanning out to the right
+biller is the consuming system's job, using the mapping it already owns from having created the QR
+Code. See [ADR-0014](docs/adr/0014-we-transport-and-sequence-the-consumer-reconciles.md).
 
 ## Host length constraint
 
