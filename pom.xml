@@ -250,6 +250,10 @@
 			</activation>
 			<properties>
 				<overriden.image.tag>latest</overriden.image.tag>
+				<!-- Overridden by the Makefile with the real git values. -->
+				<oci.revision>unknown</oci.revision>
+				<oci.version>unknown</oci.version>
+				<oci.source>https://github.com/matera-inc/x9.150-qrcode</oci.source>
 				<!-- Buildpack image tag. Override per-arch, e.g. -Dbuild.image.name=x9-qrcode:latest-amd64 -->
 				<build.image.name>${module.name}:${overriden.image.tag}</build.image.name>
 			</properties>
@@ -265,6 +269,14 @@
 									<env>
 										<BP_JVM_TYPE>JRE</BP_JVM_TYPE>
 										<BP_JVM_VERSION>25.*</BP_JVM_VERSION>
+										<!-- Provenance. DOCKERHUB.md tells adopters to read
+										     org.opencontainers.image.revision to learn which commit an
+										     image was built from, which only works if we put it there.
+										     The Makefile fills these from git; a build without it still
+										     produces a working image, just an unattributable one. -->
+										<BP_OCI_REVISION>${oci.revision}</BP_OCI_REVISION>
+										<BP_OCI_VERSION>${oci.version}</BP_OCI_VERSION>
+										<BP_OCI_SOURCE>${oci.source}</BP_OCI_SOURCE>
 									</env>
 								</image>
 								<layers>
