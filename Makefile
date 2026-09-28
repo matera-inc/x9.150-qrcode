@@ -23,13 +23,23 @@ test: ## Run the full test suite
 run-local: ## Run the app on the host JVM (needs a MongoDB replica set — see RUNNING.md)
 	$(MVNW) -pl x9-qrcode-infrastructure spring-boot:run
 
+# Provenance, passed to the buildpack as BP_OCI_*. DOCKERHUB.md tells adopters to read
+# org.opencontainers.image.revision to learn which commit they are running, so a build that omits
+# these produces an image nobody can attribute — which matters most to whoever pins a git-<sha> tag.
+OCI_REVISION := $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+OCI_VERSION  := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+OCI_FLAGS     = -Doci.revision=$(OCI_REVISION) -Doci.version=$(OCI_VERSION)
+
 image: ## Build the container image (x9-qrcode:latest) with buildpacks (no Dockerfile)
-	$(MVNW) -Pdocker -DskipTests clean package
+	$(MVNW) -Pdocker -DskipTests clean package $(OCI_FLAGS)
 
 image-amd64: ## Build an amd64/intel image locally (x9-qrcode:latest-amd64) — uses Rosetta on Apple Silicon
-	$(MVNW) -Pdocker -DskipTests clean package \
+	$(MVNW) -Pdocker -DskipTests clean package $(OCI_FLAGS) \
 		-Dbuild.image.name=x9-qrcode:latest-amd64 \
 		-Dspring-boot.build-image.imagePlatform=linux/amd64
+
+acceptance: ## Black-box acceptance tests against a RUNNING deployment (URL=http://host:port)
+	./others/acceptance/acceptance.py $(or $(URL),http://localhost:8080)
 
 publish: ## Publish the image to your registry — bring your own script (no registry is imposed)
 	@echo "Publishing is intentionally left to you — this repo imposes no registry or flow."
