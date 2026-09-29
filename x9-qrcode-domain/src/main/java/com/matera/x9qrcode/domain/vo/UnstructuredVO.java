@@ -14,7 +14,6 @@ import java.util.regex.Pattern;
 
 import static java.util.Objects.nonNull;
 
-@EqualsAndHashCode
 public class UnstructuredVO extends ValueObject<String> {
 
     private static final Pattern UNSTRUCTURED_PATTERN = Pattern.compile("^[\\x20-\\x7E]*$");

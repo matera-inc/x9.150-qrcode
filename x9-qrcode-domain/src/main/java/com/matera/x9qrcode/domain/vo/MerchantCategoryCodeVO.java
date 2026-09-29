@@ -14,7 +14,6 @@ import java.util.regex.Pattern;
 
 import static java.util.Objects.nonNull;
 
-@EqualsAndHashCode
 public class MerchantCategoryCodeVO extends ValueObject<String> {
 
     private static final Pattern MCC_PATTERN = Pattern.compile("^\\d{4}$");

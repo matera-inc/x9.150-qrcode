@@ -15,7 +15,6 @@ import java.time.OffsetDateTime;
 
 import static java.util.Objects.nonNull;
 
-@EqualsAndHashCode
 public class ExpectedDateVO extends ValueObject<OffsetDateTime> {
 
     public ExpectedDateVO(OffsetDateTime value) {

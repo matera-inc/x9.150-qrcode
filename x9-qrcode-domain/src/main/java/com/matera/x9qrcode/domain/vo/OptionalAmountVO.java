@@ -12,7 +12,6 @@ import lombok.EqualsAndHashCode;
 
 import static java.util.Objects.nonNull;
 
-@EqualsAndHashCode
 public class OptionalAmountVO extends ValueObject<Long> {
 
     public OptionalAmountVO(Long value) {
