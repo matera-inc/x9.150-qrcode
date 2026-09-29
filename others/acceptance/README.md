@@ -44,6 +44,42 @@ lets one deployment stand in for both sides. A real payer signs with its own X9 
 is what the two-instance demo covers. So a pass here does not prove cross-identity trust; it proves
 this deployment does what it says.
 
+## It cannot pass against an HTTPS-only deployment — and that is not a broken deployment
+
+If your instance serves **only HTTPS** and advertises a real hostname, expect roughly **25 of 37**,
+with every failure tracing to one `invalid-signature` on `/pub/api/v1/payment-notification`. The
+deployment is fine. The suite is the thing that cannot work there.
+
+The cause is that the suite signs with the deployment's **own** key, so the payee ends up verifying a
+JWS whose `jku` names its **own** public host — and `normalizeHost` rewrites a URI containing our own
+public host to `http://localhost:<port>`, which an HTTPS-only instance does not serve.
+
+The two-instance demo escapes this only because it advertises `x9.public-endpoints.host=localhost:<port>`,
+so the self-referencing URI already contains localhost and takes the HTTPS branch instead. That
+trick is not available on Kubernetes: a payee advertising `localhost` would send the *payer pod* to
+its own loopback.
+
+So the configurations are mutually exclusive, and **this is the less important one** — cross-instance
+verification is what production actually does, and it takes the other branch and works. Sections 1
+and 3–7 still tell you what you need; read a run against such a deployment as "sections 1, 4, 5, 6, 7
+must pass", and use `two-instance-payment-cycle.sh` for the signature path.
+
+*(Reported by an adopter running two X9.150 pods on k3s.)*
+
+## Running it against TLS and Kubernetes
+
+- **Self-signed certificate:** `SSL_CERT_FILE=/path/to/cert.pem ./others/acceptance/acceptance.py https://host`.
+  This makes Python trust that certificate; it still verifies TLS properly rather than skipping it.
+- **On Kubernetes, `/actuator/health` may be DOWN for a reason that has nothing to do with X9.150.**
+  `SPRING_CLOUD_KUBERNETES_ENABLED=false` does **not** unregister the Kubernetes health indicator: it
+  stays registered, calls the API server without RBAC, fails, and drags the aggregate to DOWN while
+  `mongo`, `livenessState` and `readinessState` are all UP. The suite gates on the aggregate and
+  refuses to test anything. The flag you also need is:
+
+  ```
+  MANAGEMENT_HEALTH_KUBERNETES_ENABLED=false
+  ```
+
 ## Use it before publishing an image
 
 ```bash
