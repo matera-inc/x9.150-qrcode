@@ -613,7 +613,18 @@ components:
         unstructured:
           type: string
           pattern: ^[\x20-\x7E]*$
-          description: "Internal string passed from payer's bank to biller's bank, displayed in biller's statements."
+          description: |-
+            Internal string passed from payer's bank to biller's bank, displayed in biller's statements.
+
+            **Deliberately uncapped here, but not uncapped in practice.** It never enters the QR
+            image — the EMV payload carries only the location URL, creditor name, city, country and
+            the transaction currency and amount — so none of the tag-26 budget applies to it.
+
+            What does apply is the remittance field of whichever rail carries the payment, and those
+            limits are set by the rail, not by this service: an ISO 20022 unstructured remittance
+            field and an ACH addenda record are both far shorter than anything we would reject. A
+            long value is therefore accepted here and **truncated downstream, silently**. Size it
+            against the rails you actually use rather than against this schema.
           example: "Account: 987650001, Meter: MTR45567, payer: ${payer.email}"
         additionalInformation:
           type: array
@@ -950,7 +961,13 @@ components:
               description: "Optional details of the invoice recipient."
         tip:
           type: object
-          description: "Percentage of the amount due in creditor's currency that was selected by the payer, if so. Otherwise, if should be sent 'null'"
+          description: |-
+            Percentage of the amount due in creditor's currency that was selected by the payer, if so.
+
+            **Omitting `tip` entirely and sending `{"allowed": false}` are the same thing.** A bill
+            created without one is stored as "tips not allowed" and the payload reports
+            `"tip": {"allowed": false}`, so a payer never has to distinguish "no tip offered" from
+            "tips refused" — there is no such distinction to draw.
           required:
             - allowed
           properties:
@@ -1177,7 +1194,18 @@ components:
       items:
         $ref: "#/components/schemas/PaymentMethod"
       minItems: 1
-      description: "List of supported currencies and payment methods."
+      description: |-
+        List of supported currencies and payment methods.
+
+        **One entry per CURRENCY, with the rails nested inside it** — not one entry per rail.
+
+        Offering USD over FedNow, RTP and ACH is a SINGLE entry whose `networks` object names all
+        three; three entries would be three USD methods, and are refused with
+        `paymentMethods: must not contain duplicated currency: USD`. The shape is structural here, so
+        it is easy to read past: a biller says "a payment method is a way to pay", which maps to a
+        network, and builds it the wrong way round first.
+
+        The currency is what the payer chooses between. The network is how that currency moves.
       example:
         - currency: "USD"
           validUntil: "2030-05-10T23:59:59Z"
@@ -1395,6 +1423,12 @@ components:
         Solana's table says it may hold "anything from the payload", and that the payload ID **should**
         be included as `{QRCD:"payloadID"}`. That marker is what lets an on-chain transfer be matched
         back to the QR Code that asked for it, so a memo without it makes reconciliation a manual job.
+
+        **This channel exists only on a chain rail.** A QR Code offering only FedNow, RTP or ACH has
+        no Solana object to put a memo in, and `PATCH` there answers "can not find any paymentMethod
+        to be updated" — correctly. Those rails do not need it: they carry the QR Code id inside their
+        own ISO 20022 message and reconcile from that. So "the memo is the fallback matching channel"
+        is true for chains and simply does not apply to the bank rails.
 
         This service carries the memo **verbatim**, exactly as the biller supplied it, and does not
         inject the payload ID. Rewriting a field whose contents the biller chose would be a surprising
