@@ -14,7 +14,6 @@ import java.util.regex.Pattern;
 
 import static java.util.Objects.nonNull;
 
-@EqualsAndHashCode
 public class EmailVO extends ValueObject<String> {
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");

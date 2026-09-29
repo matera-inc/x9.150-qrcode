@@ -16,7 +16,6 @@ import java.util.regex.Pattern;
 
 import static java.util.Objects.isNull;
 
-@EqualsAndHashCode
 public class LocationIdVO extends ValueObject<UUID> {
 
     private static final Pattern ID_PATTERN = Pattern.compile("[0-9A-F]{32}", Pattern.CASE_INSENSITIVE);

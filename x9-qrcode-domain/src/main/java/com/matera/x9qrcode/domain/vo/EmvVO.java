@@ -10,7 +10,6 @@ import lombok.EqualsAndHashCode;
 
 import static java.util.Objects.isNull;
 
-@EqualsAndHashCode
 public class EmvVO extends ValueObject<String> {
 
     public EmvVO(String value) {

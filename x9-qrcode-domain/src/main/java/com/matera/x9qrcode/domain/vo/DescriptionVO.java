@@ -14,7 +14,6 @@ import java.util.regex.Pattern;
 
 import static java.util.Objects.isNull;
 
-@EqualsAndHashCode(callSuper = true)
 public class DescriptionVO extends ValueObject<String> {
 
     private static final Pattern DESCRIPTION_PATTERN = Pattern.compile("^[\\x20-\\x7E]*$");

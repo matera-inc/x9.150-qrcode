@@ -12,7 +12,6 @@ import lombok.EqualsAndHashCode;
 
 import static java.util.Objects.isNull;
 
-@EqualsAndHashCode
 public class AmountVO extends ValueObject<Long> {
 
     public AmountVO(Long value) {

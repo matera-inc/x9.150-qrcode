@@ -14,7 +14,6 @@ import java.time.OffsetDateTime;
 
 import static java.util.Objects.isNull;
 
-@EqualsAndHashCode
     /*
      * Time-relative rules deliberately do NOT live here.
      *

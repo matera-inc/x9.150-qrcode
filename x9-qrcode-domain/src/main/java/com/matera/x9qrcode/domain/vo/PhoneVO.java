@@ -14,7 +14,6 @@ import java.util.regex.Pattern;
 
 import static java.util.Objects.nonNull;
 
-@EqualsAndHashCode
 public class PhoneVO extends ValueObject<String> {
 
     private static final Pattern PHONE_PATTERN = Pattern.compile("^(\\+1[2-9]\\d{2}[2-9]\\d{6}|\\+\\d{1,3}\\d{4,14})$");

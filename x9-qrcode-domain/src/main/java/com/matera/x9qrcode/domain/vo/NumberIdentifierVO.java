@@ -14,7 +14,6 @@ import java.util.regex.Pattern;
 
 import static java.util.Objects.nonNull;
 
-@EqualsAndHashCode
 public class NumberIdentifierVO extends ValueObject<String> {
 
     private static final Pattern NUMBER_PATTERN = Pattern.compile("^[\\x20-\\x7E]{0,20}$");
