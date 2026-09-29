@@ -55,6 +55,7 @@ public final class QRCodeMongoDocumentMapper {
         qrCodeMongoPersistenceModel.setTtl(entity.getValidUntil().toInstant());
         qrCodeMongoPersistenceModel.setOutbox(buildOutbox(entity));
         qrCodeMongoPersistenceModel.setRevision(entity.getRevision());
+        qrCodeMongoPersistenceModel.setLockVersion(entity.getLockVersion());
         qrCodeMongoPersistenceModel.setCreatedAt(entity.getCreatedAt());
         qrCodeMongoPersistenceModel.setRevisedAt(entity.getRevisedAt());
         qrCodeMongoPersistenceModel.setValidUntil(entity.getValidUntil());

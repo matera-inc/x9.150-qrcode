@@ -120,6 +120,24 @@ paths:
         - payment-request
       parameters:
         - $ref: "#/components/parameters/qrCodeId"
+        - name: If-Match
+          in: header
+          required: false
+          description: |-
+            **Test-and-set.** The `ETag` from your last read of this QR Code. The patch is applied
+            only if nothing has changed since; otherwise nothing is written and the response is
+            **412**.
+
+            Editing a live bill has the same race as cancelling one: a payer can reach
+            `PAYMENT_INITIATED` between the read that decided the edit and the write that applies it,
+            and the edit would then rewrite a bill somebody is in the middle of paying. There is no
+            way to close that from the caller's side alone.
+
+            Echo the `ETag` header; the tag is opaque and covers the data version *and* the status.
+            Omitted or `*` means unconditional, which is the existing behaviour.
+          schema:
+            type: string
+          example: "\"2-ACTIVE\""
       requestBody:
         required: true
         content:
@@ -133,6 +151,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PaymentRequestResponse"
+        "412":
+          description: |-
+            The QR Code changed after you read it, so the precondition in `If-Match` no longer holds.
+            **Nothing was written.** `currentStatus` and `currentRevision` report what was found.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/BaseError"
         "400":
           $ref: "#/components/responses/BadRequestErrorResponse"
         "404":
@@ -161,9 +187,15 @@ paths:
           in: header
           required: false
           description: |-
-            **Test-and-set.** The `revision` you read before deciding. The transition is applied only
-            if the QR Code is still at that revision; otherwise nothing is written and the response is
+            **Test-and-set.** The `ETag` from your last read of this QR Code. The transition is applied
+            only if nothing has changed since; otherwise nothing is written and the response is
             **412**, reporting the status and revision actually found.
+
+            **Echo the `ETag` header, do not build this yourself.** The tag is opaque and its format
+            is ours to change. It covers the data version *and* the status, because `revision` alone
+            deliberately does not move for a status transition — a payment request marked PAID is the
+            same request with a new status, not a new version of it — so a tag built from `revision`
+            would leave a conditional cancel unprotected against the pre-payment it exists to guard.
 
             Without it the update is unconditional, which is the existing behaviour and remains the
             default.
@@ -180,7 +212,7 @@ paths:
             Accepts a bare number, a quoted entity tag, or a weak one; `*` means no condition.
           schema:
             type: string
-          example: "3"
+          example: "\"2-ACTIVE\""
       requestBody:
         required: true
         content:

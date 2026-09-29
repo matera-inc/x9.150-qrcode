@@ -46,6 +46,11 @@ public class PatchQRCodeUseCase extends UseCase<PatchQRCodeInput, PatchQRCodeOut
 
         QRCodeEntity qrCodeEntity = qrCodeRepository.findById(qrCodeIdVO);
 
+        // Before anything is applied: editing a live bill has the same race as cancelling one. A
+        // payer can reach PAYMENT_INITIATED between the read that decided this edit and the write
+        // that applies it, and the edit would then rewrite a bill somebody is midway through paying.
+        qrCodeEntity.requireEntityTag(input.expectedEntityTag());
+
         if (qrCodeEntity.isNotActiveOrInitiated()) {
             throw new BusinessRuleException("QR code with id %s must be active to be updated.".formatted(qrCodeIdVO));
         }

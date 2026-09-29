@@ -49,7 +49,10 @@ class QRCodeEntityTest extends AbstractTest {
             assertNull(qrCodeEntity.getPaymentDetails());
             assertNull(qrCodeEntity.getQrcodeContent());
 
-            assertNull(qrCodeEntity.getRevision());
+            // A new payment request is version 0 of itself, not "no version". It used to be null
+            // here only because `revision` doubled as the store's optimistic-lock token, which the
+            // store filled in on first save; it is now the request's own version and starts at 0.
+            assertEquals(0, qrCodeEntity.getRevision());
             assertEquals(expectedActiveStatus, qrCodeEntity.getStatus());
             assertEquals(expectedPaymentMethodListSize, qrCodeEntity.getPaymentMethods().size());
         });
@@ -77,7 +80,8 @@ class QRCodeEntityTest extends AbstractTest {
                     qrCodeEntity.getPaymentMethods(),
                     qrCodeEntity.getPaymentDetails(),
                     qrCodeEntity.getQrcodeContent()
-                );
+                ,
+            null);
 
             assertNotNull(restoredQRCodeEntity);
 

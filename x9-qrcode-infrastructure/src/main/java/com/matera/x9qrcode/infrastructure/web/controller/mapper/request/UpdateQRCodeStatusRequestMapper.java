@@ -26,19 +26,12 @@ public final class UpdateQRCodeStatusRequestMapper {
      * {@code If-Match: abc} as unconditional would apply the very write the caller was trying to
      * make conditional.
      */
-    public static Integer parseIfMatch(String ifMatch) {
+    public static String parseIfMatch(String ifMatch) {
         if (isNull(ifMatch) || ifMatch.isBlank() || "*".equals(ifMatch.trim())) {
             return null;
         }
 
-        String tag = ifMatch.trim().replaceFirst("^W/", "").replaceAll("^\"|\"$", "");
-
-        try {
-            return Integer.valueOf(tag);
-        } catch (NumberFormatException e) {
-            throw new BusinessRuleException("If-Match",
-                "If-Match must be a QR Code revision, optionally quoted: %s".formatted(ifMatch));
-        }
+        return ifMatch.trim().replaceFirst("^W/", "").replaceAll("^\"|\"$", "");
     }
 
     public static UpdateQRCodeStatusInput map(String id, StatusUpdateDTO statusUpdateDTO) {

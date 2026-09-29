@@ -45,7 +45,11 @@ and the expiry sweep use the same form, matching on `paymentId`.
 - **No multi-document transaction is introduced.** Single-document atomicity suffices.
 - Delivery is at-least-once; consumers deduplicate by `eventId`.
 - `PAYMENT_INITIATED` doubles as the "prepared" state for ADR-0003.
-- `revision` must be `$inc`-ed manually — Spring Data's `@Version` only auto-increments on `save()`.
+- ~~`revision` must be `$inc`-ed manually — Spring Data's `@Version` only auto-increments on
+  `save()`.~~ **Superseded by [ADR-0016](0016-a-revision-is-a-version-of-the-request-not-of-its-status.md)
+  (2026-09-29):** the field a transition guards on and the number a biller reads are now separate.
+  The lock token is `lockVersion`; `revision` counts data changes only, so a status transition must
+  NOT increment it.
 
 ## Two hazards this forces us to handle
 

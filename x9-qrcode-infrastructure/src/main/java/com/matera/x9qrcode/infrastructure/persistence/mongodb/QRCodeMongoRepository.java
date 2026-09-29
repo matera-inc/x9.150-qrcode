@@ -41,7 +41,12 @@ public class QRCodeMongoRepository implements QRCodeRepository {
 
             preserveUndrainedOutbox(model);
 
-            qrCodeMongoModelRepository.save(model);
+            QRCodeMongoPersistenceModel saved = qrCodeMongoModelRepository.save(model);
+
+            // Carry the new lock token back, or a second save in the same request would present a
+            // token the store has already moved past and be refused as a concurrent modification by
+            // the very request that made the first one.
+            qrCodeEntity.applyLockVersion(saved.getLockVersion());
 
             return qrCodeEntity;
         } catch (DuplicateKeyException ex) {

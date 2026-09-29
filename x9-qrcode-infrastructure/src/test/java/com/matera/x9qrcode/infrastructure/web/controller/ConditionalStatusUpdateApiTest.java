@@ -70,6 +70,12 @@ class ConditionalStatusUpdateApiTest extends AbstractIntegrationTest {
                 .then().statusCode(HttpStatus.OK.value()).extract().path("revision");
     }
 
+    /** What a caller actually echoes back: the ETag, opaque and covering revision AND status. */
+    private String eTagOf(String id) {
+        return given().when().get(CREATE + "/" + id)
+                .then().statusCode(HttpStatus.OK.value()).extract().header("ETag");
+    }
+
     private String statusOf(String id) {
         return given().when().get(CREATE + "/" + id)
                 .then().statusCode(HttpStatus.OK.value()).extract().path("status");
@@ -91,7 +97,7 @@ class ConditionalStatusUpdateApiTest extends AbstractIntegrationTest {
     void aTransitionIsAppliedWhenTheRevisionStillMatches() {
         String id = createQRCode();
 
-        MockMvcResponse response = cancel(id, String.valueOf(revisionOf(id)));
+        MockMvcResponse response = cancel(id, eTagOf(id));
 
         assertEquals(HttpStatus.OK.value(), response.statusCode(), response.asString());
         assertEquals("CANCELLED", statusOf(id));
@@ -122,14 +128,14 @@ class ConditionalStatusUpdateApiTest extends AbstractIntegrationTest {
     @Test
     void aTransitionIsRefusedWhenTheQRCodeChangedAfterItWasRead() {
         String id = createQRCode();
-        int revisionTheCallerRead = revisionOf(id);
+        String tagTheCallerRead = eTagOf(id);
 
         // Someone else moves it on — the notification that would have arrived in the window.
         given().contentType("application/json").body("{\"status\":\"PAYMENT_INITIATED\"}")
                 .when().put(CREATE + "/" + id + "/status-update")
                 .then().statusCode(HttpStatus.OK.value());
 
-        MockMvcResponse response = cancel(id, String.valueOf(revisionTheCallerRead));
+        MockMvcResponse response = cancel(id, tagTheCallerRead);
 
         assertEquals(HttpStatus.PRECONDITION_FAILED.value(), response.statusCode(),
                 "the cancel was decided on a reading that is now stale: " + response.asString());
@@ -141,12 +147,12 @@ class ConditionalStatusUpdateApiTest extends AbstractIntegrationTest {
     @Test
     void theRefusalReportsWhatWasActuallyFound() {
         String id = createQRCode();
-        int stale = revisionOf(id);
+        String stale = eTagOf(id);
 
         given().contentType("application/json").body("{\"status\":\"PAYMENT_INITIATED\"}")
                 .when().put(CREATE + "/" + id + "/status-update").then().statusCode(HttpStatus.OK.value());
 
-        MockMvcResponse response = cancel(id, String.valueOf(stale));
+        MockMvcResponse response = cancel(id, stale);
 
         assertEquals("PAYMENT_INITIATED", response.jsonPath().getString("currentStatus"),
                 "PAYMENT_INITIATED means abandon the cancel; PAID would mean settle instead");
@@ -157,16 +163,20 @@ class ConditionalStatusUpdateApiTest extends AbstractIntegrationTest {
     // ------------------------------------------------------------------------- malformed
 
     /**
-     * A value we cannot parse is refused rather than ignored. Treating it as unconditional would
-     * apply the very write the caller was trying to make conditional.
+     * A tag we do not recognise is a tag that does not match, and the write is refused.
+     *
+     * <p>There is no "malformed" for an opaque token: any string either equals what the QR Code is
+     * at, or it does not. Refusing with 412 is both correct and the safe direction — treating an
+     * unreadable condition as "no condition" would apply the very write the caller was trying to
+     * make conditional.
      */
     @Test
-    void aMalformedIfMatchIsRefusedRatherThanIgnored() {
+    void anUnrecognisedIfMatchIsRefusedRatherThanIgnored() {
         String id = createQRCode();
 
-        MockMvcResponse response = cancel(id, "not-a-revision");
+        MockMvcResponse response = cancel(id, "not-a-tag");
 
-        assertEquals(HttpStatus.BAD_REQUEST.value(), response.statusCode(), response.asString());
+        assertEquals(HttpStatus.PRECONDITION_FAILED.value(), response.statusCode(), response.asString());
         assertEquals("ACTIVE", statusOf(id), "and nothing was written");
     }
 
@@ -174,10 +184,10 @@ class ConditionalStatusUpdateApiTest extends AbstractIntegrationTest {
     @Test
     void aQuotedOrWeakEntityTagIsAccepted() {
         String first = createQRCode();
-        assertEquals(HttpStatus.OK.value(), cancel(first, "\"" + revisionOf(first) + "\"").statusCode());
+        assertEquals(HttpStatus.OK.value(), cancel(first, eTagOf(first)).statusCode());
 
         String second = createQRCode();
-        assertEquals(HttpStatus.OK.value(), cancel(second, "W/\"" + revisionOf(second) + "\"").statusCode());
+        assertEquals(HttpStatus.OK.value(), cancel(second, "W/" + eTagOf(second)).statusCode());
     }
 
     // ------------------------------------------- it is a precondition, not a legality check
@@ -196,7 +206,7 @@ class ConditionalStatusUpdateApiTest extends AbstractIntegrationTest {
 
         MockMvcResponse response = given().contentType("application/json")
                 .body("{\"status\":\"PAYMENT_INITIATED\"}")
-                .header("If-Match", String.valueOf(revisionOf(id)))
+                .header("If-Match", eTagOf(id))
                 .when().put(CREATE + "/" + id + "/status-update");
 
         assertEquals(HttpStatus.CONFLICT.value(), response.statusCode(),
