@@ -11,6 +11,7 @@ import com.matera.x9qrcode.app.exception.InvalidSignatureException;
 import com.matera.x9qrcode.app.exception.NotificationUndeliverableException;
 import com.matera.x9qrcode.app.exception.ServiceException;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
+import com.matera.x9qrcode.domain.exception.QRCodePreconditionFailedException;
 import com.matera.x9qrcode.domain.exception.QRCodeStatusConflictException;
 import com.matera.x9qrcode.domain.exception.ValueObjectRuleException;
 
@@ -36,6 +37,7 @@ import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.Err
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.INVALID_HTTP_HEADER;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.METHOD_ARGUMENT_NOT_VALID;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.RESOURCE_NOT_FOUND;
+import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.PRECONDITION_FAILED;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.STATUS_CONFLICT;
 import static org.apache.commons.lang3.StringUtils.isBlank;
 
@@ -46,6 +48,7 @@ public class GlobalControllerAdvice {
     private static final String VIOLATIONS_MESSAGE_PATTERN = "%s: %s";
     private static final String VIOLATIONS_PROPERTY = "violations";
     private static final String CURRENT_STATUS_PROPERTY = "currentStatus";
+    private static final String CURRENT_REVISION_PROPERTY = "currentRevision";
     private static final String INVALID_PROPERTY_VIOLATION = "%s has invalid value.";
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -132,6 +135,29 @@ public class GlobalControllerAdvice {
         problemDetail.setType(STATUS_CONFLICT.uriType());
         problemDetail.setDetail(STATUS_CONFLICT.description());
         problemDetail.setProperty(CURRENT_STATUS_PROPERTY, ex.getCurrentStatus().value());
+        problemDetail.setProperty(VIOLATIONS_PROPERTY, List.of(ex.getMessage()));
+
+        return problemDetail;
+    }
+
+    /**
+     * A conditional request whose precondition no longer holds.
+     *
+     * <p>412 rather than 409 because that is what the precondition failed, not the transition:
+     * RFC 9110 reserves 412 for exactly this, and an HTTP client library will already understand it.
+     * Both the status and the revision found are reported, so the caller can retake the decision
+     * without a second request.
+     */
+    @ExceptionHandler(QRCodePreconditionFailedException.class)
+    public ProblemDetail handleQRCodePreconditionFailedException(QRCodePreconditionFailedException ex) {
+        logExceptionStacktrace(ex);
+
+        ProblemDetail problemDetail = ProblemDetail.forStatus(PRECONDITION_FAILED.status());
+        problemDetail.setTitle(PRECONDITION_FAILED.title());
+        problemDetail.setType(PRECONDITION_FAILED.uriType());
+        problemDetail.setDetail(PRECONDITION_FAILED.description());
+        problemDetail.setProperty(CURRENT_STATUS_PROPERTY, ex.getCurrentStatus().value());
+        problemDetail.setProperty(CURRENT_REVISION_PROPERTY, ex.getCurrentRevision());
         problemDetail.setProperty(VIOLATIONS_PROPERTY, List.of(ex.getMessage()));
 
         return problemDetail;

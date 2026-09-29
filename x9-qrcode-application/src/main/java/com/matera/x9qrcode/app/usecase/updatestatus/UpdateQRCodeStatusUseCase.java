@@ -33,6 +33,10 @@ public class UpdateQRCodeStatusUseCase extends UseCase<UpdateQRCodeStatusInput, 
 
         QRCodeEntity qrCodeEntity = retrieveQRCodeEntity(qrCodeIdVO);
 
+        // Before anything else, and before any transition is attempted: a refused precondition must
+        // leave the QR Code exactly as it was, including any validation side effects.
+        qrCodeEntity.requireRevision(updateQRCodeStatusInput.expectedRevision());
+
         String network = updateQRCodeStatusInput.paymentNetwork();
 
         if (nonNull(network)) {
