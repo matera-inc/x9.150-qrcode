@@ -12,7 +12,14 @@ public record UpdateQRCodeStatusInput(
     String id,
     QRCodeStatusEnumDTO status,
     String endToEndId,
-    String paymentNetwork
+    String paymentNetwork,
+
+    /**
+     * The revision the caller read before deciding, or null for an unconditional update.
+     *
+     * <p>Carried from the {@code If-Match} header. See {@code QRCodeEntity.requireRevision}.
+     */
+    Integer expectedRevision
 ) {
 
 }

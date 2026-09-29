@@ -9,6 +9,7 @@ package com.matera.x9qrcode.domain.entity;
 import com.matera.x9qrcode.domain.entity.validator.QRCodeEntityValidator;
 import com.matera.x9qrcode.domain.event.PaymentEvent;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
+import com.matera.x9qrcode.domain.exception.QRCodePreconditionFailedException;
 import com.matera.x9qrcode.domain.exception.QRCodeStatusConflictException;
 import com.matera.x9qrcode.domain.generator.IdGenerator;
 import com.matera.x9qrcode.domain.utils.DateTimeUtils;
@@ -217,6 +218,32 @@ public class QRCodeEntity {
         this.bill = bill;
 
         this.qrCodeEntityValidator.validateInvoiceDueDate();
+    }
+
+    /**
+     * Refuses the operation unless this QR Code is still at {@code expectedRevision}.
+     *
+     * <p>Test-and-set. A caller reads the QR Code, decides on what it read, and passes the revision
+     * it saw; if anything changed in between, the decision was made on stale information and the
+     * operation is refused rather than applied.
+     *
+     * <p>The revision is the persistence layer's optimistic-lock token, which makes this stronger
+     * than comparing the status alone: a PATCH that altered the amount between the read and the
+     * write is caught too, and a status comparison would sail straight past it.
+     *
+     * <p>A null expectation means the caller is not making a conditional request, and nothing is
+     * checked — the unconditional behaviour every existing caller relies on.
+     */
+    public void requireRevision(Integer expectedRevision) {
+        if (isNull(expectedRevision) || expectedRevision.equals(this.revision)) {
+            return;
+        }
+
+        throw new QRCodePreconditionFailedException(
+            this.status,
+            this.revision,
+            "The QR Code has changed since it was read: expected revision %d, found %d with status %s."
+                .formatted(expectedRevision, this.revision, this.status.value()));
     }
 
     public void updatePaymentMethods(List<PaymentMethodVO> updatedPaymentMethods) {

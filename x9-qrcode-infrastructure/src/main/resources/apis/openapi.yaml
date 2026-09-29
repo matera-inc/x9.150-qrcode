@@ -157,6 +157,30 @@ paths:
         - payment-request
       parameters:
         - $ref: "#/components/parameters/qrCodeId"
+        - name: If-Match
+          in: header
+          required: false
+          description: |-
+            **Test-and-set.** The `revision` you read before deciding. The transition is applied only
+            if the QR Code is still at that revision; otherwise nothing is written and the response is
+            **412**, reporting the status and revision actually found.
+
+            Without it the update is unconditional, which is the existing behaviour and remains the
+            default.
+
+            Why it is needed: several transitions are legal from more than one status — a cancel is
+            accepted from both `ACTIVE` and `PAYMENT_INITIATED` — so a caller who means "cancel only
+            if nobody has started paying" cannot express that by legality alone. Reading the status
+            and then writing is check-then-act: a notification arriving between the two cancels a QR
+            Code a payer is in the middle of paying.
+
+            The revision is the optimistic-lock token, so this also catches changes a status
+            comparison would miss, such as a PATCH that altered the amount after you read it.
+
+            Accepts a bare number, a quoted entity tag, or a weak one; `*` means no condition.
+          schema:
+            type: string
+          example: "3"
       requestBody:
         required: true
         content:
@@ -174,6 +198,15 @@ paths:
           $ref: "#/components/responses/BadRequestErrorResponse"
         "404":
           $ref: "#/components/responses/NotFoundErrorResponse"
+        "412":
+          description: |-
+            The QR Code changed after you read it, so the precondition in `If-Match` no longer holds.
+            **Nothing was written.** `currentStatus` and `currentRevision` report what was actually
+            found, so the decision can be retaken without a second request.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/BaseError"
         "409":
           $ref: "#/components/responses/ConflictErrorResponse"
         "500":

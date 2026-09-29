@@ -75,9 +75,10 @@ public class PaymentRequestsController implements PaymentRequestApi {
 
     @Override
     @Transactional
-    public ResponseEntity<StatusUpdateResponseDTO> putPaymentRequestStatusUpdate(String id, StatusUpdateDTO statusUpdateDTO) {
+    public ResponseEntity<StatusUpdateResponseDTO> putPaymentRequestStatusUpdate(
+            String id, StatusUpdateDTO statusUpdateDTO, String ifMatch) {
         UpdateQRCodeStatusOutput updateQRCodeStatusOutput =
-            updateQRCodeStatusUseCase.execute(UpdateQRCodeStatusRequestMapper.map(id, statusUpdateDTO));
+            updateQRCodeStatusUseCase.execute(UpdateQRCodeStatusRequestMapper.map(id, statusUpdateDTO, ifMatch));
 
         return ResponseEntity.ok(UpdateQRCodeStatusResponseMapper.map(updateQRCodeStatusOutput));
     }

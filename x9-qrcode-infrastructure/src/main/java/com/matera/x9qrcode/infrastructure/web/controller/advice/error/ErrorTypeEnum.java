@@ -18,6 +18,7 @@ public enum ErrorTypeEnum {
     BUSINESS_RULE("Business Rule Violation", URI.create("https://x9.matera.com/api/business-rule-violation"), "A business rule was violated.", HttpStatus.BAD_REQUEST),
     RESOURCE_NOT_FOUND("Resource not found", URI.create("https://x9.matera.com/api/resource-not-found"), "A resource was not found.", HttpStatus.NOT_FOUND),
     STATUS_CONFLICT("Status Conflict", URI.create("https://x9.matera.com/api/status-conflict"), "The QR Code is not in a status that allows this transition.", HttpStatus.CONFLICT),
+    PRECONDITION_FAILED("Precondition Failed", URI.create("https://x9.matera.com/api/precondition-failed"), "The QR Code changed after it was read, so the condition on this request no longer holds. Nothing was written.", HttpStatus.PRECONDITION_FAILED),
     INVALID_SIGNATURE("Invalid Signature", URI.create("https://x9.matera.com/api/invalid-signature"), "The JWS signature could not be verified, so the request was not processed.", HttpStatus.UNAUTHORIZED),
     NOTIFICATION_UNDELIVERABLE("Notification Undeliverable", URI.create("https://x9.matera.com/api/notification-undeliverable"), "The payee could not be reached, so nothing was delivered. Retry.", HttpStatus.BAD_GATEWAY);
 
