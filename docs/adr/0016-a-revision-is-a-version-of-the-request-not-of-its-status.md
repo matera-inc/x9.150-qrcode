@@ -33,9 +33,25 @@ Two fields.
 `(id, revision)` therefore identifies a version of the request, which is what the `qrcode_history`
 collection is keyed on.
 
-**Status history is history of the entity, not of a version**, and already exists: the payment event
-stream records `payment.initiated`, `payment.sent`, `payment.failed`, `payment.cleared` and
-`payment.cancelled` against the QR Code id. A separate status-history collection would duplicate it.
+**Status history is history of the entity, not of a version.** For a QR Code it already exists: the
+payment event stream records `payment.initiated`, `payment.sent`, `payment.failed`,
+`payment.cleared` and `payment.cancelled` against the QR Code id, so a status-history collection
+here would duplicate it.
+
+**But a QR Code is not a payment request**, and the distinction decides where that history can live.
+A biller's payment request may be satisfied by several QR Codes — four partial payments against one
+bill is an ordinary case — so the state of the *request* is an aggregate over QR Codes that happen
+to belong together.
+
+X9.150 cannot compute it. It has no concept of a tenant, a biller, or a payment request
+([ADR-0009](0009-tenant-agnostic-single-system.md)): every QR Code stands alone, and nothing in the
+model says two of them are related. The mapping from QR Code to payment request exists only in the
+system that created them, which is the same system that already owns the fan-out
+([ADR-0014](0014-we-transport-and-sequence-the-consumer-reconciles.md)).
+
+So payment-request state history belongs to the consumer, built from this event stream. Adding it
+here would mean inventing a grouping key X9.150 has deliberately refused, to hold a state it cannot
+derive.
 
 ## Consequences
 
