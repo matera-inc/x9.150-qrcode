@@ -55,7 +55,11 @@ public class PatchQRCodeUseCase extends UseCase<PatchQRCodeInput, PatchQRCodeOut
             throw new BusinessRuleException("QR code with id %s must be active to be updated.".formatted(qrCodeIdVO));
         }
 
-        input.locationId().ifPresent(locationId -> treatLocationUpdate(locationId, qrCodeEntity));
+        // treatLocationUpdate RETURNS the consumer that assigns the location; it has to be applied.
+        // Discarding it released the previous holder and gave the location to nobody, which is worse
+        // than doing nothing: the QR Code already printed stops resolving.
+        input.locationId().ifPresent(locationId ->
+            treatLocationUpdate(locationId, qrCodeEntity).accept(locationId));
         input.validUntil().ifPresent(qrCodeEntity::updateValidUntil);
         input.additionalInformationMap().ifPresent(qrCodeEntity::updateAdditionalInformation);
         input.unstructured().ifPresent(qrCodeEntity::updateUnstructured);
@@ -65,7 +69,16 @@ public class PatchQRCodeUseCase extends UseCase<PatchQRCodeInput, PatchQRCodeOut
         List<PaymentMethodVO> updatedPaymentMethods =
             PatchQRCodePaymentMethodsMapper.map(qrCodeEntity.getPaymentMethods(), input.paymentMethodUpdateDTOList());
 
-        qrCodeEntity.updatePaymentMethods(updatedPaymentMethods);
+        // "Nothing to update" is a statement about the WHOLE patch. Judging it on the payment methods
+        // alone rejected a patch that moved the location and left the amounts alone — which is the
+        // shape of re-pointing a printed QR Code at the balance still owed after a partial payment.
+        boolean changedSomethingElse = input.locationId().isPresent()
+            || input.validUntil().isPresent()
+            || input.billUpdateDTO().isPresent()
+            || input.unstructured().isPresent()
+            || input.additionalInformationMap().isPresent();
+
+        qrCodeEntity.updatePaymentMethods(updatedPaymentMethods, changedSomethingElse);
 
         List<String> currencies = collectCurrencies(qrCodeEntity);
 

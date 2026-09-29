@@ -316,11 +316,21 @@ public class QRCodeEntity {
     }
 
     public void updatePaymentMethods(List<PaymentMethodVO> updatedPaymentMethods) {
+        this.updatePaymentMethods(updatedPaymentMethods, false);
+    }
+
+    /**
+     * @param partOfALargerChange whether the surrounding request changed something else. The
+     *     "nothing to update" refusal is about the whole patch: identical payment methods beside a
+     *     moved location are not a no-op, and rejecting them blocks re-pointing a printed QR Code at
+     *     the balance still owed.
+     */
+    public void updatePaymentMethods(List<PaymentMethodVO> updatedPaymentMethods, boolean partOfALargerChange) {
         if (isNull(updatedPaymentMethods) || updatedPaymentMethods.isEmpty()) {
             throw new BusinessRuleException("paymentMethods", "must not be updated with null or empty.");
         }
 
-        if (this.paymentMethods.equals(updatedPaymentMethods)) {
+        if (!partOfALargerChange && this.paymentMethods.equals(updatedPaymentMethods)) {
             throw new BusinessRuleException("paymentMethods", "can not find any paymentMethod to be updated.");
         }
 
