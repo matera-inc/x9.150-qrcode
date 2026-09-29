@@ -60,15 +60,21 @@ public class PaymentRequestsController implements PaymentRequestApi {
 
         RetrieveQRCodeOutput retrieveQRCodeOutput = retrieveQRCodeUseCase.execute(retrieveQRCodeInput);
 
-        return ResponseEntity.ok(RetrieveQRCodeResponseMapper.map(retrieveQRCodeOutput));
+        // The token a conditional status-update echoes back. It encodes the data version AND the
+        // status, because `revision` alone stopped moving for a status change — which is correct,
+        // and would have left a conditional cancel unprotected against the very thing it guards.
+        return ResponseEntity.ok()
+            .eTag("\"%d-%s\"".formatted(retrieveQRCodeOutput.revision(), retrieveQRCodeOutput.status()))
+            .body(RetrieveQRCodeResponseMapper.map(retrieveQRCodeOutput));
     }
 
     @Override
     @Transactional
     public ResponseEntity<PaymentRequestResponseDTO> patchPaymentRequest(String id,
-                                                                         PatchPaymentRequestReplacementDTO patchPaymentRequestReplacementDTO) {
+                                                                         PatchPaymentRequestReplacementDTO patchPaymentRequestReplacementDTO,
+                                                                         String ifMatch) {
         PatchQRCodeOutput patchQRCodeOutput =
-            patchQRCodeUseCase.execute(PatchQRCodeRequestMapper.map(id, patchPaymentRequestReplacementDTO));
+            patchQRCodeUseCase.execute(PatchQRCodeRequestMapper.map(id, patchPaymentRequestReplacementDTO, ifMatch));
 
         return ResponseEntity.status(HttpStatus.OK).body(PatchQRCodeResponseMapper.map(patchQRCodeOutput));
     }

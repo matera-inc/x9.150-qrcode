@@ -78,7 +78,8 @@ public final class QRCodeMongoEntityMapper {
             buildPaymentNotification(document.getPaymentNotification()),
             document.getPaymentMethods().stream().map(QRCodeMongoEntityMapper::buildPaymentMethod).toList(),
             buildPaymentDetails(document.getPaymentDetails()),
-            new EmvVO(document.getQrcodeEmv())
+            new EmvVO(document.getQrcodeEmv()),
+            document.getLockVersion()
         );
     }
 

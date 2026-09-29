@@ -81,7 +81,8 @@ public final class PatchQRCodeRequestMapper {
             bill.isPresent() ? buildBillUpdateDTO(bill.get()) : PartialInput.absent(),
             unstructured.isPresent() ? PartialInput.of(unstructured.get()) : PartialInput.absent(),
             additionalInformation.isPresent() ? buildAdditionalInformationMap(additionalInformation.get()) : PartialInput.absent(),
-            buildPaymentMethodDTOList(paymentRequestReplacementDTO.getPaymentMethods())
+            buildPaymentMethodDTOList(paymentRequestReplacementDTO.getPaymentMethods()),
+            null
         );
     }
 
@@ -342,6 +343,31 @@ public final class PatchQRCodeRequestMapper {
         );
 
         return PartialInput.of(addressUpdateDTO);
+    }
+
+
+    /**
+     * As {@link #map(String, PatchPaymentRequestReplacementDTO)}, with the conditional-request tag
+     * from {@code If-Match}. Quoting and the weak prefix are stripped; {@code *} means no condition.
+     */
+    public static PatchQRCodeInput map(String id,
+                                       PatchPaymentRequestReplacementDTO request,
+                                       String ifMatch) {
+        PatchQRCodeInput base = map(id, request);
+
+        String tag = (isNull(ifMatch) || ifMatch.isBlank() || "*".equals(ifMatch.trim()))
+            ? null
+            : ifMatch.trim().replaceFirst("^W/", "").replaceAll("^\"|\"$", "");
+
+        return new PatchQRCodeInput(
+            base.id(),
+            base.locationId(),
+            base.validUntil(),
+            base.billUpdateDTO(),
+            base.unstructured(),
+            base.additionalInformationMap(),
+            base.paymentMethodUpdateDTOList(),
+            tag);
     }
 
 }

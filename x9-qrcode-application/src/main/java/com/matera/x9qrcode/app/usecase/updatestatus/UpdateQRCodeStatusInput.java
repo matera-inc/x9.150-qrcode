@@ -15,11 +15,13 @@ public record UpdateQRCodeStatusInput(
     String paymentNetwork,
 
     /**
-     * The revision the caller read before deciding, or null for an unconditional update.
+     * The entity tag the caller last read, or null for an unconditional update.
      *
-     * <p>Carried from the {@code If-Match} header. See {@code QRCodeEntity.requireRevision}.
+     * <p>Carried from the {@code If-Match} header and opaque: it encodes both the data version and
+     * the status, because a caller usually needs protection from either changing. See
+     * {@code QRCodeEntity.requireEntityTag}.
      */
-    Integer expectedRevision
+    String expectedEntityTag
 ) {
 
 }

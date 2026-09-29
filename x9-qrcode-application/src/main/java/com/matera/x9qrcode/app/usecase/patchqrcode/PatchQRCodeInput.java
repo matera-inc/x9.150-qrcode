@@ -21,7 +21,12 @@ public record PatchQRCodeInput(
     PartialInput<BillUpdateDTO> billUpdateDTO,
     PartialInput<String> unstructured,
     PartialInput<Map<String, String>> additionalInformationMap,
-    List<PaymentMethodUpdateDTO> paymentMethodUpdateDTOList
+    List<PaymentMethodUpdateDTO> paymentMethodUpdateDTOList,
+
+    /**
+     * The entity tag the caller last read, or null for an unconditional patch. From {@code If-Match}.
+     */
+    String expectedEntityTag
 ) {
 
 }

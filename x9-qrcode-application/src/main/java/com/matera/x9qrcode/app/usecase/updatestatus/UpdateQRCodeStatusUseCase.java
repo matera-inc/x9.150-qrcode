@@ -35,7 +35,7 @@ public class UpdateQRCodeStatusUseCase extends UseCase<UpdateQRCodeStatusInput, 
 
         // Before anything else, and before any transition is attempted: a refused precondition must
         // leave the QR Code exactly as it was, including any validation side effects.
-        qrCodeEntity.requireRevision(updateQRCodeStatusInput.expectedRevision());
+        qrCodeEntity.requireEntityTag(updateQRCodeStatusInput.expectedEntityTag());
 
         String network = updateQRCodeStatusInput.paymentNetwork();
 

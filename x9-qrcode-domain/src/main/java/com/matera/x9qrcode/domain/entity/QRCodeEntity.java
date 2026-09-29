@@ -50,7 +50,20 @@ public class QRCodeEntity {
     private final QRCodeEntityValidator qrCodeEntityValidator;
     private final QRCodeIdVO id;
     private LocationIdVO locationId;
+    /**
+     * The payment request's own version: incremented when its DATA changes, and only then.
+     *
+     * <p>Marking a request PAID or CANCELLED does not make it a new version of the request — it is
+     * the same request with a new status. A new version appears when a caller changes what is being
+     * asked for: the amount due, the due date, a payment method.
+     */
     private Integer revision;
+
+    /**
+     * The optimistic-lock token, carried so it survives the entity-to-document round trip. Moves on
+     * every save, unlike {@link #revision}, and is never exposed on the API.
+     */
+    private Integer lockVersion;
     private final OffsetDateTime createdAt;
     private OffsetDateTime revisedAt;
     private ValidUntilVO validUntil;
@@ -88,10 +101,12 @@ public class QRCodeEntity {
                          PaymentNotificationVO paymentNotification,
                          List<PaymentMethodVO> paymentMethods,
                          PaymentDetailsVO paymentDetails,
-                         EmvVO qrcodeContent) {
+                         EmvVO qrcodeContent,
+                         Integer lockVersion) {
         this.id = id;
         this.locationId = locationId;
         this.revision = revision;
+        this.lockVersion = lockVersion;
         this.createdAt = createdAt;
         this.revisedAt = revisedAt;
         this.validUntil = new ValidUntilVO(validUntil);
@@ -131,7 +146,7 @@ public class QRCodeEntity {
         QRCodeEntity qrCodeEntity = new QRCodeEntity(
             qrCodeIdVO,
             locationIdVO,
-            null,
+            0,
             nowUTC,
             nowUTC,
             validUntil,
@@ -142,6 +157,7 @@ public class QRCodeEntity {
             additionalInformation,
             paymentNotification,
             paymentMethods,
+            null,
             null,
             null
         );
@@ -166,7 +182,8 @@ public class QRCodeEntity {
                                        PaymentNotificationVO paymentNotification,
                                        List<PaymentMethodVO> paymentMethods,
                                        PaymentDetailsVO paymentDetails,
-                                       EmvVO qrcodeEmv) {
+                                       EmvVO qrcodeEmv,
+                                       Integer lockVersion) {
         return new QRCodeEntity(
             QRCodeIdVO.from(id),
             LocationIdVO.from(locationId),
@@ -182,7 +199,8 @@ public class QRCodeEntity {
             paymentNotification,
             paymentMethods,
             paymentDetails,
-            qrcodeEmv
+            qrcodeEmv,
+            lockVersion
         );
     }
 
@@ -194,7 +212,25 @@ public class QRCodeEntity {
         this.qrcodeContent = new EmvVO(qrcodeEmv);
     }
 
+    /**
+     * Records a DATA change: a new version of the payment request.
+     *
+     * <p>Called from the patch path only. A status transition deliberately does not call it — the
+     * request has not changed, only what has happened to it.
+     */
     public void updateRevision() {
+        this.revision = isNull(this.revision) ? 1 : this.revision + 1;
+        this.touch();
+    }
+
+    /**
+     * Records that the QR Code was written to, without claiming its content changed.
+     *
+     * <p>What a status transition does. `revisedAt` moves because the document did; `revision` does
+     * not, because the payment request is the same request — a bill marked PAID is not a new version
+     * of the bill.
+     */
+    private void touch() {
         this.revisedAt = DateTimeUtils.nowUTC();
     }
 
@@ -234,16 +270,49 @@ public class QRCodeEntity {
      * <p>A null expectation means the caller is not making a conditional request, and nothing is
      * checked — the unconditional behaviour every existing caller relies on.
      */
-    public void requireRevision(Integer expectedRevision) {
-        if (isNull(expectedRevision) || expectedRevision.equals(this.revision)) {
+    /**
+     * The entity tag a conditional request echoes back: the version of the data AND what has
+     * happened to it.
+     *
+     * <p>It has to be both. `revision` alone stopped being enough the moment it correctly stopped
+     * moving for a status change — a caller meaning "cancel only if nobody has started paying"
+     * would have been given a token that a pre-payment leaves untouched. The status alone is not
+     * enough either: it would miss a PATCH that changed the amount between the read and the write.
+     *
+     * <p>Opaque to the caller by design. Read it from the {@code ETag} header, send it back in
+     * {@code If-Match}, and never parse it — the format is ours to change.
+     */
+    /**
+     * Accepts the lock token the store assigned on the last save.
+     *
+     * <p>Persistence bookkeeping, not a business operation. Without it an entity saved twice in one
+     * request carries a token the store has already moved past, and the second save is refused as a
+     * concurrent modification by the very request that made the first one.
+     */
+    public void applyLockVersion(Integer lockVersion) {
+        this.lockVersion = lockVersion;
+    }
+
+    public String entityTag() {
+        return "%d-%s".formatted(isNull(this.revision) ? 0 : this.revision, this.status.value());
+    }
+
+    /**
+     * Refuses the operation unless this QR Code is still exactly as the caller last read it.
+     *
+     * <p>Test-and-set. A null expectation means the caller is not making a conditional request and
+     * nothing is checked — the unconditional behaviour every existing caller relies on.
+     */
+    public void requireEntityTag(String expectedTag) {
+        if (isNull(expectedTag) || expectedTag.equals(entityTag())) {
             return;
         }
 
         throw new QRCodePreconditionFailedException(
             this.status,
             this.revision,
-            "The QR Code has changed since it was read: expected revision %d, found %d with status %s."
-                .formatted(expectedRevision, this.revision, this.status.value()));
+            "The QR Code has changed since it was read: expected %s, found %s."
+                .formatted(expectedTag, entityTag()));
     }
 
     public void updatePaymentMethods(List<PaymentMethodVO> updatedPaymentMethods) {
@@ -301,7 +370,7 @@ public class QRCodeEntity {
 
         this.status = QRCodeStatusEnum.PAID;
         this.paymentDetails = paymentDetails;
-        this.updateRevision();
+        this.touch();
         this.emit(PaymentEventTypeEnum.PAYMENT_CLEARED, null);
     }
 
@@ -326,7 +395,7 @@ public class QRCodeEntity {
         }
 
         this.status = QRCodeStatusEnum.PAYMENT_INITIATED;
-        this.updateRevision();
+        this.touch();
         this.emit(PaymentEventTypeEnum.PAYMENT_INITIATED, null);
     }
 
@@ -353,7 +422,7 @@ public class QRCodeEntity {
 
         this.status = QRCodeStatusEnum.CANCELLED;
         this.paymentDetails = null;
-        this.updateRevision();
+        this.touch();
         this.emit(PaymentEventTypeEnum.PAYMENT_CANCELLED, null);
     }
 
@@ -368,7 +437,7 @@ public class QRCodeEntity {
 
         this.status = QRCodeStatusEnum.ACTIVE;
         this.paymentDetails = null;
-        this.updateRevision();
+        this.touch();
     }
 
     public void notifyPayment(PaymentNotificationDataVO paymentNotificationDataVO) {
@@ -384,7 +453,7 @@ public class QRCodeEntity {
         this.paymentNotification =
             new PaymentNotificationVO(this.paymentNotification.kind(), this.paymentNotification.endpoint(),
                 paymentNotificationDataVO);
-        this.updateRevision();
+        this.touch();
 
         emitForNotification(previousStatus, paymentNotificationDataVO);
     }

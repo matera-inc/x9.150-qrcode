@@ -28,9 +28,16 @@ import static java.util.Objects.isNull;
 @Document(collection = "qrcodes")
 public class QRCodeMongoPersistenceModel implements Persistable<UUID> {
 
+    /**
+     * Whether this document has never been stored.
+     *
+     * <p>Keyed on the LOCK token, not on {@link #revision}. A document that has never been saved has
+     * no lock token; a brand-new payment request, by contrast, legitimately starts at revision 0,
+     * and reading newness from that made Spring Data take a first save for an update.
+     */
     @Override
     public boolean isNew() {
-        return isNull(revision);
+        return isNull(lockVersion);
     }
 
     @Id
@@ -44,7 +51,24 @@ public class QRCodeMongoPersistenceModel implements Persistable<UUID> {
     @Indexed(expireAfter = "30S")
     private Instant ttl;
 
+    /**
+     * The optimistic-lock token, managed by Spring Data and never exposed.
+     *
+     * <p>Separate from {@link #revision} on purpose. It moves on EVERY save — a status transition,
+     * a drained event, anything — because that is what a lost-update check needs. `revision` moves
+     * only when the payment request's DATA changes, because that is what the word means to a biller.
+     * One field cannot honestly be both.
+     */
     @Version
+    private Integer lockVersion;
+
+    /**
+     * The payment request's own version: incremented when its DATA changes, and only then.
+     *
+     * <p>Marking a request PAID or CANCELLED does not make it a new version of the request. It is
+     * the same request with a new status. A new version appears when a caller changes what is being
+     * asked for — the amount due, the due date — through PATCH.
+     */
     private Integer revision;
 
     @Field(name = "valid_until")
