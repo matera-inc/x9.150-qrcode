@@ -94,19 +94,20 @@ public final class QRCodeEntityValidator {
         InvoiceVO invoice = bill.invoice();
 
         if (nonNull(invoice)) {
+            // dueDate is the only date here that must be in the future: it is when payment is
+            // owed. `invoice.date` and `order.date` are NOT — the contract calls them "the date the
+            // bill was issued" and "the date the order was created", and a bill issued yesterday for
+            // an order raised last week is the ordinary case, not an error. Forcing them forward
+            // rejected every truthful invoice and made `order` unusable without inventing a date.
+            //
+            // `order.date` also NPE'd outright when omitted, which the contract permits: the guard
+            // checked `order` for null and then dereferenced `date`. Both problems are gone with the
+            // rule, which should never have applied to a date recording when something happened.
             if (invoice.dueDate().isBefore(now)) {
                 throw new BusinessRuleException("bill.invoice.dueDate", "must be after or equal to actual date.");
             }
 
-            if (invoice.date().isBefore(now.toLocalDate())) {
-                throw new BusinessRuleException("bill.invoice.date", "must be after or equal to actual date.");
-            }
-
             validateDiscountTargetDates(bill, invoice, now);
-        }
-
-        if (nonNull(bill.order()) && bill.order().date().isBefore(now.toLocalDate())) {
-            throw new BusinessRuleException("bill.order.date", "must be after or equal to actual date.");
         }
     }
 

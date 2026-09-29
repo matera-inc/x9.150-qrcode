@@ -40,12 +40,24 @@ public abstract class AbstractRequestLoggerFilter extends OncePerRequestFilter {
             .requestServletPath(httpServletRequest.getServletPath())
             .build();
 
+        boolean threw = false;
+
         try {
             logStartedExecution(requestLoggerFilterDTO);
             filterChain.doFilter(httpServletRequest, httpServletResponse);
+        } catch (Exception | Error e) {
+            // An exception escaping the chain becomes a 500, but the CONTAINER sets that during the
+            // ERROR dispatch — after this filter has unwound. Reading the response here would still
+            // see the servlet default of 200, which is how a 500 came to be logged as a success.
+            // Reading it late was only half the fix; this is the other half.
+            threw = true;
+            throw e;
         } finally {
-            // Read now, not at build time: before the chain runs this is always the servlet default.
-            requestLoggerFilterDTO.setHttpStatus(httpServletResponse.getStatus());
+            int status = httpServletResponse.getStatus();
+            requestLoggerFilterDTO.setHttpStatus(
+                threw && status < HttpServletResponse.SC_BAD_REQUEST
+                    ? HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+                    : status);
 
             long duration = logFinishedExecution(requestLoggerFilterDTO);
             afterRequestLoggerFilterHook.execute(requestLoggerFilterDTO, duration);

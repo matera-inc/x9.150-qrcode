@@ -13,6 +13,13 @@ metadata:
   name: {{ include "x9-qrcode.fullname" . }}
 data:
   spring.cloud.discovery.client.composite-indicator.enabled: "false"
+  # The Kubernetes health indicator stays REGISTERED even when spring.cloud.kubernetes is disabled:
+  # it calls the API server, fails without RBAC for it, and drags the AGGREGATE /actuator/health to
+  # DOWN while mongo, livenessState and readinessState are all UP. The probes above use the
+  # liveness/readiness groups so pods still become ready, but anything reading the aggregate — a
+  # dashboard, a smoke test, an operator — sees a healthy deployment reporting DOWN. Whether this
+  # service can reach the Kubernetes API is not a statement about whether it can take payments.
+  management.health.kubernetes.enabled: "false"
   server.port: {{ .Values.deploy.ports.containerPort | quote }}
   management.server.port: {{ .Values.deploy.ports.managementPort | quote }}
   spring.application.name: {{ include "x9-qrcode.fullname" . }}

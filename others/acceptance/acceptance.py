@@ -147,10 +147,23 @@ print(f"X9.150 acceptance — {BASE}")
 
 section("0. The deployment is up")
 status, health = call("GET", "/actuator/health")
-check("GET /actuator/health is 200", status == 200, health)
+
+# Do NOT gate on the aggregate alone. On Kubernetes the Kubernetes health indicator can drag it to
+# DOWN while the application is perfectly able to serve — see README.md. What decides whether there
+# is any point continuing is the readiness group, so fall back to it and say why.
 if status != 200:
-    print("\nNothing else can be tested. Is the deployment running and reachable?")
-    sys.exit(1)
+    ready_status, readiness = call("GET", "/actuator/health/readiness")
+    if ready_status == 200:
+        check("the deployment is ready (aggregate /actuator/health is DOWN, readiness is UP)", True)
+        print("        the aggregate is DOWN but readiness is UP, so the application can serve.")
+        print("        A common cause on Kubernetes is the Kubernetes health indicator — see")
+        print("        MANAGEMENT_HEALTH_KUBERNETES_ENABLED in others/acceptance/README.md.")
+    else:
+        check("GET /actuator/health is 200", False, health)
+        print("\nNothing else can be tested. Is the deployment running and reachable?")
+        sys.exit(1)
+else:
+    check("GET /actuator/health is 200", True)
 
 # ========================================================== 1. the QR Code is well formed
 
