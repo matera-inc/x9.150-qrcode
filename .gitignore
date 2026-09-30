@@ -88,3 +88,6 @@ claude.back
 # Docker Compose local env overrides (may hold environment-specific values); keep .env.sample
 .env
 .blackbox-venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
