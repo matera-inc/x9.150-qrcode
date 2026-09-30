@@ -332,6 +332,64 @@ status, jwks = call("GET", "/pub/.well-known/jwks")
 check("GET /pub/.well-known/jwks is 200 and has keys",
       status == 200 and isinstance(jwks, dict) and bool(jwks.get("keys")), jwks)
 
+# ============================== 8. the behaviours most recently changed
+
+section("8. Conditional requests and what a revision counts")
+
+# These exist because the suite above would pass with all of them missing. It exercises the payment
+# flow, so an image that had silently lost ETag support, If-Match enforcement or the revision rule
+# would still score full marks — which is exactly what happened once, and cost an adopter an
+# afternoon proving a published image was wrong when their node was serving a stale one.
+
+status, created = call("POST", "/api/v1/payment-request", body={
+    **qr_request(),
+    "additionalInformation": [
+        {"key": "Partial payment", "value": "first"},
+        {"key": "Partial payment", "value": "second"},
+    ],
+})
+probe_id = created.get("id") if status == 201 else None
+check("a QR Code with repeated additionalInformation labels is created", status == 201, created)
+
+if probe_id:
+    # ETag: the token a conditional request echoes. Without it a caller silently falls back to
+    # something weaker, which is the failure that hides.
+    url = BASE + f"/api/v1/payment-request/{probe_id}"
+    request = urllib.request.Request(url, method="GET")
+    etag = None
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            etag = response.headers.get("ETag")
+    except Exception:
+        pass
+
+    check("GET serves an ETag for conditional requests", bool(etag), f"headers carried none")
+
+    status, _ = call("PATCH", f"/api/v1/payment-request/{probe_id}",
+                     body={"paymentMethods": [{"currency": CURRENCY,
+                                               "validUntil": "2030-12-31T23:59:59Z",
+                                               "amount": 11111,
+                                               "networks": {"solana": {"recipient": RECIPIENT}}}]},
+                     headers={"If-Match": '"never-existed"'})
+    check("If-Match is enforced on PATCH", status == 412, f"got {status}, so a stale edit would apply")
+
+    status, _ = call("PUT", f"/api/v1/payment-request/{probe_id}/status-update",
+                     body={"status": "CANCELLED"}, headers={"If-Match": '"never-existed"'})
+    check("If-Match is enforced on status-update", status == 412,
+          f"got {status}, so a stale cancel would apply")
+
+    status, back = call("GET", f"/api/v1/payment-request/{probe_id}")
+    entries = back.get("additionalInformation") or []
+    check("a repeated additionalInformation label is not collapsed", len(entries) == 2,
+          f"{len(entries)} of 2 survived — these lines explain the amount to the payer")
+
+    before = back.get("revision")
+    call("PUT", f"/api/v1/payment-request/{probe_id}/status-update",
+         body={"status": "PAYMENT_INITIATED"})
+    status, after = call("GET", f"/api/v1/payment-request/{probe_id}")
+    check("a status change does not create a new revision", after.get("revision") == before,
+          f"{before} -> {after.get('revision')}: a status is not a version of the request")
+
 # ============================================================================ result
 
 print(f"\n\033[1m{passed} passed, {failed} failed\033[0m")
