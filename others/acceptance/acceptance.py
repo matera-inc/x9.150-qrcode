@@ -617,6 +617,103 @@ if qid:
           f"{etag_before} -> {h4after.get('ETag')}: a moved ETag tells a conditional client the write landed")
 
 
+section("11. A location handed over goes to somebody")
+
+# The suite had NO coverage of locationId at all, which is how a hand-over shipped that released the
+# donor's location and gave it to nobody: the QR Code already printed and in a payer's hands stopped
+# resolving, and the API answered 200 throughout.
+#
+# The donor must be CANCELLED before its location can be reused, and the creditor must match.
+
+
+def qr_for_handover():
+    status, created = call("POST", "/api/v1/payment-request", body=qr_request())
+    return (created.get("id") if status == 201 else None), created
+
+
+def location_of(qr_id):
+    _, current = call("GET", f"/api/v1/payment-request/{qr_id}")
+    return (current.get("location") or {}).get("id")
+
+
+def resolves_to(location_id, emv_of_holder):
+    """Who answers at this location? Returns the qrcodeId inside the signed payload."""
+    token = sign({"qrCodeContent": base64.b64encode(emv_of_holder.encode()).decode()})
+    status, body = call("POST", f"/pub/api/v1/loc/{location_id}", raw_body=token or "",
+                        headers={"Content-Type": "application/jose"})
+    if status != 200 or not isinstance(body, str):
+        return None
+    return (jws_claims(body) or {}).get("qrcodeId") or (jws_claims(body) or {}).get("id")
+
+
+def hand_over(taker_id, donated_location):
+    _, current, headers = call_with_headers("GET", f"/api/v1/payment-request/{taker_id}")
+    body = {"locationId": donated_location,
+            "bill": {"description": "acceptance",
+                     "paymentTiming": current.get("bill", {}).get("paymentTiming", "immediate"),
+                     "amountDue": current.get("bill", {}).get("amountDue")},
+            "paymentMethods": [{"currency": pm["currency"], "validUntil": pm["validUntil"],
+                                "amount": pm["amount"], "networks": pm["networks"]}
+                               for pm in current.get("paymentMethods", [])]}
+    return call("PATCH", f"/api/v1/payment-request/{taker_id}", body=body,
+                headers={"If-Match": headers.get("ETag", "")})
+
+
+donor_id, _ = qr_for_handover()
+taker_id, taker = qr_for_handover()
+bystander_id, _ = qr_for_handover()          # the negative control
+
+if donor_id and taker_id and bystander_id:
+    donated = location_of(donor_id)
+    bystander_location_before = location_of(bystander_id)
+
+    # a live QR Code does not give its location away
+    status, body = hand_over(taker_id, donated)
+    check("a location cannot be taken from a QR Code that is still live", status == 400,
+          f"got {status}: a payer holding the printed code is still able to pay it")
+    check("the refused hand-over left the donor holding its location",
+          location_of(donor_id) == donated, f"now {location_of(donor_id)}")
+
+    # cancel the donor, then hand it over for real
+    _, _, donor_headers = call_with_headers("GET", f"/api/v1/payment-request/{donor_id}")
+    call("PUT", f"/api/v1/payment-request/{donor_id}/status-update",
+         body={"status": "CANCELLED"}, headers={"If-Match": donor_headers.get("ETag", "")})
+
+    status, handed = hand_over(taker_id, donated)
+    handed_over = status == 200
+    check("a cancelled QR Code's location can be handed over", handed_over, handed)
+
+    # These three do NOT hide behind `if handed_over`. Against a build where the hand-over PATCH is
+    # refused for an unrelated reason they would simply disappear, and the suite would report a
+    # smaller total instead of a failure — which is how a check stops being able to fail.
+    why_not = "" if handed_over else f" (the hand-over itself was refused: {handed})"
+
+    check("the taker now holds the donated location",
+          handed_over and location_of(taker_id) == donated,
+          f"holds {location_of(taker_id)}{why_not}")
+
+    # THE BUG THAT SHIPPED: released, and given to nobody.
+    donor_now = location_of(donor_id)
+    check("the donor was issued a fresh location rather than left with none",
+          handed_over and bool(donor_now) and donor_now != donated,
+          f"donor holds {donor_now!r} — a QR Code owning no location resolves to nothing{why_not}")
+
+    # the printed code still resolves, and resolves to the TAKER
+    served = resolves_to(donated, handed.get("qrCode", "")) if handed_over else None
+    check("the printed code at that location still resolves, and serves the taker",
+          handed_over and served == taker_id,
+          f"served {served!r}, expected {taker_id!r}{why_not}")
+
+    # NEGATIVE CONTROL — without it, "the right location moved" and "locations moved around"
+    # are the same green tick. Borrowed from the workspace team, who used one to tell targeted
+    # cancellation from indiscriminate cancellation.
+    check("an unrelated QR Code kept its own location throughout",
+          location_of(bystander_id) == bystander_location_before,
+          f"{bystander_location_before} -> {location_of(bystander_id)}")
+else:
+    check("the hand-over fixtures were created", False, "could not create three QR Codes")
+
+
 # ============================================================================ result
 
 print(f"\n\033[1m{passed} passed, {failed} failed\033[0m")
