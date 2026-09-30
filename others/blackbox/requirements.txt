@@ -1,0 +1,4 @@
+# Deliberately just pytest. The suite speaks HTTP through the standard library so that it runs
+# anywhere the service does, and so a dependency resolution failure can never be mistaken for a
+# passing run.
+pytest>=8.0

@@ -41,6 +41,14 @@ image-amd64: ## Build an amd64/intel image locally (x9-qrcode:latest-amd64) — 
 acceptance: ## Black-box acceptance tests against a RUNNING deployment (URL=http://host:port)
 	./others/acceptance/acceptance.py $(or $(URL),http://localhost:8080)
 
+blackbox: ## Run the black-box unhappy-path suite (X9_BASE_URL, default http://localhost:8080)
+	@test -x .blackbox-venv/bin/pytest || $(MAKE) blackbox-venv
+	@.blackbox-venv/bin/pytest others/blackbox -q
+
+blackbox-venv: ## Create .blackbox-venv with pytest, so a publish does not depend on the global environment
+	python3 -m venv .blackbox-venv
+	.blackbox-venv/bin/pip install -q -r others/blackbox/requirements.txt
+
 publish: ## Build, verify BOTH architectures, and publish (git-<sha> + latest)
 	./others/scripts/publish-image.sh
 

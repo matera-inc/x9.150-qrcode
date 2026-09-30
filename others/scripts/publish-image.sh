@@ -34,6 +34,20 @@ PORT_AMD64="${PORT_AMD64:-8078}"
 MONGO_URI="${MONGO_URI:-mongodb://mongo:27017/x9-qrcode?replicaSet=x9-qrcode}"
 NETWORK="${NETWORK:-x9-qrcode-network}"
 
+# The black-box suite needs pytest. Prefer the project venv so a publish does not depend on what
+# happens to be installed globally on the machine doing it.
+PYTEST="${PYTEST:-$PWD/.blackbox-venv/bin/pytest}"
+
+if [ ! -x "$PYTEST" ]; then
+    # Missing SETUP is not a failed check — build it. A check that still cannot run after this
+    # is a refusal to publish, handled at the call site.
+    python3 -m venv "$PWD/.blackbox-venv" >/dev/null 2>&1 \
+        && "$PWD/.blackbox-venv/bin/pip" install -q -r others/blackbox/requirements.txt >/dev/null 2>&1 \
+        || true
+fi
+
+[ -x "$PYTEST" ] || PYTEST="$(command -v pytest || true)"
+
 for arg in "$@"; do
     case "$arg" in
         --no-latest) MOVE_LATEST=0 ;;
@@ -136,11 +150,27 @@ verify_image() {
         return
     fi
 
-    if ./others/acceptance/acceptance.py "http://localhost:$port" >/dev/null 2>&1; then
+    if ! ./others/acceptance/acceptance.py "http://localhost:$port" >/dev/null 2>&1; then
+        ./others/acceptance/acceptance.py "http://localhost:$port" | tail -40
+        docker rm -f "$container" >/dev/null 2>&1 || true
+        echo "fail"
+        return
+    fi
+
+    # The black-box unhappy paths. A suite that cannot run is NOT a suite that passed, so a
+    # missing pytest is a refusal to publish rather than a quiet skip — the whole point of this
+    # gate is that it is unable to report success for a check that never executed.
+    if [ ! -x "$PYTEST" ]; then
+        docker rm -f "$container" >/dev/null 2>&1 || true
+        echo "no-pytest"
+        return
+    fi
+
+    if X9_BASE_URL="http://localhost:$port" "$PYTEST" others/blackbox -q >/dev/null 2>&1; then
         docker rm -f "$container" >/dev/null 2>&1 || true
         echo "pass"
     else
-        ./others/acceptance/acceptance.py "http://localhost:$port" | tail -40
+        X9_BASE_URL="http://localhost:$port" "$PYTEST" others/blackbox -q 2>&1 | tail -30
         docker rm -f "$container" >/dev/null 2>&1 || true
         echo "fail"
     fi
@@ -156,8 +186,9 @@ for pair in "x9-qrcode:latest arm64 $PORT_ARM64" "x9-qrcode:latest-amd64 amd64 $
     result="$(verify_image "$1" "$2" "$3")"
 
     case "$result" in
-        pass)        ok "$2 — acceptance suite, including the conditional-request and revision checks" ;;
+        pass)        ok "$2 — acceptance suite and the black-box unhappy paths" ;;
         fail)        die "$2 builds but does not behave. NOTHING was pushed." ;;
+        no-pytest)   die "pytest is missing, so others/blackbox did not run. Run 'make blackbox-venv' and retry — a check that did not execute is not a check that passed." ;;
         unstartable) bad "$2 could not be started on this machine"; UNVERIFIED="$UNVERIFIED $2" ;;
         *)           die "verification of $2 produced no verdict ('$result'). Refusing to publish on a check that did not run." ;;
     esac
