@@ -24,6 +24,19 @@ with nothing installed.
 | 5. Settlement | Only `status-update` clears it — and re-initiating a PAID QR Code is a 409 |
 | 6. Refusals | An unsupported currency and an uninterpreted network are refused **by name**; an unknown id is 404 |
 | 7. Public metadata | The JWK Set is served, so the other side can verify signatures |
+| 8. Conditional requests and revisions | The `ETag`, `If-Match` on both write paths, repeated `additionalInformation` labels, and that a status change is not a new revision |
+
+## Why section 8 exists
+
+Sections 1–7 exercise a payment. They would all pass against a build that had silently lost `ETag`
+support, `If-Match` enforcement and the revision rule — and on 2026-09-30 an image was published
+after scoring 37/37 while an adopter reported exactly those three as missing. The artifact turned
+out to be fine, but **the suite could not have told us either way**, which is the part worth fixing:
+a gate that cannot fail converts "we did not check" into "we verified".
+
+Section 8 covers the behaviours most recently changed, which are the ones an otherwise-working
+artifact is most likely to be missing. Verified to fail — run it against `git-8e445b4`, the build
+before those changes, and it reports five failures naming each one.
 
 ## How it relates to the other suites
 
