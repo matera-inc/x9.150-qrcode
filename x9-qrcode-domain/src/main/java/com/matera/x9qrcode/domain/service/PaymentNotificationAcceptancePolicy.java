@@ -14,6 +14,7 @@ import com.matera.x9qrcode.domain.vo.BillVO;
 import com.matera.x9qrcode.domain.vo.CryptoWalletPaymentAddressVO;
 import com.matera.x9qrcode.domain.vo.PaymentMethodVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationDataVO;
+import com.matera.x9qrcode.domain.vo.TipVO;
 import com.matera.x9qrcode.domain.vo.enumerated.NetworkEnum;
 
 import lombok.RequiredArgsConstructor;
@@ -56,6 +57,7 @@ public class PaymentNotificationAcceptancePolicy {
         PaymentMethodVO method = matchPaymentMethod(qrCode, notification);
 
         validatePaymentMethodNotExpired(method, at);
+        validateTip(qrCode, notification, method, at);
         validateAmount(qrCode, notification, method, at);
 
         return method;
@@ -163,7 +165,22 @@ public class PaymentNotificationAcceptancePolicy {
                                 PaymentNotificationDataVO notification,
                                 PaymentMethodVO method,
                                 OffsetDateTime at) {
-        long notified = notification.payment().amount().value();
+        long total = notification.payment().amount().value();
+        long tip = tipAmountOf(notification);
+
+        // ANSI X9.150-2026 §13.6.2: "The computed total (amount + tip) SHALL apply only to the
+        // payment instruction sent to the payment network and related payment notification".
+        // So `amount` is what the payer transferred, tip INCLUDED, and the figure the bill is
+        // judged against is what is left once the tip is taken out. Comparing the total against
+        // the bill did two wrong things at once: it refused a payer who tipped, and it accepted a
+        // payer who kept the bill whole by paying the tip out of the merchant's share.
+        long notified = total - tip;
+
+        if (notified < 0) {
+            throw new BusinessRuleException("paymentNotification.data.payment.tipAmount",
+                "The tip of %d is larger than the %d %s being paid."
+                    .formatted(tip, total, method.currency()));
+        }
 
         if (nonNull(method.editable())) {
             validateWithinEditableRange(notified, method);
@@ -187,8 +204,81 @@ public class PaymentNotificationAcceptancePolicy {
                 ? "%d (adjusted) or %d (face)".formatted(adjustedAmount, faceAmount)
                 : "%d (adjusted, including the late fee)".formatted(adjustedAmount));
 
+        String carried = tip == 0
+            ? String.valueOf(notified)
+            : "%d (%d total less a %d tip)".formatted(notified, total, tip);
+
         throw new BusinessRuleException("paymentNotification.data.payment.amount",
-            "Expected %s %s but the notification carries %d.".formatted(expected, method.currency(), notified));
+            "Expected %s %s but the notification carries %s.".formatted(expected, method.currency(), carried));
+    }
+
+    private static long tipAmountOf(PaymentNotificationDataVO notification) {
+        return isNull(notification.payment().tipAmount())
+            ? 0L
+            : notification.payment().tipAmount().value();
+    }
+
+    /**
+     * A tip is accepted only if this bill offered one, and only inside the published range.
+     *
+     * <p>The standard puts this validation on the payer's application — A.10: <i>"Payer-facing
+     * applications SHOULD validate any user-entered or preset-selected tip such that
+     * min &le; tip &le; max"</i> — and §13.6.1 says a payment application <b>SHOULD NOT</b> allow a
+     * tip when {@code allowed} is false. Both are SHOULDs aimed at the payer. We enforce them at the
+     * payee as well, because a rule that lives only in someone else's client is not a rule: before
+     * this, a tip on a bill that refused tipping was accepted, and so was a tip of any size.
+     *
+     * <p>{@code presets} deliberately do <b>not</b> bind. A.10 validates a <i>preset-selected</i>
+     * tip against min..max too, so the range is the rule and the presets are the suggested buttons.
+     * A bill with presets and no range therefore accepts any positive tip.
+     *
+     * <p>Percentages are taken against the merchant's expected amount in the notified currency
+     * rather than the bill's own figure: currencies on one QR Code share a peg but not a scale, so
+     * a percentage of USD cents is not a percentage of USDC micro-units.
+     */
+    private void validateTip(QRCodeEntity qrCode,
+                             PaymentNotificationDataVO notification,
+                             PaymentMethodVO method,
+                             OffsetDateTime at) {
+        long tip = tipAmountOf(notification);
+
+        if (tip == 0) {
+            return;
+        }
+
+        TipVO offered = Optional.ofNullable(qrCode.getBill()).map(BillVO::tip).orElse(null);
+
+        if (isNull(offered) || !Boolean.TRUE.equals(offered.allowed())) {
+            throw new BusinessRuleException("paymentNotification.data.payment.tipAmount",
+                "This bill does not accept tips, but the notification carries a tip of %d.".formatted(tip));
+        }
+
+        if (isNull(offered.range())) {
+            return;
+        }
+
+        long base = nonNull(method.editable()) ? method.amount().value() : adjustedAmountFor(qrCode, method, at);
+
+        if (base <= 0) {
+            return;
+        }
+
+        long min = percentageOf(base, offered.range().minimum());
+        long max = percentageOf(base, offered.range().maximum());
+
+        if (tip < min || tip > max) {
+            throw new BusinessRuleException("paymentNotification.data.payment.tipAmount",
+                "A tip on this bill must be between %d%% and %d%% of %d %s (%d..%d) but the notification carries %d."
+                    .formatted(offered.range().minimum(), offered.range().maximum(), base,
+                        method.currency(), min, max, tip));
+        }
+    }
+
+    private static long percentageOf(long base, Integer percentage) {
+        return BigDecimal.valueOf(base)
+            .multiply(BigDecimal.valueOf(percentage))
+            .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP)
+            .longValue();
     }
 
     /**

@@ -398,6 +398,60 @@ do interpret, on a published embedding, should report an unknown field rather th
 
 ---
 
+## I-10 — A tip is money on top of the bill, and we enforce that at the payee
+
+**Where:** §13.6 (`$.bill.tip`), §13.6.2, A.10, §9 (Payment Notification)
+
+**The standard settles the arithmetic and we were getting it wrong.** §13.6.2:
+
+> "The computed total (amount \+ tip) **SHALL** apply only to the payment instruction sent to the
+> payment network and related payment notification; it **SHALL NOT** be re-encoded in the payload."
+
+So the notification carries the **total**, tip included, and the merchant's share is
+`amount - tipAmount`. A payer settling a 1000 bill with a 200 tip sends `amount: 1200,
+tipAmount: 200`. This deployment previously compared the *total* against the bill, which failed in
+both directions at once: it refused the payer who tipped correctly, and it accepted a payer who paid
+the tip out of the merchant's share — marking the QR Code paid in full while the merchant was short
+by exactly the tip. That was a conformance defect, not an interpretation.
+
+**What is genuinely ours is who enforces the tip rules.** The standard addresses them to the payer:
+
+> §13.6.1: "If false, the payment application **SHOULD NOT** allow the Payer to add a tip."
+>
+> A.10: "Payer-facing applications **SHOULD** validate any user-entered or preset-selected tip such
+> that min ≤ tip ≤ max."
+
+Both are `SHOULD`s aimed at somebody else's client. We enforce them again at the payee, and refuse a
+notification that breaks either. A rule that lives only in the counterparty's software is not a rule
+— before this, a tip on a bill that refused tipping was accepted, and so was a tip of any size at
+all. Same reasoning as capping `unstructured` at the door rather than trusting the sender.
+
+**Presets do not constrain the payer; the range does.** A.10 validates *"any user-entered or
+preset-selected tip"* against `min ≤ tip ≤ max`, so a preset is a suggested button that is itself
+checked against the range — never an independent whitelist. A bill publishing presets and no range
+therefore accepts any positive tip, and a payer who types 13% where 10/15/20 were offered is making
+a legitimate choice rather than an error.
+
+**A tip offer must carry a range or presets**, which is stricter than §13.6.2 and §13.6.3 — both
+make those `MAY`. `{"allowed": true}` alone is refused at creation: it renders as nothing in a
+payer-facing application, so it is an offer only in name. The consequence of pairing that rule with
+the one above is worth stating plainly: a bill publishing **presets and no range accepts a tip of any
+size**, because presets do not bind. A biller who wants a ceiling must publish a range.
+
+**Percentages are taken against the merchant's expected amount in the notified currency**, not the
+bill's own figure. Currencies on one QR Code share a dollar peg but not a scale, so a percentage of
+USD cents is not a percentage of USDC micro-units. This mirrors how adjustments are pro-rated
+(see `PaymentNotificationAcceptancePolicy.adjustedAmountFor`).
+
+**One schema deviation, deliberate.** §13.6.3 says `presets`, *when present*, holds 1–10 entries. We
+do not declare `minItems: 1`, because the code generator initialises an absent array to an empty one
+and Bean Validation then reads "at least one if you send it" as "you must always send it" — which
+made `{"allowed": false}`, `{"allowed": true}` and the entire `range` form impossible to create. The
+constraint was unreachable in the only direction that mattered and the reachable behaviour was
+wrong, so the declaration went rather than the semantics.
+
+---
+
 ## Reporting
 
 Found a place where we read the standard differently than you do, or one we have not written down?

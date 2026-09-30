@@ -1045,13 +1045,23 @@ components:
               $ref: "#/components/schemas/TipRange"
             presets:
               type: array
-              minItems: 1
               maxItems: 10
               items:
                 type: integer
                 minimum: 0
                 maximum: 999
-              description: "Array of integer percentage presets that can be used as tips (e.g. 15 for 15%). Per ANSI X9.150 §13.6.2, tip values are integer percentages between 0 and 999 — no decimal points or '%' sign."
+              description: |-
+                Array of integer percentage presets that can be used as tips (e.g. 15 for 15%). Per
+                ANSI X9.150 §13.6.2, tip values are integer percentages between 0 and 999 — no
+                decimal points or '%' sign.
+
+                §13.6.3 allows 1-10 entries when the array is present, but `minItems` is deliberately
+                NOT declared: the code generator initialises an absent array to an empty one, which
+                turned "at least one if you send it" into "you must always send it" and made
+                `{"allowed": false}`, `{"allowed": true}` and the whole `range` form impossible to
+                create.
+
+                Presets are suggestions and do NOT constrain what a payer may tip — `range` does.
               example:
                 - 10
                 - 25
@@ -1603,9 +1613,23 @@ components:
             qrcodeId:
               $ref: "#/components/schemas/QRCodeId"
             amount:
-              $ref: "#/components/schemas/Amount"
+              allOf:
+                - $ref: "#/components/schemas/Amount"
+              description: |-
+                The TOTAL the payer transferred, **tip included**. Per ANSI X9.150-2026 §13.6.2 the
+                computed total (amount + tip) is what applies to the payment instruction and to this
+                notification.
+
+                The merchant's share is therefore `amount - tipAmount`, and that is the figure
+                checked against the bill. A payer who tips 200 on a bill of 1000 sends
+                `amount: 1200, tipAmount: 200`.
             tipAmount:
-              $ref: "#/components/schemas/Amount"
+              allOf:
+                - $ref: "#/components/schemas/Amount"
+              description: |-
+                How much of `amount` was a tip. Accepted only when the bill offers a tip
+                (`bill.tip.allowed`) and, when a `bill.tip.range` is published, only inside it.
+                Omit it when no tip was given.
             currency:
               $ref: "#/components/schemas/CurrencyCode"
             network:
