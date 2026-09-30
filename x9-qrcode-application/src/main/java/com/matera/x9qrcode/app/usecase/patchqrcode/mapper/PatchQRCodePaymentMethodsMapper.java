@@ -21,6 +21,7 @@ import com.matera.x9qrcode.domain.vo.BankPaymentAddressVO;
 import com.matera.x9qrcode.domain.vo.CryptoWalletPaymentAddressVO;
 import com.matera.x9qrcode.domain.vo.EditableAmountVO;
 import com.matera.x9qrcode.domain.vo.NetworksVO;
+import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 import com.matera.x9qrcode.domain.vo.PaymentMethodVO;
 
 import lombok.AccessLevel;
@@ -58,7 +59,12 @@ public final class PatchQRCodePaymentMethodsMapper {
                     .orElse(null);
 
             if (isNull(paymentMethod)) {
-                return null;
+                // Unreachable: QRCodeEntity.requirePaymentMethodCurrencies runs first and refuses a
+                // currency this QR Code does not offer. Kept as a throw rather than the `return null`
+                // it used to be, because that null was filtered out further down and the caller was
+                // told 200 while the amount they sent went nowhere.
+                throw new BusinessRuleException("paymentMethods",
+                    "%s is not offered by this QR Code.".formatted(paymentMethodUpdateDTO.currency()));
             }
 
             EditableAmountVO editable = paymentMethod.editable();

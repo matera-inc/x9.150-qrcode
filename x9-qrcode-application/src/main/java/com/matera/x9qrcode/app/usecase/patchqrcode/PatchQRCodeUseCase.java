@@ -10,6 +10,7 @@ import com.matera.x9qrcode.app.dto.LocationDTO;
 import com.matera.x9qrcode.app.repository.QRCodeRepository;
 import com.matera.x9qrcode.app.service.QRCodeEMVService;
 import com.matera.x9qrcode.app.service.QRCodeLocationService;
+import com.matera.x9qrcode.app.dto.PaymentMethodUpdateDTO;
 import com.matera.x9qrcode.app.usecase.UseCase;
 import com.matera.x9qrcode.app.usecase.createqrcode.mapper.CreateQRCodeLocationMapper;
 import com.matera.x9qrcode.app.usecase.patchqrcode.mapper.PatchQRCodeBillMapper;
@@ -65,6 +66,12 @@ public class PatchQRCodeUseCase extends UseCase<PatchQRCodeInput, PatchQRCodeOut
         input.unstructured().ifPresent(qrCodeEntity::updateUnstructured);
         input.billUpdateDTO().ifPresent(billUpdateDTO ->
             qrCodeEntity.updateBill(PatchQRCodeBillMapper.map(qrCodeEntity.getBill(), billUpdateDTO)));
+
+        // Before the mapper touches them: a patch that names any currency must name them all, and
+        // only ones this QR Code already offers. The mapper matches by currency and silently
+        // discarded anything that did not match, so this has to be asked before it runs.
+        qrCodeEntity.requirePaymentMethodCurrencies(
+            input.paymentMethodUpdateDTOList().stream().map(PaymentMethodUpdateDTO::currency).toList());
 
         List<PaymentMethodVO> updatedPaymentMethods =
             PatchQRCodePaymentMethodsMapper.map(qrCodeEntity.getPaymentMethods(), input.paymentMethodUpdateDTOList());

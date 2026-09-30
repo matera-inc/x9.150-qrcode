@@ -34,9 +34,11 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -324,6 +326,56 @@ public class QRCodeEntity {
             this.revision,
             "The QR Code has changed since it was read: expected %s, found %s."
                 .formatted(expectedTag, entityTag()));
+    }
+
+    /**
+     * A patch that touches the amounts must name every currency this QR Code offers, and no others.
+     *
+     * <p>This is <b>our</b> rule, not ANSI X9.150's — the standard says nothing about how a payment
+     * request is edited. It exists because the two ways of getting it wrong are both silent:
+     *
+     * <ul>
+     *   <li><b>A currency that is not here.</b> Payment methods are matched and merged by currency,
+     *       so an unknown one matches nothing. It used to be dropped before this entity ever saw it,
+     *       and the caller was told 200 — the amount they sent simply did not exist afterwards.</li>
+     *   <li><b>A currency left out.</b> Omitting one used to leave it at its old amount while the
+     *       others moved, so a bill could be reduced in USD and left whole in USDC, which is two
+     *       different prices for one debt depending on how the payer chooses to settle it.</li>
+     * </ul>
+     *
+     * <p>All or nothing — and since the API makes {@code paymentMethods} required on every patch,
+     * in practice that always means all: a patch that only moves the location still restates every
+     * currency at its current amount. The empty case is guarded here anyway, for a caller reaching
+     * the use case without going through the contract.
+     *
+     * @param informedCurrencies the currencies the caller put in the patch, in the order they sent them
+     */
+    public void requirePaymentMethodCurrencies(List<String> informedCurrencies) {
+        if (isNull(informedCurrencies) || informedCurrencies.isEmpty()) {
+            return;
+        }
+
+        Set<String> offered = this.paymentMethods.stream()
+            .map(PaymentMethodVO::currency)
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        Set<String> informed = new LinkedHashSet<>(informedCurrencies);
+
+        List<String> notOffered = informed.stream().filter(currency -> !offered.contains(currency)).toList();
+
+        if (!notOffered.isEmpty()) {
+            throw new BusinessRuleException("paymentMethods",
+                "This QR Code offers %s. A patch may change the amount of a currency already on it, never add one — %s is not here."
+                    .formatted(String.join(", ", offered), String.join(", ", notOffered)));
+        }
+
+        List<String> notInformed = offered.stream().filter(currency -> !informed.contains(currency)).toList();
+
+        if (!notInformed.isEmpty()) {
+            throw new BusinessRuleException("paymentMethods",
+                "A patch that changes amounts must inform every currency this QR Code offers (%s); %s was left out."
+                    .formatted(String.join(", ", offered), String.join(", ", notInformed)));
+        }
     }
 
     public void updatePaymentMethods(List<PaymentMethodVO> updatedPaymentMethods) {
