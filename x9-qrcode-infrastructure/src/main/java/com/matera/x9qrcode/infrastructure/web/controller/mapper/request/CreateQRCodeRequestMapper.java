@@ -6,6 +6,7 @@
  */
 package com.matera.x9qrcode.infrastructure.web.controller.mapper.request;
 
+import com.matera.x9qrcode.domain.vo.AdditionalInformationVO;
 import com.matera.x9qrcode.app.dto.AccountDTO;
 import com.matera.x9qrcode.app.dto.AddressDTO;
 import com.matera.x9qrcode.app.dto.AdjustmentDTO;
@@ -145,21 +146,21 @@ public final class CreateQRCodeRequestMapper {
         return TipDTO.of(allowed, tip.getRange().getMin(), tip.getRange().getMax(), presets);
     }
 
-    private static Map<String, String> createAdditionalInformationInput(List<KeyValuePairDTO> additionalInformation) {
-        if (isNull(additionalInformation)) {
+    /**
+     * Keeps every line the biller sent, repeats included.
+     *
+     * <p>ANSI X9.150 calls the first element {@code key}, but it behaves as a LABEL: the same one
+     * may appear several times — once per partial payment, for instance. This collapsed into a map
+     * and silently kept one of them.
+     */
+    private static List<AdditionalInformationVO> createAdditionalInformationInput(List<KeyValuePairDTO> additionalInformation) {
+        if (isNull(additionalInformation) || additionalInformation.isEmpty()) {
             return null;
         }
 
-        if (additionalInformation.isEmpty()) {
-            return null;
-        }
-
-        Map<String, String> additionalInformationMap = new HashMap<>();
-
-        additionalInformation.forEach(
-                keyValuePairDTO -> additionalInformationMap.put(keyValuePairDTO.getKey(), keyValuePairDTO.getValue()));
-
-        return additionalInformationMap;
+        return additionalInformation.stream()
+                .map(pair -> new AdditionalInformationVO(pair.getKey(), pair.getValue()))
+                .toList();
     }
 
     private static AccountDTO createAccountInput(

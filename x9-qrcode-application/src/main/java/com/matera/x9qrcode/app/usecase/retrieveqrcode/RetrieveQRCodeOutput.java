@@ -6,6 +6,7 @@
  */
 package com.matera.x9qrcode.app.usecase.retrieveqrcode;
 
+import com.matera.x9qrcode.domain.vo.AdditionalInformationVO;
 import com.matera.x9qrcode.app.dto.BillDTO;
 import com.matera.x9qrcode.app.dto.CreditorDTO;
 import com.matera.x9qrcode.app.dto.LocationDTO;
@@ -31,7 +32,7 @@ public record RetrieveQRCodeOutput(
     CreditorDTO creditor,
     BillDTO billDTO,
     String unstructured,
-    Map<String, String> additionalInformation,
+    List<AdditionalInformationVO> additionalInformation,
     PaymentNotificationDTO paymentNotification,
     List<PaymentMethodDTO> paymentMethods,
     PaymentDetailsDTO paymentDetails,

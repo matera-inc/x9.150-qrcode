@@ -98,7 +98,7 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
             CREDITOR_FIXTURE.creditor(),
             bill,
             new UnstructuredVO("late fee test"),
-            Map.of(),
+            List.of(),
             new PaymentNotificationVO(NotificationKindEnum.DEFAULT, null, null),
             List.of(new PaymentMethodVO(
                 "USDC", DUE_DATE.plusDays(1), new AmountVO(FACE), null,

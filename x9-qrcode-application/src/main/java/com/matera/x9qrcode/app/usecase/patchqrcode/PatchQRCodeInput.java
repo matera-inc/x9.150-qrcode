@@ -6,6 +6,7 @@
  */
 package com.matera.x9qrcode.app.usecase.patchqrcode;
 
+import com.matera.x9qrcode.domain.vo.AdditionalInformationVO;
 import com.matera.x9qrcode.app.dto.BillUpdateDTO;
 import com.matera.x9qrcode.app.dto.PaymentMethodUpdateDTO;
 import com.matera.x9qrcode.app.usecase.PartialInput;
@@ -20,7 +21,7 @@ public record PatchQRCodeInput(
     PartialInput<OffsetDateTime> validUntil,
     PartialInput<BillUpdateDTO> billUpdateDTO,
     PartialInput<String> unstructured,
-    PartialInput<Map<String, String>> additionalInformationMap,
+    PartialInput<List<AdditionalInformationVO>> additionalInformationMap,
     List<PaymentMethodUpdateDTO> paymentMethodUpdateDTOList,
 
     /**

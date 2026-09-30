@@ -92,8 +92,22 @@ public class QRCodeMongoPersistenceModel implements Persistable<UUID> {
     @Field(name = "unstructured")
     private String unstructured;
 
+    /**
+     * The labelled lines, stored as a LIST so repeats survive.
+     *
+     * <p>Written to a new field rather than reusing {@code additional_information}, which older
+     * documents hold as an object. Changing the shape under the same name would make every existing
+     * QR Code unreadable; this way both are readable and nothing has to be migrated.
+     */
+    @Field(name = "additional_information_entries")
+    private List<AdditionalInformation> additionalInformation;
+
+    /**
+     * How the field was stored before it was understood to be a list. Read-only: never written
+     * again, and mapped forward when an old document is loaded. Remove once no document carries it.
+     */
     @Field(name = "additional_information")
-    private Map<String, String> additionalInformation;
+    private Map<String, String> legacyAdditionalInformation;
 
     @Field(name = "payment_notification")
     private PaymentNotification paymentNotification;
@@ -438,6 +452,19 @@ public class QRCodeMongoPersistenceModel implements Persistable<UUID> {
 
         @Field(name = "payment_network")
         private String paymentNetwork;
+
+    }
+
+    @Data
+    public static class AdditionalInformation {
+
+        /**
+         * ANSI X9.150's name for it. It is a LABEL, not a unique index — repeats are legitimate and
+         * are exactly why this is a list.
+         */
+        private String key;
+
+        private String value;
 
     }
 

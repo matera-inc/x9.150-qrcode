@@ -1109,7 +1109,14 @@ components:
         key:
           type: string
           pattern: ^[\x20-\x7E]+$
-          description: "Key for additional metadata, printable ASCII characters."
+          description: |-
+            Label for this line of additional metadata, printable ASCII.
+
+            **Named `key` by ANSI X9.150, but it is a label rather than a unique index.** Repeating
+            it is legitimate and meaningful — "Partial payment" three times is three payments — and
+            entries are kept in the order sent. Do not treat the list as a map: an implementation
+            that does will silently discard every repeat, and these lines are what a payer reads to
+            understand the amount being asked for.
           example: "CustomerServiceRef"
         value:
           type: string

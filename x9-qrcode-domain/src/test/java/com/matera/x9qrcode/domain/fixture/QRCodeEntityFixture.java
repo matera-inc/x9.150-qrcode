@@ -6,6 +6,7 @@
  */
 package com.matera.x9qrcode.domain.fixture;
 
+import com.matera.x9qrcode.domain.vo.AdditionalInformationVO;
 import com.matera.x9qrcode.domain.entity.QRCodeEntity;
 import com.matera.x9qrcode.domain.generator.IdGenerator;
 import com.matera.x9qrcode.domain.utils.DateTimeUtils;
@@ -54,7 +55,7 @@ public final class QRCodeEntityFixture {
             creditorFixture.creditor(),
             billFixture.bill(),
             new UnstructuredVO(faker.lorem().characters(10, 100)),
-            Map.of(faker.lorem().word(), faker.lorem().characters(10, 100)),
+            List.of(new AdditionalInformationVO(faker.lorem().word(), faker.lorem().characters(10, 100))),
             new PaymentNotificationVO(NotificationKindEnum.EXTERNAL, URI.create(faker.internet().url()), null),
             List.of(
                 paymentMethodFixture.paymentMethodWithUSD(),
