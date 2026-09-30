@@ -6,6 +6,7 @@
  */
 package com.matera.x9qrcode.infrastructure.web.controller.mapper.request;
 
+import com.matera.x9qrcode.domain.vo.AdditionalInformationVO;
 import com.matera.x9qrcode.app.dto.AddressUpdateDTO;
 import com.matera.x9qrcode.app.dto.AdjustmentParametersUpdateDTO;
 import com.matera.x9qrcode.app.dto.AdjustmentUpdateDTO;
@@ -104,15 +105,15 @@ public final class PatchQRCodeRequestMapper {
         return PartialInput.of(billUpdateDTO);
     }
 
-    private static PartialInput<Map<String, String>> buildAdditionalInformationMap(List<KeyValuePairDTO> keyValuePairDTOList) {
+    /** Keeps every line, repeats included — the entries are labelled, not keyed. */
+    private static PartialInput<List<AdditionalInformationVO>> buildAdditionalInformationMap(List<KeyValuePairDTO> keyValuePairDTOList) {
         if (isNull(keyValuePairDTOList) || keyValuePairDTOList.isEmpty()) {
             return PartialInput.of(null);
         }
 
-        Map<String, String> additionalInformationMap = keyValuePairDTOList.stream()
-            .collect(Collectors.toMap(KeyValuePairDTO::getKey, KeyValuePairDTO::getValue, (existing, replacement) -> existing));
-
-        return PartialInput.of(additionalInformationMap);
+        return PartialInput.of(keyValuePairDTOList.stream()
+            .map(pair -> new AdditionalInformationVO(pair.getKey(), pair.getValue()))
+            .toList());
     }
 
     private static List<PaymentMethodUpdateDTO> buildPaymentMethodDTOList(List<PatchPaymentMethodDTO> patchPaymentMethodDTOList) {

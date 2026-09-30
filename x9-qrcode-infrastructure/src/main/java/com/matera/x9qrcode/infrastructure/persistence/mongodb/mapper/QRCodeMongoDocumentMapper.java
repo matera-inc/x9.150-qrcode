@@ -6,6 +6,7 @@
  */
 package com.matera.x9qrcode.infrastructure.persistence.mongodb.mapper;
 
+import com.matera.x9qrcode.domain.vo.AdditionalInformationVO;
 import com.matera.x9qrcode.domain.entity.QRCodeEntity;
 import com.matera.x9qrcode.domain.vo.AccountVO;
 import com.matera.x9qrcode.domain.vo.AddressVO;
@@ -63,7 +64,7 @@ public final class QRCodeMongoDocumentMapper {
         qrCodeMongoPersistenceModel.setCreditor(buildCreditor(entity.getCreditor()));
         qrCodeMongoPersistenceModel.setBill(buildBill(entity.getBill()));
         qrCodeMongoPersistenceModel.setUnstructured(entity.getUnstructured().value());
-        qrCodeMongoPersistenceModel.setAdditionalInformation(entity.getAdditionalInformation());
+        qrCodeMongoPersistenceModel.setAdditionalInformation(buildAdditionalInformation(entity.getAdditionalInformation()));
         qrCodeMongoPersistenceModel.setPaymentNotification(buildPaymentNotification(entity.getPaymentNotification()));
         qrCodeMongoPersistenceModel.setPaymentMethods(
             entity.getPaymentMethods().stream().map(QRCodeMongoDocumentMapper::buildPaymentMethod).toList());
@@ -344,6 +345,23 @@ public final class QRCodeMongoDocumentMapper {
         invoiceeDocument.setAddress(buildAddress(invoicee.address()));
 
         return invoiceeDocument;
+    }
+
+    private static List<QRCodeMongoPersistenceModel.AdditionalInformation> buildAdditionalInformation(
+            List<AdditionalInformationVO> additionalInformation) {
+        if (isNull(additionalInformation)) {
+            return null;
+        }
+
+        return additionalInformation.stream().map(entry -> {
+            QRCodeMongoPersistenceModel.AdditionalInformation document =
+                new QRCodeMongoPersistenceModel.AdditionalInformation();
+
+            document.setKey(entry.key());
+            document.setValue(entry.value());
+
+            return document;
+        }).toList();
     }
 
     private static QRCodeMongoPersistenceModel.PaymentNotification buildPaymentNotification(PaymentNotificationVO paymentNotification) {

@@ -6,6 +6,7 @@
  */
 package com.matera.x9qrcode.infrastructure.persistence.mongodb.mapper;
 
+import com.matera.x9qrcode.domain.vo.AdditionalInformationVO;
 import com.matera.x9qrcode.domain.entity.QRCodeEntity;
 import com.matera.x9qrcode.domain.vo.AccountVO;
 import com.matera.x9qrcode.domain.vo.AddressVO;
@@ -58,6 +59,7 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class QRCodeMongoEntityMapper {
@@ -74,7 +76,7 @@ public final class QRCodeMongoEntityMapper {
             buildCreditor(document.getCreditor()),
             buildBill(document.getBill()),
             new UnstructuredVO(document.getUnstructured()),
-            document.getAdditionalInformation(),
+            buildAdditionalInformation(document),
             buildPaymentNotification(document.getPaymentNotification()),
             document.getPaymentMethods().stream().map(QRCodeMongoEntityMapper::buildPaymentMethod).toList(),
             buildPaymentDetails(document.getPaymentDetails()),
@@ -275,6 +277,29 @@ public final class QRCodeMongoEntityMapper {
             doc.getEndpoint(),
             buildPaymentNotificationData(doc.getData())
         );
+    }
+
+    /**
+     * Reads the labelled lines, from either shape.
+     *
+     * <p>Documents written before this was understood to be a list hold an object under
+     * {@code additional_information}; a map has no order and no repeats, so those come back as they
+     * were stored and nothing is invented. New documents use the list field.
+     */
+    private static List<AdditionalInformationVO> buildAdditionalInformation(QRCodeMongoPersistenceModel document) {
+        if (nonNull(document.getAdditionalInformation())) {
+            return document.getAdditionalInformation().stream()
+                .map(entry -> new AdditionalInformationVO(entry.getKey(), entry.getValue()))
+                .toList();
+        }
+
+        if (isNull(document.getLegacyAdditionalInformation())) {
+            return null;
+        }
+
+        return document.getLegacyAdditionalInformation().entrySet().stream()
+            .map(entry -> new AdditionalInformationVO(entry.getKey(), entry.getValue()))
+            .toList();
     }
 
     private static PaymentNotificationDataVO buildPaymentNotificationData(QRCodeMongoPersistenceModel.PaymentNotificationData doc) {

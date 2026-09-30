@@ -13,6 +13,7 @@ import com.matera.x9qrcode.domain.exception.QRCodePreconditionFailedException;
 import com.matera.x9qrcode.domain.exception.QRCodeStatusConflictException;
 import com.matera.x9qrcode.domain.generator.IdGenerator;
 import com.matera.x9qrcode.domain.utils.DateTimeUtils;
+import com.matera.x9qrcode.domain.vo.AdditionalInformationVO;
 import com.matera.x9qrcode.domain.vo.BillVO;
 import com.matera.x9qrcode.domain.vo.CreditorVO;
 import com.matera.x9qrcode.domain.vo.EmvVO;
@@ -71,7 +72,17 @@ public class QRCodeEntity {
     private final CreditorVO creditor;
     private BillVO bill;
     private UnstructuredVO unstructured;
-    private Map<String, String> additionalInformation;
+    /**
+     * Labelled lines shown on the bill.
+     *
+     * <p>A LIST, not a map, and the entries are not keyed. ANSI X9.150 calls the first element
+     * {@code key}, but it behaves as a LABEL: repeats are legitimate and meaningful — "Partial
+     * payment" three times is three payments — and the order is the order the biller sent.
+     *
+     * <p>It was a {@code Map<String, String>} and silently dropped every repeat. If you are tempted
+     * back to a map by the word "key", that is the mistake this comment exists to stop.
+     */
+    private List<AdditionalInformationVO> additionalInformation;
     private PaymentNotificationVO paymentNotification;
     private List<PaymentMethodVO> paymentMethods;
     private PaymentDetailsVO paymentDetails;
@@ -97,7 +108,7 @@ public class QRCodeEntity {
                          CreditorVO creditor,
                          BillVO bill,
                          UnstructuredVO unstructured,
-                         Map<String, String> additionalInformation,
+                         List<AdditionalInformationVO> additionalInformation,
                          PaymentNotificationVO paymentNotification,
                          List<PaymentMethodVO> paymentMethods,
                          PaymentDetailsVO paymentDetails,
@@ -130,7 +141,7 @@ public class QRCodeEntity {
                                       CreditorVO creditor,
                                       BillVO bill,
                                       UnstructuredVO unstructured,
-                                      Map<String, String> additionalInformation,
+                                      List<AdditionalInformationVO> additionalInformation,
                                       PaymentNotificationVO paymentNotification,
                                       List<PaymentMethodVO> paymentMethods) {
         Objects.requireNonNull(idGenerator, "IdGenerator must not be null.");
@@ -178,7 +189,7 @@ public class QRCodeEntity {
                                        CreditorVO creditor,
                                        BillVO bill,
                                        UnstructuredVO unstructured,
-                                       Map<String, String> additionalInformation,
+                                       List<AdditionalInformationVO> additionalInformation,
                                        PaymentNotificationVO paymentNotification,
                                        List<PaymentMethodVO> paymentMethods,
                                        PaymentDetailsVO paymentDetails,
@@ -238,11 +249,11 @@ public class QRCodeEntity {
         this.validUntil = new ValidUntilVO(validUntil);
     }
 
-    public void updateAdditionalInformation(Map<String, String> additionalInformation) {
+    public void updateAdditionalInformation(List<AdditionalInformationVO> additionalInformation) {
         if (isNull(additionalInformation) || additionalInformation.isEmpty()) {
             this.additionalInformation = null;
         } else {
-            this.additionalInformation = Collections.unmodifiableMap(additionalInformation);
+            this.additionalInformation = List.copyOf(additionalInformation);
         }
     }
 
@@ -560,12 +571,12 @@ public class QRCodeEntity {
         return this.validUntil.value();
     }
 
-    public Map<String, String> getAdditionalInformation() {
+    public List<AdditionalInformationVO> getAdditionalInformation() {
         if (isNull(this.additionalInformation)) {
             return null;
         }
 
-        return Collections.unmodifiableMap(this.additionalInformation);
+        return Collections.unmodifiableList(this.additionalInformation);
     }
 
     public List<PaymentMethodVO> getPaymentMethods() {

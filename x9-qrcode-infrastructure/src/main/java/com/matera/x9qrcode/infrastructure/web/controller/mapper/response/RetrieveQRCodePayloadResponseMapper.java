@@ -6,6 +6,7 @@
  */
 package com.matera.x9qrcode.infrastructure.web.controller.mapper.response;
 
+import com.matera.x9qrcode.domain.vo.AdditionalInformationVO;
 import com.matera.x9qrcode.app.dto.AccountDTO;
 import com.matera.x9qrcode.app.dto.AddressDTO;
 import com.matera.x9qrcode.app.dto.AdjustmentDTO;
@@ -194,13 +195,13 @@ public final class RetrieveQRCodePayloadResponseMapper {
             .date(order.date());
     }
 
-    private static List<KeyValuePairDTO> buildAdditionalInformation(Map<String, String> additionalInformation) {
+    private static List<KeyValuePairDTO> buildAdditionalInformation(List<AdditionalInformationVO> additionalInformation) {
         if (isNull(additionalInformation) || additionalInformation.isEmpty()) {
             return null;
         }
 
-        return additionalInformation.entrySet().stream()
-            .map(entry -> new KeyValuePairDTO().key(entry.getKey()).value(entry.getValue()))
+        return additionalInformation.stream()
+            .map(entry -> new KeyValuePairDTO().key(entry.key()).value(entry.value()))
             .toList();
     }
 

@@ -6,6 +6,7 @@
  */
 package com.matera.x9qrcode.app.usecase.createqrcode;
 
+import com.matera.x9qrcode.domain.vo.AdditionalInformationVO;
 import com.matera.x9qrcode.app.dto.BillDTO;
 import com.matera.x9qrcode.app.dto.CreditorDTO;
 import com.matera.x9qrcode.app.dto.PaymentMethodDTO;
@@ -21,7 +22,7 @@ public record CreateQRCodeInput(
     CreditorDTO creditorDTO,
     BillDTO billDTO,
     String unstructured,
-    Map<String, String> additionalInformation,
+    List<AdditionalInformationVO> additionalInformation,
     PaymentNotificationDTO paymentNotification,
     List<PaymentMethodDTO> paymentMethods
 ) {
