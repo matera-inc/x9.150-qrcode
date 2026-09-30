@@ -39,6 +39,7 @@ the history of why we changed our minds — the part that is usually lost.
 | [0014](0014-we-transport-and-sequence-the-consumer-reconciles.md) | **We transport and sequence; the consumer reconciles** — a post-commit that differs from its pre-commit is forwarded, not judged | Accepted |
 | [0015](0015-x9150-signs-the-payers-notification-too.md) | **X9.150 signs the payer's notification too** — a plain REST API for pre/post-payment, so a PSP never builds a JWS | Accepted |
 | [0016](0016-a-revision-is-a-version-of-the-request-not-of-its-status.md) | **A revision is a version of the request, not of its status** — `revision` counts data changes only; the lock token is separate; conditional requests use an `ETag` | Accepted |
+| [0017](0017-a-tip-is-money-on-top-of-the-bill.md) | **A tip is money on top of the bill** — `payment.amount` is the total, tip included; the merchant's share is `amount - tipAmount` | Accepted |
 
 ## Writing a new one
 

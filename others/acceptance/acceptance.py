@@ -132,6 +132,15 @@ def qr_request(currency=CURRENCY, networks=None, amount=AMOUNT):
     }
 
 
+def notification_with_tip(qr_id, amount, tip_amount, action="PAYMENT_INITIATED"):
+    """`amount` is the TOTAL transferred, tip included (ANSI X9.150-2026 13.6.2)."""
+    payment = {"qrcodeId": qr_id, "amount": amount, "tipAmount": tip_amount,
+               "currency": CURRENCY, "network": "Solana"}
+    return {"payment": payment,
+            "payer": {"info": "acceptance@example.com"},
+            "blockchain": {"action": action, "from": PAYER_WALLET, "to": RECIPIENT}}
+
+
 def notification(qr_id, action, transaction_id=None):
     payment = {"qrcodeId": qr_id, "amount": AMOUNT, "currency": CURRENCY, "network": "Solana"}
     if transaction_id:
@@ -389,6 +398,98 @@ if probe_id:
     status, after = call("GET", f"/api/v1/payment-request/{probe_id}")
     check("a status change does not create a new revision", after.get("revision") == before,
           f"{before} -> {after.get('revision')}: a status is not a version of the request")
+
+section("9. A tip is money on top of the bill, never a slice of it")
+
+# ANSI X9.150-2026 13.6.2: "The computed total (amount + tip) SHALL apply only to the payment
+# instruction sent to the payment network and related payment notification". So `amount` is the
+# whole transfer and the merchant's share is `amount - tipAmount`.
+#
+# The suite above never sent a tip in any form, so it scored full marks while a tip could be paid
+# OUT OF the merchant's money and the QR Code still marked paid in full.
+
+def tipping_qr(tip):
+    body = qr_request()
+    body["bill"]["tip"] = tip
+    status, created = call("POST", "/api/v1/payment-request", body)
+    return (created.get("id") if status == 201 else None), status, created
+
+
+# --- the three tip forms that used to be impossible to create at all
+
+for label, tip in [("tips refused", {"allowed": False}),
+                   ("tips allowed within a range", {"allowed": True, "range": {"min": 0, "max": 25}}),
+                   ("tips allowed with presets", {"allowed": True, "presets": [10, 15, 20]})]:
+    _, status, created = tipping_qr(tip)
+    check(f"a bill can be created with {label}", status == 201,
+          f"got {status}: {created.get('violations', created)}")
+
+# A tip offer has to tell the payer something. Stricter than the standard, which makes both range
+# and presets MAY, and deliberate: "tips welcome" with no range and no buttons is not an offer a
+# payer-facing app can render.
+_, status, created = tipping_qr({"allowed": True})
+check("a tip offer with neither a range nor presets is refused", status == 400,
+      f"got {status}: {created.get('violations', created)}")
+
+qr_no_tip, _, _ = tipping_qr({"allowed": False})
+status, stored = call("GET", f"/api/v1/payment-request/{qr_no_tip}")
+check("omitting a tip and refusing one are the same stored state",
+      (stored.get("bill", {}).get("tip") or {}).get("allowed") is False,
+      f"stored as {stored.get('bill', {}).get('tip')}")
+
+# --- what a payer may actually send
+
+RANGE_TIP = {"allowed": True, "range": {"min": 0, "max": 25}}   # 0..250 on a 10000 bill
+in_range = AMOUNT // 10                                          # 10%
+
+def tip_notification(tip_config, total, tip_amount):
+    """Create a tipping QR Code and announce a payment against it.
+
+    Returns (status, body). A QR Code that could not be created returns (None, reason) rather than
+    a status, because a refusal earned by a missing qrcodeId is not the refusal under test. The
+    first draft of this section did not do that, and three checks passed against a build where
+    tipping was broken: the setup 400'd, the notification carried no id, and "is it refused?"
+    was answered yes by the wrong rule.
+    """
+    qid, status, created = tipping_qr(tip_config)
+
+    if qid is None:
+        return None, f"the QR Code could not be created: {created.get('violations', created)}"
+
+    token = sign(notification_with_tip(qid, total, tip_amount))
+    return call("POST", "/pub/api/v1/payment-notification", raw_body=token or "",
+                headers={"Content-Type": "application/jose"})
+
+
+def refuses_the_tip(body):
+    """A refusal that actually names the tip, not just any refusal."""
+    return "tip" in json.dumps(body).lower()
+
+
+status, body = tip_notification(RANGE_TIP, AMOUNT + in_range, in_range)
+check("paying the bill PLUS a tip is accepted", status == 200,
+      f"got {status}: {body} — a payer who tips correctly must not be refused")
+
+status, body = tip_notification(RANGE_TIP, AMOUNT, in_range)
+check("a tip taken OUT of the merchant's share is refused",
+      status is not None and status >= 400 and refuses_the_tip(body),
+      f"got {status}: {body} — the merchant would be short by the tip, QR Code marked paid")
+
+status, body = tip_notification(RANGE_TIP, AMOUNT + AMOUNT, AMOUNT)   # 100%, range allows 25%
+check("a tip above the published range is refused",
+      status is not None and status >= 400 and refuses_the_tip(body), f"got {status}: {body}")
+
+status, body = tip_notification({"allowed": False}, AMOUNT + in_range, in_range)
+check("a tip on a bill that refuses tips is refused",
+      status is not None and status >= 400 and refuses_the_tip(body),
+      f"got {status}: {body} — bill.tip.allowed was false")
+
+# presets suggest, they do not bind - A.10 validates even a preset-selected tip against min..max
+odd_tip = AMOUNT * 13 // 100
+status, body = tip_notification({"allowed": True, "presets": [10, 15, 20]}, AMOUNT + odd_tip, odd_tip)
+check("a tip matching no preset is accepted when no range is published", status == 200,
+      f"got {status}: {body} — presets are the suggested buttons, the range is the rule")
+
 
 # ============================================================================ result
 
