@@ -85,6 +85,30 @@ def call(method, path, body=None, headers=None, raw_body=None):
         return status, text
 
 
+def call_with_headers(method, path, body=None, headers=None):
+    """Like call(), plus the response headers — needed wherever an ETag is echoed back."""
+    url = BASE + path
+    data = json.dumps(body).encode() if body is not None else None
+    hdrs = dict(headers or {})
+
+    if data is not None:
+        hdrs.setdefault("Content-Type", "application/json")
+
+    request = urllib.request.Request(url, data=data, headers=hdrs, method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=40) as response:
+            text, status, response_headers = response.read().decode(), response.status, dict(response.headers)
+    except urllib.error.HTTPError as e:
+        text, status, response_headers = e.read().decode(), e.code, dict(e.headers)
+    except Exception as e:
+        return 0, str(e), {}
+
+    try:
+        return status, json.loads(text), response_headers
+    except ValueError:
+        return status, text, response_headers
+
+
 def sign(payload):
     """Sign JSON with the deployment's own key. Both headers are required."""
     status, body = call("POST", "/api/v1/signature/generate", body=payload, headers={
@@ -489,6 +513,108 @@ odd_tip = AMOUNT * 13 // 100
 status, body = tip_notification({"allowed": True, "presets": [10, 15, 20]}, AMOUNT + odd_tip, odd_tip)
 check("a tip matching no preset is accepted when no range is published", status == 200,
       f"got {status}: {body} — presets are the suggested buttons, the range is the rule")
+
+
+section("10. A patch names every currency, or none of them")
+
+# Our rule, not the standard's. Both halves replace a SILENT failure: an unknown currency used to be
+# discarded and answered 200 with the amount absent afterwards, and an omitted currency kept its old
+# amount while the others moved — one debt with two prices depending on how the payer settled it.
+#
+# The revision moved in both cases, so the ETag moved too and a conditional client saw every sign of
+# success. That is why these are asserted on the APPLIED AMOUNTS, never on the status code alone.
+
+FEDNOW = {"routingNumber": "021000021", "accountNumber": "1234567890", "protectionType": "plaintext"}
+
+
+def two_currency_qr():
+    body = qr_request()
+    body["bill"]["amountDue"] = {"amount": AMOUNT, "currency": "USD"}
+    body["paymentMethods"] = [
+        {"currency": "USD", "validUntil": "2030-12-31T23:59:59Z", "amount": AMOUNT,
+         "networks": {"fednow": FEDNOW}},
+        {"currency": "USDC", "validUntil": "2030-12-31T23:59:59Z", "amount": AMOUNT,
+         "networks": {"solana": {"recipient": RECIPIENT}}}]
+    status, created = call("POST", "/api/v1/payment-request", body)
+    return (created.get("id") if status == 201 else None), status, created
+
+
+def amounts(qr_id):
+    _, current = call("GET", f"/api/v1/payment-request/{qr_id}")
+    return {pm.get("currency"): pm.get("amount") for pm in current.get("paymentMethods", [])}
+
+
+def patch_with(qr_id, methods):
+    _, current, headers = call_with_headers("GET", f"/api/v1/payment-request/{qr_id}")
+    body = {"bill": {"description": "acceptance",
+                     "paymentTiming": current.get("bill", {}).get("paymentTiming", "immediate"),
+                     "amountDue": current.get("bill", {}).get("amountDue")},
+            "paymentMethods": methods}
+    return call("PATCH", f"/api/v1/payment-request/{qr_id}", body=body,
+                headers={"If-Match": headers.get("ETag", "")})
+
+
+qid, status, created = two_currency_qr()
+check("a QR Code can offer two currencies of one peg group", qid is not None,
+      f"got {status}: {created.get('violations', created)}")
+
+if qid:
+    reduced = AMOUNT // 2
+
+    # naming both is the supported edit
+    status, body = patch_with(qid, [
+        {"currency": "USD", "validUntil": "2030-12-31T23:59:59Z", "amount": reduced,
+         "networks": {"fednow": FEDNOW}},
+        {"currency": "USDC", "validUntil": "2030-12-31T23:59:59Z", "amount": reduced,
+         "networks": {"solana": {"recipient": RECIPIENT}}}])
+    applied = amounts(qid)
+    check("naming every currency reduces every currency",
+          status == 200 and applied == {"USD": reduced, "USDC": reduced},
+          f"got {status}, amounts now {applied}")
+
+    # leaving one out
+    qid2, _, _ = two_currency_qr()
+    before = amounts(qid2)
+    status, body = patch_with(qid2, [
+        {"currency": "USD", "validUntil": "2030-12-31T23:59:59Z", "amount": reduced,
+         "networks": {"fednow": FEDNOW}}])
+    after = amounts(qid2)
+    check("omitting a currency the QR Code offers is refused, and nothing moves",
+          status == 400 and after == before,
+          f"got {status}, amounts {before} -> {after}: one debt must not end up with two prices")
+    check("the refusal names the currency that was left out",
+          "USDC" in json.dumps(body), f"got {body}")
+
+    # a currency that is not there
+    qid3, _, _ = two_currency_qr()
+    before = amounts(qid3)
+    status, body = patch_with(qid3, [
+        {"currency": "USD", "validUntil": "2030-12-31T23:59:59Z", "amount": reduced,
+         "networks": {"fednow": FEDNOW}},
+        {"currency": "USDC", "validUntil": "2030-12-31T23:59:59Z", "amount": reduced,
+         "networks": {"solana": {"recipient": RECIPIENT}}},
+        {"currency": "FRNT", "validUntil": "2030-12-31T23:59:59Z", "amount": reduced,
+         "networks": {"solana": {"recipient": RECIPIENT}}}])
+    after = amounts(qid3)
+    check("a currency the QR Code does not offer is refused, and nothing moves",
+          status == 400 and after == before,
+          f"got {status}, amounts {before} -> {after}: a patch may change an amount, never add a currency")
+    check("the refusal names the currency that is not there",
+          "FRNT" in json.dumps(body), f"got {body}")
+
+    # the single-currency case that used to be a silent no-op, revision and all
+    qid4, _, _ = two_currency_qr()
+    _, _, h4 = call_with_headers("GET", f"/api/v1/payment-request/{qid4}")
+    etag_before = h4.get("ETag")
+    status, body = patch_with(qid4, [
+        {"currency": "FRNT", "validUntil": "2030-12-31T23:59:59Z", "amount": reduced,
+         "networks": {"solana": {"recipient": RECIPIENT}}}])
+    _, _, h4after = call_with_headers("GET", f"/api/v1/payment-request/{qid4}")
+    check("a patch naming only an unknown currency is refused rather than answered 200",
+          status == 400, f"got {status}: {body}")
+    check("a refused patch does not move the ETag",
+          h4after.get("ETag") == etag_before,
+          f"{etag_before} -> {h4after.get('ETag')}: a moved ETag tells a conditional client the write landed")
 
 
 # ============================================================================ result
