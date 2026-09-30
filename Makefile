@@ -41,14 +41,21 @@ image-amd64: ## Build an amd64/intel image locally (x9-qrcode:latest-amd64) — 
 acceptance: ## Black-box acceptance tests against a RUNNING deployment (URL=http://host:port)
 	./others/acceptance/acceptance.py $(or $(URL),http://localhost:8080)
 
-publish: ## Build, verify and publish the image (git-<sha> + latest). REGISTRY_REPO= to point elsewhere
-	./others/scripts/publish-image.sh
+publish: ## Publish the image to your registry — bring your own script (no registry is imposed)
+	@echo "Publishing is intentionally left to you — this repo imposes no registry or flow."
+	@echo ""
+	@echo "Build an image first:"
+	@echo "   make image        # native arch  -> x9-qrcode:latest"
+	@echo "   make image-amd64  # amd64/intel   -> x9-qrcode:latest-amd64 (Rosetta on Apple Silicon)"
+	@echo ""
+	@echo "Then push it wherever you want, e.g.:"
+	@echo "   docker tag x9-qrcode:latest <registry>/<repo>:latest"
+	@echo "   docker push <registry>/<repo>:latest"
+	@echo ""
+	@echo ">>> Place your own publish script here. <<<"
 
-publish-dry-run: ## Everything publish does, except the push
-	./others/scripts/publish-image.sh --dry-run
-
-publish-keep-latest: ## Publish git-<sha> but leave `latest` where it is
-	./others/scripts/publish-image.sh --no-latest
+publish-unverified-arch: ## Publish even if an architecture cannot be run here (say why in the PR)
+	./others/scripts/publish-image.sh --allow-unverified-arch
 
 up: ## Start app + single-node MongoDB replica set locally (docker-compose.yml)
 	$(COMPOSE) up -d

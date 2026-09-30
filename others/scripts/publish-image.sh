@@ -24,7 +24,13 @@ cd "$ROOT"
 REGISTRY_REPO="${REGISTRY_REPO:-materainc/x9-qrcode}"
 MOVE_LATEST=1
 DRY_RUN=0
-PORT="${PORT:-8079}"
+ALLOW_UNVERIFIED_ARCH=0
+# Host ports for the verification containers. Neither may be 8080, the port INSIDE the container:
+# when the advertised host and the internal host are identical, normalizeHost stops rewriting the
+# JWS `jku` to plain HTTP, the instance tries to fetch its own JWK set over HTTPS, and every
+# signature check fails with a 401 that looks like a broken image. It is not; it is the port.
+PORT_ARM64="${PORT_ARM64:-8079}"
+PORT_AMD64="${PORT_AMD64:-8078}"
 MONGO_URI="${MONGO_URI:-mongodb://mongo:27017/x9-qrcode?replicaSet=x9-qrcode}"
 NETWORK="${NETWORK:-x9-qrcode-network}"
 
@@ -32,6 +38,7 @@ for arg in "$@"; do
     case "$arg" in
         --no-latest) MOVE_LATEST=0 ;;
         --dry-run)   DRY_RUN=1 ;;
+        --allow-unverified-arch) ALLOW_UNVERIFIED_ARCH=1 ;;
         *) echo "unknown option: $arg" >&2; exit 2 ;;
     esac
 done
@@ -49,12 +56,19 @@ BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 SHA="$(git rev-parse --short HEAD)"
 FULL_SHA="$(git rev-parse HEAD)"
 
-[ "$BRANCH" = "main" ] || die "On '$BRANCH'. Publish from main: the revision label must name a commit others can fetch."
-[ -z "$(git status --porcelain)" ] || die "Working tree is dirty. The label would name a commit that does not match what is built."
+# A dry run is for checking a build before it is merged, so it does not insist on main — it only
+# refuses to PUSH. A real publish insists, because a revision label naming a commit nobody can fetch
+# is a false assurance rather than provenance.
+if [ "$DRY_RUN" = "0" ]; then
+    [ "$BRANCH" = "main" ] || die "On '$BRANCH'. Publish from main: the revision label must name a commit others can fetch. (--dry-run works from anywhere.)"
+    [ -z "$(git status --porcelain)" ] || die "Working tree is dirty. The label would name a commit that does not match what is built."
 
-git fetch -q origin 2>/dev/null || true
-if [ -n "$(git rev-list "origin/main..HEAD" 2>/dev/null)" ]; then
-    die "HEAD is ahead of origin/main. Push first, or the published revision will not exist for anyone else."
+    git fetch -q origin 2>/dev/null || true
+    if [ -n "$(git rev-list "origin/main..HEAD" 2>/dev/null)" ]; then
+        die "HEAD is ahead of origin/main. Push first, or the published revision will not exist for anyone else."
+    fi
+elif [ "$BRANCH" != "main" ] || [ -n "$(git status --porcelain)" ]; then
+    echo "   note     dry run from '$BRANCH'; a real publish would require a clean main"
 fi
 
 echo "   commit   $FULL_SHA"
@@ -79,35 +93,83 @@ done
 
 # --------------------------------------------------------------------------- prove it, then push
 
-say "Proving the built image actually behaves"
+say "Proving the built images actually behave"
 
-CONTAINER="x9-publish-verify"
-docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-docker run -d --name "$CONTAINER" --network "$NETWORK" -p "$PORT:8080" \
-    -e SPRING_DATA_MONGODB_URI="$MONGO_URI" \
-    -e X9_PUBLICENDPOINTS_HOST="localhost:$PORT" x9-qrcode:latest >/dev/null
+# BOTH architectures, not just the one this machine runs natively. An image was verified on arm64
+# and reported as verified, while the people running it were on amd64 — and `docker pull --platform`
+# silently returned the native image anyway, so even the obvious correction did not work. The only
+# reliable way is to run each per-architecture image by its own tag and check what it answers.
 
-cleanup() { docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; }
+verify_image() {
+    local image="$1" arch="$2" port="$3" platform=""
+
+    # An if, not `[ ... ] && assign`: under `set -e` the false branch of such a line returns 1 and
+    # kills the subshell, so the function returned nothing and the caller's case matched nothing —
+    # reporting success for an architecture that was never started. Found by noticing a missing
+    # line of output, which is the only symptom it has.
+    case "$arch" in
+        amd64) platform="--platform linux/amd64" ;;
+        arm64) platform="--platform linux/arm64" ;;
+    esac
+
+    local container="x9-publish-verify-$arch"
+    docker rm -f "$container" >/dev/null 2>&1 || true
+
+    if ! docker run -d --name "$container" $platform --network "$NETWORK" -p "$port:8080" \
+            -e SPRING_DATA_MONGODB_URI="$MONGO_URI" \
+            -e X9_PUBLICENDPOINTS_HOST="localhost:$port" "$image" >/dev/null 2>&1; then
+        echo "unstartable"
+        return
+    fi
+
+    local health=""
+    # Emulated architectures start slowly; give them room before concluding anything.
+    for _ in $(seq 1 80); do
+        health="$(curl -s -o /dev/null -w '%{http_code}' --max-time 4 "http://localhost:$port/actuator/health" || true)"
+        [ "$health" = "200" ] && break
+        sleep 3
+    done
+
+    if [ "$health" != "200" ]; then
+        docker rm -f "$container" >/dev/null 2>&1 || true
+        echo "unstartable"
+        return
+    fi
+
+    if ./others/acceptance/acceptance.py "http://localhost:$port" >/dev/null 2>&1; then
+        docker rm -f "$container" >/dev/null 2>&1 || true
+        echo "pass"
+    else
+        ./others/acceptance/acceptance.py "http://localhost:$port" | tail -40
+        docker rm -f "$container" >/dev/null 2>&1 || true
+        echo "fail"
+    fi
+}
+
+cleanup() { docker rm -f x9-publish-verify-arm64 x9-publish-verify-amd64 >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
-HEALTH=""
-for _ in $(seq 1 60); do
-    HEALTH="$(curl -s -o /dev/null -w '%{http_code}' --max-time 4 "http://localhost:$PORT/actuator/health" || true)"
-    [ "$HEALTH" = "200" ] && break
-    sleep 3
+UNVERIFIED=""
+for pair in "x9-qrcode:latest arm64 $PORT_ARM64" "x9-qrcode:latest-amd64 amd64 $PORT_AMD64"; do
+    set -- $pair
+    printf '   ...   %s: building a container and running the suite\n' "$2"
+    result="$(verify_image "$1" "$2" "$3")"
+
+    case "$result" in
+        pass)        ok "$2 — acceptance suite, including the conditional-request and revision checks" ;;
+        fail)        die "$2 builds but does not behave. NOTHING was pushed." ;;
+        unstartable) bad "$2 could not be started on this machine"; UNVERIFIED="$UNVERIFIED $2" ;;
+        *)           die "verification of $2 produced no verdict ('$result'). Refusing to publish on a check that did not run." ;;
+    esac
 done
-[ "$HEALTH" = "200" ] || { docker logs "$CONTAINER" 2>&1 | tail -20; die "The built image did not become healthy. Is MongoDB up? ('docker compose up -d mongo mongo-setup')"; }
-ok "container healthy"
 
-# The suite's last section covers the behaviours most recently changed — ETag, If-Match on both
-# write paths, repeated additionalInformation labels, and what a revision counts. Those are the ones
-# an otherwise-fine artifact is most likely to be missing, and the ones the rest of the suite would
-# happily pass without.
-./others/acceptance/acceptance.py "http://localhost:$PORT" >/dev/null 2>&1 \
-    || { ./others/acceptance/acceptance.py "http://localhost:$PORT" | tail -40
-         die "The image builds but does not behave. NOTHING was pushed."; }
-ok "acceptance suite, including the conditional-request and revision checks"
-
+if [ -n "$UNVERIFIED" ]; then
+    if [ "$ALLOW_UNVERIFIED_ARCH" = "1" ]; then
+        printf '\n   \033[33mPublishing with%s unverified — you asked for it with --allow-unverified-arch.\033[0m\n' "$UNVERIFIED"
+    else
+        die "Could not verify:$UNVERIFIED on this machine. Publish from a machine that can run it, or pass --allow-unverified-arch to ship it unchecked. An architecture nobody ran is not an architecture anybody verified."
+    fi
+fi
 
 cleanup
 trap - EXIT
