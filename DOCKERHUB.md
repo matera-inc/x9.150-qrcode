@@ -1,7 +1,11 @@
 <!--
   Source of truth for the Docker Hub repository "Overview" of materainc/x9-qrcode.
-  Docker Hub's overview can't be set via CLI — when this changes, paste the body below
-  (everything under the first heading) into the repo's Overview in the Docker Hub web UI.
+
+  It is pushed with `make dockerhub-overview`, which PATCHes everything below this comment to
+  the Hub API using the credentials `docker login` already stored. The Overview drifted badly
+  once — it advertised Bitcoin, Ethereum, Polygon, Base, XRP and Arc, and "any ISO 4217 code",
+  for weeks after this service began refusing all of them by name. A page that promises what
+  the service declines is worse than no page, so this is scripted rather than remembered.
 -->
 
 # X9 QRCode — ANSI X9.150 Payment QR Code backend
@@ -31,7 +35,7 @@ builds a JWS or manages a keystore.
 | Tag | Meaning |
 |-----|---------|
 | `latest` | Newest build; auto-selects your architecture |
-| `git-<short-sha>` | Immutable — pinned to a source commit (e.g. `git-3ddaee1`) |
+| `git-<short-sha>` | Immutable — pinned to a source commit (e.g. `git-a9cb57e`) |
 | `latest-arm64` / `latest-amd64` | Explicit per-architecture images |
 
 ## Pull

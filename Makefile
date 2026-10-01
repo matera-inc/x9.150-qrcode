@@ -41,6 +41,12 @@ image-amd64: ## Build an amd64/intel image locally (x9-qrcode:latest-amd64) — 
 acceptance: ## Black-box acceptance tests against a RUNNING deployment (URL=http://host:port)
 	./others/acceptance/acceptance.py $(or $(URL),http://localhost:8080)
 
+dockerhub-overview: ## Push DOCKERHUB.md to the Docker Hub repository Overview
+	./others/scripts/push-dockerhub-overview.sh
+
+dockerhub-overview-dry-run: ## Show what the Overview push would change, without writing
+	./others/scripts/push-dockerhub-overview.sh --dry-run
+
 blackbox: ## Run the black-box unhappy-path suite (X9_BASE_URL, default http://localhost:8080)
 	@test -x .blackbox-venv/bin/pytest || $(MAKE) blackbox-venv
 	@.blackbox-venv/bin/pytest others/blackbox -q
