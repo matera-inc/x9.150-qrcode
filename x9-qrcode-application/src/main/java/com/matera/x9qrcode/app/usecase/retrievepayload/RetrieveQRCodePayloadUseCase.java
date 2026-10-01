@@ -54,6 +54,11 @@ public class RetrieveQRCodePayloadUseCase extends UseCase<RetrieveQRCodePayloadI
 
         QRCodeEntity qrCodeEntity = retrieveQrCodeEntity(locationId);
 
+        // The binding the signature exists to carry: the content the payer submitted must be the
+        // content this QR Code was issued with. Everything the signature service could check was
+        // caller-supplied on both sides; this is the first comparison against what we stored.
+        qrCodeEntity.requireIssuedQrCodeContent(input.submittedQrCodeContent());
+
         if (qrCodeEntity.isNotActiveOrInitiated()) {
             throw new BusinessRuleException(PAYLOAD_IS_ALREADY_CANCELLED_OR_PAID.formatted(locationId.valueAsString()));
         }

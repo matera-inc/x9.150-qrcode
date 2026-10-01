@@ -17,15 +17,26 @@ import java.util.UUID;
  */
 public record SignatureValidationOutput(
     boolean isValid,
-    UUID correlationId
+    UUID correlationId,
+
+    /**
+     * The decoded EMV string the caller put in the signed body, or null when the request carries
+     * none. Carried out of validation so the use case can compare it against the content actually
+     * issued — the signature service has no repository and cannot make that comparison itself.
+     */
+    String submittedQrCodeContent
 ) {
 
     public static SignatureValidationOutput validSignature(UUID correlationId) {
-        return new SignatureValidationOutput(true, correlationId);
+        return new SignatureValidationOutput(true, correlationId, null);
+    }
+
+    public static SignatureValidationOutput validSignature(UUID correlationId, String submittedQrCodeContent) {
+        return new SignatureValidationOutput(true, correlationId, submittedQrCodeContent);
     }
 
     public static SignatureValidationOutput invalidSignature() {
-        return new SignatureValidationOutput(false, null);
+        return new SignatureValidationOutput(false, null, null);
     }
 
 }

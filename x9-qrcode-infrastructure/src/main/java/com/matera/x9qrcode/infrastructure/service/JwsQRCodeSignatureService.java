@@ -140,7 +140,9 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         log.info("Validating signature with input: {}", input);
 
         try {
-            UUID correlationId = validateJwsToken(input.locationId(), input.jwsToken());
+            ValidatedJws validated = validateJwsToken(input.locationId(), input.jwsToken());
+
+            UUID correlationId = validated.correlationId();
 
             if (nonNull(input.correlationId())) {
                 if (!input.correlationId().equals(correlationId)) {
@@ -150,7 +152,7 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
                 }
             }
 
-            return SignatureValidationOutput.validSignature(correlationId);
+            return SignatureValidationOutput.validSignature(correlationId, validated.submittedQrCodeContent());
         } catch (Exception e) {
             log.error("Error validating JWS signature: {}", e.getMessage(), e);
 
@@ -491,7 +493,10 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         return Base64URL.encode(certDigest);
     }
 
-    private UUID validateJwsToken(String locationId, String jwsToken) throws ParseException, JOSEException {
+    /** What a verified JWS yields: who correlated it, and the QR content it carried (may be null). */
+    private record ValidatedJws(UUID correlationId, String submittedQrCodeContent) { }
+
+    private ValidatedJws validateJwsToken(String locationId, String jwsToken) throws ParseException, JOSEException {
         JWSObject jwsObject = JWSObject.parse(jwsToken);
         JWSHeader header = jwsObject.getHeader();
 
@@ -501,7 +506,7 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         UUID correlationId = validateAndExtractCorrelationId(header);
         validateJwsExpiration(validateAndExtractIat(header), validateAndExtractTtl(header));
         validateStatusCodeIfResponse(header);
-        validateLocationId(locationId, jwsObject.getPayload().toJSONObject());
+        String submittedQrCodeContent = validateLocationId(locationId, jwsObject.getPayload().toJSONObject());
 
         ExternalCertificateInput externalCertificateInput =
             createExternalCertificateInput(jwsObject.getHeader());
@@ -528,7 +533,7 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
 
         log.info("JWS signature successfully validated for correlationId: {}", correlationId);
 
-        return correlationId;
+        return new ValidatedJws(correlationId, submittedQrCodeContent);
     }
 
     private void validateCriticalHeaders(JWSHeader header) {
@@ -646,9 +651,20 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         }
     }
 
-    private void validateLocationId(String locationId, Map<String, Object> payloadJson) {
+    /**
+     * Decodes the submitted QR content and checks it is self-consistent with the location asked for.
+     *
+     * <p>This is a cheap early rejection, not the binding. Both the location id and the content come
+     * from the same caller, so passing it proves the body is coherent — not that the body is the
+     * code this deployment issued. That comparison needs the stored entity and therefore happens in
+     * {@code RetrieveQRCodePayloadUseCase}, via
+     * {@code QRCodeEntity.requireIssuedQrCodeContent}.
+     *
+     * @return the decoded EMV string, so the caller can carry it to that comparison
+     */
+    private String validateLocationId(String locationId, Map<String, Object> payloadJson) {
         if (isBlank(locationId)) {
-            return;
+            return null;
         }
 
         if (!payloadJson.containsKey(JWS_PAYLOAD_QR_CODE_CONTENT)) {
@@ -657,11 +673,15 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
 
         String qrCodeContent = payloadJson.get(JWS_PAYLOAD_QR_CODE_CONTENT).toString();
 
-        String payloadUrl = qrCodeEMVService.extractPayloadUrl(new Base64(qrCodeContent).decodeToString());
+        String decodedQrCodeContent = new Base64(qrCodeContent).decodeToString();
+
+        String payloadUrl = qrCodeEMVService.extractPayloadUrl(decodedQrCodeContent);
 
         if (!Strings.CI.contains(payloadUrl, locationId)) {
             throw new ServiceException("JWS payload URL does not contains ID %s".formatted(locationId));
         }
+
+        return decodedQrCodeContent;
     }
 
     private void validateJwsExpiration(long iat, long ttl) {

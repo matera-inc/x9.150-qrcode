@@ -142,7 +142,8 @@ public class PublicEndpointsController implements PublicEndpointsApi {
 
             if (validationResult.isValid()) {
                 RetrieveQRCodePayloadOutput retrieveQRCodePayloadOutput =
-                    retrieveQRCodePayloadUseCase.execute(new RetrieveQRCodePayloadInput(id, dateForPayment));
+                    retrieveQRCodePayloadUseCase.execute(new RetrieveQRCodePayloadInput(
+                        id, dateForPayment, validationResult.submittedQrCodeContent()));
 
                 LocalDate payloadBasedDate =
                     Optional.ofNullable(dateForPayment).orElse(retrieveQRCodePayloadOutput.sentAt().toLocalDate());
@@ -160,6 +161,13 @@ public class PublicEndpointsController implements PublicEndpointsApi {
                                      .header(HEADER_PAYLOAD_BASED_DATE, payloadBasedDate.toString())
                                      .body(signatureOutputDataDTO.jwsToken());
             }
+        } catch (BusinessRuleException e) {
+            // Rethrown as-is: a refusal the caller can act on, such as a QR content that is not the
+            // one issued for this location, must reach them saying that. Wrapping it in a generic
+            // message was how a specific refusal became an unhelpful one.
+            log.warn("Payment payload retrieve refused: {}", e.getLocalizedMessage());
+
+            throw e;
         } catch (Exception e) {
             log.error("Error processing payment payload retrieve: {}", e.getLocalizedMessage(), e);
 
