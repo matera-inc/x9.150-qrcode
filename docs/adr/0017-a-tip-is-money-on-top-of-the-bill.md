@@ -28,7 +28,11 @@ terminal state, and the merchant is short by exactly the tip — with no signal 
 happened. A consumer totalling payments across the several QR Codes of one payment request would
 count that bill as settled.
 
-The standard is not ambiguous here. §13.6.2:
+The standard settles it across three clauses. §2.1, of `$.payment.amount`:
+
+> "Total amount sent for payment."
+
+§13.6.2, which supplies what "total" means and that it reaches the notification:
 
 > "The computed total (amount \+ tip) **SHALL** apply only to the payment instruction sent to the
 > payment network and related payment notification; it **SHALL NOT** be re-encoded in the payload."
@@ -38,7 +42,17 @@ and A.10:
 > "Payment applications SHOULD display the base amount and any available tipping options and compute
 > the payable total (base \+ tip) at runtime."
 
-So `amount` is the total transferred, tip included. We were non-conformant.
+and §2.2 — `$.payment.tipAmount`, *"MAY be present if a tip was paid"* — is where the opposite
+reading would have had to be stated, and is silent.
+
+So `amount` is the total transferred, tip included, and `tipAmount` reports how much of it was
+gratuity. We were non-conformant.
+
+The word carrying §2.1 is **total**. A total is a sum of parts, and the part is named one clause
+later — a field labelled "total amount sent" beside a field reporting the tip is a total and a
+component of it, not two figures to be added. Had `amount` been the meal alone it would not be the
+total *sent*; it would be the amount due, for which the standard already has `$.bill.amountDue`.
+See [I-10](../../official-spec/INTERPRETATION.md).
 
 Separately, three of the four ways to express a tip **could not be created at all**. The code
 generator initialises an absent array to an empty one, so `minItems: 1` on `bill.tip.presets` became

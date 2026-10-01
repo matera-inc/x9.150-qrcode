@@ -1640,9 +1640,9 @@ components:
               allOf:
                 - $ref: "#/components/schemas/Amount"
               description: |-
-                The TOTAL the payer transferred, **tip included**. Per ANSI X9.150-2026 §13.6.2 the
-                computed total (amount + tip) is what applies to the payment instruction and to this
-                notification.
+                The TOTAL the payer transferred, **tip included**. ANSI X9.150-2026 §2.1 defines
+                this field as the "Total amount sent for payment", and §13.6.2 defines that total as
+                `amount + tip`, applying to the payment instruction and to this notification.
 
                 The merchant's share is therefore `amount - tipAmount`, and that is the figure
                 checked against the bill. A payer who tips 200 on a bill of 1000 sends

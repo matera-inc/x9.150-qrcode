@@ -400,19 +400,44 @@ do interpret, on a published embedding, should report an unknown field rather th
 
 ## I-10 — A tip is money on top of the bill, and we enforce that at the payee
 
-**Where:** §13.6 (`$.bill.tip`), §13.6.2, A.10, §9 (Payment Notification)
+**Where:** §2.1 (`$.payment.amount`), §2.2 (`$.payment.tipAmount`), §13.6 (`$.bill.tip`),
+§13.6.2, A.10, §9 (Payment Notification)
 
-**The standard settles the arithmetic and we were getting it wrong.** §13.6.2:
+**`$.payment.amount` is the total the payer transferred, tip included.** Three clauses interlock,
+and it is worth being explicit about which one does what, because no single one of them settles it.
+
+**§13.6.2 gives the arithmetic** — what "total" means, and that it reaches the notification:
 
 > "The computed total (amount \+ tip) **SHALL** apply only to the payment instruction sent to the
 > payment network and related payment notification; it **SHALL NOT** be re-encoded in the payload."
 
-So the notification carries the **total**, tip included, and the merchant's share is
-`amount - tipAmount`. A payer settling a 1000 bill with a 200 tip sends `amount: 1200,
-tipAmount: 200`. This deployment previously compared the *total* against the bill, which failed in
-both directions at once: it refused the payer who tipped correctly, and it accepted a payer who paid
-the tip out of the merchant's share — marking the QR Code paid in full while the merchant was short
-by exactly the tip. That was a conformance defect, not an interpretation.
+That establishes *total = amount + tip* and that the total belongs in the notification. It does
+**not** say which field carries it.
+
+**§2.1 names the field.** Of `$.payment.amount`:
+
+> "Total amount sent for payment."
+
+**§2.2 is where the opposite reading would have had to live, and does not.** `$.payment.tipAmount`
+says only *"MAY be present if a tip was paid"* and then repeats the integer/minor-unit rules. If the
+tip were meant to sit *outside* `amount` — to be added to it rather than reported out of it — this
+is the clause that would say so, and it is silent.
+
+Read together: the payer sends one figure, and that figure is the total; `tipAmount` reports how
+much of it was gratuity. A payer settling a 1000 bill with a 200 tip sends `amount: 1200,
+tipAmount: 200`, and the merchant's share is `amount - tipAmount` = 1000.
+
+**§2.1 is close to sufficient on its own**, and the word carrying it is *total*. A total is a sum of
+parts, and the part is named one clause later: `$.payment.tipAmount`. A field labelled "total amount
+sent" sitting beside a field reporting the tip is a **total and a component of it**, not two figures
+to be added. Had `amount` been the meal alone it would not be the total *sent* — it would be the
+amount due, which the standard already has a name for elsewhere (`$.bill.amountDue`). §13.6.2 then
+confirms the arithmetic explicitly, and §2.2 declines the chance to say otherwise.
+
+This deployment previously compared the *total* against the bill, which failed in both directions at
+once: it refused the payer who tipped correctly, and it accepted a payer who paid the tip out of the
+merchant's share — marking the QR Code paid in full while the merchant was short by exactly the tip.
+That was a conformance defect, not an interpretation.
 
 **What is genuinely ours is who enforces the tip rules.** The standard addresses them to the payer:
 
