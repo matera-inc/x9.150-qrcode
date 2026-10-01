@@ -10,7 +10,13 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 
-public record RetrieveQRCodePayloadInput(String uuid, LocalDate dateForPayment) {
+public record RetrieveQRCodePayloadInput(String uuid, LocalDate dateForPayment,
+                                         String submittedQrCodeContent) {
+
+    public RetrieveQRCodePayloadInput(String uuid, LocalDate dateForPayment) {
+        this(uuid, dateForPayment, null);
+    }
+
 
     public OffsetDateTime getZonedDateForPayment() {
         return dateForPayment != null

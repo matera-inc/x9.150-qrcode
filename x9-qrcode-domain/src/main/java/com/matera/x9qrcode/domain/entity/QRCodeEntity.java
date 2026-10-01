@@ -350,6 +350,44 @@ public class QRCodeEntity {
      *
      * @param informedCurrencies the currencies the caller put in the patch, in the order they sent them
      */
+    /**
+     * The QR content a payer submits must be the content this QR Code actually carries.
+     *
+     * <p>The payer's app sends the scanned EMV string in the signed body of
+     * {@code POST /pub/api/v1/loc/{id}}. The reason it is there at all is that the location id is
+     * already in the URL, so without a body the signature would bind to nothing: the content is
+     * what gives the signature something meaningful to cover.
+     *
+     * <p>Before this, the only check was that the <em>submitted</em> string's tag-26 URL contained
+     * the <em>submitted</em> location id — both halves from the same caller, so it established that
+     * the body was self-consistent, never that it was ours. {@code openapi.yaml} already described
+     * the 400 on that endpoint as covering "a signed request whose QR content does not match this
+     * location", so the contract promised a binding the code did not perform.
+     *
+     * <p><b>Byte-exact on the EMV string</b>, deliberately. Base64 representation differences
+     * (padding, URL-safe alphabet) are absorbed by decoding before comparison, so what is compared
+     * is the code itself. Anything looser would mean deciding which parts of a signed code may
+     * differ and still count as the same code, which is a judgement no reference implementation
+     * should make silently.
+     *
+     * <p>Honest about the strength of this: the EMV is largely a function of the location URL and
+     * the creditor's name and city, all of which a caller holding the location can see. The check
+     * raises the bar from "knows the id" to "holds the code", which is what the contract says, and
+     * is not a substitute for the signature establishing who the caller is.
+     */
+    public void requireIssuedQrCodeContent(String submittedQrCodeContent) {
+        if (isNull(submittedQrCodeContent)) {
+            return;
+        }
+
+        String issued = isNull(this.qrcodeContent) ? null : this.qrcodeContent.value();
+
+        if (isNull(issued) || !issued.equals(submittedQrCodeContent)) {
+            throw new BusinessRuleException("qrCodeContent",
+                "The QR content in the signed request is not the content issued for this location.");
+        }
+    }
+
     public void requirePaymentMethodCurrencies(List<String> informedCurrencies) {
         if (isNull(informedCurrencies) || informedCurrencies.isEmpty()) {
             return;
