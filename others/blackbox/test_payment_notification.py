@@ -24,17 +24,37 @@ EDITABLE_500_TO_2000 = {"range": {"min": 500, "max": 2000}}
 class TestTransport:
 
     def test_an_unsigned_body_is_refused(self, api):
+        """X9-SIG-001 — an unsigned body is refused.
+
+        Source: ANSI X9.150-2026 §9 — a payment notification is a signed message. Conformance.
+
+        Why: The endpoint is public and unauthenticated. The signature is the only thing establishing who
+    sent this, so an unsigned body must not be read at all, let alone acted on.
+        """
         qr = api.create_qr()
         status, body = api.notify(qr, raw="not-a-jws")
         assert status == 401, f"an unsigned notification must not be read: {status} {body}"
 
     def test_an_empty_body_is_refused(self, api):
+        """X9-SIG-002 — an empty body is refused.
+
+        Source: Mechanism.
+
+        Why: An empty body must fail as malformed rather than reaching any rule that might treat missing
+    fields as defaults.
+        """
         qr = api.create_qr()
         status, _ = api.notify(qr, raw="")
         assert status >= 400
 
     def test_a_tampered_payload_is_refused(self, api):
-        """Flip a character in the claims segment — the signature must stop covering it."""
+        """X9-SIG-003 — a payload edited after signing is refused.
+
+        Source: RFC 7515 — the signature covers the claims. Conformance.
+
+        Why: Flips one character in the claims segment. If this passed, every other check in this file
+    would be theatre: an attacker could sign a valid notification and then rewrite the amount.
+        """
         qr = api.create_qr()
         token = api.sign({"payment": {"qrcodeId": qr, "amount": BILL,
                                       "currency": "USDC", "network": "Solana"},
@@ -54,6 +74,13 @@ class TestTransport:
 class TestIdentity:
 
     def test_an_unknown_qr_code_is_404(self, api):
+        """X9-LIFE-001 — a notification for an unknown QR Code is 404.
+
+        Source: Mechanism.
+
+        Why: 404 rather than 400, because the request is well-formed and the subject simply is not here.
+    A payer PSP retrying on 400 and giving up on 404 needs them told apart.
+        """
         status, body = api.notify("0" * 32)
         assert status == 404, f"{status} {body}"
 
@@ -68,15 +95,34 @@ class TestFixedAmount:
         (0, "nothing was paid"),
     ])
     def test_an_amount_that_is_not_the_bill_is_refused(self, api, amount, why):
+        """X9-AMT-001 — an amount that is not the bill is refused.
+
+        Source: ANSI X9.150-2026 §13.5.1 — the bill states what is owed. Conformance.
+
+        Why: A penny short and a penny over are both wrong, and the second is not generosity: accepting an
+    overpayment silently leaves the payee holding money the bill never asked for.
+        """
         qr = api.create_qr()
         assert_refused(api.notify(qr, amount=amount), naming="payment.amount")
 
     def test_a_negative_amount_is_refused(self, api):
+        """X9-AMT-002 — a negative amount is refused.
+
+        Source: ANSI X9.150-2026 §2.1 — <i>"SHALL be a 64 bit integer with minimum value = 0"</i>. Conformance.
+
+        Why: Refused in the value object, before any business rule sees it, so no later arithmetic has to
+    consider what a negative payment would mean.
+        """
         qr = api.create_qr()
         assert_refused(api.notify(qr, amount=-1), naming="negative")
 
     def test_the_exact_bill_is_accepted(self, api):
-        """The control. Without it, the refusals above could all be refusing everything."""
+        """X9-AMT-003 — the exact bill is accepted.
+
+        Source: Mechanism. The control for this group.
+
+        Why: Without it, every refusal above would still pass against a service that refused all payments.
+        """
         qr = api.create_qr()
         status, body = api.notify(qr, amount=BILL)
         assert status == 200, f"{status} {body}"
@@ -86,11 +132,25 @@ class TestEditableAmount:
 
     @pytest.mark.parametrize("amount", [499, 2001])
     def test_an_amount_outside_the_published_range_is_refused(self, api, amount):
+        """X9-AMT-004 — an amount outside the published editable range is refused.
+
+        Source: ANSI X9.150-2026 §14.4.1 — when editable is present, range is mandatory. Conformance.
+
+        Why: The range is the promise the QR Code made to the payer. Outside it, neither party agreed.
+        """
         qr = api.create_qr(editable=EDITABLE_500_TO_2000)
         assert_refused(api.notify(qr, amount=amount), naming="editable within")
 
     @pytest.mark.parametrize("amount", [500, 1234, 2000])
     def test_any_amount_inside_the_published_range_is_accepted(self, api, amount):
+        """X9-AMT-005 — any amount inside the published range is accepted.
+
+        Source: ANSI X9.150-2026 §14.4 — the presence of editable means the payer chooses. Conformance.
+
+        Why: Demanding the face amount back would refuse every legitimate use of the feature: a donation,
+    a top-up, an open tab. Three amounts, including both bounds, because inclusive-or-exclusive is
+    exactly the kind of thing that drifts.
+        """
         qr = api.create_qr(editable=EDITABLE_500_TO_2000)
         status, body = api.notify(qr, amount=amount)
         assert status == 200, f"{amount} is inside 500..2000: {status} {body}"
@@ -104,19 +164,35 @@ class TestEditableAmount:
 class TestTip:
 
     def test_the_bill_plus_a_tip_inside_the_range_is_accepted(self, api):
+        """X9-TIP-101 — the bill plus a tip inside the range is accepted.
+
+        Source: ANSI X9.150-2026 §2.1 with §13.6.2. Conformance.
+
+        Why: The end-to-end acceptance case for tipping, over HTTP rather than in the domain.
+        """
         qr = api.create_qr(tip=TIP_10_TO_25)
         status, body = api.notify(qr, amount=BILL + 200, tip=200)
         assert status == 200, f"20% of a 1000 bill is inside 10..25%: {status} {body}"
 
     def test_a_tip_taken_out_of_the_merchants_share_is_refused(self, api):
-        """
-        The money-losing case. 1000 arrives carrying a 200 tip, so the merchant receives 800
-        on a 1000 bill — and before this rule existed the QR Code was marked paid in full.
+        """X9-TIP-102 — a tip taken out of the merchant's share is refused.
+
+        Source: ANSI X9.150-2026 §2.1 with §13.6.2 — the notification carries the total, tip included.
+    Conformance.
+
+        Why: 1000 arrives carrying a 200 tip, so the merchant receives 800 on a 1000 bill and the QR Code
+    used to be marked paid in full. This is the one that cost a release.
         """
         qr = api.create_qr(tip=TIP_10_TO_25)
         assert_refused(api.notify(qr, amount=BILL, tip=200), naming="payment.amount")
 
     def test_a_tip_on_a_bill_that_refuses_tips_is_refused(self, api):
+        """X9-TIP-103 — a tip on a bill that refuses tips is refused.
+
+        Source: ANSI X9.150-2026 §13.6.1, addressed to the payer app. Enforcing it at the payee is ours — I-10.
+
+        Why: A rule living only in the counterparty's client is not a rule.
+        """
         qr = api.create_qr()                       # no tip block -> stored as allowed: false
         assert_refused(api.notify(qr, amount=BILL + 100, tip=100),
                        naming="does not accept tips")
@@ -127,39 +203,79 @@ class TestTip:
         (999_999, "absurd"),
     ])
     def test_a_tip_outside_the_published_range_is_refused(self, api, tip, why):
+        """X9-TIP-104 — a tip outside the published range is refused.
+
+        Source: ANSI X9.150-2026 A.10, addressed to the payer app. Enforcement at the payee is ours — I-10.
+
+        Why: Below, above, and absurd. The absurd case is the shape of a payer app sending minor units
+    where it meant percent.
+        """
         qr = api.create_qr(tip=TIP_10_TO_25)
         assert_refused(api.notify(qr, amount=BILL + tip, tip=tip), naming="payment.tipAmount")
 
     def test_a_tip_of_zero_is_refused_rather_than_ignored(self, api):
+        """X9-TIP-105 — a tip of zero is refused rather than ignored.
+
+        Source: Ours. ADR-0017.
+
+        Why: A zero tip is a field the sender did not mean to send. Refusing it is louder than silently
+    dropping it, and tells the payer app its tipping UI is wired wrong.
+        """
         qr = api.create_qr(tip=TIP_10_TO_25)
         assert_refused(api.notify(qr, amount=BILL, tip=0), naming="greater than zero")
 
     def test_a_negative_tip_is_refused(self, api):
+        """X9-TIP-106 — a negative tip is refused.
+
+        Source: ANSI X9.150-2026 §2.2 — minimum value = 0. Conformance.
+
+        Why: A negative tip would increase the merchant's share above the transfer, inventing money.
+        """
         qr = api.create_qr(tip=TIP_10_TO_25)
         assert_refused(api.notify(qr, amount=BILL, tip=-1), naming="negative")
 
     def test_a_transfer_that_is_entirely_tip_is_refused(self, api):
-        """Nothing reaches the merchant, so there is no bill being settled."""
+        """X9-TIP-107 — a transfer that is entirely tip is refused.
+
+        Source: Ours. ADR-0017.
+
+        Why: Nothing reaches the merchant, so there is no bill being settled — only a gratuity attached to
+    a payment that did not happen.
+        """
         qr = api.create_qr(tip=TIP_10_TO_25)
         assert_refused(api.notify(qr, amount=200, tip=200), naming="payment.amount")
 
     def test_a_tip_larger_than_the_transfer_carrying_it_is_refused(self, api):
-        """Presets-only, so no range fires first and this rule is the one under test."""
+        """X9-TIP-108 — a tip larger than the transfer carrying it is refused.
+
+        Source: Ours. ADR-0017.
+
+        Why: Presets-only on purpose, so no range check fires first and the rule under test is the one
+    being measured. A test that passes because a different rule rejected the input is not a test.
+        """
         qr = api.create_qr(tip=TIP_PRESETS_ONLY)
         assert_refused(api.notify(qr, amount=BILL, tip=BILL + 1), naming="payment.tipAmount")
 
     def test_presets_do_not_bind_when_no_range_is_published(self, api):
-        """
-        A.10 validates even a preset-selected tip against min..max, so the range is the rule
-        and the presets are the suggested buttons. 13% is offered by no preset and is legal.
+        """X9-TIP-109 — presets do not bind when no range is published.
+
+        Source: ANSI X9.150-2026 A.10 validates a PRESET-SELECTED tip against min..max too, so presets are
+    suggestions. Reading them as advisory is ours — I-10.
+
+        Why: 13% is offered by no preset and is legitimate. Consequence stated plainly in I-10: presets
+    with no range accept a tip of any size, so a biller wanting a ceiling must publish a range.
         """
         qr = api.create_qr(tip=TIP_PRESETS_ONLY)
         status, body = api.notify(qr, amount=BILL + 130, tip=130)
         assert status == 200, f"{status} {body}"
 
     def test_the_tip_percentage_is_taken_against_the_merchants_share(self, api):
-        """
-        A 1000 bill tipped 200 arrives as 1200, and that is 20% — not 16.7% of the transfer.
+        """X9-TIP-110 — the tip percentage is taken against the merchant's share.
+
+        Source: ANSI X9.150-2026 §13.6.2 Note — the percentage applies to the Bill Amount Due. Conformance.
+
+        Why: 200 on a 1000 bill is 20%, not 16.7% of the 1200 transferred. Getting the denominator wrong
+    silently moves every range boundary.
         """
         qr = api.create_qr(tip={"allowed": True, "range": {"min": 19, "max": 21},
                                 "presets": [20]})
@@ -167,16 +283,15 @@ class TestTip:
         assert status == 200, f"200 on a 1000 bill is 20%, inside 19..21: {status} {body}"
 
     def test_on_an_editable_amount_the_percentage_is_against_the_face_amount(self, api):
-        """
-        CURRENT BEHAVIOUR, pinned deliberately rather than endorsed.
+        """X9-TIP-111 — on an editable amount the percentage is against the face amount.
 
-        With a face amount of 1000 editable to 500..2000 and a tip range of 0..25%, a payer who
-        chooses 2000 and tips 400 — 20% of what they are actually paying — is REFUSED, because
-        400 is 40% of the face amount. The ceiling follows the biller's reference figure, not
-        the payer's chosen one.
+        Source: Mechanism — PINNED, NOT ENDORSED. The standard does not say which figure a percentage
+    applies to when the payer chooses the amount.
 
-        Whether that is the right basis is a business question, not a settled one. This test
-        exists so the answer cannot change by accident.
+        Why: A payer choosing 2000 of a 500..2000 range and tipping 400 — 20% of what they actually pay —
+    is refused, because 400 is 40% of the face 1000. Whether the ceiling should follow the biller's
+    reference figure or the payer's chosen one is a business question and is OPEN. This test exists
+    so the answer cannot change by accident while nobody is looking.
         """
         qr = api.create_qr(tip={"allowed": True, "range": {"min": 0, "max": 25},
                                 "presets": [10, 15, 20]},
@@ -195,10 +310,23 @@ class TestTip:
 class TestCurrencyAndRail:
 
     def test_a_currency_the_qr_code_does_not_offer_is_refused(self, api):
+        """X9-CUR-001 — a currency the QR Code does not offer is refused.
+
+        Source: ANSI X9.150-2026 §14 — the QR Code publishes what it accepts. Conformance.
+
+        Why: Paying in a currency the code never offered has no agreed rate and no agreed rail.
+        """
         qr = api.create_qr(currency="USDC")
         assert_refused(api.notify(qr, currency="USD"), naming="currency")
 
     def test_a_destination_address_the_qr_code_never_published_is_refused(self, api):
+        """X9-RAIL-001 — a destination address the QR Code never published is refused.
+
+        Source: Ours. ADR-0012 — refuse what this deployment cannot honour.
+
+        Why: Money sent to an address this QR Code never advertised did not pay this bill, whoever it
+    reached. Accepting it would mark the bill paid while the creditor received nothing.
+        """
         qr = api.create_qr()
         token = api.sign({"payment": {"qrcodeId": qr, "amount": BILL,
                                       "currency": "USDC", "network": "Solana"},
@@ -210,6 +338,13 @@ class TestCurrencyAndRail:
                        naming="destination address")
 
     def test_blockchain_data_is_refused_on_a_bank_rail(self, api):
+        """X9-RAIL-002 — blockchain data is refused on a bank rail.
+
+        Source: ANSI X9.150-2026 §14.5 — the inner object belongs to the named network. Ours in enforcement.
+
+        Why: A FedNow payment carrying a blockchain block is a sender confusing two rails. Accepting it
+    would record a settlement whose evidence points at the wrong network.
+        """
         qr = api.create_qr(currency="USD", networks={"fednow": FEDNOW})
         status, body = api.notify(qr, currency="USD", network="fednow", blockchain=True)
         assert status >= 400, f"{status} {body}"
@@ -220,12 +355,26 @@ class TestCurrencyAndRail:
 class TestLifecycle:
 
     def test_a_second_pre_payment_is_refused(self, api):
+        """X9-LIFE-002 — a second pre-payment is refused.
+
+        Source: Ours. The reservation is this implementation's, not the standard's. ADR-0002.
+
+        Why: Two payers must not both believe they hold the same QR Code. The first reservation wins and
+    the second is told why, rather than both proceeding to pay the same bill.
+        """
         qr = api.create_qr()
         first, body = api.notify(qr)
         assert first == 200, f"the first pre-payment should be accepted: {first} {body}"
         assert_refused(api.notify(qr), naming="blockchain.action")
 
     def test_a_payment_on_a_cancelled_qr_code_is_refused(self, api):
+        """X9-LIFE-003 — a payment on a cancelled QR Code is refused.
+
+        Source: ANSI X9.150-2026 §9 — status governs what may still happen. Conformance.
+
+        Why: A cancelled bill is withdrawn. Accepting payment against it takes money for something the
+    biller has already said is no longer owed.
+        """
         qr = api.create_qr()
         api.call("PUT", f"/api/v1/payment-request/{qr}/status-update",
                  body={"status": "CANCELLED"})
@@ -233,14 +382,24 @@ class TestLifecycle:
         assert_refused(api.notify(qr), naming="blockchain.action")
 
     def test_a_post_payment_before_any_pre_payment_is_refused(self, api):
+        """X9-LIFE-004 — a post-payment with no pre-payment is refused.
+
+        Source: Ours — the two-phase sequence is this implementation's. ADR-0002.
+
+        Why: The phases exist so the payee can reserve before money moves. A report of completion for a
+    payment never announced means the sequence was skipped, and the reservation never happened.
+        """
         qr = api.create_qr()
         assert_refused(api.notify(qr, action="SENT", transaction_id=TX_HASH),
                        naming="blockchain.action")
 
     def test_a_refused_notification_leaves_the_qr_code_active(self, api):
-        """
-        The half-reservation check. A notification refused on its amount must not leave the
-        QR Code reserved, or the payer cannot retry and nobody else can pay it either.
+        """X9-LIFE-005 — a refused notification leaves the QR Code ACTIVE.
+
+        Source: Ours. ADR-0002.
+
+        Why: The half-reservation case. If a refused notification left the code reserved, the payer could
+    not retry and nobody else could pay it — a bill bricked by a typo in an amount.
         """
         qr = api.create_qr()
         assert_refused(api.notify(qr, amount=BILL + 1), naming="payment.amount")

@@ -64,18 +64,43 @@ class QRCodeEntityPatchCurrencyTest extends AbstractTest {
             new PaymentNotificationVO(NotificationKindEnum.DEFAULT, null, null), methods);
     }
 
+    /**
+     * <b>X9-PATCH-001</b> — naming every currency the QR Code offers is accepted.
+     *
+     * <p><b>Source:</b> Ours. X9.150 describes the payload, not how a payment request is edited. ADR-0018.
+     *
+     * <p><b>Why:</b> The supported edit: reducing a bill after a partial payment, with every currency restated.
+     * The acceptance case the two refusals below are judged against.
+     */
     @Test
     void namingEveryCurrencyOnTheQRCodeIsAccepted() {
         assertDoesNotThrow(() ->
             qrCodeOffering("USD", "USDC").requirePaymentMethodCurrencies(List.of("USD", "USDC")));
     }
 
+    /**
+     * <b>X9-PATCH-002</b> — the order currencies are named in does not matter.
+     *
+     * <p><b>Source:</b> Ours. ADR-0018 — the rule is about the SET of currencies, not a sequence.
+     *
+     * <p><b>Why:</b> A caller building the list from a map or a set has no stable order. Making order matter
+     * would turn a correct patch into an intermittent 400 depending on iteration order.
+     */
     @Test
     void theOrderTheyAreNamedInDoesNotMatter() {
         assertDoesNotThrow(() ->
             qrCodeOffering("USD", "USDC").requirePaymentMethodCurrencies(List.of("USDC", "USD")));
     }
 
+    /**
+     * <b>X9-PATCH-003</b> — a currency the QR Code does not offer is refused, by name.
+     *
+     * <p><b>Source:</b> Ours. ADR-0018.
+     *
+     * <p><b>Why:</b> Payment methods are matched and merged BY CURRENCY, so an unmatched entry matched nothing
+     * and was dropped by the mapper before the entity saw it — answered 200, with the amount simply
+     * absent afterwards. The entity had the right rule all along and could not reach it.
+     */
     @Test
     void aCurrencyTheQRCodeDoesNotOfferIsRefusedByName() {
         // Used to be dropped by the mapper and answered 200, with the amount simply absent after.
@@ -87,6 +112,14 @@ class QRCodeEntityPatchCurrencyTest extends AbstractTest {
             "the reason must name the currency that is not here: " + exception.getMessage());
     }
 
+    /**
+     * <b>X9-PATCH-004</b> — a currency left out of the patch is refused, by name.
+     *
+     * <p><b>Source:</b> Ours. ADR-0018.
+     *
+     * <p><b>Why:</b> Omitting one left it at its old amount while the others moved, so one debt ended up with two
+     * prices depending on which rail the payer chose to settle with. This is the half with teeth.
+     */
     @Test
     void aCurrencyLeftOutIsRefusedByName() {
         // Used to leave USDC at its old amount while USD moved.
@@ -98,12 +131,29 @@ class QRCodeEntityPatchCurrencyTest extends AbstractTest {
             "the reason must name the currency left out: " + exception.getMessage());
     }
 
+    /**
+     * <b>X9-PATCH-005</b> — a patch naming only an unknown currency is refused.
+     *
+     * <p><b>Source:</b> Ours. ADR-0018.
+     *
+     * <p><b>Why:</b> The mapper used to substitute the QR Code's OWN current methods when nothing matched, so the
+     * patch became a no-op that still incremented the revision — moving the ETag, so a conditional
+     * client saw every sign of success.
+     */
     @Test
     void anEntirelyUnknownCurrencyOnItsOwnIsRefused() {
         assertThrows(BusinessRuleException.class, () ->
             qrCodeOffering("USD").requirePaymentMethodCurrencies(List.of("USDC")));
     }
 
+    /**
+     * <b>X9-PATCH-006</b> — naming no currency at all is not this rule's business.
+     *
+     * <p><b>Source:</b> Mechanism. The contract makes paymentMethods required, so this is unreachable over HTTP.
+     *
+     * <p><b>Why:</b> Guarded so a caller reaching the use case directly gets the contract's error rather than a
+     * second, differently-worded opinion from this rule.
+     */
     @Test
     void namingNoCurrencyAtAllIsNotThisRulesBusiness() {
         // The contract makes paymentMethods required, so this is unreachable over HTTP. Guarded
