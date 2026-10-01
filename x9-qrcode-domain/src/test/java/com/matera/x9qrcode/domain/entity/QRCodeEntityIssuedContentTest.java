@@ -71,6 +71,15 @@ class QRCodeEntityIssuedContentTest extends AbstractTest {
         return entity;
     }
 
+    /**
+     * <b>X9-LOC-001</b> — the content this QR Code was issued with is accepted.
+     *
+     * <p><b>Source:</b> Ours, closing a gap the contract already described. openapi.yaml documents the 400 on
+     * /pub/api/v1/loc/{id} as covering "a signed request whose QR content does not match this
+     * location".
+     *
+     * <p><b>Why:</b> The acceptance case. A binding that refused everything would satisfy the refusals below.
+     */
     @Test
     void theContentThisQRCodeWasIssuedWithIsAccepted() {
         String issued = "00020101021226760006org.x90162host/pub/api/v1/loc/ABC6304A1B2";
@@ -78,6 +87,15 @@ class QRCodeEntityIssuedContentTest extends AbstractTest {
         assertDoesNotThrow(() -> qrCodeCarrying(issued).requireIssuedQrCodeContent(issued));
     }
 
+    /**
+     * <b>X9-LOC-002</b> — content that is not the issued one is refused.
+     *
+     * <p><b>Source:</b> Ours. The standard does not say how a payee verifies the body; the contract promised it.
+     *
+     * <p><b>Why:</b> Same location in the tag-26 URL, different merchant name — exactly what the old check could
+     * not see, because it only asked whether the URL contained the location id. Both halves of that
+     * comparison came from the caller, so it proved the body self-consistent, never ours.
+     */
     @Test
     void contentThatIsNotTheIssuedOneIsRefused() {
         // Same location in the tag-26 URL, different merchant name — which is exactly what the old
@@ -91,6 +109,15 @@ class QRCodeEntityIssuedContentTest extends AbstractTest {
         assertTrue(exception.field().contains("qrCodeContent"), exception.field());
     }
 
+    /**
+     * <b>X9-LOC-003</b> — content differing by a single character is refused.
+     *
+     * <p><b>Source:</b> Mechanism. Pins the comparison as byte-exact on the decoded EMV.
+     *
+     * <p><b>Why:</b> Records the decision rather than leaving it to be rediscovered: base64 representation
+     * differences are absorbed by decoding first, and nothing below that is tolerated. Anything
+     * looser would mean deciding which parts of a signed code may differ and still be the same code.
+     */
     @Test
     void contentDifferingByASingleCharacterIsRefused() {
         String issued = "00020101021226760006org.x90162host/pub/api/v1/loc/ABC6304A1B2";
@@ -99,6 +126,14 @@ class QRCodeEntityIssuedContentTest extends AbstractTest {
             () -> qrCodeCarrying(issued).requireIssuedQrCodeContent(issued.replace("A1B2", "A1B3")));
     }
 
+    /**
+     * <b>X9-LOC-004</b> — an absent submitted content is not this rule's business.
+     *
+     * <p><b>Source:</b> Mechanism. Requests carrying no QR content are rejected earlier, by the signature layer.
+     *
+     * <p><b>Why:</b> Two layers refusing the same thing with different words is how a caller ends up debugging
+     * the wrong one.
+     */
     @Test
     void anAbsentSubmittedContentIsNotThisRulesBusiness() {
         // Requests that carry no QR content at all are rejected earlier, by the signature layer.
@@ -106,6 +141,14 @@ class QRCodeEntityIssuedContentTest extends AbstractTest {
         assertDoesNotThrow(() -> qrCodeCarrying("anything").requireIssuedQrCodeContent(null));
     }
 
+    /**
+     * <b>X9-LOC-005</b> — a QR Code holding no content yet accepts nothing.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> Fails closed. A QR Code whose content has not been generated must not accept an arbitrary
+     * string by default — the absence of a stored value is not a wildcard.
+     */
     @Test
     void aQRCodeHoldingNoContentYetAcceptsNothing() {
         BusinessRuleException exception = assertThrows(BusinessRuleException.class,
