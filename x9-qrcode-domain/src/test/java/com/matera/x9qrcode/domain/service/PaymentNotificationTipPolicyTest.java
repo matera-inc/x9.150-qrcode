@@ -16,6 +16,8 @@ import com.matera.x9qrcode.domain.vo.BillVO;
 import com.matera.x9qrcode.domain.vo.BlockchainVO;
 import com.matera.x9qrcode.domain.vo.CryptoWalletPaymentAddressVO;
 import com.matera.x9qrcode.domain.vo.CurrencyAmountVO;
+import com.matera.x9qrcode.domain.vo.AmountRangeVO;
+import com.matera.x9qrcode.domain.vo.EditableAmountVO;
 import com.matera.x9qrcode.domain.vo.DescriptionVO;
 import com.matera.x9qrcode.domain.vo.NetworksVO;
 import com.matera.x9qrcode.domain.vo.PaymentMethodVO;
@@ -277,6 +279,76 @@ class PaymentNotificationTipPolicyTest extends AbstractTest {
         BusinessRuleException exception = assertThrows(BusinessRuleException.class,
             () -> policy.accept(qrCodeTipping(TipVO.of(true, 0, 25, null)),
                 notification(BILL + 999_999L, 999_999L), NOW));
+
+        assertTrue(exception.field().contains("tipAmount"), exception.field());
+    }
+
+    // ------------------------------------------------- the percentage is of what is being paid
+
+    /**
+     * <b>X9-TIP-013</b> — on an editable amount the percentage is of what is being paid.
+     *
+     * <p><b>Source:</b> Ours. ADR-0017. §13.6.2's note is a MAY addressed to the payer's application,
+     * and for an editable amount {@code amountDue} is a figure the payer is invited to override.
+     *
+     * <p><b>Why:</b> An invoice of 1000 settleable from 400, offering 10%. Taking the percentage
+     * against the FACE amount let a payer settling 400 tip 100 — a quarter of what they were actually
+     * paying. The payer computes the tip from the amount they chose, so that is the basis, and it is
+     * the same number the bill is judged on.
+     */
+    @Test
+    void onAnEditableAmountThePercentageIsOfWhatIsBeingPaid() {
+        QRCodeEntity qrCode = qrCodeTipping(TipVO.of(true, 0, 10, List.of(10)));
+        qrCode.updatePaymentMethods(List.of(new PaymentMethodVO(
+            "USDC", VALID_UNTIL, new AmountVO(BILL),
+            new EditableAmountVO(new AmountRangeVO(400L, BILL)),
+            new NetworksVO(null, null, null, new SolanaPaymentAddressVO(WALLET, MEMO), Map.of()))));
+
+        assertDoesNotThrow(() -> policy.accept(qrCode, notification(440, 40L), NOW));
+
+        QRCodeEntity other = qrCodeTipping(TipVO.of(true, 0, 10, List.of(10)));
+        other.updatePaymentMethods(List.of(new PaymentMethodVO(
+            "USDC", VALID_UNTIL, new AmountVO(BILL),
+            new EditableAmountVO(new AmountRangeVO(400L, BILL)),
+            new NetworksVO(null, null, null, new SolanaPaymentAddressVO(WALLET, MEMO), Map.of()))));
+
+        BusinessRuleException exception = assertThrows(BusinessRuleException.class,
+            () -> policy.accept(other, notification(500, 100L), NOW));
+
+        assertTrue(exception.field().contains("tipAmount"), exception.field());
+    }
+
+    /**
+     * <b>X9-TIP-014</b> — a tip one minor unit outside its bound is tolerated.
+     *
+     * <p><b>Source:</b> Ours. ADR-0017.
+     *
+     * <p><b>Why:</b> The bound is a percentage of an integer amount, so it is a rounded product. A
+     * payer computing the same percentage — possibly after converting from another currency, rounding
+     * again, under no obligation to round as we do — can land one unit either side having done nothing
+     * wrong. Refusing that declines a correct payment over a cent nobody could have avoided.
+     */
+    @Test
+    void aTipOneMinorUnitOutsideItsBoundIsTolerated() {
+        // 10% of 1000 is 100; 101 is one unit over.
+        assertDoesNotThrow(() -> policy.accept(
+            qrCodeTipping(TipVO.of(true, 0, 10, List.of(10))), notification(BILL + 101, 101L), NOW));
+    }
+
+    /**
+     * <b>X9-TIP-015</b> — a tip two minor units outside its bound is refused.
+     *
+     * <p><b>Source:</b> Ours. ADR-0017.
+     *
+     * <p><b>Why:</b> The limit of X9-TIP-014. The tolerance absorbs rounding, which is one unit; it is
+     * not a licence to exceed the range the biller published. Without this the tolerance could be
+     * widened later and nothing would notice.
+     */
+    @Test
+    void aTipTwoMinorUnitsOutsideItsBoundIsRefused() {
+        BusinessRuleException exception = assertThrows(BusinessRuleException.class,
+            () -> policy.accept(qrCodeTipping(TipVO.of(true, 0, 10, List.of(10))),
+                notification(BILL + 102, 102L), NOW));
 
         assertTrue(exception.field().contains("tipAmount"), exception.field());
     }

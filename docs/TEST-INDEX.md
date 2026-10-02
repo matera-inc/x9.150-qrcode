@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**290 tests documented** — every JUnit test in the repository and every case in the
+**295 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -333,6 +333,9 @@ single most important thing this index exists for.
 | `X9-TIP-010` | an absurd tip is refused rather than accepted | `PaymentNotificationTipPolicyTest.java` |
 | `X9-TIP-011` | presets do not bind when no range is published | `PaymentNotificationTipPolicyTest.java` |
 | `X9-TIP-012` | a tip matching no preset is still bound by the range | `PaymentNotificationTipPolicyTest.java` |
+| `X9-TIP-013` | on an editable amount the percentage is of what is being paid | `PaymentNotificationTipPolicyTest.java` |
+| `X9-TIP-014` | a tip one minor unit outside its bound is tolerated | `PaymentNotificationTipPolicyTest.java` |
+| `X9-TIP-015` | a tip two minor units outside its bound is refused | `PaymentNotificationTipPolicyTest.java` |
 | `X9-TIP-101` | the bill plus a tip inside the range is accepted | `test_payment_notification.py` |
 | `X9-TIP-102` | a tip taken out of the merchant's share is refused | `test_payment_notification.py` |
 | `X9-TIP-103` | a tip on a bill that refuses tips is refused | `test_payment_notification.py` |
@@ -343,7 +346,9 @@ single most important thing this index exists for.
 | `X9-TIP-108` | a tip larger than the transfer carrying it is refused | `test_payment_notification.py` |
 | `X9-TIP-109` | presets do not bind when no range is published | `test_payment_notification.py` |
 | `X9-TIP-110` | the tip percentage is taken against the merchant's share | `test_payment_notification.py` |
-| `X9-TIP-111` | on an editable amount the percentage is against the face amount | `test_payment_notification.py` |
+| `X9-TIP-111` | on an editable amount the percentage is of what is being paid | `test_payment_notification.py` |
+| `X9-TIP-112` | a tip one minor unit outside its bound is tolerated | `test_payment_notification.py` |
+| `X9-TIP-113` | a tip two minor units outside its bound is refused | `test_payment_notification.py` |
 | `X9-TIP-120` | a malformed tip is refused at creation | `QRCodesApisFlowTest.java` |
 | `X9-TIP-121` | a bill can be created with no tip block | `QRCodesApisFlowTest.java` |
 | `X9-TIP-122` | a bill created without a tip reports tips as not allowed | `QRCodesApisFlowTest.java` |

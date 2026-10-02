@@ -463,8 +463,26 @@ payer-facing application, so it is an offer only in name. The consequence of pai
 the one above is worth stating plainly: a bill publishing **presets and no range accepts a tip of any
 size**, because presets do not bind. A biller who wants a ceiling must publish a range.
 
-**Percentages are taken against the merchant's expected amount in the notified currency**, not the
-bill's own figure. Currencies on one QR Code share a dollar peg but not a scale, so a percentage of
+**The percentage is of what is being paid** — `amount - tipAmount`, the merchant's share — not of
+the bill's reference figure. For a fixed bill the two are the same number. For an **editable** amount
+they are not, and the difference matters: an invoice of 1000 settleable from 400 and offering 10%
+would, on the bill's figure, let a payer settling 400 tip 100 — a quarter of what they were actually
+paying. The payer computes their tip from the amount they chose, so that is the figure we check
+against, and it is the same number the bill is judged on.
+
+§13.6.2's note — *"Payer-facing applications MAY calculate the currency value of the tip by applying
+the percentage to the Bill Amount Due Amount"* — is a `MAY` addressed to the payer's application, and
+for an editable amount `amountDue` is explicitly a figure the payer is invited to override. The
+standard does not settle this; we do, and this is where it is written down.
+
+**A tip may miss its computed bound by one minor unit.** The bound is a percentage of an integer
+amount, so it is a rounded product, and a payer computing the same percentage — possibly after
+converting from another currency, rounding again, under no obligation to round the way we do — can
+land one unit either side having done nothing wrong. One unit, not a proportion: the gap comes from
+rounding, which does not grow with the amount, and a percentage tolerance would quietly widen the
+range the biller published.
+
+**Percentages are taken in the notified currency**, not the bill's own. Currencies on one QR Code share a dollar peg but not a scale, so a percentage of
 USD cents is not a percentage of USDC micro-units. This mirrors how adjustments are pro-rated
 (see `PaymentNotificationAcceptancePolicy.adjustedAmountFor`).
 

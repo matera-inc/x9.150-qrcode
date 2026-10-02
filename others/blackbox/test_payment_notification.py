@@ -282,27 +282,61 @@ class TestTip:
         status, body = api.notify(qr, amount=BILL + 200, tip=200)
         assert status == 200, f"200 on a 1000 bill is 20%, inside 19..21: {status} {body}"
 
-    def test_on_an_editable_amount_the_percentage_is_against_the_face_amount(self, api):
-        """X9-TIP-111 — on an editable amount the percentage is against the face amount.
+    def test_on_an_editable_amount_the_percentage_is_of_what_is_being_paid(self, api):
+        """X9-TIP-111 — on an editable amount the percentage is of what is being paid.
 
-        Source: Mechanism — PINNED, NOT ENDORSED. The standard does not say which figure a percentage
-    applies to when the payer chooses the amount.
+        Source: Ours. ADR-0017. The standard does not say which figure a percentage applies to when
+    the payer chooses the amount, and §13.6.2's note is a MAY addressed to the payer's application.
+    The payer computes the tip from the amount they selected, so that is the figure we check against.
 
-        Why: A payer choosing 2000 of a 500..2000 range and tipping 400 — 20% of what they actually pay —
-    is refused, because 400 is 40% of the face 1000. Whether the ceiling should follow the biller's
-    reference figure or the payer's chosen one is a business question and is OPEN. This test exists
-    so the answer cannot change by accident while nobody is looking.
+        Why: An invoice of 1000 settleable from 400, offering 10%. A payer settling 400 may tip 40.
+    Taking the percentage against the FACE amount instead let them tip 100 — a quarter of what they
+    were actually paying, on a bill that offered ten percent. The merchant's share and the tip basis
+    are now the same number, which is also the number the payer used.
         """
-        qr = api.create_qr(tip={"allowed": True, "range": {"min": 0, "max": 25},
-                                "presets": [10, 15, 20]},
-                           editable=EDITABLE_500_TO_2000)
-        assert_refused(api.notify(qr, amount=2000 + 400, tip=400), naming="payment.tipAmount")
+        TIP_10 = {"allowed": True, "range": {"min": 0, "max": 10}, "presets": [10]}
+        PART = {"range": {"min": 400, "max": BILL}}
 
-        accepted = api.create_qr(tip={"allowed": True, "range": {"min": 0, "max": 25},
-                                      "presets": [10, 15, 20]},
-                                 editable=EDITABLE_500_TO_2000)
-        status, body = api.notify(accepted, amount=2000 + 250, tip=250)
-        assert status == 200, f"250 is 25% of the face amount: {status} {body}"
+        qr = api.create_qr(tip=TIP_10, editable=PART)
+        status, body = api.notify(qr, amount=400 + 40, tip=40)
+        assert status == 200, f"40 is 10% of the 400 being paid: {status} {body}"
+
+        qr = api.create_qr(tip=TIP_10, editable=PART)
+        assert_refused(api.notify(qr, amount=400 + 100, tip=100), naming="payment.tipAmount")
+
+    def test_a_tip_one_minor_unit_off_its_bound_is_tolerated(self, api):
+        """X9-TIP-112 — a tip one minor unit outside its bound is tolerated.
+
+        Source: Ours. ADR-0017.
+
+        Why: Tip ranges are percentages and payments are integers in the smallest currency unit, so
+    the bound is a rounded product. A payer computing the same percentage — possibly after converting
+    from another currency, rounding again, under no obligation to round the way we do — can land one
+    unit either side of our figure having done nothing wrong. Refusing that declines a correct payment
+    over a cent nobody could have avoided.
+        """
+        tip_0_to_10 = {"allowed": True, "range": {"min": 0, "max": 10}, "presets": [10]}
+        ceiling = BILL // 10
+
+        qr = api.create_qr(tip=tip_0_to_10)
+        status, body = api.notify(qr, amount=BILL + ceiling + 1, tip=ceiling + 1)
+        assert status == 200, f"one over the bound is rounding, not a breach: {status} {body}"
+
+    def test_a_tip_two_minor_units_off_its_bound_is_refused(self, api):
+        """X9-TIP-113 — a tip two minor units outside its bound is refused.
+
+        Source: Ours. ADR-0017.
+
+        Why: The limit of X9-TIP-112. The tolerance absorbs rounding, which is one unit; it is not a
+    licence to exceed the published range. Without this test the tolerance could be widened later and
+    nothing would notice.
+        """
+        tip_0_to_10 = {"allowed": True, "range": {"min": 0, "max": 10}, "presets": [10]}
+        ceiling = BILL // 10
+
+        qr = api.create_qr(tip=tip_0_to_10)
+        assert_refused(api.notify(qr, amount=BILL + ceiling + 2, tip=ceiling + 2),
+                       naming="payment.tipAmount")
 
 
 # ------------------------------------------------------------------------- currency and rail
