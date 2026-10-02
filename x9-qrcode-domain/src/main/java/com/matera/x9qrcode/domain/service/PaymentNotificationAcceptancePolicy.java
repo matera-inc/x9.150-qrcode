@@ -45,6 +45,20 @@ import static java.util.Objects.nonNull;
 @RequiredArgsConstructor
 public class PaymentNotificationAcceptancePolicy {
 
+    /**
+     * How far a tip may miss its computed bound before it is refused: one minor unit.
+     *
+     * <p>Tip ranges are percentages and payments are integers in the smallest currency unit, so the
+     * bound is a product that has to be rounded. A payer computing the same percentage — possibly
+     * after converting from another currency, rounding again, with no obligation to round the way we
+     * do — can land one unit either side of our figure while having done nothing wrong.
+     *
+     * <p>One unit, not a proportion: the gap this absorbs comes from rounding, which does not grow
+     * with the amount. A percentage tolerance would quietly widen the published range on a large
+     * bill, which is the biller's decision and not ours to make for them.
+     */
+    private static final long ROUNDING_TOLERANCE = 1L;
+
     private final FormulaFactory formulaFactory;
 
     /**
@@ -257,7 +271,11 @@ public class PaymentNotificationAcceptancePolicy {
             return;
         }
 
-        long base = nonNull(method.editable()) ? method.amount().value() : adjustedAmountFor(qrCode, method, at);
+        // The percentage is of WHAT IS BEING PAID to the merchant, not of the bill's reference
+        // figure. For a fixed bill the two are the same. For an editable amount they are not, and
+        // using the face amount let a payer settling 400 of a 1000 bill tip 100 — a quarter of what
+        // they were actually paying, on a bill that offered ten percent.
+        long base = notification.payment().amount().value() - tip;
 
         if (base <= 0) {
             return;
@@ -266,11 +284,15 @@ public class PaymentNotificationAcceptancePolicy {
         long min = percentageOf(base, offered.range().minimum());
         long max = percentageOf(base, offered.range().maximum());
 
-        if (tip < min || tip > max) {
+        // A percentage of an amount rounds, and a payer converting from another currency rounds
+        // again, independently of us. One minor unit of disagreement is arithmetic, not a breach —
+        // refusing it would decline a correct payment over a cent nobody could have avoided.
+        if (tip < min - ROUNDING_TOLERANCE || tip > max + ROUNDING_TOLERANCE) {
             throw new BusinessRuleException("paymentNotification.data.payment.tipAmount",
-                "A tip on this bill must be between %d%% and %d%% of %d %s (%d..%d) but the notification carries %d."
+                "A tip on this bill must be between %d%% and %d%% of the %d %s being paid (%d..%d) "
                     .formatted(offered.range().minimum(), offered.range().maximum(), base,
-                        method.currency(), min, max, tip));
+                        method.currency(), min, max)
+                    + "but the notification carries %d.".formatted(tip));
         }
     }
 

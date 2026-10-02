@@ -90,8 +90,17 @@ counterparty's client is not a rule.
 the old behaviour — one sending the bill amount with the tip carved out of it — will now be refused.
 That is the intended consequence: it was silently underpaying merchants.
 
-**Percentages are taken against the notified currency's amount**, not the bill's own figure, because
-currencies on one QR Code share a dollar peg but not a scale.
+**The percentage is of what is being paid** — `amount - tipAmount` — not of the bill's reference
+figure. Identical for a fixed bill; different for an editable one, where using the face amount let a
+payer settling 400 of a 1000 bill tip 100 on a bill offering 10%. The payer computes the tip from the
+amount they selected, so that is the basis.
+
+**One minor unit of tolerance on the bound**, because the bound is a rounded product and a payer
+converting from another currency rounds independently of us. One unit rather than a proportion:
+rounding error does not grow with the amount.
+
+Percentages are taken in the notified currency, because currencies on one QR Code share a dollar peg
+but not a scale.
 
 **The per-payment split is already persisted.** Every notification records `amount` and `tipAmount`
 separately, so a consumer can total merchant money and tip money per payment without further work
