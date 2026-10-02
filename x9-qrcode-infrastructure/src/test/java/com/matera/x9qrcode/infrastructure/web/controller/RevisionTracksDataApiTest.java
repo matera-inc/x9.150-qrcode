@@ -88,6 +88,15 @@ class RevisionTracksDataApiTest extends AbstractIntegrationTest {
 
     // ----------------------------------------------------------------- a status is not a version
 
+    /**
+     * <b>X9-PATCH-010</b> — a status change does not create a new revision.
+     *
+     * <p><b>Source:</b> Ours. ADR-0016 — a revision is a version of the request, not of its status.
+     *
+     * <p><b>Why:</b> A bill marked PAID is the same bill with a new status. Before this, revision was also the
+     * Mongo optimistic-lock token — one field doing two jobs — so a bill nobody had edited was
+     * reported as version 2, 3, 4, one per thing that had happened to it.
+     */
     @Test
     void aStatusChangeDoesNotCreateANewRevision() {
         String id = createQRCode();
@@ -99,6 +108,13 @@ class RevisionTracksDataApiTest extends AbstractIntegrationTest {
                 "the request has not changed — only what has happened to it");
     }
 
+    /**
+     * <b>X9-PATCH-011</b> — several status changes still do not create a revision.
+     *
+     * <p><b>Source:</b> Ours. ADR-0016.
+     *
+     * <p><b>Why:</b> More than one transition, because a rule that holds once can still drift on repetition.
+     */
     @Test
     void severalStatusChangesStillDoNotCreateARevision() {
         String id = createQRCode();
@@ -116,6 +132,14 @@ class RevisionTracksDataApiTest extends AbstractIntegrationTest {
 
     // ------------------------------------------------------------------- a data change is one
 
+    /**
+     * <b>X9-PATCH-012</b> — a data change creates a new revision.
+     *
+     * <p><b>Source:</b> Ours. ADR-0016.
+     *
+     * <p><b>Why:</b> The other half. If nothing moved the revision it would be constant, which would satisfy
+     * PATCH-010 while telling a biller nothing about what they are looking at.
+     */
     @Test
     void aDataChangeCreatesANewRevision() {
         String id = createQRCode();
@@ -127,6 +151,14 @@ class RevisionTracksDataApiTest extends AbstractIntegrationTest {
                 "the biller changed what is being asked for, so this IS a new version");
     }
 
+    /**
+     * <b>X9-PATCH-013</b> — each data change counts once.
+     *
+     * <p><b>Source:</b> Ours. ADR-0016.
+     *
+     * <p><b>Why:</b> A patch touching several fields is ONE edit. Counting per field would make the number depend
+     * on how the caller batched their changes rather than on how many times the bill changed.
+     */
     @Test
     void eachDataChangeCountsOnce() {
         String id = createQRCode();
@@ -141,9 +173,13 @@ class RevisionTracksDataApiTest extends AbstractIntegrationTest {
     // ------------------------------------------- but a conditional request still sees both
 
     /**
-     * The consequence that has to be handled rather than accepted: now that `revision` correctly
-     * ignores status, a conditional request keyed on it alone would no longer notice a payer
-     * starting to pay — which is the single thing the feature exists to catch. The ETag covers both.
+     * <b>X9-LIFE-038</b> — the ETag changes on a status change even though the revision does not.
+     *
+     * <p><b>Source:</b> Ours. ADR-0016 — the ETag covers revision AND status.
+     *
+     * <p><b>Why:</b> The consequence that makes conditional requests still work after splitting the two. A
+     * precondition keyed on the REVISION would stop noticing a payer starting to pay — the exact
+     * race the feature exists for. This is why the ETag is opaque and must be echoed, not built.
      */
     @Test
     void theETagStillChangesOnAStatusChangeEvenThoughTheRevisionDoesNot() {
@@ -158,6 +194,13 @@ class RevisionTracksDataApiTest extends AbstractIntegrationTest {
                 "but a caller holding the old tag must still be refused: someone is paying this");
     }
 
+    /**
+     * <b>X9-LIFE-039</b> — the ETag also changes on a data change.
+     *
+     * <p><b>Source:</b> Ours. ADR-0016.
+     *
+     * <p><b>Why:</b> Both components move it, or a caller could hold a stale tag that still matched after an edit.
+     */
     @Test
     void theETagAlsoChangesOnADataChange() {
         String id = createQRCode();
@@ -172,9 +215,13 @@ class RevisionTracksDataApiTest extends AbstractIntegrationTest {
     // ------------------------------------------------- the same protection on the edit path
 
     /**
-     * Editing a live bill has the cancel race in a different costume, and an adopter found that
-     * `If-Match` was accepted and then silently ignored here — a header a caller believes is
-     * protecting them, doing nothing, is worse than not offering it.
+     * <b>X9-PATCH-014</b> — a patch is refused when the QR Code changed after it was read.
+     *
+     * <p><b>Source:</b> RFC 9110 §13.1.1. Conformance.
+     *
+     * <p><b>Why:</b> Editing a live bill is the cancel race in a different costume. If-Match was accepted but never
+     * declared on this path, so Spring dropped it — a header the caller believed was protecting them
+     * doing nothing at all, which is worse than not offering one.
      */
     @Test
     void aPatchIsRefusedWhenTheQRCodeChangedAfterItWasRead() {
@@ -199,6 +246,14 @@ class RevisionTracksDataApiTest extends AbstractIntegrationTest {
                 "nothing may have been written to a bill someone is midway through paying");
     }
 
+    /**
+     * <b>X9-PATCH-015</b> — a patch is applied when the tag still matches.
+     *
+     * <p><b>Source:</b> RFC 9110. Conformance.
+     *
+     * <p><b>Why:</b> The acceptance case, so PATCH-014 cannot pass against a build that refuses every conditional
+     * patch.
+     */
     @Test
     void aPatchIsAppliedWhenTheTagStillMatches() {
         String id = createQRCode();
@@ -217,7 +272,13 @@ class RevisionTracksDataApiTest extends AbstractIntegrationTest {
                 .then().extract().path("paymentMethods[0].amount"));
     }
 
-    /** An unconditional patch keeps working, because every existing caller sends no If-Match. */
+    /**
+     * <b>X9-PATCH-016</b> — a patch without If-Match is still unconditional.
+     *
+     * <p><b>Source:</b> RFC 9110 — the header is optional. Conformance.
+     *
+     * <p><b>Why:</b> Backwards compatibility: adding the protection must not break callers who do not use it.
+     */
     @Test
     void aPatchWithoutIfMatchIsStillUnconditional() {
         String id = createQRCode();

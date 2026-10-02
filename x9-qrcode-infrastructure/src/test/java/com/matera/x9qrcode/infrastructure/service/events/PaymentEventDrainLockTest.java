@@ -49,12 +49,26 @@ class PaymentEventDrainLockTest extends AbstractIntegrationTest {
         instanceB = new PaymentEventDrainLock(mongoTemplate);
     }
 
+    /**
+     * <b>X9-EVT-010</b> — the first instance to ask gets the drain lease.
+     *
+     * <p><b>Source:</b> Ours. ADR-0002 — the embedded outbox is drained by one instance at a time.
+     *
+     * <p><b>Why:</b> Several replicas draining concurrently would publish the same event more than once, and the
+     * consumer's deduplication would be carrying load that need not exist.
+     */
     @Test
     void theFirstInstanceToAskGetsTheLease() {
         assertTrue(instanceA.acquire(), "an uncontended lease must be grantable");
     }
 
-    /** The whole point: a second instance ticking at the same moment must not also drain. */
+    /**
+     * <b>X9-EVT-011</b> — a second instance is refused while the lease is held.
+     *
+     * <p><b>Source:</b> Ours. ADR-0002.
+     *
+     * <p><b>Why:</b> The exclusion that makes EVT-010 worth anything.
+     */
     @Test
     void asecondInstanceIsRefusedWhileTheLeaseIsHeld() {
         assertTrue(instanceA.acquire());
@@ -63,7 +77,14 @@ class PaymentEventDrainLockTest extends AbstractIntegrationTest {
                 "two drainers skip and relocate events; only one may hold the lease");
     }
 
-    /** Re-entrant for its holder, so a long-running instance renews rather than locking itself out. */
+    /**
+     * <b>X9-EVT-012</b> — the holder may reacquire its own lease.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> Re-entrancy: an instance must not lock itself out between drain cycles, which would stall the
+     * stream until the lease expired.
+     */
     @Test
     void theHolderMayReacquireItsOwnLease() {
         assertTrue(instanceA.acquire());
@@ -71,6 +92,13 @@ class PaymentEventDrainLockTest extends AbstractIntegrationTest {
         assertTrue(instanceA.acquire(), "the holder must be able to renew");
     }
 
+    /**
+     * <b>X9-EVT-013</b> — releasing hands the lease over.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> A clean shutdown should not leave the stream stalled for the length of the lease.
+     */
     @Test
     void releasingHandsOver() {
         assertTrue(instanceA.acquire());
@@ -80,9 +108,12 @@ class PaymentEventDrainLockTest extends AbstractIntegrationTest {
     }
 
     /**
-     * An instance that dies mid-drain must not wedge the stream. Nothing releases its lease, so the
-     * expiry is the only thing that frees it — simulated here by ageing the record, since waiting a
-     * minute would be a test of patience rather than of behaviour.
+     * <b>X9-EVT-014</b> — an expired lease is taken over without release.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> The crash case. An instance that dies holding the lease must not stop the stream forever —
+     * which is why the lease expires rather than being held until released.
      */
     @Test
     void anExpiredLeaseIsTakenOverWithoutRelease() {

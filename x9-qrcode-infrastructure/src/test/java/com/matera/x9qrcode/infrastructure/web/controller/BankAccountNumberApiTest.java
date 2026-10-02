@@ -52,7 +52,15 @@ class BankAccountNumberApiTest extends AbstractIntegrationTest {
             """.formatted(accountNumber);
     }
 
-    /** {@code ACME00112233445} is the standard's own Annex A value; the rest are its shape. */
+    /**
+     * <b>X9-RAIL-080</b> — an alphanumeric bank account number is accepted.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 Table 2 permits (0-9) AND/OR (A-Z, a-z), and Nacha's ACH Entry Detail Record
+     * defines DFI Account Number the same way. Conformance — INTERPRETATION I-6.
+     *
+     * <p><b>Why:</b> This document found a real bug: the field had been implemented as digits-only, which refuses
+     * legitimate US account numbers. Both governing documents agree it is alphanumeric.
+     */
     @ParameterizedTest(name = "accountNumber {0} is accepted")
     @ValueSource(strings = {"ACME00112233445", "9876543210", "12345678987654321", "abcd", "A1b2C3"})
     void anAlphanumericAccountNumberIsAccepted(String accountNumber) {
@@ -61,7 +69,14 @@ class BankAccountNumberApiTest extends AbstractIntegrationTest {
                 .then().statusCode(HttpStatus.CREATED.value());
     }
 
-    /** Table 2 allows digits and letters, and nothing else — nor fewer than 4 or more than 17. */
+    /**
+     * <b>X9-RAIL-081</b> — anything outside digits and letters is refused.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 Table 2. Conformance.
+     *
+     * <p><b>Why:</b> The limit of I-6. Alphanumeric is wider than digits, not unbounded — punctuation and spaces
+     * are still refused.
+     */
     @ParameterizedTest(name = "accountNumber {0} is refused")
     @ValueSource(strings = {"123", "123456789012345678", "ACME-0011", "ACME 0011", "ACME_0011", "conta+1"})
     void anythingOutsideDigitsAndLettersIsRefused(String accountNumber) {

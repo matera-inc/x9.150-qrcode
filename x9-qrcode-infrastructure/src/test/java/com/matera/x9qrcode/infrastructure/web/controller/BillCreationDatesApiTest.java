@@ -73,8 +73,13 @@ class BillCreationDatesApiTest extends AbstractIntegrationTest {
     // ------------------------------------------------------------------ order.date is optional
 
     /**
-     * The defect as reported: the contract requires only {@code number}, so a caller following the
-     * schema sends exactly that — and got a 500 with no problem detail and nothing logged.
+     * <b>X9-AMT-080</b> — an order without a date is accepted rather than crashing.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §13.3 — order requires only `number`; `date` is optional. Conformance.
+     *
+     * <p><b>Why:</b> A caller following the schema sent {"number": "..."} and got a 500 — Spring's default error
+     * page, not our problem+json, with nothing logged at ERROR. An optional field that crashes the
+     * service when omitted is the schema lying.
      */
     @Test
     void anOrderWithoutADateIsAcceptedRatherThanCrashing() {
@@ -87,6 +92,15 @@ class BillCreationDatesApiTest extends AbstractIntegrationTest {
 
     // ------------------------------------------------- dates in the past are the ordinary case
 
+    /**
+     * <b>X9-AMT-081</b> — an order raised in the past is accepted.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §13.3 places no lower bound on an order date. Conformance.
+     *
+     * <p><b>Why:</b> An order date is BY NATURE in the past: the bill is for something ordered last Tuesday. A
+     * >= today rule meant for a due date had been applied to it, so the only accepted value was one
+     * that could not be true.
+     */
     @Test
     void anOrderRaisedInThePastIsAccepted() {
         MockMvcResponse response = create("2030-01-10",
@@ -96,6 +110,13 @@ class BillCreationDatesApiTest extends AbstractIntegrationTest {
                 "an order is created BEFORE the bill for it: " + response.asString());
     }
 
+    /**
+     * <b>X9-AMT-082</b> — an invoice issued in the past is accepted.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §13.4 — the issue date. Conformance.
+     *
+     * <p><b>Why:</b> Same shape as AMT-081 for the invoice: an invoice is issued before it is paid.
+     */
     @Test
     void aBillIssuedInThePastIsAccepted() {
         MockMvcResponse response = create(yesterday(), "");
@@ -105,6 +126,14 @@ class BillCreationDatesApiTest extends AbstractIntegrationTest {
                     + response.asString());
     }
 
+    /**
+     * <b>X9-AMT-083</b> — an invoice issued long ago is still accepted.
+     *
+     * <p><b>Source:</b> Conformance.
+     *
+     * <p><b>Why:</b> No arbitrary horizon. A bill chased months later is a normal thing, and inventing a cutoff
+     * would refuse real debts for no reason the standard gives.
+     */
     @Test
     void aBillIssuedLongAgoIsStillAccepted() {
         MockMvcResponse response = create("2020-03-01",
@@ -115,7 +144,14 @@ class BillCreationDatesApiTest extends AbstractIntegrationTest {
 
     // --------------------------------------------------- what must still be in the future
 
-    /** The one date that genuinely has to be ahead of us, and the only one the contract says so. */
+    /**
+     * <b>X9-AMT-084</b> — a due date in the past is still refused.
+     *
+     * <p><b>Source:</b> Ours — the rule the past-date rules above were wrongly borrowed from.
+     *
+     * <p><b>Why:</b> The boundary. Relaxing issue dates must not relax the DUE date: minting a QR Code already
+     * overdue means a late fee the payer could never have avoided.
+     */
     @Test
     void aDueDateInThePastIsStillRefused() {
         String body = """

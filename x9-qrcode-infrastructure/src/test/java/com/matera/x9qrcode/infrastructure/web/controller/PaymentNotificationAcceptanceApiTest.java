@@ -156,6 +156,14 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
 
     // ---------------------------------------------------------------- the happy path, for contrast
 
+    /**
+     * <b>X9-LIFE-040</b> — a fully valid notification is accepted.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §9 — Payment Notification. Conformance.
+     *
+     * <p><b>Why:</b> The acceptance case for the whole endpoint. Without it every refusal below would pass against
+     * a service that refused all notifications.
+     */
     @Test
     void aFullyValidNotificationIsAccepted() {
         String qrCodeId = createQRCode();
@@ -168,6 +176,14 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
 
     // ---------------------------------------------------------------------------- amount
 
+    /**
+     * <b>X9-AMT-060</b> — an amount that is not the bill is refused over HTTP.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §13.5.1. Conformance.
+     *
+     * <p><b>Why:</b> The domain rule proven through serialisation, validation order and HTTP status mapping — the
+     * layers a unit test cannot see, and where several real defects here have lived.
+     */
     @Test
     void anIncorrectAmountIsRefused() {
         String qrCodeId = createQRCode();
@@ -175,6 +191,14 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
         assertRefusedAndUntouched(notify(notification(qrCodeId, AMOUNT + 1, "USD")), qrCodeId, "amount");
     }
 
+    /**
+     * <b>X9-AMT-061</b> — an underpayment is refused.
+     *
+     * <p><b>Source:</b> Conformance.
+     *
+     * <p><b>Why:</b> Accepting less than is owed and marking the bill paid is the failure that costs money
+     * silently: the biller sees a settled bill and a short balance.
+     */
     @Test
     void anUnderpaymentIsRefused() {
         String qrCodeId = createQRCode();
@@ -184,6 +208,13 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
 
     // -------------------------------------------------------------------------- currency
 
+    /**
+     * <b>X9-CUR-040</b> — a currency this QR Code does not offer is refused over HTTP.
+     *
+     * <p><b>Source:</b> Conformance — the QR Code publishes what it accepts.
+     *
+     * <p><b>Why:</b> No agreed rate and no agreed rail for a currency that was never offered.
+     */
     @Test
     void aCurrencyThisQRCodeDoesNotOfferIsRefused() {
         String qrCodeId = createQRCode();
@@ -194,9 +225,12 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
     // ------------------------------------------------------------------------------ rail
 
     /**
-     * A bank rail names no destination account in a notification — the account is in the payment
-     * message, not here — so the address check that guards a wallet has no equivalent. What is left
-     * to guard is the rail itself: a QR Code offering ACH has not thereby offered FedNow.
+     * <b>X9-RAIL-030</b> — a rail this QR Code does not offer is refused.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §14.5. Conformance.
+     *
+     * <p><b>Why:</b> Paying by a route the biller never published bank details for did not pay this bill, whoever
+     * received the money.
      */
     @Test
     void aRailThisQRCodeDoesNotOfferIsRefused() {
@@ -209,14 +243,12 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
     // ---------------------------------------------------------------------------- expiry
 
     /**
-     * The scenario that matters: a payer who legitimately holds a valid, signed payload and tries to
-     * pay it after it expired.
+     * <b>X9-LIFE-041</b> — a payload fetched while valid cannot be paid once it expires.
      *
-     * <p>Creating an already-doomed QR Code and notifying it proves very little — no real payer ever
-     * obtains a payload that way. Here the payload is <b>fetched while the QR Code is still valid</b>,
-     * exactly as a payer's app would, and only then does time pass. The payer is holding something
-     * genuine and correctly signed; what must stop the payment is the QR Code's own expiry, not any
-     * defect in what the payer presents.
+     * <p><b>Source:</b> ANSI X9.150-2026 §11 — validUntil. Conformance.
+     *
+     * <p><b>Why:</b> Expiry is judged when the payment is NOTIFIED, not when the payload was fetched. Otherwise a
+     * payer could hold a fetched payload indefinitely and pay against terms that have lapsed.
      */
     @Test
     void aPayloadFetchedWhileValidCannotBePaidOnceItExpires() throws InterruptedException {
@@ -266,6 +298,13 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
 
     // ------------------------------------------------------------------------ QR Code state
 
+    /**
+     * <b>X9-LIFE-042</b> — a QR Code already being paid is refused.
+     *
+     * <p><b>Source:</b> Ours. ADR-0002 — the reservation.
+     *
+     * <p><b>Why:</b> Two payers must not both believe they hold the same QR Code.
+     */
     @Test
     void aQRCodeAlreadyBeingPaidIsRefused() {
         String qrCodeId = createQRCode();
@@ -279,6 +318,13 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
         assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
     }
 
+    /**
+     * <b>X9-LIFE-043</b> — a cancelled QR Code is refused.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §9. Conformance.
+     *
+     * <p><b>Why:</b> A withdrawn bill must not take money.
+     */
     @Test
     void aCancelledQRCodeIsRefused() {
         String qrCodeId = createQRCode();
@@ -292,6 +338,13 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
         assertEquals("CANCELLED", statusOf(qrCodeId));
     }
 
+    /**
+     * <b>X9-LIFE-044</b> — an unknown QR Code is refused.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> Distinguished from a malformed request so a payer PSP can tell "retry" from "give up".
+     */
     @Test
     void anUnknownQRCodeIsRefused() {
         MockMvcResponse response = notify(notification(UUID.randomUUID().toString(), AMOUNT, "USD"));
@@ -302,9 +355,12 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
     // ---------------------------------------------------------------------------- opt-in
 
     /**
-     * Notifications are opt-in at creation: ask for one and it exists, say nothing and it does not.
-     * A QR Code created without a {@code paymentNotification} object must refuse notifications
-     * outright — before any amount, address or expiry is even considered.
+     * <b>X9-LIFE-045</b> — a QR Code created without a paymentNotification refuses notifications.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §15 — paymentNotification is optional, so a biller may decline it.
+     *
+     * <p><b>Why:</b> Declining to be notified is a choice, and accepting notifications anyway would silently
+     * override it. A biller who did not ask to be told must not have state changed by being told.
      */
     @Test
     void aQRCodeCreatedWithoutAPaymentNotificationRefusesNotifications() {
@@ -322,8 +378,12 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * {@code kind: EXTERNAL} means the creditor hosts its own callback, so X9.150 is not the party
-     * that should be receiving this.
+     * <b>X9-LIFE-046</b> — a QR Code naming an external endpoint refuses notifications here.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §15.2 — the endpoint names where notifications go.
+     *
+     * <p><b>Why:</b> The biller pointed payers somewhere else. Accepting one here would settle the bill at a
+     * deployment the biller is not reading, so their own system never learns of the payment.
      */
     @Test
     void aQRCodeWithAnExternalNotificationEndpointRefusesNotifications() {
@@ -343,6 +403,14 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
 
     // ------------------------------------------------------------------------- signature
 
+    /**
+     * <b>X9-SIG-010</b> — an unsigned body is refused.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §9 — notifications are signed. Conformance.
+     *
+     * <p><b>Why:</b> The endpoint is public and unauthenticated; the signature is the only thing establishing who
+     * sent this.
+     */
     @Test
     void anUnsignedBodyIsRefused() {
         String qrCodeId = createQRCode();
@@ -356,6 +424,14 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
         assertEquals("ACTIVE", statusOf(qrCodeId));
     }
 
+    /**
+     * <b>X9-SIG-011</b> — a tampered signature is refused.
+     *
+     * <p><b>Source:</b> RFC 7515 — the signature covers the claims. Conformance.
+     *
+     * <p><b>Why:</b> If this passed, every other check on this endpoint would be theatre: an attacker could sign a
+     * valid notification and then rewrite the amount.
+     */
     @Test
     void aTamperedSignatureIsRefused() {
         String qrCodeId = createQRCode();

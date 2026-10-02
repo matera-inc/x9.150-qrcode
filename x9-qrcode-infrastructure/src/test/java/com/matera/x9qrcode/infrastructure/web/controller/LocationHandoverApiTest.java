@@ -91,6 +91,14 @@ class LocationHandoverApiTest extends AbstractIntegrationTest {
 
     // ------------------------------------------------------------------------ the handover
 
+    /**
+     * <b>X9-LOC-010</b> — the new QR Code actually takes over the location.
+     *
+     * <p><b>Source:</b> Ours. Reusing a location is this implementation's; X9.150 has no concept of it.
+     *
+     * <p><b>Why:</b> The donor released its location and it was given to NOBODY — the consumer was discarded, so a
+     * QR Code already printed and in a payer's hands stopped resolving, while the API answered 200.
+     */
     @Test
     void theNewQRCodeActuallyTakesOverTheLocation() {
         MockMvcResponse first = create(22500L, "INV-H-1");
@@ -106,7 +114,14 @@ class LocationHandoverApiTest extends AbstractIntegrationTest {
                 "the new QR Code must hold the location, not merely have freed it from the old one");
     }
 
-    /** The whole point: the image on the invoice keeps working and now asks for the balance. */
+    /**
+     * <b>X9-LOC-011</b> — the printed image survives and serves the new amount.
+     *
+     * <p><b>Source:</b> Ours.
+     *
+     * <p><b>Why:</b> The whole point of hand-over: the sticker on the table does not change, what it asks for does.
+     * If the image had to be reprinted there would be no reason to move the location at all.
+     */
     @Test
     void thePrintedImageSurvivesAndServesTheNewAmount() {
         MockMvcResponse first = create(22500L, "INV-H-3");
@@ -126,8 +141,12 @@ class LocationHandoverApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * The guard that blocked this: identical payment methods beside a moved location are not a
-     * no-op. "Nothing to update" is a statement about the whole patch.
+     * <b>X9-LOC-012</b> — moving the location is not a no-op even when the amounts are unchanged.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> The "nothing to update" guard judged the patch on its payment methods alone, so re-pointing a
+     * printed QR Code at a different bill for the same amount was refused as an empty change.
      */
     @Test
     void movingTheLocationIsNotANoOpEvenWhenTheAmountsAreUnchanged() {
@@ -143,7 +162,15 @@ class LocationHandoverApiTest extends AbstractIntegrationTest {
                 "the amounts match by coincidence; the location moved, so something changed");
     }
 
-    /** A location still in use is not up for grabs. */
+    /**
+     * <b>X9-LOC-013</b> — a location held by a live QR Code is not handed over.
+     *
+     * <p><b>Source:</b> Ours.
+     *
+     * <p><b>Why:</b> A payer holding the printed code can still pay the QR Code that owns it. Moving the location
+     * out from under them would make a code that was valid a second ago resolve to someone else's
+     * bill. The donor must be cancelled first.
+     */
     @Test
     void aLocationHeldByALiveQRCodeIsNotHandedOver() {
         MockMvcResponse first = create(22500L, "INV-H-7");

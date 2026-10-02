@@ -47,6 +47,15 @@ class RetrieveQRCodePayloadPaymentMethodMapperTest {
         return methods.stream().filter(m -> currency.equals(m.currency())).findFirst().orElseThrow().amount();
     }
 
+    /**
+     * <b>X9-AMT-100</b> — a discount applies to every pegged payment method.
+     *
+     * <p><b>Source:</b> Ours. ANSI X9.150-2026 §13.5.2 defines adjustments on the bill; applying them across the
+     * payment methods is this implementation's.
+     *
+     * <p><b>Why:</b> A bill offered in USD and USDC must cost the same by either route. Discounting only the
+     * currency the formula was written against would let the payer pick whichever is cheaper today.
+     */
     @Test
     @DisplayName("early-payment discount pro-rates across pegged currencies (USD + USDC)")
     void discountAppliesToEveryPeggedMethod() {
@@ -62,6 +71,15 @@ class RetrieveQRCodePayloadPaymentMethodMapperTest {
             "USDC method should reflect the SAME 5% discount, pro-rated to its own minor-unit scale");
     }
 
+    /**
+     * <b>X9-AMT-101</b> — a late fee applies to every pegged payment method.
+     *
+     * <p><b>Source:</b> Ours, as AMT-100.
+     *
+     * <p><b>Why:</b> The same in the other direction: a late fee avoidable by switching rails is not a late fee.
+     * Pro-rated by RATIO rather than by subtracting the raw minor-unit delta, because currencies in
+     * one peg group share a peg but not a scale — USD cents are not USDC micro-units.
+     */
     @Test
     @DisplayName("late fee pro-rates across pegged currencies as a positive adjustment")
     void lateFeeAppliesToEveryPeggedMethod() {
@@ -76,6 +94,14 @@ class RetrieveQRCodePayloadPaymentMethodMapperTest {
         assertEquals(52500000L, amountOf(methods, "USDC"));
     }
 
+    /**
+     * <b>X9-AMT-102</b> — no adjustment leaves every amount untouched.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> The control. A mapper that rewrote amounts unconditionally would satisfy both tests above
+     * while corrupting every bill that has no adjustment at all — which is most of them.
+     */
     @Test
     @DisplayName("no adjustment leaves every method amount untouched")
     void noFormulaResultLeavesAmountsUntouched() {

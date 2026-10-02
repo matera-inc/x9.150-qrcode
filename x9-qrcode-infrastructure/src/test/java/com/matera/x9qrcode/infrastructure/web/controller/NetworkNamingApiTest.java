@@ -70,6 +70,13 @@ class NetworkNamingApiTest extends AbstractIntegrationTest {
                 .extract().jsonPath();
     }
 
+    /**
+     * <b>X9-RAIL-050</b> — the configured spelling is accepted.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §14.5 fixes the spelling of the network keys. INTERPRETATION I-1.
+     *
+     * <p><b>Why:</b> The acceptance case for naming.
+     */
     @Test
     void theConfiguredSpellingIsAccepted() {
         JsonPath qrCode = createAndRead(qrCodeWithNetworkKey("fednow"));
@@ -79,13 +86,13 @@ class NetworkNamingApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * The spellings a conformant implementer might send, having read either half of the standard.
-     * On a payment notification we accept all of them; on our own API we do not.
+     * <b>X9-RAIL-051</b> — a standard rail under any other spelling is refused at creation.
      *
-     * <p>Not pedantry. The caller will read this QR Code back as {@code fednow}, so accepting
-     * {@code FedNow} on the way in guarantees their request and our response disagree about the same
-     * field. Refusing costs them one string. Accepting costs them a mismatch they discover somewhere
-     * less forgiving than here.
+     * <p><b>Source:</b> Ours. I-1 — strict in what we ISSUE, lenient in what we accept from a payer.
+     *
+     * <p><b>Why:</b> The asymmetry is deliberate and is the whole of I-1. A QR Code we mint must carry the spec's
+     * spelling so every payer app can read it; a notification arriving from someone else's PSP is
+     * read case-insensitively because refusing a real payment over a capital letter helps nobody.
      */
     @ParameterizedTest(name = "networks.{0} is refused, naming the spelling to use")
     @ValueSource(strings = {"FedNow", "FEDNOW", "fedNow"})
@@ -100,12 +107,12 @@ class NetworkNamingApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * The standard names rails it does not define — Zelle and the card brands, each deferred to
-     * "network documentation" that does not exist yet — and §2.4 adds that a notification "MAY also
-     * carry a network not listed above". This build reads that as permission the <em>format</em>
-     * grants, not an obligation the implementation carries: a network we cannot interpret is one we
-     * cannot validate a payment against, so it is refused at creation rather than advertised on a QR
-     * Code nobody can honour. See official-spec/INTERPRETATION.md (I-2).
+     * <b>X9-RAIL-052</b> — an unsupported network is refused, by name.
+     *
+     * <p><b>Source:</b> Ours. ADR-0012.
+     *
+     * <p><b>Why:</b> Naming it means the biller fixes it in one attempt rather than guessing which of several
+     * networks was the problem.
      */
     @Test
     void anUnsupportedNetworkIsRefusedByName() {
@@ -123,10 +130,12 @@ class NetworkNamingApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Silence is the dangerous answer. This mapper runs behind an ObjectMapper with
-     * {@code FAIL_ON_UNKNOWN_PROPERTIES} disabled, so an unsupported network would otherwise be
-     * dropped without a word — and the biller would believe a rail was live that nothing here
-     * understands, discovering otherwise only when a payer cannot pay.
+     * <b>X9-RAIL-053</b> — an unsupported network is not silently dropped.
+     *
+     * <p><b>Source:</b> Ours. ADR-0012.
+     *
+     * <p><b>Why:</b> Dropping it would mint a QR Code missing the rail the biller asked for, with a 201 saying all
+     * was well. The biller discovers it when a payer cannot pay.
      */
     @Test
     void anUnsupportedNetworkIsNotSilentlyDropped() {
@@ -139,7 +148,14 @@ class NetworkNamingApiTest extends AbstractIntegrationTest {
                 .then().statusCode(HttpStatus.BAD_REQUEST.value());
     }
 
-    /** A patch may not smuggle in what a create would have refused. */
+    /**
+     * <b>X9-RAIL-054</b> — a patch may not introduce an unsupported network.
+     *
+     * <p><b>Source:</b> Ours. ADR-0012.
+     *
+     * <p><b>Why:</b> Creation and editing are different doors to the same field. A rule enforced on only one of
+     * them is not enforced.
+     */
     @Test
     void aPatchMayNotIntroduceAnUnsupportedNetwork() {
         String id = given().contentType("application/json").body(qrCodeWithNetworkKey("fednow"))

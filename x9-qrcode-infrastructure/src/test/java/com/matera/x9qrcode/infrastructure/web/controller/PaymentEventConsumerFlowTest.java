@@ -155,6 +155,15 @@ class PaymentEventConsumerFlowTest extends AbstractIntegrationTest {
 
     // ------------------------------------------------------------------------------- the flow
 
+    /**
+     * <b>X9-EVT-001</b> — a consumer watches a payment through to settlement.
+     *
+     * <p><b>Source:</b> Ours. X9.150 defines no event stream; ADR-0014 — we transport and sequence, the consumer
+     * reconciles.
+     *
+     * <p><b>Why:</b> The end-to-end case for how software around x9.150 learns a QR Code was paid, without polling
+     * every QR Code it ever created.
+     */
     @Test
     void aConsumerWatchesAPaymentThroughToSettlement() {
         Consumer consumer = new Consumer(List.of(), null);
@@ -195,6 +204,15 @@ class PaymentEventConsumerFlowTest extends AbstractIntegrationTest {
         assertEquals(List.of("payment.initiated", "payment.cleared"), typesFor(consumer, qrCodeId));
     }
 
+    /**
+     * <b>X9-EVT-002</b> — events carry a stable id and a monotonic cursor.
+     *
+     * <p><b>Source:</b> Ours. ADR-0014.
+     *
+     * <p><b>Why:</b> Delivery is at-least-once, so a consumer that crashes before persisting its cursor re-reads
+     * events. Deduplication needs the id to be STABLE across re-publishes, and resumption needs the
+     * cursor to never go backwards. Without both, a crash means duplicate or lost payments.
+     */
     @Test
     void eventsCarryAStableIdAndAMonotonicCursor() {
         Consumer consumer = new Consumer(List.of(), null);
@@ -216,6 +234,14 @@ class PaymentEventConsumerFlowTest extends AbstractIntegrationTest {
                 "reading again from the same cursor must not replay events");
     }
 
+    /**
+     * <b>X9-EVT-003</b> — a drained event is not drained twice.
+     *
+     * <p><b>Source:</b> Ours. ADR-0002 — the embedded transactional outbox.
+     *
+     * <p><b>Why:</b> Two pollers each seeing everything gains no isolation and only invites the belief that it
+     * provides some. Exactly one system should poll a deployment.
+     */
     @Test
     void aDrainedEventIsNotDrainedTwice() {
         String qrCodeId = createQRCode();

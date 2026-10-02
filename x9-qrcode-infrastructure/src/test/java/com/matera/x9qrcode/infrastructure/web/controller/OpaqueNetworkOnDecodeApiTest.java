@@ -140,6 +140,14 @@ class OpaqueNetworkOnDecodeApiTest extends AbstractIntegrationTest {
                 .extract().jsonPath();
     }
 
+    /**
+     * <b>X9-RAIL-060</b> — a payload offering an uninterpreted rail still decodes.
+     *
+     * <p><b>Source:</b> Ours. INTERPRETATION I-9 — refused when we ISSUE, carried intact when we TRANSPORT.
+     *
+     * <p><b>Why:</b> Decoding is the PAYER side: we do not own that payload and are not validating a payment
+     * against it. The software that asked us to decode it may understand that rail perfectly well.
+     */
     @Test
     void aPayloadOfferingAnUninterpretedRailStillDecodes() {
         JsonPath payload = decode();
@@ -148,7 +156,14 @@ class OpaqueNetworkOnDecodeApiTest extends AbstractIntegrationTest {
                 "an unknown rail is not an error on the payer side: " + payload.prettify());
     }
 
-    /** The rail we do understand is still parsed, alongside the ones we do not. */
+    /**
+     * <b>X9-RAIL-061</b> — a rail we do interpret is unaffected by opacity.
+     *
+     * <p><b>Source:</b> Ours. I-9.
+     *
+     * <p><b>Why:</b> Opacity is for rails we do NOT interpret. One we do should report an unknown field rather than
+     * carry it, or the strictness that makes interpretation worth anything is lost.
+     */
     @Test
     void theRailWeDoInterpretIsUnaffected() {
         JsonPath payload = decode();
@@ -158,9 +173,12 @@ class OpaqueNetworkOnDecodeApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * The point of the whole test: the network we cannot read arrives with its keys and values
-     * unchanged. A payer that understands Pix has everything it needs; we neither understood nor
-     * damaged it.
+     * <b>X9-RAIL-062</b> — an unknown network arrives with every field intact.
+     *
+     * <p><b>Source:</b> Ours. I-9 — "ignore" means do not INTERPRET, not discard.
+     *
+     * <p><b>Why:</b> Dropping the network we cannot read removes the only thing the payer needed in order to pay,
+     * and does it silently: the caller receives a payload that looks complete and is not.
      */
     @Test
     void anUnknownNetworkArrivesWithEveryFieldIntact() {
@@ -174,8 +192,12 @@ class OpaqueNetworkOnDecodeApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Including shapes nothing here could have anticipated — a number, a nested object, an array.
-     * We are carrying bytes for somebody else's protocol, not parsing them.
+     * <b>X9-RAIL-063</b> — an unknown network of any shape survives.
+     *
+     * <p><b>Source:</b> Ours. I-9.
+     *
+     * <p><b>Why:</b> Numbers, nested objects, arrays — shapes nothing here anticipated. A transport that only
+     * survives the shapes we imagined is not a transport.
      */
     @Test
     void anUnknownNetworkOfAnyShapeSurvives() {
@@ -188,7 +210,14 @@ class OpaqueNetworkOnDecodeApiTest extends AbstractIntegrationTest {
         assertTrue(chain.get("nested") instanceof Map, "nested structure must survive: " + chain);
     }
 
-    /** The key's own spelling is not ours to normalise either. */
+    /**
+     * <b>X9-RAIL-064</b> — an unknown network keeps its own key spelling.
+     *
+     * <p><b>Source:</b> Ours. I-9.
+     *
+     * <p><b>Why:</b> Normalising someone else's key is editing a message that was never ours, and the owning
+     * network may well be case-sensitive about it.
+     */
     @Test
     void anUnknownNetworkKeepsItsOwnKeySpelling() {
         Map<String, Object> networks = decode().getMap("paymentMethods[0].networks");

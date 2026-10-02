@@ -86,6 +86,15 @@ class TransientTransactionRetryTest {
 
     // ------------------------------------------------------------------------------ retried
 
+    /**
+     * <b>X9-LIFE-080</b> — a transient write conflict is retried until it succeeds.
+     *
+     * <p><b>Source:</b> Ours. ADR-0013 — retry what MongoDB says to retry.
+     *
+     * <p><b>Why:</b> Two payers reaching one QR Code concurrently produce a WriteConflict that MongoDB itself
+     * labels TransientTransactionError, meaning "try again". Surfacing it as a 500 would turn a
+     * normal race into a failed payment.
+     */
     @Test
     void aTransientConflictIsRetriedUntilItSucceeds() throws Throwable {
         AtomicInteger attempts = new AtomicInteger();
@@ -97,7 +106,15 @@ class TransientTransactionRetryTest {
         assertEquals(3, attempts.get(), "two conflicts, then the commit");
     }
 
-    /** The label travels on the driver exception, under Spring's translation of it. */
+    /**
+     * <b>X9-LIFE-081</b> — the transient label is found through the cause chain.
+     *
+     * <p><b>Source:</b> Ours. ADR-0013.
+     *
+     * <p><b>Why:</b> Spring wraps the driver's exception. Checking only the top-level type misses the label
+     * entirely, so the retry silently never fires — and the symptom is an occasional 500 under load
+     * that nobody can reproduce.
+     */
     @Test
     void theLabelIsFoundThroughTheCauseChain() {
         assertTrue(TransientTransactionRetry.isTransient(
@@ -107,8 +124,12 @@ class TransientTransactionRetryTest {
     // -------------------------------------------------------------------------- NOT retried
 
     /**
-     * The case that makes type-based retrying wrong: identical Spring exception, permanent failure.
-     * One attempt, and the caller hears about it immediately.
+     * <b>X9-LIFE-082</b> — a duplicate key is not retried.
+     *
+     * <p><b>Source:</b> Ours. ADR-0013 — only what MongoDB labels transient.
+     *
+     * <p><b>Why:</b> A duplicate key will fail identically every time. Retrying it burns the budget and delays the
+     * real error reaching the caller.
      */
     @Test
     void aDuplicateKeyIsNotRetried() throws Throwable {
@@ -123,6 +144,14 @@ class TransientTransactionRetryTest {
         assertEquals(1, attempts.get(), "a duplicate key is not going to resolve itself");
     }
 
+    /**
+     * <b>X9-LIFE-083</b> — an ordinary business failure is not retried.
+     *
+     * <p><b>Source:</b> Ours. ADR-0013.
+     *
+     * <p><b>Why:</b> A refused payment is a decision, not a glitch. Retrying it would re-run business rules that
+     * already said no.
+     */
     @Test
     void anOrdinaryBusinessFailureIsNotRetried() throws Throwable {
         AtomicInteger attempts = new AtomicInteger();
@@ -134,6 +163,14 @@ class TransientTransactionRetryTest {
         assertEquals(1, attempts.get());
     }
 
+    /**
+     * <b>X9-LIFE-084</b> — a duplicate key is not mistaken for transient.
+     *
+     * <p><b>Source:</b> Ours. ADR-0013.
+     *
+     * <p><b>Why:</b> Both arrive as Mongo write errors. Classifying by the LABEL rather than by the type is what
+     * keeps them apart; matching loosely would retry the permanent one.
+     */
     @Test
     void aDuplicateKeyIsNotMistakenForTransient() {
         assertFalse(TransientTransactionRetry.isTransient(
@@ -143,8 +180,13 @@ class TransientTransactionRetryTest {
     // ------------------------------------------------------------------------- exhaustion
 
     /**
-     * Attempts are bounded, and exhaustion surfaces MongoDB's own diagnosis rather than a wrapper
-     * explaining that we gave up — the server's message is the one worth reading.
+     * <b>X9-LIFE-085</b> — attempts are bounded and the original failure survives.
+     *
+     * <p><b>Source:</b> Ours. ADR-0013.
+     *
+     * <p><b>Why:</b> An unbounded retry is an outage that looks like a slow request. And the exception the caller
+     * finally sees must be the REAL one — a retry wrapper that reports "gave up" discards the
+     * diagnosis.
      */
     @Test
     void attemptsAreBoundedAndTheOriginalFailureSurvives() throws Throwable {
@@ -162,8 +204,13 @@ class TransientTransactionRetryTest {
     // ------------------------------------------------------------------------------ order
 
     /**
-     * The ordering IS the correctness argument: one step outside Spring's transaction advice, so
-     * every attempt gets a fresh transaction. Retrying inside an aborted one can only fail again.
+     * <b>X9-LIFE-086</b> — the retry wraps the transaction rather than running inside it.
+     *
+     * <p><b>Source:</b> Ours. ADR-0013.
+     *
+     * <p><b>Why:</b> Order matters and getting it wrong is silent: retrying INSIDE an already-aborted transaction
+     * re-runs the work against a session MongoDB has given up on, so every attempt fails for a
+     * second, unrelated reason.
      */
     @Test
     void theRetryWrapsTheTransactionRatherThanRunningInsideIt() {

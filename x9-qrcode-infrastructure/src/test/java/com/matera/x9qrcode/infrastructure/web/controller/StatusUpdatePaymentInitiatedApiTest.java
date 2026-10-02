@@ -66,6 +66,13 @@ class StatusUpdatePaymentInitiatedApiTest extends AbstractIntegrationTest {
         return updateStatus(qrCodeId, "{\"status\": \"PAYMENT_INITIATED\"}");
     }
 
+    /**
+     * <b>X9-LIFE-050</b> — a payment can be initiated on an ACTIVE QR Code over HTTP.
+     *
+     * <p><b>Source:</b> Ours. ADR-0002.
+     *
+     * <p><b>Why:</b> The acceptance case for the transition through the API.
+     */
     @Test
     void shouldInitiatePaymentOnAnActiveQRCode() {
         String qrCodeId = createActiveQRCode();
@@ -76,6 +83,14 @@ class StatusUpdatePaymentInitiatedApiTest extends AbstractIntegrationTest {
         assertEquals("PAYMENT_INITIATED", response.jsonPath().getString("status"));
     }
 
+    /**
+     * <b>X9-LIFE-051</b> — the reservation is visible on subsequent reads.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> A reservation nobody can observe cannot be acted on. The biller's system polls this to learn
+     * somebody is paying.
+     */
     @Test
     void shouldReportPaymentInitiatedOnSubsequentReads() {
         String qrCodeId = createActiveQRCode();
@@ -86,6 +101,13 @@ class StatusUpdatePaymentInitiatedApiTest extends AbstractIntegrationTest {
                 .body("status", org.hamcrest.Matchers.equalTo("PAYMENT_INITIATED"));
     }
 
+    /**
+     * <b>X9-LIFE-052</b> — a second initiation is a conflict.
+     *
+     * <p><b>Source:</b> Ours. ADR-0002.
+     *
+     * <p><b>Why:</b> 409 rather than 400: the request is well-formed, the state is what refuses it.
+     */
     @Test
     void shouldRejectWithConflictWhenPaymentIsAlreadyInitiated() {
         String qrCodeId = createActiveQRCode();
@@ -98,6 +120,13 @@ class StatusUpdatePaymentInitiatedApiTest extends AbstractIntegrationTest {
         assertEquals("PAYMENT_INITIATED", response.jsonPath().getString("currentStatus"));
     }
 
+    /**
+     * <b>X9-LIFE-053</b> — an already-paid QR Code cannot be initiated.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §9. Conformance.
+     *
+     * <p><b>Why:</b> No second payment against a settled bill.
+     */
     @Test
     void shouldRejectWithConflictWhenQRCodeIsAlreadyPaid() {
         String qrCodeId = createActiveQRCode();
@@ -111,6 +140,13 @@ class StatusUpdatePaymentInitiatedApiTest extends AbstractIntegrationTest {
         assertEquals("PAID", response.jsonPath().getString("currentStatus"));
     }
 
+    /**
+     * <b>X9-LIFE-054</b> — a cancelled QR Code cannot be initiated.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §9. Conformance.
+     *
+     * <p><b>Why:</b> A withdrawn bill accepts no new payers.
+     */
     @Test
     void shouldRejectWithConflictWhenQRCodeIsCancelled() {
         String qrCodeId = createActiveQRCode();
@@ -122,6 +158,14 @@ class StatusUpdatePaymentInitiatedApiTest extends AbstractIntegrationTest {
         assertEquals("CANCELLED", response.jsonPath().getString("currentStatus"));
     }
 
+    /**
+     * <b>X9-LIFE-055</b> — a reserved QR Code can be reactivated.
+     *
+     * <p><b>Source:</b> Ours. ADR-0002 — the reservation must be releasable.
+     *
+     * <p><b>Why:</b> A payer who abandons the payment would otherwise strand the QR Code forever. Reactivation is
+     * how the biller takes it back, and without it the reservation is a one-way door.
+     */
     @Test
     void shouldStillAllowReactivationAfterPaymentIsInitiated() {
         String qrCodeId = createActiveQRCode();
@@ -133,6 +177,14 @@ class StatusUpdatePaymentInitiatedApiTest extends AbstractIntegrationTest {
         assertEquals("ACTIVE", response.jsonPath().getString("status"));
     }
 
+    /**
+     * <b>X9-LIFE-056</b> — a pre-payment may not carry settlement details.
+     *
+     * <p><b>Source:</b> Ours. ADR-0002.
+     *
+     * <p><b>Why:</b> A transaction hash in a pre-payment claims money has already moved — the opposite of what the
+     * phase means.
+     */
     @Test
     void shouldRejectPaymentDetailsWhenInitiatingPayment() {
         String qrCodeId = createActiveQRCode();

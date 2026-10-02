@@ -108,6 +108,15 @@ class PayerNotificationLeniencyApiTest extends AbstractIntegrationTest {
 
     // ------------------------------------------------------------------- spelling is forgiven
 
+    /**
+     * <b>X9-RAIL-070</b> — a notified rail is matched whatever its case.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §14.5 fixes the spelling in the PAYLOAD. What a third-party payer sends back
+     * is not addressed. INTERPRETATION I-1.
+     *
+     * <p><b>Why:</b> Refusing a real payment because another PSP wrote "FedNow" would be strictness with no
+     * beneficiary. Lenient in what we accept, strict in what we send.
+     */
     @ParameterizedTest(name = "a notification naming the rail {0} is accepted")
     @ValueSource(strings = {"ACH", "ach", "Ach", "aCh"})
     void theRailIsMatchedWhateverTheCase(String network) {
@@ -119,6 +128,13 @@ class PayerNotificationLeniencyApiTest extends AbstractIntegrationTest {
         assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
     }
 
+    /**
+     * <b>X9-CUR-050</b> — a notified currency is matched whatever its case.
+     *
+     * <p><b>Source:</b> Ours. I-1.
+     *
+     * <p><b>Why:</b> Same leniency, same reason — money has already moved by the time a notification arrives.
+     */
     @ParameterizedTest(name = "a notification in currency {0} is accepted")
     @ValueSource(strings = {"USD", "usd", "Usd"})
     void theCurrencyIsMatchedWhateverTheCase(String currency) {
@@ -131,9 +147,12 @@ class PayerNotificationLeniencyApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * The value is stored and read back exactly as the payer wrote it. A notification records what
-     * somebody claimed; normalising it would be rewriting their words, and the claim is the thing
-     * a dispute would later turn on.
+     * <b>X9-RAIL-071</b> — the notified value is echoed back verbatim.
+     *
+     * <p><b>Source:</b> Ours. I-1 and I-9 — we do not rewrite someone else's message.
+     *
+     * <p><b>Why:</b> We MATCH case-insensitively but store and echo exactly what was sent. Normalising it would
+     * rewrite the payer's record of their own payment, and their reconciliation compares strings.
      */
     @Test
     void theNotifiedValueIsEchoedBackVerbatim() {
@@ -150,7 +169,13 @@ class PayerNotificationLeniencyApiTest extends AbstractIntegrationTest {
 
     // ------------------------------------------------------------- substance is still enforced
 
-    /** Leniency is about spelling. A currency this QR Code never offered is not a spelling. */
+    /**
+     * <b>X9-CUR-051</b> — leniency about case is not leniency about currency.
+     *
+     * <p><b>Source:</b> Conformance.
+     *
+     * <p><b>Why:</b> The boundary of I-1. Forgiving case must not become forgiving substance.
+     */
     @Test
     void aCurrencyThisQRCodeDoesNotOfferIsStillRefused() {
         String qrCodeId = createQRCode();
@@ -162,6 +187,13 @@ class PayerNotificationLeniencyApiTest extends AbstractIntegrationTest {
         assertEquals("ACTIVE", statusOf(qrCodeId), "a refused notification must change nothing");
     }
 
+    /**
+     * <b>X9-RAIL-072</b> — leniency about case is not leniency about rail.
+     *
+     * <p><b>Source:</b> Conformance.
+     *
+     * <p><b>Why:</b> Same boundary: a rail the QR Code never offered is refused however it is spelled.
+     */
     @Test
     void aRailThisQRCodeDoesNotOfferIsStillRefused() {
         String qrCodeId = createQRCode();
@@ -172,6 +204,13 @@ class PayerNotificationLeniencyApiTest extends AbstractIntegrationTest {
         assertEquals("ACTIVE", statusOf(qrCodeId));
     }
 
+    /**
+     * <b>X9-AMT-070</b> — leniency about spelling is not leniency about the amount.
+     *
+     * <p><b>Source:</b> Conformance.
+     *
+     * <p><b>Why:</b> Named explicitly so a future reader does not conclude this endpoint is lenient in general.
+     */
     @Test
     void theWrongAmountIsStillRefused() {
         String qrCodeId = createQRCode();
@@ -182,7 +221,14 @@ class PayerNotificationLeniencyApiTest extends AbstractIntegrationTest {
         assertEquals("ACTIVE", statusOf(qrCodeId));
     }
 
-    /** A network we do not interpret is refused whatever its case — leniency is not acceptance. */
+    /**
+     * <b>X9-RAIL-073</b> — an uninterpreted network is still refused on a notification.
+     *
+     * <p><b>Source:</b> Ours. ADR-0012.
+     *
+     * <p><b>Why:</b> We cannot validate a payment on a rail we have no published embedding for, so accepting the
+     * claim would be recording a settlement we cannot check.
+     */
     @ParameterizedTest(name = "a notification naming {0} is refused")
     @ValueSource(strings = {"Solana", "solana", "PIX"})
     void anUninterpretedNetworkIsStillRefused(String network) {

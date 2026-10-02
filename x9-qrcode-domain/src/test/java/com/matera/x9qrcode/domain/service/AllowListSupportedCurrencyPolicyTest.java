@@ -26,21 +26,43 @@ class AllowListSupportedCurrencyPolicyTest {
     private static final SupportedCurrencyPolicy USD_ONLY =
         new AllowListSupportedCurrencyPolicy(List.of("USD"));
 
+    /**
+     * <b>X9-CUR-010</b> — a currency on the deployment's list passes.
+     *
+     * <p><b>Source:</b> Ours. The payload format is currency-agnostic; what a DEPLOYMENT accepts is decided by the
+     * rails it settles. ADR-0012, INTERPRETATION I-3.
+     *
+     * <p><b>Why:</b> The acceptance case. Without it the refusals below would pass against a policy that refused
+     * every currency.
+     */
     @Test
     void anAllowedCurrencyPasses() {
         assertDoesNotThrow(() -> USD_ONLY.validate(List.of("USD", "USD")));
     }
 
     /**
-     * Surrounding space is a transport artefact and is forgiven; case is not. ISO 4217 codes are
-     * upper-case, so accepting {@code usd} would mean emitting {@code usd} — and the caller reading
-     * back something other than what they sent.
+     * <b>X9-CUR-011</b> — surrounding whitespace is forgiven.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> A currency arriving as " USD " is a formatting accident in the caller's serialiser, not a
+     * different currency. Refusing it would be a confusing failure for a correct intent.
      */
     @Test
     void surroundingSpaceIsForgiven() {
         assertDoesNotThrow(() -> USD_ONLY.validate(List.of(" USD ")));
     }
 
+    /**
+     * <b>X9-CUR-012</b> — the wrong case is refused, naming the spelling to use.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §2.3 — <i>"SHALL be a string that adheres to ISO 4217 alphabetic currency
+     * codes"</i>, which are upper case. Conformance; the helpful message is ours.
+     *
+     * <p><b>Why:</b> "usd" is refused rather than silently corrected, because a deployment that quietly fixes its
+     * input teaches callers nothing and diverges from every other implementation. The message names
+     * the spelling to use, so the fix takes seconds rather than a support round trip.
+     */
     @Test
     void theWrongCaseIsRefusedWithTheSpellingToUse() {
         BusinessRuleException thrown =
@@ -50,6 +72,14 @@ class AllowListSupportedCurrencyPolicyTest {
             "name both what was sent and what to send: " + thrown.getMessage());
     }
 
+    /**
+     * <b>X9-CUR-013</b> — a currency outside the list is refused, by name.
+     *
+     * <p><b>Source:</b> Ours. ADR-0012 — refuse what this deployment cannot honour.
+     *
+     * <p><b>Why:</b> A QR Code advertising a currency no configured rail settles is a promise that cannot be kept,
+     * and the payer discovers it at the till where nothing can be done.
+     */
     @Test
     void aCurrencyOutsideTheListIsRefusedByName() {
         BusinessRuleException thrown =
@@ -61,7 +91,13 @@ class AllowListSupportedCurrencyPolicyTest {
             "and what is supported, so they know what to send: " + thrown.getMessage());
     }
 
-    /** One message naming every offender beats three round trips discovering them one at a time. */
+    /**
+     * <b>X9-CUR-014</b> — every offending currency is named at once.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> Reporting one failure per round trip turns a three-currency mistake into three deployments.
+     */
     @Test
     void everyOffendingCurrencyIsNamedAtOnce() {
         BusinessRuleException thrown =
@@ -71,15 +107,26 @@ class AllowListSupportedCurrencyPolicyTest {
             thrown.getMessage());
     }
 
+    /**
+     * <b>X9-CUR-015</b> — blanks and nulls are ignored rather than refused.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> Absence is not a currency. The schema enforces presence at the edge; inventing a second
+     * opinion here would produce two different errors for one mistake.
+     */
     @Test
     void blanksAndNullsAreIgnoredRatherThanRefused() {
         assertDoesNotThrow(() -> USD_ONLY.validate(Arrays.asList("USD", null, "  ")));
     }
 
     /**
-     * An empty list means "no opinion", for a deployment that settles by some route this service
-     * does not model. The format itself is currency-agnostic; the allow list is the deployment's
-     * narrowing of it, and a deployment may decline to narrow.
+     * <b>X9-CUR-016</b> — an empty allow-list accepts anything.
+     *
+     * <p><b>Source:</b> Ours, a deliberate escape hatch. INTERPRETATION I-3.
+     *
+     * <p><b>Why:</b> An operator who clears supported-currencies.json is turning the check OFF, not configuring a
+     * deployment that accepts nothing. The alternative makes a blank config file brick the service.
      */
     @Test
     void anEmptyAllowListAcceptsAnything() {
@@ -88,6 +135,14 @@ class AllowListSupportedCurrencyPolicyTest {
         assertDoesNotThrow(() -> unrestricted.validate(List.of("EUR", "BTC", "XPTO")));
     }
 
+    /**
+     * <b>X9-CUR-017</b> — a null allow-list behaves like an empty one.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> A missing config file and a cleared one mean the same thing to an operator, so they must
+     * behave the same way rather than differing by how the absence was expressed.
+     */
     @Test
     void aNullAllowListBehavesLikeAnEmptyOne() {
         assertDoesNotThrow(() -> new AllowListSupportedCurrencyPolicy(null).validate(List.of("EUR")));

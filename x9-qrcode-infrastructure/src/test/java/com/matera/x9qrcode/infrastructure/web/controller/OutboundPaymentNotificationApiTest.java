@@ -127,7 +127,14 @@ class OutboundPaymentNotificationApiTest extends AbstractIntegrationTest {
     // -------------------------------------------------------------------- we sign, they verify
 
     /**
-     * The point of the feature: the caller sent JSON, and what reached the payee was a JWS.
+     * <b>X9-SIG-030</b> — what arrives at the payee is a signed JWS.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §9 — notifications are signed. INTERPRETATION I-15/ADR-0015: x9.150 signs
+     * the PAYER's notification too, so a PSP integrating here never builds a JWS itself.
+     *
+     * <p><b>Why:</b> This shipped signing an internal DTO rather than the contract shape. The old test only
+     * asserted the id appeared SOMEWHERE in the body, so it passed against a wire format no payee
+     * could parse — a check too weak to see the thing it was named after.
      */
     @Test
     void whatArrivesAtThePayeeIsASignedJws() throws Exception {
@@ -156,15 +163,12 @@ class OutboundPaymentNotificationApiTest extends AbstractIntegrationTest {
     // ------------------------------------------------------------------- the shape on the wire
 
     /**
-     * Where the QR Code id sits, which is not a detail.
+     * <b>X9-SIG-031</b> — the id travels inside the payment object, where the standard puts it.
      *
-     * <p>ANSI X9.150-2026 carries it as {@code payment.qrcodeId} — inside the payment object. This
-     * service holds it one level up, beside the payment, and for a while signed that internal record
-     * directly: the payload went out with a top-level {@code qrCodeId} and a {@code payment} that
-     * had none. Every conformant payee refuses that, ours included, and no test here noticed,
-     * because asserting the id appeared <em>somewhere</em> in the payload passes either way.
+     * <p><b>Source:</b> ANSI X9.150-2026 §9, Table — $.payment.qrcodeId. Conformance.
      *
-     * <p>Two instances talking to each other found it in a minute. So this asserts the position.
+     * <p><b>Why:</b> Structural, not a substring search. The previous assertion would have accepted the id in any
+     * field at any depth, which is how the wrong wire shape survived.
      */
     @Test
     void theIdTravelsInsideThePaymentObjectWhereTheStandardPutsIt() throws Exception {
@@ -179,8 +183,12 @@ class OutboundPaymentNotificationApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * The stronger statement: a payee can deserialise what we sent into the very class our own
-     * contract generates. If this holds, the two sides cannot have drifted apart.
+     * <b>X9-SIG-032</b> — a payee can read what we sent using the contract type.
+     *
+     * <p><b>Source:</b> Conformance.
+     *
+     * <p><b>Why:</b> Deserialises with the published DTO rather than by inspection — the only way to prove an
+     * adopter generating a client from our OpenAPI can actually read it.
      */
     @Test
     void aPayeeCanReadWhatWeSentUsingTheContractType() throws Exception {
@@ -200,6 +208,13 @@ class OutboundPaymentNotificationApiTest extends AbstractIntegrationTest {
 
     // --------------------------------------------------------------- the verdict is passed back
 
+    /**
+     * <b>X9-LIFE-070</b> — an accepted pre-payment comes back accepted.
+     *
+     * <p><b>Source:</b> Ours. ADR-0015 — we relay the payee's own answer rather than interpreting it.
+     *
+     * <p><b>Why:</b> The payer's PSP must learn the payee said yes before moving money.
+     */
     @Test
     void anAcceptedPrePaymentComesBackAccepted() {
         MockMvcResponse response = post("/api/v1/payment-notification/pre-payment", prePayment(PAYEE));
@@ -210,9 +225,12 @@ class OutboundPaymentNotificationApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * A refusal is a successful round trip, not a failure of ours — so it comes back as 200 with
-     * {@code accepted: false}, and the payee's own words are passed through untouched. Collapsing it
-     * into an error here would hide the reason the payer needs in order to react.
+     * <b>X9-LIFE-071</b> — a refused pre-payment is an answer, not an error.
+     *
+     * <p><b>Source:</b> Ours. ADR-0015 — the payee's status is passed through, not interpreted.
+     *
+     * <p><b>Why:</b> A refusal is a successful round trip with a negative answer. Reporting it as a transport
+     * failure would make the caller retry something that was decided, not dropped.
      */
     @Test
     void aRefusedPrePaymentComesBackAsAnAnswerNotAnError() {
@@ -230,8 +248,12 @@ class OutboundPaymentNotificationApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * An unreachable payee is the opposite case and must not look like a refusal: nothing was
-     * delivered, so the caller should retry rather than conclude the payment was declined.
+     * <b>X9-LIFE-072</b> — an unreachable payee is a gateway failure.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> The complement of LIFE-071: a payee that never answered is genuinely different from one that
+     * said no, and only the first is worth retrying.
      */
     @Test
     void anUnreachablePayeeIsAGatewayFailure() {
@@ -246,9 +268,12 @@ class OutboundPaymentNotificationApiTest extends AbstractIntegrationTest {
     // ------------------------------------------------------------------------- phase discipline
 
     /**
-     * The check that earns its keep. A payee infers the phase from whether a reference is present,
-     * so a pre-payment carrying one arrives as a post-payment: the QR Code is never reserved, and
-     * the payer proceeds to pay against something another payer can still claim.
+     * <b>X9-LIFE-073</b> — a pre-payment carrying a transaction id is refused before it is sent.
+     *
+     * <p><b>Source:</b> Ours. ADR-0002 — the phase is inferred from the hash.
+     *
+     * <p><b>Why:</b> Refused locally rather than relayed, so we do not ask a counterparty to reject a message we
+     * already know is contradictory.
      */
     @Test
     void aPrePaymentCarryingATransactionIdIsRefusedBeforeItIsSent() {
@@ -259,6 +284,14 @@ class OutboundPaymentNotificationApiTest extends AbstractIntegrationTest {
         assertTrue(response.asString().contains("transactionId"), response.asString());
     }
 
+    /**
+     * <b>X9-LIFE-074</b> — a post-payment without a transaction id is refused before it is sent.
+     *
+     * <p><b>Source:</b> Ours. ADR-0002.
+     *
+     * <p><b>Why:</b> The mirror of LIFE-073. Claiming settlement with no evidence is caught here rather than
+     * becoming someone else's 400.
+     */
     @Test
     void aPostPaymentWithoutATransactionIdIsRefusedBeforeItIsSent() {
         MockMvcResponse response = post("/api/v1/payment-notification/post-payment", prePayment(PAYEE));
@@ -267,6 +300,13 @@ class OutboundPaymentNotificationApiTest extends AbstractIntegrationTest {
         assertTrue(received.isEmpty());
     }
 
+    /**
+     * <b>X9-LIFE-075</b> — a post-payment carrying its reference is delivered.
+     *
+     * <p><b>Source:</b> Conformance.
+     *
+     * <p><b>Why:</b> The acceptance case, so the two refusals above cannot pass against a path that sends nothing.
+     */
     @Test
     void aPostPaymentCarryingItsReferenceIsDelivered() throws Exception {
         MockMvcResponse response = post("/api/v1/payment-notification/post-payment", postPayment(PAYEE));
@@ -281,6 +321,14 @@ class OutboundPaymentNotificationApiTest extends AbstractIntegrationTest {
 
     // --------------------------------------------------------------------------- bad requests
 
+    /**
+     * <b>X9-SIG-033</b> — a relative notification endpoint is refused.
+     *
+     * <p><b>Source:</b> Ours.
+     *
+     * <p><b>Why:</b> A relative URI would resolve against OUR host, so a notification meant for the payee would be
+     * delivered to ourselves — a loop that looks like a successful send.
+     */
     @Test
     void aRelativeEndpointIsRefused() {
         MockMvcResponse response = post("/api/v1/payment-notification/pre-payment",

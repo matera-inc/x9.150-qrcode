@@ -60,11 +60,11 @@ class SupportedCurrencyApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Solana settles both dollar stablecoins this deployment accepts, so both are payable — the
-     * allow list grew with the rail, which is exactly what it is for.
+     * <b>X9-CUR-060</b> — a stablecoin the configured rail settles is accepted.
      *
-     * <p>FRNT is the Frontier Stable Token issued by the State of Wyoming through its Stable Token
-     * Commission: dollar-pegged, redeemable at par, and live on Solana.
+     * <p><b>Source:</b> Ours. ADR-0012 and supported-currencies.json.
+     *
+     * <p><b>Why:</b> The acceptance case: USDC is accepted because a configured rail actually settles it.
      */
     @ParameterizedTest(name = "{0} is accepted because Solana settles it")
     @ValueSource(strings = {"USDC", "FRNT"})
@@ -74,6 +74,13 @@ class SupportedCurrencyApiTest extends AbstractIntegrationTest {
                 .then().statusCode(HttpStatus.CREATED.value());
     }
 
+    /**
+     * <b>X9-CUR-061</b> — the bank rails' own currency is accepted.
+     *
+     * <p><b>Source:</b> Ours.
+     *
+     * <p><b>Why:</b> USD is what FedNow, RTP and ACH settle. The list follows the rails, not the other way round.
+     */
     @Test
     void theSettledCurrencyIsAccepted() {
         given().contentType("application/json").body(body("USD"))
@@ -82,12 +89,12 @@ class SupportedCurrencyApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * BTC is not settled by any rail here, and neither are EUR or BRL. The peg is beside the point:
-     * the allow list is about what this deployment can pay out, not about what the format can carry
-     * or what a currency is worth.
+     * <b>X9-CUR-062</b> — a currency no supported rail settles is refused.
      *
-     * <p>USDC used to be on this list and no longer is — Solana settles it. That is the list doing
-     * its job: a currency becomes acceptable when a rail that settles it arrives, and not before.
+     * <p><b>Source:</b> Ours. ADR-0012 — refuse what this deployment cannot honour.
+     *
+     * <p><b>Why:</b> The payload format is currency-agnostic and would carry JPY happily. What this deployment
+     * accepts is decided by what its rails can actually settle.
      */
     @ParameterizedTest(name = "a {0} QR Code is refused")
     @ValueSource(strings = {"EUR", "BRL", "BTC", "JPY"})
@@ -104,11 +111,12 @@ class SupportedCurrencyApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Case <em>is</em> the biller's problem, on our own API. ISO 4217 codes are upper-case and §2.3's
-     * example is {@code "USD"}, so accepting {@code usd} would mean emitting {@code usd} — handing
-     * the caller back a non-conformant code that differs from what the next QR Code will carry.
-     * Leniency belongs where we do not control the sender; see
-     * {@link NetworkNamingApiTest#aThirdPartyNotificationIsReadCaseInsensitively}.
+     * <b>X9-CUR-063</b> — a supported currency in the wrong case is refused at creation.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §2.3 — ISO 4217 alphabetic codes. Conformance.
+     *
+     * <p><b>Why:</b> The ISSUING side, so strict: the code we mint must be the one every payer app expects. The
+     * complement of CUR-050, where the same mistake from a third party is forgiven.
      */
     @ParameterizedTest(name = "{0} is refused, naming the spelling to use")
     @ValueSource(strings = {"usd", "Usd"})
