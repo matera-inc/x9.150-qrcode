@@ -152,6 +152,9 @@ public class QRCodeMongoPersistenceModel implements Persistable<UUID> {
         @Field(name = "amount")
         private Long amount;
 
+        @Field(name = "tip_amount")
+        private Long tipAmount;
+
         @Field(name = "currency")
         private String currency;
 

@@ -472,6 +472,7 @@ public final class QRCodeMongoDocumentMapper {
             document.setQrCodeRevision(event.qrCodeRevision());
             document.setLocationId(event.locationId());
             document.setAmount(event.amount());
+            document.setTipAmount(event.tipAmount());
             document.setCurrency(event.currency());
             document.setNetwork(event.network());
             document.setTransactionId(event.transactionId());

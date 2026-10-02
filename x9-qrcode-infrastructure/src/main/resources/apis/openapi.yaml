@@ -801,6 +801,21 @@ components:
           type: integer
           format: int64
           description: "Minor units, as everywhere in this API."
+        tipAmount:
+          type: integer
+          format: int64
+          nullable: true
+          description: |-
+            How much of `amount` the payer **reported** as a tip, absent when none was reported.
+
+            `amount` is the TOTAL the payer transferred, tip included (§2.1 with §13.6.2), so the
+            part that settled the bill is `amount - tipAmount`. Without this field that split cannot
+            be recovered from the stream.
+
+            Reported, not computed. This service neither receives money nor pays anyone — it raises
+            payment requests and validates notifications — so this is a fact transported exactly as
+            it arrived, for the consuming system to reconcile against what its accounts received.
+          example: 1000
         currency:
           $ref: "#/components/schemas/CurrencyCode"
         network:

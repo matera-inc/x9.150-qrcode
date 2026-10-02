@@ -617,6 +617,9 @@ public class QRCodeEntity {
             this.revision,
             this.locationId.valueAsString(),
             nonNull(data) ? data.payment().amount().value() : amountOfFirstMethod(),
+            nonNull(data) && nonNull(data.payment().tipAmount())
+                ? data.payment().tipAmount().value()
+                : null,
             nonNull(data) ? data.payment().currency() : currencyOfFirstMethod(),
             nonNull(data) ? data.payment().network() : networkOfPaymentDetails(),
             nonNull(data) ? data.payment().transactionId() : endToEndIdOfPaymentDetails(),
