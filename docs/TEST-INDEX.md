@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**295 tests documented** — every JUnit test in the repository and every case in the
+**297 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -111,6 +111,8 @@ single most important thing this index exists for.
 | `X9-EVT-014` | an expired lease is taken over without release | `PaymentEventDrainLockTest.java` |
 | `X9-EVT-020` | the event log expires rather than growing forever | `PaymentEventLogContractTest.java` |
 | `X9-EVT-021` | both the announced and the reported amount reach the consumer | `PaymentEventLogContractTest.java` |
+| `X9-EVT-030` | the payment event carries the tip the payer reported | `test_payment_notification.py` |
+| `X9-EVT-031` | an event for a payment with no tip reports no tip | `test_payment_notification.py` |
 
 ## Lifecycle, status and delivery
 

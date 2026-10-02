@@ -339,6 +339,71 @@ class TestTip:
                        naming="payment.tipAmount")
 
 
+class TestEventStream:
+
+    @staticmethod
+    def _events_for(api, qr_id):
+        """Drain is asynchronous, so poll with the long-polling cursor rather than reading blind."""
+        seen, cursor = {}, ""
+        for _ in range(20):
+            status, page = api.call("GET", f"/pub/api/v1/events?after={cursor}&limit=200&wait=2")
+            if status != 200 or not isinstance(page, dict):
+                break
+            for event in page.get("events", []):
+                if event.get("qrCodeId") == qr_id:
+                    seen[event["eventId"]] = event
+            cursor = page.get("nextCursor") or cursor
+            if seen:
+                break
+        return list(seen.values())
+
+    def test_the_event_carries_the_tip_the_payer_reported(self, api):
+        """X9-EVT-030 — the payment event carries the tip the payer reported.
+
+        Source: Ours. ADR-0014 — we transport and sequence, the consuming system reconciles. X9.150
+    defines no event stream.
+
+        Why: `amount` on an event is the TOTAL, tip included, so without `tipAmount` a consumer
+    reading the stream sees one number and cannot tell what part of it settled the bill. It could
+    recover the split by fetching every payment request individually, which defeats the stream.
+
+    Reported, not computed: this service neither receives money nor pays anyone. It raises payment
+    requests and validates notifications, so the tip is transported exactly as it arrived for the
+    consuming system to reconcile against what its accounts actually received.
+        """
+        tip = BILL // 10
+        qr = api.create_qr(tip={"allowed": True, "range": {"min": 0, "max": 10}, "presets": [10]})
+
+        status, body = api.notify(qr, amount=BILL + tip, tip=tip)
+        assert status == 200, f"{status} {body}"
+
+        mine = self._events_for(api, qr)
+        assert mine, f"no event for {qr}"
+
+        event = mine[-1]
+        assert event.get("amount") == BILL + tip, f"amount should be the total: {event}"
+        assert event.get("tipAmount") == tip, f"tipAmount should be the reported tip: {event}"
+        assert event["amount"] - event["tipAmount"] == BILL, (
+            f"the consumer must be able to derive what settled the bill: {event}")
+
+    def test_an_event_for_a_payment_with_no_tip_reports_no_tip(self, api):
+        """X9-EVT-031 — an event for a payment with no tip reports no tip.
+
+        Source: Ours. ADR-0014.
+
+        Why: Absent rather than zero. A consumer has to tell "no tip was reported" from "a tip of
+    nothing was reported", and defaulting to 0 would quietly make every untipped payment look like an
+    explicit decision not to tip.
+        """
+        qr = api.create_qr()
+        status, body = api.notify(qr, amount=BILL)
+        assert status == 200, f"{status} {body}"
+
+        mine = self._events_for(api, qr)
+        assert mine, f"no event for {qr}"
+        assert mine[-1].get("tipAmount") in (None, ), f"expected no tip reported: {mine[-1]}"
+
+
 # ------------------------------------------------------------------------- currency and rail
 
 class TestCurrencyAndRail:

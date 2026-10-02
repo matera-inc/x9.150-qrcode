@@ -33,6 +33,20 @@ public record PaymentEvent(
     Integer qrCodeRevision,
     String locationId,
     Long amount,
+
+    /**
+     * How much of {@code amount} the payer reported as a tip, or null when none was reported.
+     *
+     * <p>Reported, not computed. X9.150 neither receives money nor pays anyone — it raises payment
+     * requests and validates notifications — so this is a fact we transport, exactly as it arrived,
+     * for the consuming system to reconcile against what its accounts actually received.
+     *
+     * <p>Carried because {@code amount} is the TOTAL, tip included (ANSI X9.150-2026 §2.1 with
+     * §13.6.2). Without this field a consumer reading the stream sees one number and cannot tell
+     * what part of it settled the bill.
+     */
+    Long tipAmount,
+
     String currency,
     String network,
     String transactionId,

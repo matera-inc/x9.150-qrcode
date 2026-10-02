@@ -3,6 +3,31 @@ X9 QRCode Backend
 
 This application is a backend implementation of the **ANSI X9.150-2026 Payment QR Code Standard** — it generates and manages merchant-presented payment QR codes across the US bank rails the standard defines: **FedNow, RTP and ACH**, settling in USD. Every reading we make of an ambiguous passage in the standard, and every deliberate departure from a literal one, is recorded in [official-spec/INTERPRETATION.md](official-spec/INTERPRETATION.md).
 
+## What this software does, and what it does not
+
+**It never touches money.** Read that first, because almost every question about this repository
+resolves once it is clear.
+
+This service does two things: it **raises payment requests** — minting and managing the QR Code a
+merchant presents — and it **validates payment notifications** that payers' PSPs send back about
+them. That is the whole of it.
+
+| | |
+|---|---|
+| **It does** | mint QR Codes, publish the signed payload a payer's app fetches, validate notifications against what the QR Code actually asked for, and report what happened on a payment event stream |
+| **It does NOT** | move funds, receive funds, hold balances, settle, reconcile against a bank or ledger, or pay anyone — including paying out tips to staff |
+
+So when a payer reports paying 1100 of which 100 was a tip, this service checks the arithmetic
+against the bill, records both figures, and publishes them. **Whether that money arrived is something
+only the system using this software can know**, because only it can see the account. That is why
+settlement is a status the consuming system sets, not something inferred here, and why the event
+stream reports *what was notified* rather than *what was received* — see
+[ADR-0014](docs/adr/0014-we-transport-and-sequence-the-consumer-reconciles.md).
+
+The same boundary explains the tip handling. A tip is validated against the range the bill published
+and carried through to the event stream split out from the total, so the consuming system can do its
+own accounting with it. **Paying the waiter is not this software's business.**
+
 The X9.150 standard itself is copyrighted by ASC X9 and is **not** distributed with this repository. To obtain it, purchase it from the [ANSI Web Store](https://webstore.ansi.org/standards/ascx9/ansix91502026). See [`official-spec/README.md`](official-spec/README.md) for details.
 
 The code is written in **Java 25** on **Spring Boot 3.5.x** and follows the Clean / Hexagonal Architecture pattern.
