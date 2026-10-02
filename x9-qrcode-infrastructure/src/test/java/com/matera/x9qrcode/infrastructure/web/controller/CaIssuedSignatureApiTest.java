@@ -243,6 +243,15 @@ class CaIssuedSignatureApiTest extends AbstractIntegrationTest {
 
     // ------------------------------------------------------------------------------- accepted
 
+    /**
+     * <b>X9-SIG-050</b> — an RSA payer issued by a trusted CA is accepted.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §10 — X9 Financial PKI certificate chain validation. Conformance.
+     *
+     * <p><b>Why:</b> The acceptance case for chain validation. Note what is being allow-listed: the ISSUER, never
+     * the subject. We do not keep a list of permitted payers — anyone a trusted CA vouches for may
+     * pay, which is the whole point of a PKI.
+     */
     @Test
     void anRsaPayerIssuedByATrustedCaIsAccepted() throws Exception {
         String qrCodeId = createQRCode();
@@ -280,8 +289,13 @@ class CaIssuedSignatureApiTest extends AbstractIntegrationTest {
     // ------------------------------------------------------------------------------- refused
 
     /**
-     * ADR-0007's actual guarantee, which nothing tested before: the allowlist gates the certificate's
-     * <b>issuer</b>. This payer's signature is perfectly valid — it is the issuer that is unknown.
+     * <b>X9-SIG-052</b> — a payer from an untrusted CA is refused.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §10. Conformance.
+     *
+     * <p><b>Why:</b> A well-formed signature from a certificate nobody we trust issued proves only that the sender
+     * holds a key. Without this the PKI is decoration — which is precisely the question an adopter
+     * raised about this endpoint and which this test answers.
      */
     @Test
     void aPayerFromAnUntrustedCaIsRefused() throws Exception {
@@ -296,8 +310,12 @@ class CaIssuedSignatureApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Revocation is genuinely checked, not skipped. This leaf is issued by the trusted CA and signs
-     * correctly; it appears on the CRL its own distribution point names, and that alone stops it.
+     * <b>X9-SIG-053</b> — a revoked payer is refused.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §10. Conformance.
+     *
+     * <p><b>Why:</b> Revocation is how a compromised key stops being usable. A chain that validates but ignores
+     * revocation keeps trusting a certificate its issuer has publicly withdrawn.
      */
     @Test
     void aRevokedPayerIsRefused() throws Exception {
@@ -314,12 +332,12 @@ class CaIssuedSignatureApiTest extends AbstractIntegrationTest {
     // ------------------------------------------------- the other inbound JWS: fetching a payload
 
     /**
-     * A payment notification is not the only thing a payer signs. Fetching the payload from the
-     * {@code loc} URL is a JWS too, and it runs through the same {@code validateSignature} — so the
-     * EC defect refused a conformant payer at the very first step, before any payment was discussed.
+     * <b>X9-SIG-054</b> — an EC payer can fetch the payload.
      *
-     * <p>Worth its own test rather than assumed from the notification one: same method, different
-     * caller, and this path additionally binds the signature to the location id.
+     * <p><b>Source:</b> Conformance, as SIG-051.
+     *
+     * <p><b>Why:</b> Proves chain validation on the PAYLOAD path too, not only on notifications — the two
+     * endpoints verify separately and could drift apart.
      */
     @Test
     void anEcPayerCanFetchThePayload() throws Exception {

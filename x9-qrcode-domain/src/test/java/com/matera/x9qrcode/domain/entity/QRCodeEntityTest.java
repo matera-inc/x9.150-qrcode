@@ -27,6 +27,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class QRCodeEntityTest extends AbstractTest {
 
+    /**
+     * <b>X9-LIFE-010</b> — a QR Code is created from valid data.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §13 — the payload's required elements. Conformance.
+     *
+     * <p><b>Why:</b> The acceptance case for creation. Every refusal below is only meaningful against it.
+     */
     @Test
     void shouldCreateQRCodeEntityWithValidData() {
         QRCodeStatusEnum expectedActiveStatus = QRCodeStatusEnum.ACTIVE;
@@ -58,6 +65,15 @@ class QRCodeEntityTest extends AbstractTest {
         });
     }
 
+    /**
+     * <b>X9-LIFE-011</b> — a stored QR Code is restored without re-running creation rules.
+     *
+     * <p><b>Source:</b> Mechanism. create() and restore() are deliberately different doors.
+     *
+     * <p><b>Why:</b> A document already in MongoDB was valid when written. Re-applying creation rules on read
+     * would make a rule change retroactively unreadable — the database becomes unloadable because
+     * today's policy disagrees with yesterday's data.
+     */
     @Test
     void shouldRestoreQRCodeEntityWithValidData() {
         assertDoesNotThrow(() -> {
@@ -100,6 +116,15 @@ class QRCodeEntityTest extends AbstractTest {
         });
     }
 
+    /**
+     * <b>X9-LIFE-012</b> — creation without an id generator is a programming error, not a business one.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> IllegalArgumentException rather than BusinessRuleException on purpose: no caller supplied bad
+     * data, the service was wired wrong. Reporting it as a business rule would surface a deployment
+     * fault to a payer as if they had done something wrong.
+     */
     @Test
     void shouldThrowIllegalArgumentExceptionWhenCreateQRCodeEntityWithoutIdGenerator() {
         NullPointerException nullPointerException = assertThrows(NullPointerException.class,
@@ -108,6 +133,13 @@ class QRCodeEntityTest extends AbstractTest {
         assertEquals("IdGenerator must not be null.", nullPointerException.getMessage());
     }
 
+    /**
+     * <b>X9-LIFE-013</b> — a QR Code cannot be created without a creditor.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §12 — creditor is mandatory in the payload. Conformance.
+     *
+     * <p><b>Why:</b> A payer cannot be asked to pay without being told who they are paying.
+     */
     @Test
     void shouldThrowBusinessRuleExceptionWhenCreateQRCodeEntityWithoutCreditor() {
         BusinessRuleException businessRuleException = assertThrows(BusinessRuleException.class,
@@ -117,6 +149,13 @@ class QRCodeEntityTest extends AbstractTest {
         assertEquals("must not be null.", businessRuleException.getMessage());
     }
 
+    /**
+     * <b>X9-LIFE-014</b> — a QR Code cannot be created without a bill.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §13 — bill is mandatory. Conformance.
+     *
+     * <p><b>Why:</b> Without a bill there is no amount and nothing to settle.
+     */
     @Test
     void shouldThrowBusinessRuleExceptionWhenCreateQRCodeEntityWithoutBill() {
         BusinessRuleException businessRuleException = assertThrows(BusinessRuleException.class,
@@ -126,6 +165,14 @@ class QRCodeEntityTest extends AbstractTest {
         assertEquals("must not be null.", businessRuleException.getMessage());
     }
 
+    /**
+     * <b>X9-LIFE-015</b> — a QR Code cannot be created with no payment method.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §14 — paymentMethods is mandatory. Conformance.
+     *
+     * <p><b>Why:</b> Null and empty both, because an empty list is the likelier mistake: it serialises cleanly,
+     * passes a null check, and produces a QR Code nobody can pay by any route.
+     */
     @ParameterizedTest
     @MethodSource("invalidPaymentMethods")
     void shouldThrowBusinessRuleExceptionWhenCreateQRCodeEntityWithoutPaymentMethods(List<PaymentMethodVO> paymentMethods) {

@@ -40,6 +40,14 @@ class ProblemDetailShapeApiTest extends AbstractIntegrationTest {
                 .when().post(CREATE);
     }
 
+    /**
+     * <b>X9-SIG-020</b> — problem detail extension members sit at the top level.
+     *
+     * <p><b>Source:</b> RFC 9457 §3.2 — extension members are top-level. Conformance.
+     *
+     * <p><b>Why:</b> Every adopter's error handling reads these fields. Nesting them would make a conformant client
+     * see an error body it cannot parse, at exactly the moment something is already wrong.
+     */
     @Test
     void shouldPlaceExtensionMembersAtTheTopLevel() {
         MockMvcResponse response = postInvalidPaymentRequest();
@@ -49,6 +57,15 @@ class ProblemDetailShapeApiTest extends AbstractIntegrationTest {
                 "`violations` must be a top-level member, as BaseError declares: " + response.asString());
     }
 
+    /**
+     * <b>X9-SIG-021</b> — extension members are not nested under a properties object.
+     *
+     * <p><b>Source:</b> RFC 9457. Conformance.
+     *
+     * <p><b>Why:</b> Spring's ProblemDetail serialises extensions under "properties" by default. Shipping that
+     * would be non-conformant by accident, and is exactly the kind of framework default that
+     * survives unnoticed because the body still looks plausible.
+     */
     @Test
     void shouldNotNestExtensionMembersUnderAPropertiesObject() {
         MockMvcResponse response = postInvalidPaymentRequest();
@@ -57,6 +74,13 @@ class ProblemDetailShapeApiTest extends AbstractIntegrationTest {
                 "extension members must not be wrapped in a `properties` object: " + response.asString());
     }
 
+    /**
+     * <b>X9-SIG-022</b> — the standard problem detail members are kept.
+     *
+     * <p><b>Source:</b> RFC 9457 §3.1 — type, title, status, detail, instance. Conformance.
+     *
+     * <p><b>Why:</b> Fixing the nesting must not drop the members a client keys on.
+     */
     @Test
     void shouldKeepTheStandardProblemDetailMembers() {
         MockMvcResponse response = postInvalidPaymentRequest();

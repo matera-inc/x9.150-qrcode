@@ -110,6 +110,14 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
     // Core flow: FedNow (original tests, preserved order)
     // ===========================================================================================
 
+    /**
+     * <b>X9-LIFE-100</b> — a payment request is created.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §13, §14 — the payload's required elements. Conformance.
+     *
+     * <p><b>Why:</b> The first step of the ordered flow, and the fixture every later step depends on. An
+     * end-to-end test that creates nothing proves nothing after it.
+     */
     @Test
     @Order(10)
     void testCreatePaymentRequest() {
@@ -121,10 +129,13 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Postel's law: the canonical wire value for paymentTiming is lowercase ("deferred"/"immediate",
-     * ANSI X9.150 §13.1), which is always what we EMIT. On INPUT we are lenient and accept any case
-     * ("deferred", "DEFERRED", "Deferred", ...), normalizing it — the request must be ACCEPTED (201),
-     * never rejected with a 400, and the persisted/returned payload must emit lowercase "deferred".
+     * <b>X9-LIFE-101</b> — paymentTiming is read in any case and emitted in the spec's spelling.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §13.2 — the enum values are lowercase. INTERPRETATION I-1: strict in what we
+     * emit, lenient in what we accept.
+     *
+     * <p><b>Why:</b> A biller sending "IMMEDIATE" has made no mistake worth a 400, but the QR Code we mint must
+     * carry the spelling every payer app expects to read.
      */
     @Order(15)
     @ParameterizedTest(name = "create accepts paymentTiming \"{0}\" and emits lowercase \"deferred\"")
@@ -168,6 +179,14 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
                 "paymentTiming must be emitted as canonical lowercase regardless of input casing");
     }
 
+    /**
+     * <b>X9-LOC-040</b> — a location held by a live QR Code cannot be claimed at creation.
+     *
+     * <p><b>Source:</b> Ours. Location reuse is this implementation's.
+     *
+     * <p><b>Why:</b> The create path and the patch path both reach locations, so the guard must exist on both. A
+     * rule enforced on only one door is not enforced.
+     */
     @Test
     @Order(20)
     void testCreatePaymentRequestWithActiveExistingLocation() {
@@ -183,6 +202,14 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
                 .log().all();
     }
 
+    /**
+     * <b>X9-LOC-041</b> — the payload is retrieved by location, signed.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §8 — the payer's app fetches the payload from the URL in the QR Code.
+     * Conformance.
+     *
+     * <p><b>Why:</b> The step a real payer actually performs. Everything the biller created exists to be read here.
+     */
     @Test
     @Order(30)
     void testRetrievePaymentPayloadByLocation() throws Exception {
@@ -219,6 +246,14 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         assertEquals(expectedResponse.getRevision(), response.getRevision());
     }
 
+    /**
+     * <b>X9-SIG-100</b> — an EMV payload decodes and verifies against the published certificate.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §10 — x5u and jku resolution. Conformance.
+     *
+     * <p><b>Why:</b> Parameterised over the certificate endpoint types, because a deployment choosing one route
+     * must not depend on the other being configured.
+     */
     @Order(35)
     @ParameterizedTest
     @EnumSource(value = CertificateEndpointTypeEnum.class)
@@ -259,6 +294,14 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         assertNotNull(response.getPaymentMethods());
     }
 
+    /**
+     * <b>X9-PATCH-030</b> — a payment request is edited.
+     *
+     * <p><b>Source:</b> Ours — X9.150 describes the payload, not editing. ADR-0016.
+     *
+     * <p><b>Why:</b> The flow's edit step. Placed before the status transitions deliberately, because editing after
+     * settlement is a different question with a different answer.
+     */
     @Test
     @Order(40)
     void testPatchPaymentRequest() {
@@ -281,6 +324,14 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         assertNotNull(response.getQrCode());
     }
 
+    /**
+     * <b>X9-PATCH-031</b> — the edit is visible on a subsequent read.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> A write nobody can observe is a write that did not happen. This is the assertion that would
+     * have caught the unmatched-currency drop, where a patch answered 200 and changed nothing.
+     */
     @Test
     @Order(45)
     void testGetPaymentRequestAfterPatch() throws IOException {
@@ -308,6 +359,15 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         assertEquals(expectedResponse.getRevision(), response.getRevision());
     }
 
+    /**
+     * <b>X9-LIFE-102</b> — a status transition is applied.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §9 — status governs the lifecycle. Conformance; who decides settlement is
+     * ours, ADR-0014.
+     *
+     * <p><b>Why:</b> Settlement is the consuming system's call, so the transition is driven through the API rather
+     * than inferred from a notification.
+     */
     @Test
     @Order(50)
     void testPutPaymentRequestStatusUpdate() {
@@ -327,6 +387,14 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         assertEquals(QRCodeStatusDTO.PAID, response.getStatus());
     }
 
+    /**
+     * <b>X9-LIFE-103</b> — the new status is visible on a subsequent read.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> As PATCH-031: the transition has to be observable, because that read is how the biller's own
+     * system learns what happened.
+     */
     @Test
     @Order(60)
     void testGetPaymentRequestAfterPutStatusUpdate() throws IOException {
@@ -358,6 +426,14 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         assertEquals(expectedResponse.getRevision(), response.getRevision());
     }
 
+    /**
+     * <b>X9-LOC-042</b> — a location is reused once its holder is no longer live.
+     *
+     * <p><b>Source:</b> Ours.
+     *
+     * <p><b>Why:</b> The printed sticker outlives the bill. Reuse is the whole reason locations are separate from
+     * QR Code ids.
+     */
     @Test
     @Order(70)
     void testQRCodeLocationReuse() {
@@ -380,6 +456,14 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         qrcodeId = response.getId();
     }
 
+    /**
+     * <b>X9-LIFE-104</b> — a payment notification completes the cycle.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §9. Conformance.
+     *
+     * <p><b>Why:</b> Closes the loop: created, fetched, paid, reported. The steps are ordered because each one's
+     * output is the next one's input, which is also what makes a failure easy to locate.
+     */
     @Test
     @Order(80)
     void testPostPaymentNotification() throws Exception {
@@ -414,6 +498,15 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
     // Parameterized full-flow tests for each payment rail (FedNow, ACH)
     // ===========================================================================================
 
+    /**
+     * <b>X9-RAIL-110</b> — the full create-and-settle flow works on every interpreted rail.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §14.5 for the bank rails; Solana on its Foundation's published embedding
+     * (ADR-0010).
+     *
+     * <p><b>Why:</b> Parameterised over every rail we interpret. A flow proven on one rail says nothing about the
+     * others — they carry different fields and different evidence.
+     */
     @ParameterizedTest(name = "Full flow: {0}")
     @MethodSource("paymentRailProvider")
     @Order(90)
@@ -459,6 +552,14 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         assertEquals(config.networkName(), afterStatusUpdate.getPaymentDetails().getNetwork());
     }
 
+    /**
+     * <b>X9-SIG-101</b> — signing and payload retrieval work on every interpreted rail.
+     *
+     * <p><b>Source:</b> Conformance, as RAIL-110.
+     *
+     * <p><b>Why:</b> The payload embeds each rail's own network object, so signing and verification must survive
+     * every shape we publish.
+     */
     @ParameterizedTest(name = "Signature payload flow: {0}")
     @MethodSource("paymentRailProvider")
     @Order(92)
@@ -523,6 +624,14 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
                 .log().all();
     }
 
+    /**
+     * <b>X9-RAIL-111</b> — a payment notification is accepted on every interpreted rail.
+     *
+     * <p><b>Source:</b> Conformance, as RAIL-110.
+     *
+     * <p><b>Why:</b> Each rail's notification carries different evidence — a bank rail has no transaction hash, a
+     * chain has no routing number — so acceptance has to be proven per rail, not once.
+     */
     @ParameterizedTest(name = "Notification flow: {0}")
     @MethodSource("paymentRailProvider")
     @Order(92)
@@ -554,6 +663,14 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
     // Tip-specific tests (rail-independent)
     // ===========================================================================================
 
+    /**
+     * <b>X9-TIP-120</b> — a malformed tip is refused at creation.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §13.6. Conformance.
+     *
+     * <p><b>Why:</b> Tip terms are validated when the bill is created, which is the only moment the biller can
+     * still fix them. By the time a payer tips, the QR Code is printed.
+     */
     @Test
     @Order(105)
     void testRejectCreatePaymentRequestWithInvalidTip() {
@@ -565,6 +682,13 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         assertTrue(errors.get(0).contains("cannot provided range or presets when tip is not allowed"));
     }
 
+    /**
+     * <b>X9-TIP-121</b> — a bill can be created with no tip block.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §13.6 — tip is optional. Conformance.
+     *
+     * <p><b>Why:</b> Most bills do not offer a tip, so this is the common path rather than an edge case.
+     */
     @Test
     @Order(110)
     void testCreatePaymentRequestWithoutTip() {
@@ -575,6 +699,17 @@ class QRCodesApisFlowTest extends AbstractIntegrationTest {
         assertNotNull(response.getQrCode());
     }
 
+    /**
+     * <b>X9-TIP-122</b> — a bill created without a tip reports tips as not allowed.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §13.6.1, and the payload documentation's promise that omitting `tip` and
+     * sending {"allowed": false} are the same state. Conformance.
+     *
+     * <p><b>Why:</b> A payer must never have to distinguish "no tip offered" from "tips refused" — there is no such
+     * distinction to draw. For a release the two were NOT the same: omitting worked and sending
+     * {"allowed": false} returned 400, so the documentation was describing a service that did not
+     * exist.
+     */
     @Test
     @Order(120)
     void testGetPaymentRequestWithoutTip() {

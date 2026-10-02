@@ -78,6 +78,15 @@ class SolanaPaymentMethodApiTest extends AbstractIntegrationTest {
 
     // --------------------------------------------------------------------------- the published shape
 
+    /**
+     * <b>X9-RAIL-040</b> — a Solana method round-trips with both published fields.
+     *
+     * <p><b>Source:</b> Ours, on the Solana Foundation's published embedding — recipient plus optional memo.
+     * ADR-0010, official-spec/SOLANA-FIELDS.md. X9.150 §14.5 fixes only where the object hangs.
+     *
+     * <p><b>Why:</b> The acceptance case. X9.150 specifies the style and the root of a payment method; the inner
+     * JSON belongs to the network's owner, so these two fields are the Foundation's, not ours.
+     */
     @Test
     void aSolanaMethodRoundTripsWithBothPublishedFields() {
         JsonPath qrCode = createAndRead(
@@ -90,7 +99,14 @@ class SolanaPaymentMethodApiTest extends AbstractIntegrationTest {
                 "the memo must survive exactly as the biller wrote it: " + qrCode.prettify());
     }
 
-    /** `memo` is optional (M/O column: O). A method with only a recipient is complete. */
+    /**
+     * <b>X9-RAIL-041</b> — the Solana memo is optional.
+     *
+     * <p><b>Source:</b> Ours, per the published embedding.
+     *
+     * <p><b>Why:</b> A QR Code offering only bank rails has nowhere to put a memo, so requiring it would make
+     * Solana unusable alongside them.
+     */
     @Test
     void theMemoIsOptional() {
         JsonPath qrCode = createAndRead("""
@@ -101,9 +117,13 @@ class SolanaPaymentMethodApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * The memo is carried verbatim and never composed by this service. The published table says the
-     * payload ID <em>should</em> be included as {@code {QRCD:"payloadID"}}, but composing that value
-     * on the biller's behalf would mean rewriting a field they chose. See INTERPRETATION.md I-8.
+     * <b>X9-RAIL-042</b> — the memo is carried, never composed by us.
+     *
+     * <p><b>Source:</b> Ours. INTERPRETATION I-8 — we carry the memo, we do not compose it.
+     *
+     * <p><b>Why:</b> The memo is the fallback channel for matching an unannounced on-chain payment to a bill.
+     * Rewriting it would break the biller's own matching while looking like a helpful
+     * normalisation.
      */
     @Test
     void theMemoIsNeverRewrittenByUs() {
@@ -115,7 +135,13 @@ class SolanaPaymentMethodApiTest extends AbstractIntegrationTest {
 
     // ------------------------------------------------------------------------------- refusals
 
-    /** `recipient` is mandatory (M). A Solana method without one names no destination at all. */
+    /**
+     * <b>X9-RAIL-043</b> — a Solana method without a recipient is refused.
+     *
+     * <p><b>Source:</b> Ours, per the published embedding — recipient is required.
+     *
+     * <p><b>Why:</b> A chain method with no destination is a QR Code that cannot be paid, discovered at the till.
+     */
     @Test
     void aSolanaMethodWithoutARecipientIsRefused() {
         String response = createExpectingRejection("""
@@ -125,8 +151,13 @@ class SolanaPaymentMethodApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * The guess this replaced used `walletAddress`. Sending it now is simply an unknown field, and
-     * the schema refuses it rather than accepting a method with no destination.
+     * <b>X9-RAIL-044</b> — the field name we once guessed is refused.
+     *
+     * <p><b>Source:</b> Ours. ADR-0010 — a rail is interpreted on its owner's publication, not on our guess.
+     *
+     * <p><b>Why:</b> Before the Foundation's embedding was published this field had a name we had invented.
+     * Continuing to accept it would quietly bless the guess and spread it to adopters as if it were
+     * part of the standard.
      */
     @Test
     void theOldGuessedFieldNameIsRefused() {
@@ -134,6 +165,14 @@ class SolanaPaymentMethodApiTest extends AbstractIntegrationTest {
             { "walletAddress": "%s" }""".formatted(RECIPIENT));
     }
 
+    /**
+     * <b>X9-RAIL-045</b> — a recipient that is not base58 of the right length is refused.
+     *
+     * <p><b>Source:</b> Ours, per the Solana Foundation's published embedding. ADR-0010.
+     *
+     * <p><b>Why:</b> A malformed address is money sent nowhere and nothing downstream can recover it.
+     * Caught at creation, because after that the QR Code is printed and in somebody's hands.
+     */
     @ParameterizedTest(name = "recipient {0} is refused")
     @ValueSource(strings = {
         "0OIl1111111111111111111111111111111111111111",
@@ -146,9 +185,13 @@ class SolanaPaymentMethodApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Base58 is variable-length: a 32-byte key encodes to 43 or 44 characters, and roughly one in
-     * twenty-nine lands on 43. The published table says "44"; reading that as an exact width would
-     * reject real wallets, so it is read as a maximum. See INTERPRETATION.md I-8.
+     * <b>X9-RAIL-046</b> — a 43-character recipient is accepted.
+     *
+     * <p><b>Source:</b> Ours. INTERPRETATION I-8 — the published length is a MAXIMUM, not a width.
+     *
+     * <p><b>Why:</b> Valid Solana addresses are 43 or 44 characters. Reading the figure as a fixed width would
+     * refuse a legitimate address roughly half the time — the kind of bug that looks like
+     * flakiness.
      */
     @Test
     void aFortyThreeCharacterRecipientIsAccepted() {
@@ -160,7 +203,13 @@ class SolanaPaymentMethodApiTest extends AbstractIntegrationTest {
         assertEquals(fortyThree, qrCode.getString("paymentMethods[0].networks.solana.recipient"));
     }
 
-    /** The memo has a published ceiling of 100 characters. */
+    /**
+     * <b>X9-RAIL-047</b> — a memo beyond its published limit is refused.
+     *
+     * <p><b>Source:</b> Ours, per the published embedding.
+     *
+     * <p><b>Why:</b> Refused at the door rather than truncated downstream where neither side would be told.
+     */
     @Test
     void aMemoBeyondOneHundredCharactersIsRefused() {
         createExpectingRejection("""

@@ -35,12 +35,12 @@ class PaymentEventLogContractTest extends AbstractIntegrationTest {
     private MongoTemplate mongoTemplate;
 
     /**
-     * The log is bounded.
+     * <b>X9-EVT-020</b> — the event log expires rather than growing forever.
      *
-     * <p>It cannot be emptied on acknowledgement — a cursor consumer may legitimately rewind, and a
-     * second consumer may be added later, so deleting what one reader has seen would destroy the
-     * record for everyone (ADR-0014). A TTL is the way to bound it without giving any single
-     * consumer that power.
+     * <p><b>Source:</b> Ours. ADR-0014 — the stream is a transport, not an archive.
+     *
+     * <p><b>Why:</b> A consumer offline longer than the retention loses events, and that is a deliberate trade
+     * stated in the contract rather than an unbounded collection discovered in production.
      */
     @Test
     void theEventLogExpiresRatherThanGrowingForever() {
@@ -60,21 +60,13 @@ class PaymentEventLogContractTest extends AbstractIntegrationTest {
     }
 
     /**
-     * A payer announces ten and reports nine, and both figures reach the consumer.
+     * <b>X9-EVT-021</b> — both the announced and the reported amount reach the consumer.
      *
-     * <p>This is the property ADR-0014 rests on. We do not compare the two: the consuming system
-     * does, because it is the one matching against funds that actually arrived, and because "nine
-     * instead of ten" may be gas deducted at source, slippage, a tolerated shortfall or fraud —
-     * a policy that differs per biller and that a transport has no business holding.
+     * <p><b>Source:</b> Ours. ADR-0014 — we transport and sequence, the consumer reconciles.
      *
-     * <p>That division of labour only works while each event carries its own amount. A well-meaning
-     * tidy-up — moving `amount` onto "the payment" rather than onto each event — would silently
-     * remove the consumer's ability to notice the discrepancy at all, and nothing else in the suite
-     * would go red.
-     *
-     * <p>Note the post-commit is accepted. It has to be: the money has moved, and refusing a report
-     * of fact would be a lie about reality. Only the pre-commit is judged, because only there can
-     * anyone still say no.
+     * <p><b>Why:</b> What the payer SAID they would pay and what they LATER reported paying are different facts,
+     * and only the consumer can decide what a difference between them means. Collapsing them here
+     * would make that reconciliation impossible.
      */
     @Test
     void anAnnouncedAndAReportedAmountBothReachTheConsumer() {

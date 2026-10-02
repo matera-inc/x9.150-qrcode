@@ -28,6 +28,15 @@ class MateraAdoptQRCodeEMVServiceTest {
         );
     }
 
+    /**
+     * <b>X9-LOC-030</b> — the payload URL is extracted from EMV tag 26.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §7 / EMVCo — tag 26 carries the merchant account information, and within it
+     * the URL a payer fetches. Conformance.
+     *
+     * <p><b>Why:</b> This is how a scanned image becomes a request. Extracting the wrong substring sends the payer
+     * to the wrong place, or nowhere, with a QR Code that scans perfectly.
+     */
     @ParameterizedTest
     @MethodSource("inputEmvToDecode")
     void testExtractPayloadUrl(String emv, String expectedUrl) {

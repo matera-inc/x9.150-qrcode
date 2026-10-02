@@ -63,31 +63,53 @@ class RequestLoggerFilterStatusTest {
         return filter.loggedStatus.get();
     }
 
+    /**
+     * <b>X9-SIG-060</b> — a refusal is logged as a refusal.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> The status was read BEFORE the filter chain ran, so every request was logged as 200 —
+     * including refusals. An adopter reported a 500 our own access log showed as a success, which is
+     * the worst state for an operator: the evidence disagrees with reality.
+     */
     @Test
     void aRefusalIsLoggedAsARefusal() throws Exception {
         assertEquals(401, statusLoggedFor(401),
                 "an unverifiable JWS is refused; the log must not call that a success");
     }
 
+    /**
+     * <b>X9-SIG-061</b> — a failure is logged as a failure.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> 500s invisible in the access log means nobody goes looking until a counterparty complains.
+     */
     @Test
     void aFailureIsLoggedAsAFailure() throws Exception {
         assertEquals(500, statusLoggedFor(500),
                 "the case that misled a debugging session: a 500 reported as 200");
     }
 
+    /**
+     * <b>X9-SIG-062</b> — a success is still logged as a success.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> The control. A filter that logged everything as 500 would satisfy the two above.
+     */
     @Test
     void aSuccessIsStillLoggedAsASuccess() throws Exception {
         assertEquals(200, statusLoggedFor(200));
     }
 
     /**
-     * The half the first fix missed, found by an adopter running against a real deployment.
+     * <b>X9-SIG-063</b> — an exception escaping the chain is logged as a 500.
      *
-     * <p>Reading the status late is not enough when the handler THROWS. The container turns an
-     * escaped exception into a 500 during the ERROR dispatch, which happens after this filter has
-     * unwound — so at the moment the filter reads it, the response still carries the servlet default
-     * of 200. A genuine 500 was logged as a success, and the first version of this test never caught
-     * it because its stub chain always returned normally.
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> The first fix covered handled errors only. An exception escaping the chain still logged 200,
+     * so the half-fix left exactly the case an operator most needs — found by an adopter, not by us.
      */
     @Test
     void anEscapedExceptionIsLoggedAsA500() {

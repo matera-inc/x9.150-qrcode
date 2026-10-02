@@ -82,6 +82,14 @@ class EcSigningIdentityApiTest extends AbstractIntegrationTest {
         return ECKey.parse(certificate);
     }
 
+    /**
+     * <b>X9-SIG-040</b> — the service signs with its EC key.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §10 — the X9-approved suite permits both RSA and EC. INTERPRETATION I-7.
+     *
+     * <p><b>Why:</b> An implementation that only ever signs RSA will appear to work until it meets a deployment
+     * configured with an EC identity, which the standard explicitly allows.
+     */
     @Test
     void theServiceSignsWithItsEcKey() throws Exception {
         String jws = sign("{\"hello\":\"world\"}");
@@ -93,13 +101,12 @@ class EcSigningIdentityApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Not merely "it returned something shaped like a JWS": the signature must actually verify
-     * against the public key of the certificate we claim to be.
+     * <b>X9-SIG-041</b> — that signature verifies against our published certificate.
      *
-     * <p>The critical headers have to be declared to the verifier. X9.150 requires
-     * {@code correlationId}, {@code iat} and {@code ttl} in {@code crit}, and Nimbus refuses to
-     * verify a JWS carrying critical parameters a verifier was not told to expect — by returning
-     * {@code false} rather than raising, which is an easy afternoon to lose.
+     * <p><b>Source:</b> RFC 7515. Conformance.
+     *
+     * <p><b>Why:</b> Signing with a key nobody can verify against is signing nothing. Closes the loop between what
+     * we sign with and what we publish.
      */
     @Test
     void thatSignatureVerifiesAgainstOurCertificate() throws Exception {
@@ -111,7 +118,14 @@ class EcSigningIdentityApiTest extends AbstractIntegrationTest {
                 "the JWS must verify against the EC certificate this deployment publishes");
     }
 
-    /** What a counterparty fetches to verify us: it has to describe an EC key, not an RSA one. */
+    /**
+     * <b>X9-SIG-042</b> — the published JWK set describes an EC key.
+     *
+     * <p><b>Source:</b> RFC 7517. Conformance.
+     *
+     * <p><b>Why:</b> A payer resolves our key through the jku. If the JWK set described the wrong key type, every
+     * verification fails with an error about the algorithm rather than about the key.
+     */
     @Test
     void thePublishedJwkSetDescribesAnEcKey() {
         JsonPath jwks = given().when().get("/pub/.well-known/jwks")

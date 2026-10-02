@@ -109,6 +109,15 @@ class PaymentNotificationDispatchApiTest extends AbstractIntegrationTest {
                 .extract().path("status");
     }
 
+    /**
+     * <b>X9-RAIL-100</b> — an ACH notification takes the QR Code out of circulation.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 A.11 — for ACH the payee's PSP should update status to initiated on receipt.
+     * Conformance.
+     *
+     * <p><b>Why:</b> ACH origination is not settlement, so the QR Code is reserved rather than paid — exactly what
+     * A.11 describes.
+     */
     @Test
     void anACHNotificationTakesTheQRCodeOutOfCirculation() {
         String qrCodeId = create(qrCodeOffering("ach"));
@@ -121,6 +130,15 @@ class PaymentNotificationDispatchApiTest extends AbstractIntegrationTest {
                 "an ACH notification announces a debit that has not happened yet, so it reserves the QR Code");
     }
 
+    /**
+     * <b>X9-RAIL-101</b> — a FedNow notification is recorded without settling.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 A.11 — on a successful payment the payer's PSP sends the notification.
+     * Conformance; what the payee then does with it is ours, ADR-0014.
+     *
+     * <p><b>Why:</b> We transport and sequence; the consuming system reconciles. Settling automatically would mean
+     * trusting a counterparty's claim about money we have not seen arrive.
+     */
     @Test
     void aFedNowNotificationIsRecordedWithoutChangingStatus() {
         String qrCodeId = create(qrCodeOffering("fednow"));
@@ -133,9 +151,11 @@ class PaymentNotificationDispatchApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * A rail the QR Code does not offer must be refused. The old check asked only whether the QR
-     * Code supported <em>some</em> rail of the right family, so a mismatch within a family slipped
-     * through.
+     * <b>X9-RAIL-102</b> — a rail the QR Code does not offer is refused.
+     *
+     * <p><b>Source:</b> Conformance — the QR Code publishes what it accepts.
+     *
+     * <p><b>Why:</b> A payment by a route the biller never published details for did not pay this bill.
      */
     @Test
     void aRailTheQRCodeDoesNotOfferIsRefused() {
@@ -149,9 +169,14 @@ class PaymentNotificationDispatchApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * The direct heir to the original bug: a network this build does not interpret must be refused,
-     * not waved through. Silence is the dangerous answer — the payer walks away believing the payee
-     * was told.
+     * <b>X9-RAIL-103</b> — an uninterpreted network is rejected, not ignored.
+     *
+     * <p><b>Source:</b> Ours. ADR-0012 — and the deliberate asymmetry of I-9: ignoring is for DECODING someone
+     * else's payload, not for accepting a payment against our own.
+     *
+     * <p><b>Why:</b> A rail added to the enum without a validation branch used to fall through unvalidated — the
+     * same silent hole that once let Base, XRP and Arc be accepted and ignored. The switch is an
+     * EXPRESSION now, so the next rail is a compile error instead.
      */
     @Test
     void anUninterpretedNetworkIsRejectedNotIgnored() {

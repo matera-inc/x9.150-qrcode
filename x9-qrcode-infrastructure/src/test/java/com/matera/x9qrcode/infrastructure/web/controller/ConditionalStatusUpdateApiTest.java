@@ -93,6 +93,16 @@ class ConditionalStatusUpdateApiTest extends AbstractIntegrationTest {
 
     // ------------------------------------------------------------------ the condition holds
 
+    /**
+     * <b>X9-LIFE-030</b> — a transition is applied when the entity tag still matches.
+     *
+     * <p><b>Source:</b> Ours. HTTP conditional requests (RFC 9110 If-Match) applied to a status transition; X9.150
+     * says nothing about editing. ADR-0016.
+     *
+     * <p><b>Why:</b> The acceptance case for compare-and-set. Requested by an adopter who needed "cancel only if
+     * still ACTIVE" and could otherwise only do check-then-act, with a payer able to reserve the QR
+     * Code between the two calls.
+     */
     @Test
     void aTransitionIsAppliedWhenTheRevisionStillMatches() {
         String id = createQRCode();
@@ -103,6 +113,14 @@ class ConditionalStatusUpdateApiTest extends AbstractIntegrationTest {
         assertEquals("CANCELLED", statusOf(id));
     }
 
+    /**
+     * <b>X9-LIFE-031</b> — an update without If-Match is still unconditional.
+     *
+     * <p><b>Source:</b> RFC 9110 — If-Match is optional. Conformance.
+     *
+     * <p><b>Why:</b> Making the header mandatory would break every existing caller. The protection is opt-in, and
+     * a caller that does not need it is not forced to carry a tag.
+     */
     @Test
     void anUnconditionalUpdateStillWorks() {
         String id = createQRCode();
@@ -112,7 +130,14 @@ class ConditionalStatusUpdateApiTest extends AbstractIntegrationTest {
         assertEquals("CANCELLED", statusOf(id));
     }
 
-    /** `*` is HTTP's "any current representation", which every existing QR Code satisfies. */
+    /**
+     * <b>X9-LIFE-032</b> — If-Match: * means no condition.
+     *
+     * <p><b>Source:</b> RFC 9110 §13.1.1 — "*" matches any current representation. Conformance.
+     *
+     * <p><b>Why:</b> A generic HTTP client that always sends If-Match must not be refused for using the wildcard
+     * the specification defines for exactly that case.
+     */
     @Test
     void anAsteriskMeansNoCondition() {
         String id = createQRCode();
@@ -123,7 +148,12 @@ class ConditionalStatusUpdateApiTest extends AbstractIntegrationTest {
     // ------------------------------------------------------- the condition no longer holds
 
     /**
-     * The race, made deterministic: read at one revision, something happens, then write.
+     * <b>X9-LIFE-033</b> — a transition is refused when the QR Code changed after it was read.
+     *
+     * <p><b>Source:</b> RFC 9110 §13.1.1 — 412 Precondition Failed. Conformance.
+     *
+     * <p><b>Why:</b> The race this exists to close: a payer reaches PAYMENT_INITIATED between the read that decided
+     * to cancel and the write that applies it. Small window, and the consequence is money.
      */
     @Test
     void aTransitionIsRefusedWhenTheQRCodeChangedAfterItWasRead() {
@@ -143,7 +173,16 @@ class ConditionalStatusUpdateApiTest extends AbstractIntegrationTest {
                 "and nothing may have been written — a payer is midway through paying this");
     }
 
-    /** The refusal has to be actionable without a second request. */
+    /**
+     * <b>X9-LIFE-034</b> — the refusal reports what was actually found.
+     *
+     * <p><b>Source:</b> Ours. The status code is RFC 9110's; returning currentStatus and currentRevision with it is
+     * this implementation's.
+     *
+     * <p><b>Why:</b> A 412 that only says "no" costs the caller another round trip to find out why. With the
+     * current state attached, the adopter decides directly: PAID means treat it as a payment,
+     * CANCELLED means the work is already done.
+     */
     @Test
     void theRefusalReportsWhatWasActuallyFound() {
         String id = createQRCode();
@@ -163,12 +202,13 @@ class ConditionalStatusUpdateApiTest extends AbstractIntegrationTest {
     // ------------------------------------------------------------------------- malformed
 
     /**
-     * A tag we do not recognise is a tag that does not match, and the write is refused.
+     * <b>X9-LIFE-035</b> — an unrecognised If-Match is refused rather than ignored.
      *
-     * <p>There is no "malformed" for an opaque token: any string either equals what the QR Code is
-     * at, or it does not. Refusing with 412 is both correct and the safe direction — treating an
-     * unreadable condition as "no condition" would apply the very write the caller was trying to
-     * make conditional.
+     * <p><b>Source:</b> RFC 9110 — an unsatisfiable precondition fails. Conformance.
+     *
+     * <p><b>Why:</b> Fails CLOSED. A header the server cannot interpret must not be silently dropped, or a caller
+     * who believes they are protected is not — which is worse than never offering the header, and
+     * is exactly what happened when If-Match went undeclared on PATCH.
      */
     @Test
     void anUnrecognisedIfMatchIsRefusedRatherThanIgnored() {
@@ -180,7 +220,14 @@ class ConditionalStatusUpdateApiTest extends AbstractIntegrationTest {
         assertEquals("ACTIVE", statusOf(id), "and nothing was written");
     }
 
-    /** Quoted and weak entity tags are what real HTTP clients send. */
+    /**
+     * <b>X9-LIFE-036</b> — a quoted or weak entity tag is accepted.
+     *
+     * <p><b>Source:</b> RFC 9110 §8.8.3 — entity tags are quoted and may be weak (W/). Conformance.
+     *
+     * <p><b>Why:</b> Clients and proxies normalise tags differently. Rejecting W/"1-ACTIVE" would make the feature
+     * work or not depending on the HTTP stack in between.
+     */
     @Test
     void aQuotedOrWeakEntityTagIsAccepted() {
         String first = createQRCode();
@@ -193,9 +240,13 @@ class ConditionalStatusUpdateApiTest extends AbstractIntegrationTest {
     // ------------------------------------------- it is a precondition, not a legality check
 
     /**
-     * 412 and 409 answer different questions, and a caller acts differently on each: 409 means the
-     * transition is not legal from where the QR Code is; 412 means it may well be legal, but you
-     * decided on something stale.
+     * <b>X9-LIFE-037</b> — an illegal transition is 409, not 412.
+     *
+     * <p><b>Source:</b> RFC 9110 — 412 means the precondition failed; 409 means the request conflicts with state.
+     * Conformance.
+     *
+     * <p><b>Why:</b> The tag matched, so the caller's view was current — the transition is simply not allowed.
+     * Returning 412 would tell them to re-read and retry, which would fail identically forever.
      */
     @Test
     void anIllegalTransitionIsStillA409NotA412() {

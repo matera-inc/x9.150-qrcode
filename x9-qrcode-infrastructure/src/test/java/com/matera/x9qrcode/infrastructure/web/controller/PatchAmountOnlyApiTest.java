@@ -84,6 +84,17 @@ class PatchAmountOnlyApiTest extends AbstractIntegrationTest {
                 .extract().path(path).toString();
     }
 
+    /**
+     * <b>X9-PATCH-020</b> — the amount alone can be reduced.
+     *
+     * <p><b>Source:</b> Ours. Reducing a bill after a partial payment is the common use of PATCH; X9.150 does not
+     * describe editing.
+     *
+     * <p><b>Why:</b> This was BROKEN for a release. The "has anything changed?" guard compared payment methods with
+     * equals(), and every value object compared equal to every other because Lombok's
+     * @EqualsAndHashCode omitted the inherited field — so an amount-only patch looked like no change
+     * at all and was refused.
+     */
     @Test
     void theAmountAloneCanBeReduced() {
         String id = createQRCode();
@@ -95,7 +106,15 @@ class PatchAmountOnlyApiTest extends AbstractIntegrationTest {
         assertEquals("12500", field(id, "paymentMethods[0].amount"));
     }
 
-    /** The point of using PATCH at all: the code already printed must keep working. */
+    /**
+     * <b>X9-PATCH-021</b> — the memo and recipient survive an amount-only patch.
+     *
+     * <p><b>Source:</b> Ours.
+     *
+     * <p><b>Why:</b> The adopter's workaround for the bug above was to drop the memo so the methods differed, then
+     * restore it. That leaves a window where the QR Code carries no {QRCD:...} and an unannounced
+     * payment cannot be matched to the bill. The fields a patch did not mention must not move.
+     */
     @Test
     void theMemoAndRecipientSurviveAnAmountOnlyPatch() {
         String id = createQRCode();
@@ -107,7 +126,14 @@ class PatchAmountOnlyApiTest extends AbstractIntegrationTest {
                 "the memo must not have to be dropped to get an amount change through");
     }
 
-    /** A second reduction, because the first one only proves the guard can be passed once. */
+    /**
+     * <b>X9-PATCH-022</b> — the amount can be reduced a second time.
+     *
+     * <p><b>Source:</b> Ours.
+     *
+     * <p><b>Why:</b> Instalments are not a single event. A rule that works once and refuses the second reduction
+     * fails exactly the case this endpoint exists for.
+     */
     @Test
     void theAmountCanBeReducedAgain() {
         String id = createQRCode();
@@ -119,7 +145,15 @@ class PatchAmountOnlyApiTest extends AbstractIntegrationTest {
         assertEquals("11000", field(id, "paymentMethods[0].amount"));
     }
 
-    /** The guard still has a job: a PATCH that genuinely changes nothing is still refused. */
+    /**
+     * <b>X9-PATCH-023</b> — a patch that changes nothing is still refused.
+     *
+     * <p><b>Source:</b> Ours.
+     *
+     * <p><b>Why:</b> The guard has a real job and keeping it is deliberate. With If-Match available, a retry after
+     * an ambiguous timeout gets 412 if the first attempt landed — which answers the caller's actual
+     * question, where a silent 200 would not.
+     */
     @Test
     void aPatchThatChangesNothingIsStillRefused() {
         String id = createQRCode();

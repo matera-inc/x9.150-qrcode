@@ -65,6 +65,15 @@ class JwsQRCodeSignatureServiceTest extends AbstractIntegrationTest {
         fixtures = DTOFixtures.create();
     }
 
+    /**
+     * <b>X9-SIG-070</b> — signing emits every X9 header.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §10 — the custom JWS headers correlationId, iat and ttl, declared critical.
+     * Conformance.
+     *
+     * <p><b>Why:</b> A verifier that does not understand a header marked `crit` must reject the token. Omitting one
+     * we promised, or failing to mark it, breaks interoperability in opposite directions.
+     */
     @Test
     void shouldSignDataWithAllX9Headers() throws Exception {
         PaymentRequestInputDTO payload = fixtures.paymentRequest().paymentRequestInput();
@@ -104,6 +113,13 @@ class JwsQRCodeSignatureServiceTest extends AbstractIntegrationTest {
         assertTrue(payloadString.contains("USD"));
     }
 
+    /**
+     * <b>X9-SIG-071</b> — a signature we produced validates.
+     *
+     * <p><b>Source:</b> RFC 7515. Conformance.
+     *
+     * <p><b>Why:</b> The round trip. Signing and verification are separate code paths and can drift apart.
+     */
     @Test
     void shouldValidateSignature() {
         PaymentRequestInputDTO paymentRequestInputDTO = fixtures.paymentRequest().paymentRequestInput();
@@ -123,6 +139,14 @@ class JwsQRCodeSignatureServiceTest extends AbstractIntegrationTest {
         assertTrue(signatureService.validateSignature(validationInput).isValid());
     }
 
+    /**
+     * <b>X9-SIG-072</b> — a signed response carries its status code.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §9 — the payee's answer is signed, status included.
+     *
+     * <p><b>Why:</b> The payer acts on that status. Leaving it outside the signature would let an intermediary
+     * change an acceptance into a refusal without breaking the signature.
+     */
     @Test
     void shouldSignResponseDataWithStatusCode() throws Exception {
         PaymentRequestResponseDTO payload = fixtures.paymentRequest().paymentRequestResponse();
@@ -143,6 +167,14 @@ class JwsQRCodeSignatureServiceTest extends AbstractIntegrationTest {
         assertTrue(header.getCriticalParams().contains(JWS_HEADER_STATUS_CODE));
     }
 
+    /**
+     * <b>X9-SIG-073</b> — signing without a correlation id is refused.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §10 — correlationId is a critical header. Conformance.
+     *
+     * <p><b>Why:</b> It is what ties a response to its request. Signing without it produces a token no counterparty
+     * can match to anything.
+     */
     @Test
     void shouldSignDataThrowsExceptionWhenCorrelationIdMissing() {
         PaymentRequestInputDTO payload = fixtures.paymentRequest().paymentRequestInput();
@@ -154,6 +186,14 @@ class JwsQRCodeSignatureServiceTest extends AbstractIntegrationTest {
         assertEquals("correlationId is required for JWS signing", exception.getMessage());
     }
 
+    /**
+     * <b>X9-SIG-074</b> — signing with an invalid TTL is refused.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §10 — ttl is a critical header. Conformance.
+     *
+     * <p><b>Why:</b> A token with no meaningful lifetime is a token that never expires. Refused at signing, because
+     * once issued it cannot be recalled.
+     */
     @Test
     void shouldSignDataThrowsExceptionWhenInvalidTtl() {
         PaymentRequestInputDTO payload = fixtures.paymentRequest().paymentRequestInput();
@@ -166,6 +206,16 @@ class JwsQRCodeSignatureServiceTest extends AbstractIntegrationTest {
         assertEquals("ttl must be a positive value for JWS signing", exception.getMessage());
     }
 
+    /**
+     * <b>X9-LOC-020</b> — a payload request naming another location is refused.
+     *
+     * <p><b>Source:</b> Ours, and NOTE THE LIMIT: this is the self-consistency check only — it asks whether the
+     * submitted content's tag-26 URL contains the requested location. Both halves come from the
+     * caller. The binding against the content we ISSUED is X9-LOC-001..005.
+     *
+     * <p><b>Why:</b> Documented precisely because the limit is easy to miss: for a long time this WAS the whole
+     * check, and it reads like a binding without being one.
+     */
     @Test
     void shouldFailValidateSignatureWhenLocationIdNotMatch() {
         String qrCode = Objects.requireNonNull(paymentRequestApi.createPaymentRequest(fixtures.paymentRequest().paymentRequestInput()).getBody()).getQrCode();
@@ -184,6 +234,14 @@ class JwsQRCodeSignatureServiceTest extends AbstractIntegrationTest {
         assertFalse(signatureService.validateSignature(validationInput).isValid());
     }
 
+    /**
+     * <b>X9-SIG-075</b> — the signing certificate is served.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §10 — the x5u header points at it. Conformance.
+     *
+     * <p><b>Why:</b> A payer resolves our certificate from the URL in the header. If it is not served, every
+     * signature we produce is unverifiable by anyone but us.
+     */
     @Test
     void shouldRetrieveDigitalSignatureCertificate() {
         byte[] pemByteArray = signatureService.retrieveDigitalSignatureCertificate();
@@ -210,6 +268,13 @@ class JwsQRCodeSignatureServiceTest extends AbstractIntegrationTest {
         assertEquals("X.509", certificate.getType(), "Certificate type should be X.509");
     }
 
+    /**
+     * <b>X9-SIG-076</b> — the JWK set is served.
+     *
+     * <p><b>Source:</b> RFC 7517, referenced by the jku header. Conformance.
+     *
+     * <p><b>Why:</b> The other resolution route. Both are advertised, so both must work.
+     */
     @Test
     @SuppressWarnings("unchecked")
     void shouldRetrieveDigitalSignatureJwkSet() {

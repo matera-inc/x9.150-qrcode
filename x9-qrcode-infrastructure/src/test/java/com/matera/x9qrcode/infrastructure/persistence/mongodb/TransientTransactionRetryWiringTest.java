@@ -34,6 +34,15 @@ class TransientTransactionRetryWiringTest extends AbstractIntegrationTest {
     @Autowired
     private PaymentRequestsController paymentRequestsController;
 
+    /**
+     * <b>X9-LIFE-087</b> — the retry advice wraps the transaction advice.
+     *
+     * <p><b>Source:</b> Ours. ADR-0013.
+     *
+     * <p><b>Why:</b> LIFE-086 proven on the actual Spring bean rather than in isolation. Advice order is
+     * configuration, so a correct implementation can still be wired the wrong way round, and nothing
+     * else would notice.
+     */
     @Test
     void theRetryAdviceWrapsTheTransactionAdvice() {
         assertTrue(AopUtils.isAopProxy(paymentRequestsController),

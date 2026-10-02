@@ -127,6 +127,14 @@ class JwkSetFacadeBeanKeyTypeTest {
         return facade;
     }
 
+    /**
+     * <b>X9-SIG-090</b> — an EC identity produces an EC JWK and an ECDSA signer.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §10 with INTERPRETATION I-7 — both RSA and EC must work.
+     *
+     * <p><b>Why:</b> The key type decides both what we publish and how we sign. A mismatch between them produces
+     * signatures nobody can verify.
+     */
     @Test
     void anEcIdentityProducesAnEcJwkAndAnEcdsaSigner() throws Exception {
         JwkSetFacadeBean facade = filled("ES256", "x9-test-payer-ec.p12", "x9-test-payer-ec");
@@ -136,6 +144,13 @@ class JwkSetFacadeBeanKeyTypeTest {
         assertInstanceOf(ECDSASigner.class, facade.getSigner());
     }
 
+    /**
+     * <b>X9-SIG-091</b> — an RSA identity still produces an RSA JWK and an RSASSA signer.
+     *
+     * <p><b>Source:</b> Conformance, as SIG-090.
+     *
+     * <p><b>Why:</b> Adding EC support must not break the RSA path that was already in production.
+     */
     @Test
     void anRsaIdentityStillProducesAnRsaJwkAndAnRsassaSigner() throws Exception {
         JwkSetFacadeBean facade = filled("PS512", "x9-test-payer.p12", "x9-test-payer");
@@ -146,12 +161,13 @@ class JwkSetFacadeBeanKeyTypeTest {
     }
 
     /**
-     * A configured algorithm the key cannot produce is a misconfiguration, and it fails at startup
-     * naming both halves.
+     * <b>X9-SIG-092</b> — an algorithm the key cannot produce fails immediately, and says why.
      *
-     * <p>Substituting an algorithm silently would sign with something the operator did not choose;
-     * carrying on regardless would fail later, at the first signature, with a far less obvious
-     * error. Neither is kind to whoever swapped the keystore and forgot the algorithm beside it.
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> Fails at STARTUP rather than at the first signature. A deployment misconfigured this way would
+     * otherwise look healthy and fail on the first real payment, with an error about the algorithm
+     * rather than about the configuration that caused it.
      */
     @Test
     void anAlgorithmTheKeyCannotProduceFailsImmediatelyAndSaysWhy() {
@@ -164,6 +180,13 @@ class JwkSetFacadeBeanKeyTypeTest {
             "name an algorithm that would work: " + thrown.getMessage());
     }
 
+    /**
+     * <b>X9-SIG-093</b> — the same guard catches an EC algorithm on an RSA key.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> Both directions, because a guard written for one mismatch commonly misses its mirror.
+     */
     @Test
     void theSameGuardCatchesAnEcAlgorithmOnAnRsaKey() {
         IllegalStateException thrown = assertThrows(IllegalStateException.class,

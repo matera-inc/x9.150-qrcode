@@ -51,6 +51,17 @@ class JasyptStaysOffTheGcmPathTest extends AbstractIntegrationTest {
     private Environment environment;
 
     /** The three properties that, individually, select the vulnerable encryptor. */
+    /**
+     * <b>X9-SIG-080</b> — no GCM secret-key property is set.
+     *
+     * <p><b>Source:</b> Mechanism, and it answers a specific CVE. CVE-2026-9370 concerns
+     * {@code SimpleGCMConfig.getSecretKeySaltGenerator} in jasypt-spring-boot, reached only via the
+     * {@code jasypt.encryptor.gcm-secret-key-*} properties.
+     *
+     * <p><b>Why:</b> No fixed version exists — we are already on the newest release. This pins the
+     * configuration that keeps the vulnerable class off our code path, so the assessment behind the
+     * dismissal cannot quietly stop being true when somebody adds a property.
+     */
     @ParameterizedTest
     @ValueSource(strings = {
         "jasypt.encryptor.gcm-secret-key-string",
@@ -64,7 +75,14 @@ class JasyptStaysOffTheGcmPathTest extends AbstractIntegrationTest {
                     + "the dismissed Dependabot alert must be reopened.");
     }
 
-    /** And the positive statement: we are on a password-based encryptor, with a modern algorithm. */
+    /**
+     * <b>X9-SIG-081</b> — the configured algorithm is the PBE one.
+     *
+     * <p><b>Source:</b> Mechanism.
+     *
+     * <p><b>Why:</b> The other half of SIG-080: not merely absent GCM properties, but the PBE algorithm positively
+     * in force.
+     */
     @Test
     void thePbeAlgorithmIsTheOneConfigured() {
         String algorithm = environment.getProperty("jasypt.encryptor.algorithm");

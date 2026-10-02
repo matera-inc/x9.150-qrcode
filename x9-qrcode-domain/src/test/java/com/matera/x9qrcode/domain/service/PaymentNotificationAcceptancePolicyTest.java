@@ -131,11 +131,28 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
 
     // ------------------------------------------------- while the discount window is open
 
+    /**
+     * <b>X9-AMT-040</b> — the discounted amount is accepted while the window is open.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §13.5.2 — adjustments to the amount due. Conformance; the formulas
+     * themselves are ours.
+     *
+     * <p><b>Why:</b> The payer fetched the payload, it quoted a discount, they paid it. The acceptance case.
+     */
     @Test
     void theDiscountedAmountIsAcceptedWhileTheWindowIsOpen() {
         assertDoesNotThrow(() -> policy.accept(qrCode(), notificationOf(FACE - DISCOUNT), NOW));
     }
 
+    /**
+     * <b>X9-AMT-041</b> — the face amount is accepted while a discount is available, because it overpays.
+     *
+     * <p><b>Source:</b> Ours. The standard does not say what a payee does with a stale quote.
+     *
+     * <p><b>Why:</b> A payer holding a quote fetched before the discount applied is offering MORE than is owed.
+     * Refusing that would punish somebody who did everything right, and the biller is not harmed by
+     * being paid in full.
+     */
     @Test
     void theFaceAmountIsAcceptedWhileTheWindowIsOpenBecauseItOverpays() {
         // A payer who fetched before the discount applied owes less than they are offering; refusing
@@ -145,6 +162,15 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
 
     // ------------------------------------------------ once the discount window has closed
 
+    /**
+     * <b>X9-AMT-042</b> — an amount calculated with an expired discount is refused.
+     *
+     * <p><b>Source:</b> Ours, the mirror of AMT-041.
+     *
+     * <p><b>Why:</b> Past the window the discount is no longer earnable, so the quote the payer holds is no longer
+     * the amount owed. The asymmetry is the point: overpaying is harmless, underpaying is not, and
+     * the payer's remedy is to fetch the payload again.
+     */
     @Test
     void anAmountCalculatedWithAnExpiredDiscountIsRefused() {
         // 30 days before the due date: past the 60-day window, so the discount is no longer earnable
@@ -159,6 +185,14 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
                 "the reason should name the amount actually owed: " + exception.getMessage());
     }
 
+    /**
+     * <b>X9-AMT-043</b> — the face amount is accepted once the discount window has closed.
+     *
+     * <p><b>Source:</b> Ours.
+     *
+     * <p><b>Why:</b> With no discount earnable, face IS the amount owed. Confirms the window closing changes what
+     * is owed rather than simply refusing everything.
+     */
     @Test
     void theFaceAmountIsAcceptedOnceTheDiscountWindowHasClosed() {
         assertDoesNotThrow(() -> policy.accept(qrCode(), notificationOf(FACE), DUE_DATE.minusDays(30)));
@@ -166,6 +200,14 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
 
     // ------------------------------------------------------- once a late fee has accrued
 
+    /**
+     * <b>X9-AMT-044</b> — the face amount is refused once a late fee has accrued.
+     *
+     * <p><b>Source:</b> Ours.
+     *
+     * <p><b>Why:</b> Past the due date the face amount is an UNDERPAYMENT. A stale quote is not a licence to pay
+     * less than is owed — the same asymmetry as AMT-042, in the other direction.
+     */
     @Test
     void theFaceAmountIsRefusedOnceALateFeeHasAccrued() {
         // Past the due date the face amount is an UNDERPAYMENT. A stale quote is not a licence to
@@ -176,6 +218,14 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
         assertTrue(exception.getMessage().contains("late fee"), exception.getMessage());
     }
 
+    /**
+     * <b>X9-AMT-045</b> — the amount including the late fee is accepted.
+     *
+     * <p><b>Source:</b> Ours.
+     *
+     * <p><b>Why:</b> The acceptance case for the late-fee branch, so AMT-044 cannot pass by refusing everything
+     * after the due date.
+     */
     @Test
     void theAmountIncludingTheLateFeeIsAccepted() {
         assertDoesNotThrow(() -> policy.accept(qrCode(), notificationOf(FACE + LATE_FEE), DUE_DATE.plusHours(1)));
@@ -184,9 +234,13 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
     // ------------------------------------------------------- the per-currency window
 
     /**
-     * The per-currency window is independent of the payload's. It exists for rate and settlement
-     * windows — "I will take this currency for a few minutes" — so a payload that is still perfectly
-     * valid can carry a currency that is not.
+     * <b>X9-AMT-046</b> — a payment method whose own window closed is refused though the payload is still valid.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §14.2 — each payment method carries its own validUntil, distinct from the
+     * payload's. Conformance.
+     *
+     * <p><b>Why:</b> Two windows, and the narrower one governs. A biller withdrawing one rail early must not have
+     * that rail kept alive by the payload's longer life.
      */
     @Test
     void aCurrencyWhoseOwnWindowClosedIsRefusedEvenThoughThePayloadIsStillValid() {
@@ -201,6 +255,14 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
 
     // ---------------------------------------------------------------- the payload's own window
 
+    /**
+     * <b>X9-AMT-047</b> — an expired payload is refused whatever the amount.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §11 — the payload's validUntil. Conformance.
+     *
+     * <p><b>Why:</b> Checked before the amount, so an expired QR Code is told it expired rather than being told its
+     * amount is wrong — which would send the payer off to fix the wrong thing.
+     */
     @Test
     void anExpiredPayloadIsRefusedWhateverTheAmount() {
         OffsetDateTime afterTheQRCodeExpired = DUE_DATE.plusDays(2);
@@ -214,11 +276,13 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
     // ------------------------------------------------------- what a third-party payer may send
 
     /**
-     * A payer echoing the currency in another case is still paying the right currency.
+     * <b>X9-CUR-030</b> — a notified currency matches whatever its case.
      *
-     * <p>The QR Code's own {@code USDC} was held to one spelling when the biller created it —
-     * that is our API, and we control it. What a third-party payer echoes back is not ours to
-     * police, and the fields §2.4 shapes are read the same way the rail is: leniently.
+     * <p><b>Source:</b> ANSI X9.150-2026 §2.3 requires ISO 4217 codes in what we EMIT. How tolerant we are of a third
+     * party's spelling is ours — INTERPRETATION I-1.
+     *
+     * <p><b>Why:</b> Refusing a real payment because the payer's PSP sent "usdc" would be strictness with no
+     * beneficiary. Lenient in what we accept, strict in what we send.
      */
     @ParameterizedTest
     @ValueSource(strings = {"USDC", "usdc", "Usdc", "uSdC"})
@@ -227,7 +291,14 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
             () -> policy.accept(qrCode(), notificationOf(FACE - DISCOUNT, notifiedCurrency), NOW));
     }
 
-    /** Leniency is about spelling, not substance: EUR is still not USDC. */
+    /**
+     * <b>X9-CUR-031</b> — a currency this QR Code does not offer is still refused.
+     *
+     * <p><b>Source:</b> Conformance — the QR Code publishes what it accepts.
+     *
+     * <p><b>Why:</b> The limit of CUR-030's leniency. Forgiving CASE must not become forgiving CURRENCY; a payment
+     * in something never offered has no agreed rate and no agreed rail.
+     */
     @Test
     void aCurrencyThisQRCodeDoesNotOfferIsStillRefused() {
         BusinessRuleException thrown = assertThrows(BusinessRuleException.class,

@@ -129,6 +129,15 @@ class SolanaTwoPhaseNotificationApiTest extends AbstractIntegrationTest {
 
     // ---------------------------------------------------------------------- the flow, end to end
 
+    /**
+     * <b>X9-LIFE-060</b> — a pre-commit notification takes the QR Code out of circulation.
+     *
+     * <p><b>Source:</b> Ours. X9.150 has NO pre/post-commit marker — the committee rejected one — so the phase is
+     * inferred from the absence of a transaction hash. ADR-0002.
+     *
+     * <p><b>Why:</b> Reserving before the money moves is what stops two payers paying the same bill. The inference
+     * is ours and is written down so nobody later mistakes it for a field in the standard.
+     */
     @Test
     void aPreCommitNotificationTakesTheQRCodeOutOfCirculation() {
         String qrCodeId = createSolanaQRCode();
@@ -141,15 +150,12 @@ class SolanaTwoPhaseNotificationApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * A notification with no {@code expectedDate}, which the contract marks optional.
+     * <b>X9-LIFE-061</b> — a notification without the optional expectedDate is accepted.
      *
-     * <p>Every other notification in this suite carries one, and that is exactly why this case went
-     * unnoticed: persisting the notification unwrapped the date without checking, so a payer who
-     * omitted an optional field got a 500 from the payee. Two instances talking to each other found
-     * it on the first real payment.
+     * <p><b>Source:</b> ANSI X9.150-2026 §9 — expectedDate is optional. Conformance.
      *
-     * <p>ACH is the one rail that insists on the date, and it does so in the domain. Solana does
-     * not, so absence here has to be accepted and stored as absent.
+     * <p><b>Why:</b> An optional field was dereferenced and produced a 500 instead of a 201. Optional has to mean
+     * optional, or the schema is describing a service that does not exist.
      */
     @Test
     void aNotificationWithoutTheOptionalExpectedDateIsAccepted() {
@@ -172,8 +178,12 @@ class SolanaTwoPhaseNotificationApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * The settlement boundary, restored along with the rail. A payer reporting a transaction is not
-     * the same as funds arriving, and X9.150 cannot tell the difference — so it does not pretend to.
+     * <b>X9-LIFE-062</b> — a post-commit notification reports without settling.
+     *
+     * <p><b>Source:</b> Ours. ADR-0014 — we transport and sequence, the consumer reconciles.
+     *
+     * <p><b>Why:</b> A committed transaction is evidence, not authority. Settlement stays the consuming system's
+     * call, because only it knows whether the money reached an account it controls.
      */
     @Test
     void aPostCommitNotificationReportsWithoutClearing() {
@@ -189,7 +199,14 @@ class SolanaTwoPhaseNotificationApiTest extends AbstractIntegrationTest {
                 "payment.sent has had no trigger since the blockchains were removed; Solana restores it");
     }
 
-    /** A payer reporting the payment did not proceed releases nothing, but is published. */
+    /**
+     * <b>X9-LIFE-063</b> — a failed payment is published as such.
+     *
+     * <p><b>Source:</b> Ours. ADR-0014.
+     *
+     * <p><b>Why:</b> A failure is an event the consumer needs as much as a success — without it a QR Code sits
+     * reserved with nothing ever explaining why the payment never arrived.
+     */
     @Test
     void aFailedPaymentIsPublishedAsSuch() {
         String qrCodeId = createSolanaQRCode();
@@ -203,9 +220,12 @@ class SolanaTwoPhaseNotificationApiTest extends AbstractIntegrationTest {
     // ------------------------------------------------------------------------------- refusals
 
     /**
-     * The destination must be one this QR Code published. The address is read from {@code recipient}
-     * — the field Solana's own publication names — rather than from the {@code walletAddress}
-     * convention this repository once invented.
+     * <b>X9-RAIL-090</b> — a destination this QR Code never published is refused.
+     *
+     * <p><b>Source:</b> Ours. ADR-0012.
+     *
+     * <p><b>Why:</b> Money sent to an address this QR Code never advertised did not pay this bill, whoever it
+     * reached. Accepting it marks the bill paid while the creditor received nothing.
      */
     @Test
     void aDestinationThisQRCodeNeverPublishedIsRefused() {
@@ -217,7 +237,16 @@ class SolanaTwoPhaseNotificationApiTest extends AbstractIntegrationTest {
         assertEquals("ACTIVE", statusOf(qrCodeId), "a refused notification must change nothing");
     }
 
-    /** Post-commit means a transaction exists, so `SENT` without one is a contradiction. */
+    /**
+     * <b>X9-LIFE-064</b> — a SENT notification without a transaction is refused.
+     *
+     * <p><b>Source:</b> Ours — the phase is inferred from the hash, so the hash is what makes it a post-payment.
+     * ADR-0002.
+     *
+     * <p><b>Why:</b> Claiming money moved while naming no transaction is a claim with no evidence, and since the
+     * phase is inferred from exactly that field, accepting it would make the two phases
+     * indistinguishable.
+     */
     @Test
     void aSentNotificationWithoutATransactionIsRefused() {
         String qrCodeId = createSolanaQRCode();

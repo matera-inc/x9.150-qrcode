@@ -157,8 +157,12 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
     // ------------------------------------------- window 2: the adjustment (discount / late fee)
 
     /**
-     * The discount is live, so the discounted amount is what a payer would be quoted — and what they
-     * may pay.
+     * <b>X9-AMT-090</b> — a discounted amount is accepted while the window is open.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §13.5.2 — adjustments. Conformance; the formulas are ours.
+     *
+     * <p><b>Why:</b> The domain rule proven over HTTP, where the date arrives as a string and the formula runs
+     * against a real clock.
      */
     @Test
     void aDiscountedAmountIsAcceptedWhileTheDiscountWindowIsOpen() {
@@ -205,9 +209,12 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * When the payload advertises {@code editable.range}, the payer picks the amount — a donation, a
-     * top-up, an open tab. Demanding the face amount back would refuse every legitimate use of the
-     * feature.
+     * <b>X9-AMT-091</b> — an amount the payer chose within the published range is accepted.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §14.4 — the presence of `editable` means the payer chooses. Conformance.
+     *
+     * <p><b>Why:</b> Demanding the face amount back would refuse every legitimate use of the feature: a donation,
+     * a top-up, an open tab.
      */
     @Test
     void anAmountThePayerChoseWithinThePublishedRangeIsAccepted() {
@@ -219,6 +226,13 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
         assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
     }
 
+    /**
+     * <b>X9-AMT-092</b> — an amount below the published range is refused.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §14.4.1 — range is mandatory when editable is present. Conformance.
+     *
+     * <p><b>Why:</b> The range is the promise the QR Code made. Below it, the biller never agreed.
+     */
     @Test
     void anAmountBelowThePublishedRangeIsRefused() {
         String qrCodeId = createEditable(1_000_000L, 50_000_000L);
@@ -230,6 +244,14 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
         assertEquals("ACTIVE", statusOf(qrCodeId));
     }
 
+    /**
+     * <b>X9-AMT-093</b> — an amount above the published range is refused.
+     *
+     * <p><b>Source:</b> Conformance, as AMT-092.
+     *
+     * <p><b>Why:</b> Both bounds, because an overpayment is not a kindness here — it is money the biller must now
+     * reconcile and probably refund.
+     */
     @Test
     void anAmountAboveThePublishedRangeIsRefused() {
         String qrCodeId = createEditable(1_000_000L, 50_000_000L);
