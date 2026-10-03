@@ -24,19 +24,35 @@ public record SignatureValidationOutput(
      * none. Carried out of validation so the use case can compare it against the content actually
      * issued — the signature service has no repository and cannot make that comparison itself.
      */
-    String submittedQrCodeContent
+    String submittedQrCodeContent,
+
+    /**
+     * The subject of the certificate that signed this JWS, once its chain has been validated.
+     *
+     * <p>Carried out of validation for the same reason as the content above: the use case needs it
+     * and the signature service cannot act on it. This is the one identity in a payment
+     * notification the sender did not simply assert — {@code payer.info} is a field in the body,
+     * while this is whoever the trusted chain says signed it. Null when the path could not name a
+     * subject, which reads as "no identity established".
+     */
+    String signerSubject
 ) {
 
     public static SignatureValidationOutput validSignature(UUID correlationId) {
-        return new SignatureValidationOutput(true, correlationId, null);
+        return new SignatureValidationOutput(true, correlationId, null, null);
     }
 
     public static SignatureValidationOutput validSignature(UUID correlationId, String submittedQrCodeContent) {
-        return new SignatureValidationOutput(true, correlationId, submittedQrCodeContent);
+        return new SignatureValidationOutput(true, correlationId, submittedQrCodeContent, null);
+    }
+
+    public static SignatureValidationOutput validSignature(UUID correlationId, String submittedQrCodeContent,
+                                                           String signerSubject) {
+        return new SignatureValidationOutput(true, correlationId, submittedQrCodeContent, signerSubject);
     }
 
     public static SignatureValidationOutput invalidSignature() {
-        return new SignatureValidationOutput(false, null, null);
+        return new SignatureValidationOutput(false, null, null, null);
     }
 
 }

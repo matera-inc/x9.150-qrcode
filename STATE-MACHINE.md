@@ -14,6 +14,26 @@ The lifecycle of a QR Code (payment payload) is modeled by `QRCodeStatusEnum`
 | **PAID** | Payment settled. | **Yes** |
 | **CANCELLED** | Payload cancelled by the biller. | **Yes** |
 
+### INITIATED is held against a clock
+
+An `INITIATED` QR Code carries the instant its reservation stops counting
+(`x9.reservation.ttl-seconds`, 90 by default). **Past that instant it reads as
+`ACTIVE` again** — a payer who announced and then vanished cannot lock a bill until
+`validUntil`, which could be days away for a code held for seconds.
+
+Nothing sweeps. The stored status keeps saying what was last *reported*, and the
+lapse is applied when somebody looks, so a reservation expiring at 3am wakes nobody
+and writes nothing ([ADR-0019](docs/adr/0019-a-reservation-expires-and-nothing-sweeps.md)).
+
+Two consequences that are easy to miss:
+
+- **Expiry is not a status.** A QR Code past its `validUntil` is still `ACTIVE`;
+  nothing happened to it, time simply passed. What expiry governs is what *payers*
+  may do ([ADR-0020](docs/adr/0020-the-payee-states-the-outcome-of-its-own-receivable.md)).
+- **The lapse does not revoke the right to report.** The party that announced may
+  still send `SENT` afterwards: the money moved, and the window exists to stop a
+  vanished payer locking a bill, not to decide what is true about money.
+
 ## Core lifecycle
 
 ```mermaid
@@ -82,7 +102,7 @@ all reject a QR Code that is not ACTIVE or INITIATED.
 > paid by asserting a transaction — the QR's own defence against double payment
 > would then rest on the word of the party it is defending against.
 
-## Pre-commit vs post-commit — dormant in this build
+## Pre-commit vs post-commit — live on Solana, dormant on the bank rails
 
 A notification can arrive at two moments: before the money moves, and after. The
 first is a **request for permission** and goes through the acceptance gate; the
@@ -96,13 +116,31 @@ Distinguishing them needs evidence, and the evidence is a transaction reference:
 The committee rejected an explicit phase marker, so this inference is the only
 mechanism available ([ADR-0004](docs/adr/0004-phase-inferred-from-transaction-id.md)).
 
-**No rail in this build exercises the post-commit half.** It reports a transaction
-already committed to a public ledger — a distinction only a blockchain offers,
-because the payer can point at a txHash anyone can verify. An ACH debit has no
-evidenced moment between "announced" and "settled" that the payer could produce.
-So `payment.sent` and `payment.failed` are never emitted here; the events, the
-`ActionEnum` values and the two-phase dispatch remain in place, unemitted, until an
-interpreted chain returns.
+**Solana exercises the post-commit half; the bank rails do not.** It reports a
+transaction already committed to a public ledger — a distinction only a blockchain
+offers, because the payer can point at a txHash anyone can verify. An ACH debit has
+no evidenced moment between "announced" and "settled" that the payer could produce.
+So on `fednow`, `rtp` and `ach` the two-phase dispatch stays in place and
+`payment.sent` and `payment.failed` are never emitted; on `solana` both fire:
+
+| `blockchain.action` | what it means | effect |
+|---|---|---|
+| `PAYMENT_INITIATED` | about to pay | `ACTIVE` → `PAYMENT_INITIATED`, `payment.initiated` |
+| `SENT` | paid, here is the hash | status unchanged, `payment.sent` |
+| `NOT_SENT` | not paying after all | `PAYMENT_INITIATED` → `ACTIVE`, `payment.failed` |
+
+`NOT_SENT` is the exception to the "post-commit reports a committed transaction"
+rule above, and the exception is the point: its whole meaning is that no transaction
+exists and none will. It is the only message by which a payer can give a reserved
+bill back, so it is keyed on the **action** rather than on the presence of a
+transaction reference — a rule that demanded one of every post-commit notification
+refused the one notification that cannot carry one
+([ADR-0021](docs/adr/0021-a-reservation-knows-who-holds-it.md)).
+
+**Only the party that announced may send `SENT` or `NOT_SENT`**, and only they may
+announce again — identified by `payer.info` paired with the signing certificate's
+subject. A repeat from that party refreshes the reservation's window and publishes
+nothing; anybody else gets `409`.
 
 ### ⚠️ Where a transaction reference goes
 

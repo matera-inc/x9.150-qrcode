@@ -20,7 +20,8 @@ import static java.util.Objects.isNull;
 
 public final class PaymentNotificationRequestMapper {
 
-    public static PaymentNotificationQRCodeInput map(com.matera.x9qrcode.infrastructure.generated.dto.PaymentNotificationDataDTO paymentNotificationInput) {
+    public static PaymentNotificationQRCodeInput map(com.matera.x9qrcode.infrastructure.generated.dto.PaymentNotificationDataDTO paymentNotificationInput,
+                                                     String signerSubject) {
         PaymentNotificationDataDTO paymentNotificationData = new PaymentNotificationDataDTO(
             paymentNotificationInput.getPayment().getQrcodeId(),
             buildPaymentInput(paymentNotificationInput.getPayment()),
@@ -29,7 +30,7 @@ public final class PaymentNotificationRequestMapper {
             buildBlockchainInput(paymentNotificationInput.getBlockchain())
         );
 
-        return new PaymentNotificationQRCodeInput(paymentNotificationData);
+        return new PaymentNotificationQRCodeInput(paymentNotificationData, signerSubject);
     }
 
     private static PaymentNotificationPaymentDTO buildPaymentInput(PaymentNotificationDataPaymentDTO payment) {

@@ -8,6 +8,7 @@ package com.matera.x9qrcode.infrastructure.persistence.mongodb.mapper;
 
 import com.matera.x9qrcode.domain.vo.AdditionalInformationVO;
 import com.matera.x9qrcode.domain.entity.QRCodeEntity;
+import com.matera.x9qrcode.domain.vo.ReservationHolderVO;
 import com.matera.x9qrcode.domain.vo.AccountVO;
 import com.matera.x9qrcode.domain.vo.AddressVO;
 import com.matera.x9qrcode.domain.vo.AdjustmentParametersVO;
@@ -73,6 +74,7 @@ public final class QRCodeMongoEntityMapper {
             document.getRevisedAt(),
             document.getValidUntil(),
             document.getInitiatedExpiresAt(),
+            buildReservedBy(document.getReservedBy()),
             QRCodeStatusEnum.fromValue(document.getStatus()),
             buildCreditor(document.getCreditor()),
             buildBill(document.getBill()),
@@ -383,6 +385,14 @@ public final class QRCodeMongoEntityMapper {
         }
 
         return new CryptoWalletPaymentAddressVO(doc.getWalletAddress());
+    }
+
+
+    private static ReservationHolderVO buildReservedBy(QRCodeMongoPersistenceModel.ReservedBy doc) {
+        // Absent on every document written before this field existed. Null rather than an empty
+        // holder: an empty one would match nobody anyway, but null says "not recorded" rather
+        // than "recorded as nothing", and the two read differently to the next person.
+        return isNull(doc) ? null : new ReservationHolderVO(doc.getPayerInfo(), doc.getSignerSubject());
     }
 
 }

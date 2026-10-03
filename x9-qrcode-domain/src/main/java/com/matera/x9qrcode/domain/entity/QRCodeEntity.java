@@ -21,6 +21,7 @@ import com.matera.x9qrcode.domain.vo.LocationIdVO;
 import com.matera.x9qrcode.domain.vo.PaymentDetailsVO;
 import com.matera.x9qrcode.domain.vo.PaymentMethodVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationDataVO;
+import com.matera.x9qrcode.domain.vo.ReservationHolderVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationVO;
 import com.matera.x9qrcode.domain.vo.QRCodeIdVO;
 import com.matera.x9qrcode.domain.vo.UnstructuredVO;
@@ -91,6 +92,15 @@ public class QRCodeEntity {
      * reading.
      */
     private OffsetDateTime initiatedExpiresAt;
+
+    /**
+     * Who holds the current reservation, or null in every state but {@code PAYMENT_INITIATED}.
+     *
+     * <p>Stamped and cleared in the same breath as {@link #initiatedExpiresAt}, because a window
+     * without a holder cannot answer the only question worth asking about a repeated announcement:
+     * is this a second payer, or the same one again? See {@link ReservationHolderVO}.
+     */
+    private ReservationHolderVO reservedBy;
     private ValidUntilVO validUntil;
     private QRCodeStatusEnum status;
     private final CreditorVO creditor;
@@ -210,6 +220,7 @@ public class QRCodeEntity {
                                        OffsetDateTime revisedAt,
                                        OffsetDateTime validUntil,
                                        OffsetDateTime initiatedExpiresAt,
+                                       ReservationHolderVO reservedBy,
                                        QRCodeStatusEnum status,
                                        CreditorVO creditor,
                                        BillVO bill,
@@ -243,6 +254,7 @@ public class QRCodeEntity {
         // redeploy must not hand everyone a fresh window, and reading the stored instant is what
         // keeps the lapse honest across restarts.
         restored.initiatedExpiresAt = initiatedExpiresAt;
+        restored.reservedBy = reservedBy;
 
         return restored;
     }
@@ -510,7 +522,7 @@ public class QRCodeEntity {
         }
 
         this.status = QRCodeStatusEnum.PAID;
-        this.initiatedExpiresAt = null;
+        this.stampOrClearReservation(this.status, null, null);
         this.paymentDetails = paymentDetails;
         this.touch();
         this.emit(PaymentEventTypeEnum.PAYMENT_CLEARED, null);
@@ -544,7 +556,9 @@ public class QRCodeEntity {
         }
 
         this.status = QRCodeStatusEnum.PAYMENT_INITIATED;
-        this.stampOrClearReservation(this.status, reservationTtl);
+        // Unattributed: the payee is recording a reservation it made somewhere this service cannot
+        // see, so there is no party to attribute it to and no payer may adopt it.
+        this.stampOrClearReservation(this.status, reservationTtl, ReservationHolderVO.unattributed());
         this.touch();
         this.emit(PaymentEventTypeEnum.PAYMENT_INITIATED, null);
     }
@@ -571,7 +585,7 @@ public class QRCodeEntity {
         }
 
         this.status = QRCodeStatusEnum.CANCELLED;
-        this.initiatedExpiresAt = null;
+        this.stampOrClearReservation(this.status, null, null);
         this.paymentDetails = null;
         this.touch();
         this.emit(PaymentEventTypeEnum.PAYMENT_CANCELLED, null);
@@ -589,13 +603,23 @@ public class QRCodeEntity {
         }
 
         this.status = QRCodeStatusEnum.ACTIVE;
-        this.initiatedExpiresAt = null;
+        this.stampOrClearReservation(this.status, null, null);
         this.paymentDetails = null;
         this.touch();
     }
 
-    public void notifyPayment(PaymentNotificationDataVO paymentNotificationDataVO) {
-        this.notifyPayment(paymentNotificationDataVO, this.status, null);
+    /**
+     * Record a notification without moving the status.
+     *
+     * <p>Takes the ANNOUNCING party, never {@code this.reservedBy}. Passing the stored holder here
+     * made the rule check the QR Code against itself: it always matched, so every post-payment
+     * report was accepted whoever sent it, and a stranger could report on a payment they had
+     * nothing to do with. The parameter exists to be compared against what is stored — handing it
+     * the stored value is a check that cannot fail.
+     */
+    public void notifyPayment(PaymentNotificationDataVO paymentNotificationDataVO,
+                              ReservationHolderVO announcingParty) {
+        this.notifyPayment(paymentNotificationDataVO, this.status, null, announcingParty);
     }
 
     /**
@@ -611,13 +635,13 @@ public class QRCodeEntity {
      *                       otherwise, since no other state is held against the clock
      */
     public void notifyPayment(PaymentNotificationDataVO paymentNotificationDataVO, QRCodeStatusEnum status,
-                              Duration reservationTtl) {
-        this.qrCodeEntityValidator.validatePaymentNotification(paymentNotificationDataVO);
+                              Duration reservationTtl, ReservationHolderVO holder) {
+        this.qrCodeEntityValidator.validatePaymentNotification(paymentNotificationDataVO, holder);
 
         QRCodeStatusEnum previousStatus = this.status;
 
         this.status = status;
-        this.stampOrClearReservation(status, reservationTtl);
+        this.stampOrClearReservation(status, reservationTtl, holder);
         this.paymentNotification =
             new PaymentNotificationVO(this.paymentNotification.kind(), this.paymentNotification.endpoint(),
                 paymentNotificationDataVO);
@@ -636,22 +660,31 @@ public class QRCodeEntity {
      * endpoint, and only that produces {@code payment.cleared}.
      */
     private void emitForNotification(QRCodeStatusEnum previousStatus, PaymentNotificationDataVO data) {
-        if (!previousStatus.equals(this.status)) {
-            // This notification is what moved the QR Code out of circulation.
-            emit(PaymentEventTypeEnum.PAYMENT_INITIATED, null);
-            return;
-        }
+        boolean statusChanged = !previousStatus.equals(this.status);
 
         if (isNull(data.blockchain())) {
             // A courtesy notification on a rail that reconciles from the payment message itself.
+            // Nothing to key on but the transition.
+            if (statusChanged) {
+                emit(PaymentEventTypeEnum.PAYMENT_INITIATED, null);
+            }
             return;
         }
 
+        // Keyed on the ACTION, not on the transition. Both of the interesting cases here are ones
+        // where the two disagree: a repeated announcement changes no status and must emit nothing,
+        // while NOT_SENT changes the status back to ACTIVE and must emit payment.failed rather
+        // than a second payment.initiated.
         switch (data.blockchain().action()) {
             case SENT -> emit(PaymentEventTypeEnum.PAYMENT_SENT, null);
             case NOT_SENT -> emit(PaymentEventTypeEnum.PAYMENT_FAILED, "payer reported the payment did not proceed");
             case PAYMENT_INITIATED -> {
-                // Already handled by the status transition above.
+                // Only the announcement that actually took the QR Code out of circulation. A repeat
+                // from the party already holding it refreshes the window and says nothing: a second
+                // payment.initiated on the stream would be indistinguishable from a second payer.
+                if (statusChanged) {
+                    emit(PaymentEventTypeEnum.PAYMENT_INITIATED, null);
+                }
             }
         }
     }
@@ -677,6 +710,7 @@ public class QRCodeEntity {
             nonNull(data) && nonNull(data.payment().tipAmount())
                 ? data.payment().tipAmount().value()
                 : null,
+            nonNull(data) && nonNull(data.payer()) ? data.payer().info() : null,
             nonNull(data) ? data.payment().currency() : currencyOfFirstMethod(),
             nonNull(data) ? data.payment().network() : networkOfPaymentDetails(),
             nonNull(data) ? data.payment().transactionId() : endToEndIdOfPaymentDetails(),
@@ -717,13 +751,18 @@ public class QRCodeEntity {
      * <p>One place, called by both doors into the state, so the two cannot drift apart.
      *
      * <p>Clearing matters as much as stamping: a stale instant left on a {@code PAID} QR Code would
-     * mean nothing today but would be read by the next person as if it did.
+     * mean nothing today but would be read by the next person as if it did. The holder goes with
+     * it — a QR Code nobody is holding must not still name somebody.
      */
-    private void stampOrClearReservation(QRCodeStatusEnum newStatus, Duration reservationTtl) {
+    private void stampOrClearReservation(QRCodeStatusEnum newStatus, Duration reservationTtl,
+                                         ReservationHolderVO holder) {
         if (!QRCodeStatusEnum.PAYMENT_INITIATED.equals(newStatus)) {
             this.initiatedExpiresAt = null;
+            this.reservedBy = null;
             return;
         }
+
+        this.reservedBy = holder;
 
         if (isNull(reservationTtl)) {
             // Caller gave no window. Leave it unstamped rather than inventing one: an unstamped
@@ -802,6 +841,22 @@ public class QRCodeEntity {
     /** {@link #isExpired(OffsetDateTime)} as of now. */
     public boolean isExpired() {
         return isExpired(DateTimeUtils.nowUTC());
+    }
+
+    /**
+     * Whether {@code party} is the one currently holding this QR Code's reservation.
+     *
+     * <p>False whenever nobody can be matched — no reservation, or one taken through the payee's
+     * API and therefore attributable to no payer. The safe direction: a QR Code whose holder we
+     * cannot establish is not one a stranger may refresh or release.
+     */
+    public boolean isHeldBy(ReservationHolderVO party) {
+        return nonNull(this.reservedBy) && this.reservedBy.isSameParty(party);
+    }
+
+    /** Who holds the reservation, or null if nobody does. */
+    public ReservationHolderVO getReservedBy() {
+        return this.reservedBy;
     }
 
     public boolean isNotActiveOrInitiated() {

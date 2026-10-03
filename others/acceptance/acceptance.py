@@ -165,12 +165,17 @@ def notification_with_tip(qr_id, amount, tip_amount, action="PAYMENT_INITIATED")
             "blockchain": {"action": action, "from": PAYER_WALLET, "to": RECIPIENT}}
 
 
-def notification(qr_id, action, transaction_id=None):
+def notification(qr_id, action, transaction_id=None, payer_info="acceptance@example.com"):
+    """`payer_info` decides whether a second announcement is a second payer or the first retrying.
+
+    Only the party that announced may re-announce, report or release (ADR-0021), so any check about
+    that distinction has to say who is announcing.
+    """
     payment = {"qrcodeId": qr_id, "amount": AMOUNT, "currency": CURRENCY, "network": "Solana"}
     if transaction_id:
         payment["transactionId"] = transaction_id
     return {"payment": payment,
-            "payer": {"info": "acceptance@example.com"},
+            "payer": {"info": payer_info},
             "blockchain": {"action": action, "from": PAYER_WALLET, "to": RECIPIENT}}
 
 
@@ -282,9 +287,13 @@ status, after_pre = call("GET", f"/api/v1/payment-request/{qr_id}")
 check("the QR Code is reserved as PAYMENT_INITIATED",
       after_pre.get("status") == "PAYMENT_INITIATED", after_pre.get("status"))
 
-status, second = call("POST", "/pub/api/v1/payment-notification", raw_body=pre or "",
+# A DIFFERENT payer. Replaying the same notification is now an accepted retry (ADR-0021), so
+# sending `pre` twice would prove nothing about the reservation — it would prove idempotency, and
+# pass whether or not a second payer could take the bill.
+other = sign(notification(qr_id, "PAYMENT_INITIATED", payer_info="someone-else@example.com"))
+status, second = call("POST", "/pub/api/v1/payment-notification", raw_body=other or "",
                       headers={"Content-Type": "application/jose"})
-check("a SECOND pre-payment is refused — the reservation holds",
+check("a SECOND payer is refused — the reservation holds",
       status >= 400, f"got {status}: {second}")
 
 post = sign(notification(qr_id, "SENT", TX_HASH))

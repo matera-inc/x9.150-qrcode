@@ -24,7 +24,9 @@ public final class SendPaymentNotificationRequestMapper {
     public static SendPaymentNotificationInput map(PaymentPhase phase, OutboundPaymentNotificationDTO request) {
         return new SendPaymentNotificationInput(
             phase,
-            PaymentNotificationRequestMapper.map(request.getNotification()).paymentNotificationData(),
+            // No signer subject: this is the OUTBOUND path, where we are the sender rather than
+            // verifying somebody else's signature. Only the data is borrowed from that mapper.
+            PaymentNotificationRequestMapper.map(request.getNotification(), null).paymentNotificationData(),
             endpoint(request.getEndpoint()),
             request.getCorrelationId());
     }

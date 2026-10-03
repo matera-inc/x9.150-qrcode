@@ -27,9 +27,12 @@ import static java.util.Objects.isNull;
  * payload only hold if the domain holds them — the schema describes that path, it does not police
  * it.
  *
- * <p>Nothing here treats {@code info} as an identity. It is supplied by the sender and verified by
- * nobody, so it can narrow an identity the signing certificate already established and never widen
- * one. See {@code official-spec/BEST-PRACTICES.md}.
+ * <p><b>It narrows an identity; it never establishes one.</b> {@link ReservationHolderVO} pairs
+ * this value with the subject of the certificate that signed the notification, and both must agree
+ * for two announcements to count as the same party. That ordering is deliberate: {@code info} is
+ * supplied by the sender and verified by nobody, so on its own it would let any signer claim to be
+ * any payer. Paired with the certificate it can only distinguish between customers of an
+ * institution that has already been authenticated. See {@code official-spec/BEST-PRACTICES.md}.
  */
 public record PaymentNotificationPayerVO(
     String info

@@ -115,6 +115,7 @@ public class PaymentEventDrain {
         model.setLocationId(event.getLocationId());
         model.setAmount(event.getAmount());
         model.setTipAmount(event.getTipAmount());
+        model.setPayerInfo(event.getPayerInfo());
         model.setCurrency(event.getCurrency());
         model.setNetwork(event.getNetwork());
         model.setTransactionId(event.getTransactionId());

@@ -47,6 +47,24 @@ public record PaymentEvent(
      */
     Long tipAmount,
 
+    /**
+     * {@code payer.info} as the payer sent it, or null when none was sent.
+     *
+     * <p>Transported, never interpreted. ANSI X9.150-2026 §3.1 leaves the contents to the payer's
+     * PSP, so this may be an opaque identifier, an email address or anything else — see
+     * {@code official-spec/BEST-PRACTICES.md} for what a PSP should put there and why.
+     *
+     * <p>Carried because the stream is the public contract (ADR-0001) and without it a consumer
+     * reading an event sees a payment and cannot tell <em>who paid</em>. That matters now that
+     * only the party which announced may re-announce or release: a payee's own systems need to
+     * know which party that was, and reading it out of the QR Code document instead means the
+     * stream is not self-sufficient.
+     *
+     * <p>Null when nothing was sent, never an empty string: "did not say" and "said nothing" mean
+     * different things and a consumer cannot tell them apart otherwise.
+     */
+    String payerInfo,
+
     String currency,
     String network,
     String transactionId,

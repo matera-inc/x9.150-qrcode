@@ -146,6 +146,26 @@ def api():
     return client
 
 
+def events_for(api, qr_id):
+    """Every event published so far for one QR Code.
+
+    The outbox drain is asynchronous, so a blind read races it and fails for a reason that has
+    nothing to do with what is being tested. Polls the long-polling cursor instead.
+    """
+    seen, cursor = {}, ""
+    for _ in range(20):
+        status, page = api.call("GET", f"/pub/api/v1/events?after={cursor}&limit=200&wait=2")
+        if status != 200 or not isinstance(page, dict):
+            break
+        for event in page.get("events", []):
+            if event.get("qrCodeId") == qr_id:
+                seen[event["eventId"]] = event
+        cursor = page.get("nextCursor") or cursor
+        if seen:
+            break
+    return list(seen.values())
+
+
 def refusal(response):
     """The violations of a problem+json body, as one searchable string."""
     status, body = response

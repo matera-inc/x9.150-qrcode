@@ -622,7 +622,32 @@ paths:
   /pub/api/v1/payment-notification:
     post:
       summary: Send Payment Notification
-      description: Standardized message sent from Payer's PSP to Payee's PSP after payment initiation
+      description: |-
+        Standardized message sent from the Payer's PSP to the Payee's PSP around payment initiation.
+
+        **Only the party that announced a payment may re-announce it, report it, or give it back**
+        (ADR-0021). That party is `payer.info` paired with the subject of the certificate that
+        signed this JWS — both must match. `payer.info` is a field you filled in, so on its own it
+        would let any signer claim to be any payer; paired with the certificate it distinguishes
+        between customers of an institution that has already been authenticated.
+
+        What follows from that:
+
+        - **Re-announcing is safe.** A repeat from the same party answers `200` and refreshes the
+          reservation's window. Retry freely after a timeout or a crash — it publishes no second
+          `payment.initiated`, so a consumer cannot mistake your retry for a second payer.
+        - **A second payer gets `409`**, not `400`. Your request is well formed; somebody else is
+          holding the bill. Come back later rather than looking for a mistake.
+        - **`NOT_SENT` gives the bill back**: the QR Code returns to `ACTIVE`, `payment.failed` is
+          published, and the next payer may take it. This is the only door out of a reservation
+          that a payer has, and only the party holding it may use it.
+        - **A late `SENT` is still accepted.** Reporting is gated on who announced, not on the
+          clock, so a reservation that lapsed while your settlement was in flight does not stop you
+          recording what happened. The money moved; refusing the report would not un-move it.
+
+        **Send `payer.info`.** It is optional in the standard, and without it identity falls back to
+        your certificate alone — so two of your own customers read as the same party and either may
+        refresh or release the other's reservation. See `official-spec/BEST-PRACTICES.md`.
       operationId: processPaymentNotification
       tags:
         - public-endpoints
@@ -651,7 +676,17 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundErrorResponse"
         "409":
-          $ref: "#/components/responses/ConflictErrorResponse"
+          description: |-
+            Another payer holds this QR Code. The request is well formed and it is the state that
+            refuses it, so retry later rather than correcting the request — a reservation lapses on
+            its own (`x9.reservation.ttl-seconds`, 90 by default).
+
+            Also returned for a `SENT` or `NOT_SENT` reporting on a payment somebody else
+            announced.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/BaseError"
         "422":
           $ref: "#/components/responses/UnprocessableEntityErrorResponse"
         "500":
@@ -851,6 +886,24 @@ components:
             payment requests and validates notifications — so this is a fact transported exactly as
             it arrived, for the consuming system to reconcile against what its accounts received.
           example: 1000
+        payerInfo:
+          type: string
+          nullable: true
+          description: |-
+            `payer.info` as the payer sent it (§3.1), `null` when none was sent — never an empty
+            string, since "did not say" and "said nothing" mean different things.
+
+            Transported, never interpreted: the standard leaves its contents to the payer's PSP, so
+            it may be an opaque identifier, an email address or anything else.
+
+            Carried because only the party that announced a payment may re-announce or release it,
+            so a consumer reconciling from this stream needs to know which party that was. Without
+            it the stream shows a payment and not who made it, and the identity has to be fetched
+            from the QR Code document instead.
+
+            **Treat it as data, not as a name to display.** It is chosen by the payer's PSP and
+            verified by nobody; this service pairs it with the signing certificate's subject before
+            using it as an identity, and a consumer should not use it alone as one.
         currency:
           $ref: "#/components/schemas/CurrencyCode"
         network:

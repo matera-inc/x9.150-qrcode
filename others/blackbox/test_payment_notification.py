@@ -15,7 +15,8 @@ import json
 
 import pytest
 
-from conftest import BILL, FAR_FUTURE, FEDNOW, PAYER_WALLET, RECIPIENT, TX_HASH, assert_refused
+from conftest import (BILL, FAR_FUTURE, FEDNOW, PAYER_WALLET, RECIPIENT, TX_HASH, assert_refused,
+                      events_for)
 
 TIP_10_TO_25 = {"allowed": True, "range": {"min": 10, "max": 25}, "presets": [10, 15, 20]}
 TIP_PRESETS_ONLY = {"allowed": True, "presets": [10, 15, 20]}
@@ -535,22 +536,6 @@ class TestPayerInfo:
 
 class TestEventStream:
 
-    @staticmethod
-    def _events_for(api, qr_id):
-        """Drain is asynchronous, so poll with the long-polling cursor rather than reading blind."""
-        seen, cursor = {}, ""
-        for _ in range(20):
-            status, page = api.call("GET", f"/pub/api/v1/events?after={cursor}&limit=200&wait=2")
-            if status != 200 or not isinstance(page, dict):
-                break
-            for event in page.get("events", []):
-                if event.get("qrCodeId") == qr_id:
-                    seen[event["eventId"]] = event
-            cursor = page.get("nextCursor") or cursor
-            if seen:
-                break
-        return list(seen.values())
-
     def test_the_event_carries_the_tip_the_payer_reported(self, api):
         """X9-EVT-030 — the payment event carries the tip the payer reported.
 
@@ -571,7 +556,7 @@ class TestEventStream:
         status, body = api.notify(qr, amount=BILL + tip, tip=tip)
         assert status == 200, f"{status} {body}"
 
-        mine = self._events_for(api, qr)
+        mine = events_for(api, qr)
         assert mine, f"no event for {qr}"
 
         event = mine[-1]
@@ -593,7 +578,7 @@ class TestEventStream:
         status, body = api.notify(qr, amount=BILL)
         assert status == 200, f"{status} {body}"
 
-        mine = self._events_for(api, qr)
+        mine = events_for(api, qr)
         assert mine, f"no event for {qr}"
         assert mine[-1].get("tipAmount") in (None, ), f"expected no tip reported: {mine[-1]}"
 
@@ -647,18 +632,29 @@ class TestCurrencyAndRail:
 
 class TestLifecycle:
 
-    def test_a_second_pre_payment_is_refused(self, api):
-        """X9-LIFE-002 — a second pre-payment is refused.
+    def test_a_second_pre_payment_from_another_payer_is_refused(self, api):
+        """X9-LIFE-002 — a second pre-payment from a DIFFERENT payer is refused.
 
-        Source: Ours. The reservation is this implementation's, not the standard's. ADR-0002.
+        Source: Ours. The reservation is this implementation's, not the standard's. ADR-0003, now
+    ADR-0021.
 
-        Why: Two payers must not both believe they hold the same QR Code. The first reservation wins and
-    the second is told why, rather than both proceeding to pay the same bill.
+        Why: Two payers must not both believe they hold the same QR Code. The first reservation wins
+    and the second is told why, rather than both proceeding to pay the same bill.
+
+        The payer is named explicitly now, and that is the whole point of the change. This test used
+    to send the same notification twice and expect a refusal, which passed for the wrong reason: the
+    rule it was exercising refused EVERY second announcement, including a repeat from the party that
+    had already announced — a payer retrying after a timeout. The property is unchanged and still
+    holds; what changed is that proving it requires two payers, because one payer twice is now the
+    accepted case (X9-HOLD-010).
         """
         qr = api.create_qr()
-        first, body = api.notify(qr)
+
+        first, body = api.notify(qr, payer_info="first@example.com")
         assert first == 200, f"the first pre-payment should be accepted: {first} {body}"
-        assert_refused(api.notify(qr), naming="blockchain.action")
+
+        status, refusal_body = api.notify(qr, payer_info="second@example.com")
+        assert status == 409, f"a second payer must be refused: {status} {refusal_body}"
 
     def test_a_payment_on_a_cancelled_qr_code_is_refused(self, api):
         """X9-LIFE-003 — a payment on a cancelled QR Code is refused.
@@ -756,3 +752,205 @@ class TestDecoderRefusals:
         assert status >= 400, f"a paid bill must not decode: {status} {result}"
         assert "paid" in body, f"the payer must be told it is settled: {result}"
         assert "localhost" not in body, f"and must not see our internals: {result}"
+
+
+class TestReservationOwnership:
+    """Only the party that announced a payment may re-announce it, report it, or give it back.
+
+    Before this, the rule was enforced on the STATUS alone: anybody announcing on a reserved QR
+    Code was refused. That protects against the second payer and punishes the first — a payer whose
+    request timed out, or whose process died between sending and recording, could not retry the
+    thing they had already done. The commonest reason to see one announcement twice is not a second
+    payer; it is one payer, twice.
+
+    Identity is `payer.info` paired with the subject of the certificate that signed the JWS. See
+    ADR-0021 and official-spec/BEST-PRACTICES.md.
+    """
+
+    PAYER = "9acc5ba9-ad22-3914-a268-631e367f74d7"
+    OTHER = "a1111111-2222-3333-4444-555555555555"
+
+    def test_the_same_payer_may_announce_twice(self, api):
+        """X9-HOLD-010 — a repeated announcement from the same payer is accepted.
+
+        Source: Ours. ADR-0021.
+
+        Why: A crash or a timeout between sending an announcement and recording its result leaves
+    the payer having to send it again. Refusing them makes the service least usable exactly when
+    the caller's software is already in trouble, and the retry is the correct thing for them to do.
+        """
+        qr = api.create_qr()
+
+        first, _ = api.notify(qr, action="PAYMENT_INITIATED", payer_info=self.PAYER)
+        assert first == 200, "the first announcement must be accepted"
+
+        again, body = api.notify(qr, action="PAYMENT_INITIATED", payer_info=self.PAYER)
+        assert again == 200, f"the same payer announcing twice must be accepted: {again} {body}"
+        assert api.status_of(qr) == "PAYMENT_INITIATED"
+
+    def test_a_different_payer_is_refused_with_a_conflict(self, api):
+        """X9-HOLD-011 — a second payer is refused, and told it is a conflict.
+
+        Source: Ours. ADR-0021.
+
+        Why: The property the reservation exists for — two payers must not both believe they are
+    paying one bill. 409 rather than 400 because the request is well formed and it is the state
+    that says no: the caller should come back later, not correct their request. A 400 would send
+    them looking for a mistake they did not make.
+        """
+        qr = api.create_qr()
+        api.notify(qr, action="PAYMENT_INITIATED", payer_info=self.PAYER)
+
+        status, body = api.notify(qr, action="PAYMENT_INITIATED", payer_info=self.OTHER)
+        assert status == 409, f"a second payer must be refused with a conflict: {status} {body}"
+        assert "another payer" in json.dumps(body).lower(), f"and told why: {body}"
+
+    def test_a_repeated_announcement_emits_no_second_event(self, api):
+        """X9-HOLD-012 — a repeat does not appear on the event stream.
+
+        Source: Ours. ADR-0021, with ADR-0001 — the stream is the public contract.
+
+        Why: A second `payment.initiated` would be indistinguishable from a second payer, which is
+    the one thing a consumer most needs to be able to tell. The same reasoning as the payee-side
+    X to X no-op (X9-LIFE-125): a repeated call must not look like a repeated event.
+        """
+        qr = api.create_qr()
+        api.notify(qr, action="PAYMENT_INITIATED", payer_info=self.PAYER)
+        api.notify(qr, action="PAYMENT_INITIATED", payer_info=self.PAYER)
+
+        initiated = [e for e in events_for(api, qr) if e.get("type") == "payment.initiated"]
+
+        assert len(initiated) == 1, f"one announcement, one event: {initiated}"
+
+    def test_the_payment_event_carries_the_payer(self, api):
+        """X9-HOLD-013 — payment events say who paid.
+
+        Source: Ours. ADR-0001 — the stream is the public contract.
+
+        Why: Only the party that announced may re-announce or release, so a payee reconciling from
+    the stream needs to know which party that was. Without it the stream shows a payment and not
+    who made it, and the identity has to be fetched from the QR Code document — which means the
+    stream is not self-sufficient, and ADR-0001 says it is.
+        """
+        qr = api.create_qr()
+        api.notify(qr, action="PAYMENT_INITIATED", payer_info=self.PAYER)
+
+        mine = events_for(api, qr)
+
+        assert mine, "the announcement must have produced an event"
+        assert all(e.get("payerInfo") == self.PAYER for e in mine), \
+            f"every event must carry the payer that caused it: {mine}"
+
+    def test_a_payer_who_sent_no_info_reports_null_not_empty(self, api):
+        """X9-HOLD-014 — an event for a payer who sent no info carries null, never "".
+
+        Source: Ours.
+
+        Why: `payer.info` is optional (§3.1), so "did not say" is a real state and must not arrive
+    as an empty string — a consumer cannot tell one from the other, and they mean different things.
+
+        Null rather than omitted, which is what every other optional field on this event does
+    (`tipAmount`, `transactionId`, `reason`). One convention across the payload beats a better one
+    applied to a single field.
+        """
+        qr = api.create_qr()
+        api.notify(qr, action="PAYMENT_INITIATED", payer_info=None)
+
+        mine = events_for(api, qr)
+
+        assert mine, "the announcement must have produced an event"
+        assert all(e.get("payerInfo", "sentinel") is None for e in mine), \
+            f"null, never an empty string, when the payer sent none: {mine}"
+
+
+class TestNotSentReleases:
+    """`NOT_SENT` is how a payer gives a bill back.
+
+    It used to answer 200 and change nothing: the one door a payer has out of a reservation,
+    reporting success and doing nothing. A payer whose custody provider refused the transfer had no
+    way to release the bill, and it stayed unpayable by anybody until `validUntil`.
+    """
+
+    PAYER = "9acc5ba9-ad22-3914-a268-631e367f74d7"
+    OTHER = "a1111111-2222-3333-4444-555555555555"
+
+    def test_not_sent_returns_the_qr_code_to_active(self, api):
+        """X9-HOLD-020 — NOT_SENT releases the reservation.
+
+        Source: Ours. ADR-0021.
+
+        Why: Measured in a real run by a counterparty: the custody provider refused a transfer, the
+    announcement had already succeeded, and there was no way to release the payee's reservation.
+    The bill was unpayable by anybody until validUntil. A payer has no access to the payee's
+    management API by design, so the notification is the only door.
+        """
+        qr = api.create_qr()
+        api.notify(qr, action="PAYMENT_INITIATED", payer_info=self.PAYER)
+
+        status, body = api.notify(qr, action="NOT_SENT", payer_info=self.PAYER)
+        assert status == 200, f"a payer must be able to give the bill back: {status} {body}"
+        assert api.status_of(qr) == "ACTIVE", "and the QR Code must actually be released"
+
+    def test_the_next_payer_can_then_pay_it(self, api):
+        """X9-HOLD-021 — a released QR Code is payable by somebody else.
+
+        Source: Ours. ADR-0021.
+
+        Why: The release is only worth anything if it reopens the bill. A status that said ACTIVE
+    while the next announcement was still refused would be the same defect wearing a different
+    label — and it would look fixed.
+        """
+        qr = api.create_qr()
+        api.notify(qr, action="PAYMENT_INITIATED", payer_info=self.PAYER)
+        api.notify(qr, action="NOT_SENT", payer_info=self.PAYER)
+
+        status, body = api.notify(qr, action="PAYMENT_INITIATED", payer_info=self.OTHER)
+        assert status == 200, f"the next payer must be able to take it: {status} {body}"
+        assert api.status_of(qr) == "PAYMENT_INITIATED"
+
+    def test_not_sent_emits_payment_failed(self, api):
+        """X9-HOLD-022 — the release is reported, not silent.
+
+        Source: Ours. ADR-0001.
+
+        Why: A payee watching the stream sees a bill reserved and then nothing. The release has to
+    say so, or the payee's own records keep the reservation the service has already dropped.
+        """
+        qr = api.create_qr()
+        api.notify(qr, action="PAYMENT_INITIATED", payer_info=self.PAYER)
+        api.notify(qr, action="NOT_SENT", payer_info=self.PAYER)
+
+        mine = [e.get("type") for e in events_for(api, qr)]
+
+        assert "payment.failed" in mine, f"the release must be published: {mine}"
+
+    def test_a_stranger_cannot_release_somebody_elses_reservation(self, api):
+        """X9-HOLD-023 — only the holder may give the bill back.
+
+        Source: Ours. ADR-0021.
+
+        Why: Otherwise NOT_SENT is a way to knock any payer off any bill: send one, the reservation
+    drops, and the QR Code is yours to take. The release has to be available to the payer who holds
+    it and to nobody else.
+        """
+        qr = api.create_qr()
+        api.notify(qr, action="PAYMENT_INITIATED", payer_info=self.PAYER)
+
+        status, body = api.notify(qr, action="NOT_SENT", payer_info=self.OTHER)
+        assert status == 409, f"a stranger must not be able to release it: {status} {body}"
+        assert api.status_of(qr) == "PAYMENT_INITIATED", "and the holder must keep their reservation"
+
+    def test_a_stranger_cannot_report_somebody_elses_payment(self, api):
+        """X9-HOLD-024 — only the holder may report a payment as sent.
+
+        Source: Ours. ADR-0021.
+
+        Why: A SENT from a party that never announced is reporting on somebody else's payment. It
+    would attach a transaction hash of the stranger's choosing to a bill they have no part in, and
+    the payee reconciles against exactly that.
+        """
+        qr = api.create_qr()
+        api.notify(qr, action="PAYMENT_INITIATED", payer_info=self.PAYER)
+
+        status, body = api.notify(qr, action="SENT", transaction_id=TX_HASH, payer_info=self.OTHER)
+        assert status == 409, f"a stranger must not report this payment: {status} {body}"

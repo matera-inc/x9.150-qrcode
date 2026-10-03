@@ -152,7 +152,8 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
                 }
             }
 
-            return SignatureValidationOutput.validSignature(correlationId, validated.submittedQrCodeContent());
+            return SignatureValidationOutput.validSignature(
+                correlationId, validated.submittedQrCodeContent(), validated.signerSubject());
         } catch (Exception e) {
             log.error("Error validating JWS signature: {}", e.getMessage(), e);
 
@@ -174,7 +175,16 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         return jwkService.retrieveJwkSet();
     }
 
-    private JWK retrieveExternalJwkInformation(JWSHeader header, ExternalCertificateOutput externalCertificateOutput)
+    /**
+     * The key to verify with, and who it belongs to.
+     *
+     * <p>The subject travels out with the key because it is the only identity in a payment
+     * notification that the sender did not choose: the chain behind it was validated against the
+     * trusted roots. {@code payer.info} is a field in the body. See {@code ReservationHolderVO}.
+     */
+    private record VerificationKey(JWK jwk, String signerSubject) { }
+
+    private VerificationKey retrieveExternalJwkInformation(JWSHeader header, ExternalCertificateOutput externalCertificateOutput)
         throws JOSEException, ParseException {
         JWSAlgorithm algorithm = header.getAlgorithm();
 
@@ -183,20 +193,26 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         if (CertificateEndpointTypeEnum.JWK_SET.equals(externalCertificateOutput.endpointTypeEnum())) {
             JWK externalJwk = JWKSet.parse(externalCertificateOutput.jwkSet()).getKeyByKeyId(header.getKeyID());
 
-            validateExternalCertificate(header, externalJwk.getParsedX509CertChain());
+            X509Certificate signatureExternalCertificate =
+                validateExternalCertificate(header, externalJwk.getParsedX509CertChain());
 
             if (algorithm.equals(externalJwk.getAlgorithm())) {
-                return externalJwk;
+                return new VerificationKey(externalJwk, subjectOf(signatureExternalCertificate));
             } else {
                 log.error("Invalid key algorithm for signature validation: {}", externalJwk.getAlgorithm());
             }
         } else {
             X509Certificate signatureExternalCertificate = validateExternalCertificate(header, externalCertificateOutput.certificates());
 
-            return toVerificationJwk(signatureExternalCertificate, algorithm);
+            return new VerificationKey(
+                toVerificationJwk(signatureExternalCertificate, algorithm), subjectOf(signatureExternalCertificate));
         }
 
         throw new ServiceException("Could not retrieve JWK information for signature validation");
+    }
+
+    private static String subjectOf(X509Certificate certificate) {
+        return isNull(certificate) ? null : certificate.getSubjectX500Principal().getName();
     }
 
     /**
@@ -494,7 +510,7 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
     }
 
     /** What a verified JWS yields: who correlated it, and the QR content it carried (may be null). */
-    private record ValidatedJws(UUID correlationId, String submittedQrCodeContent) { }
+    private record ValidatedJws(UUID correlationId, String submittedQrCodeContent, String signerSubject) { }
 
     private ValidatedJws validateJwsToken(String locationId, String jwsToken) throws ParseException, JOSEException {
         JWSObject jwsObject = JWSObject.parse(jwsToken);
@@ -521,10 +537,10 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
             externalCertificateOutput = qrCodeExternalJwkService.retrieveCertificate(externalCertificateInput);
         }
 
-        JWK jwk = retrieveExternalJwkInformation(header, externalCertificateOutput);
+        VerificationKey verificationKey = retrieveExternalJwkInformation(header, externalCertificateOutput);
 
         try {
-            if (!jwsObject.verify(createVerifier(jwk, header.getAlgorithm()))) {
+            if (!jwsObject.verify(createVerifier(verificationKey.jwk(), header.getAlgorithm()))) {
                 throw new ServiceException("JWS signature verification failed.");
             }
         } catch (JOSEException e) {
@@ -533,7 +549,7 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
 
         log.info("JWS signature successfully validated for correlationId: {}", correlationId);
 
-        return new ValidatedJws(correlationId, submittedQrCodeContent);
+        return new ValidatedJws(correlationId, submittedQrCodeContent, verificationKey.signerSubject());
     }
 
     private void validateCriticalHeaders(JWSHeader header) {

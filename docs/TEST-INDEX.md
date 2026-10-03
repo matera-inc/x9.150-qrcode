@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**327 tests documented** — every JUnit test in the repository and every case in the
+**344 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -119,7 +119,7 @@ single most important thing this index exists for.
 | Key | What it proves | Where |
 |---|---|---|
 | `X9-LIFE-001` | a notification for an unknown QR Code is 404 | `test_payment_notification.py` |
-| `X9-LIFE-002` | a second pre-payment is refused | `test_payment_notification.py` |
+| `X9-LIFE-002` | a second pre-payment from a DIFFERENT payer is refused | `test_payment_notification.py` |
 | `X9-LIFE-003` | a payment on a cancelled QR Code is refused | `test_payment_notification.py` |
 | `X9-LIFE-004` | a post-payment with no pre-payment is refused | `test_payment_notification.py` |
 | `X9-LIFE-005` | a refused notification leaves the QR Code ACTIVE | `test_payment_notification.py` |
@@ -147,7 +147,7 @@ single most important thing this index exists for.
 | `X9-LIFE-039` | the ETag also changes on a data change | `RevisionTracksDataApiTest.java` |
 | `X9-LIFE-040` | a fully valid notification is accepted | `PaymentNotificationAcceptanceApiTest.java` |
 | `X9-LIFE-041` | a payload fetched while valid cannot be paid once it expires | `PaymentNotificationAcceptanceApiTest.java` |
-| `X9-LIFE-042` | a QR Code already being paid is refused | `PaymentNotificationAcceptanceApiTest.java` |
+| `X9-LIFE-042` | a QR Code already being paid is refused to a different payer | `PaymentNotificationAcceptanceApiTest.java` |
 | `X9-LIFE-043` | a cancelled QR Code is refused | `PaymentNotificationAcceptanceApiTest.java` |
 | `X9-LIFE-044` | an unknown QR Code is refused | `PaymentNotificationAcceptanceApiTest.java` |
 | `X9-LIFE-045` | a QR Code created without a paymentNotification refuses notifications | `PaymentNotificationAcceptanceApiTest.java` |
@@ -199,6 +199,31 @@ single most important thing this index exists for.
 | `X9-LIFE-125` | asking for the status it already has is an idempotent no-op | `StatusUpdatePaymentInitiatedApiTest.java` |
 | `X9-LIFE-126` | a payer cannot fetch the payload of an expired QR Code | `test_payment_notification.py` |
 | `X9-LIFE-127` | X to X is accepted, on every status | `test_payment_notification.py` |
+
+### Who holds a reservation
+
+Only the party that announced a payment may re-announce it, report it, or give it back. Identity is
+`payer.info` paired with the subject of the certificate that signed the JWS — see ADR-0021.
+
+| Key | What it proves | Where |
+|---|---|---|
+| `X9-HOLD-001` | the same payer at the same institution is the same party | `ReservationHolderVOTest.java` |
+| `X9-HOLD-002` | a different payer at the same institution is a different party | `ReservationHolderVOTest.java` |
+| `X9-HOLD-003` | the same payer value from a different institution is a different party | `ReservationHolderVOTest.java` |
+| `X9-HOLD-004` | an institution with no payer info matches itself | `ReservationHolderVOTest.java` |
+| `X9-HOLD-005` | nothing matches a holder nobody can name | `ReservationHolderVOTest.java` |
+| `X9-HOLD-010` | a repeated announcement from the same payer is accepted | `test_payment_notification.py` |
+| `X9-HOLD-011` | a second payer is refused, and told it is a conflict | `test_payment_notification.py` |
+| `X9-HOLD-012` | a repeat does not appear on the event stream | `test_payment_notification.py` |
+| `X9-HOLD-013` | payment events say who paid | `test_payment_notification.py` |
+| `X9-HOLD-014` | a payer who sent no info reports null, never empty | `test_payment_notification.py` |
+| `X9-HOLD-020` | NOT_SENT releases the reservation | `test_payment_notification.py` |
+| `X9-HOLD-021` | a released QR Code is payable by somebody else | `test_payment_notification.py` |
+| `X9-HOLD-022` | the release is reported, not silent | `test_payment_notification.py` |
+| `X9-HOLD-023` | only the holder may give the bill back | `test_payment_notification.py` |
+| `X9-HOLD-024` | only the holder may report a payment as sent | `test_payment_notification.py` |
+| `X9-HOLD-030` | a repeated announcement moves the window | `ReservationRefreshApiTest.java` |
+| `X9-HOLD-031` | without a repeat, the same wait releases it | `ReservationRefreshApiTest.java` |
 
 ## Locations and payload retrieval
 

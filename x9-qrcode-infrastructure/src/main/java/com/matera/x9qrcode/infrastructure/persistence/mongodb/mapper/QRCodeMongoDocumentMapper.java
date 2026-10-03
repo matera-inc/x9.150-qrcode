@@ -8,6 +8,7 @@ package com.matera.x9qrcode.infrastructure.persistence.mongodb.mapper;
 
 import com.matera.x9qrcode.domain.vo.AdditionalInformationVO;
 import com.matera.x9qrcode.domain.entity.QRCodeEntity;
+import com.matera.x9qrcode.domain.vo.ReservationHolderVO;
 import com.matera.x9qrcode.domain.vo.AccountVO;
 import com.matera.x9qrcode.domain.vo.AddressVO;
 import com.matera.x9qrcode.domain.vo.AdjustmentParametersVO;
@@ -60,6 +61,7 @@ public final class QRCodeMongoDocumentMapper {
         qrCodeMongoPersistenceModel.setCreatedAt(entity.getCreatedAt());
         qrCodeMongoPersistenceModel.setRevisedAt(entity.getRevisedAt());
         qrCodeMongoPersistenceModel.setInitiatedExpiresAt(entity.getInitiatedExpiresAt());
+        qrCodeMongoPersistenceModel.setReservedBy(buildReservedBy(entity.getReservedBy()));
         qrCodeMongoPersistenceModel.setValidUntil(entity.getValidUntil());
         qrCodeMongoPersistenceModel.setStatus(entity.getStatus().value());
         qrCodeMongoPersistenceModel.setCreditor(buildCreditor(entity.getCreditor()));
@@ -474,6 +476,7 @@ public final class QRCodeMongoDocumentMapper {
             document.setLocationId(event.locationId());
             document.setAmount(event.amount());
             document.setTipAmount(event.tipAmount());
+            document.setPayerInfo(event.payerInfo());
             document.setCurrency(event.currency());
             document.setNetwork(event.network());
             document.setTransactionId(event.transactionId());
@@ -484,6 +487,19 @@ public final class QRCodeMongoDocumentMapper {
         });
 
         return outbox;
+    }
+
+
+    private static QRCodeMongoPersistenceModel.ReservedBy buildReservedBy(ReservationHolderVO holder) {
+        if (isNull(holder)) {
+            return null;
+        }
+
+        QRCodeMongoPersistenceModel.ReservedBy reservedBy = new QRCodeMongoPersistenceModel.ReservedBy();
+        reservedBy.setPayerInfo(holder.payerInfo());
+        reservedBy.setSignerSubject(holder.signerSubject());
+
+        return reservedBy;
     }
 
 }
