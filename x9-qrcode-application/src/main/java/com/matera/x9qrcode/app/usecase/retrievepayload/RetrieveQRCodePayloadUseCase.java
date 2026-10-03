@@ -40,8 +40,12 @@ import static java.util.Objects.nonNull;
 public class RetrieveQRCodePayloadUseCase extends UseCase<RetrieveQRCodePayloadInput, RetrieveQRCodePayloadOutput> {
 
     private static final String EXPIRED_PAYLOAD_ERROR_MESSAGE = "payment payload with ID: %s is expired.";
-    private static final String PAYLOAD_IS_ALREADY_CANCELLED_OR_PAID =
-        "payment payload with ID: %s is already cancelled or paid.";
+    private static final String PAYLOAD_IS_ALREADY_PAID =
+        "payment payload with ID: %s has already been paid.";
+    private static final String PAYLOAD_WAS_CANCELLED =
+        "payment payload with ID: %s was cancelled by the biller.";
+    private static final String PAYLOAD_IS_NOT_PAYABLE =
+        "payment payload with ID: %s is not open for payment.";
 
     private final QRCodeRepository qrCodeRepository;
     private final QRCodeSignatureService qrCodeSignatureService;
@@ -60,7 +64,7 @@ public class RetrieveQRCodePayloadUseCase extends UseCase<RetrieveQRCodePayloadI
         qrCodeEntity.requireIssuedQrCodeContent(input.submittedQrCodeContent());
 
         if (qrCodeEntity.isNotActiveOrInitiated()) {
-            throw new BusinessRuleException(PAYLOAD_IS_ALREADY_CANCELLED_OR_PAID.formatted(locationId.valueAsString()));
+            throw new BusinessRuleException(notPayableReason(qrCodeEntity, locationId));
         }
 
         // Checked explicitly rather than left to the document disappearing. EXPIRED_PAYLOAD below
@@ -126,6 +130,29 @@ public class RetrieveQRCodePayloadUseCase extends UseCase<RetrieveQRCodePayloadI
             return qrCodeLocationService.retrievePaymentNotificationEndpoint();
         }
         return null;
+    }
+
+    /**
+     * Which of the two it is, said out loud.
+     *
+     * <p>This used to answer "is already cancelled or paid" for both, and that single word "or" was
+     * the whole problem: they call for opposite things from the person holding the phone. Already
+     * paid means stop, somebody has settled this bill. Cancelled means the biller withdrew it, and
+     * the payer should go back and ask. A consumer cannot route on a disjunction.
+     *
+     * <p>Naming the status to an unauthenticated caller is safe here because of where this sits:
+     * {@code requireIssuedQrCodeContent} has already run, so only somebody holding the QR Code as
+     * issued gets this far — and what they are being told is the state of the bill in their own
+     * hand.
+     */
+    private String notPayableReason(QRCodeEntity qrCodeEntity, LocationIdVO locationId) {
+        String id = locationId.valueAsString();
+
+        return switch (qrCodeEntity.effectiveStatus()) {
+            case PAID -> PAYLOAD_IS_ALREADY_PAID.formatted(id);
+            case CANCELLED -> PAYLOAD_WAS_CANCELLED.formatted(id);
+            default -> PAYLOAD_IS_NOT_PAYABLE.formatted(id);
+        };
     }
 
     private QRCodeEntity retrieveQrCodeEntity(LocationIdVO locationId) {

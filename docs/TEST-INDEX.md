@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**315 tests documented** — every JUnit test in the repository and every case in the
+**327 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -218,6 +218,27 @@ single most important thing this index exists for.
 | `X9-LOC-040` | a location held by a live QR Code cannot be claimed at creation | `QRCodesApisFlowTest.java` |
 | `X9-LOC-041` | the payload is retrieved by location, signed | `QRCodesApisFlowTest.java` |
 | `X9-LOC-042` | a location is reused once its holder is no longer live | `QRCodesApisFlowTest.java` |
+
+### What the payer is told when a decode is refused
+
+The decoder calls `/pub/api/v1/loc/{id}` on the payer's behalf. Every refusal used to arrive as one
+string, with an internal address attached, so a settled bill, a withdrawn one, a lapsed one, a
+tampered one and an outage were indistinguishable — and four of the five invite a retry.
+
+| Key | What it proves | Where |
+|---|---|---|
+| `X9-DEC-001` | a decode of a paid bill says it was paid | `DecoderRelaysTheRefusalApiTest.java` |
+| `X9-DEC-002` | a decode of a cancelled bill says the biller withdrew it | `DecoderRelaysTheRefusalApiTest.java` |
+| `X9-DEC-003` | a decode of a tampered code says the content does not match | `DecoderRelaysTheRefusalApiTest.java` |
+| `X9-DEC-004` | no refusal carries this deployment's internal address | `DecoderRelaysTheRefusalApiTest.java` |
+| `X9-DEC-005` | a payee that cannot be reached is a 502, not a refusal | `DecoderRelaysTheRefusalApiTest.java` |
+| `X9-DEC-006` | a decode of an expired code says it expired | `test_payment_notification.py` |
+| `X9-DEC-007` | the most ordinary refusal reaches the payer intact | `test_payment_notification.py` |
+| `X9-DEC-008` | a relayed reason cannot carry a link | `RelayedRefusalIsSafeToRenderTest.java` |
+| `X9-DEC-009` | a bare domain is a link too | `RelayedRefusalIsSafeToRenderTest.java` |
+| `X9-DEC-010` | an ordinary reason passes through untouched | `RelayedRefusalIsSafeToRenderTest.java` |
+| `X9-DEC-011` | control characters do not survive | `RelayedRefusalIsSafeToRenderTest.java` |
+| `X9-DEC-012` | a reason reduced to nothing still says something | `RelayedRefusalIsSafeToRenderTest.java` |
 
 ## Editing a payment request
 

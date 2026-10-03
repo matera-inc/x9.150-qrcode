@@ -20,7 +20,11 @@ public enum ErrorTypeEnum {
     STATUS_CONFLICT("Status Conflict", URI.create("https://x9.matera.com/api/status-conflict"), "The QR Code is not in a status that allows this transition.", HttpStatus.CONFLICT),
     PRECONDITION_FAILED("Precondition Failed", URI.create("https://x9.matera.com/api/precondition-failed"), "The QR Code changed after it was read, so the condition on this request no longer holds. Nothing was written.", HttpStatus.PRECONDITION_FAILED),
     INVALID_SIGNATURE("Invalid Signature", URI.create("https://x9.matera.com/api/invalid-signature"), "The JWS signature could not be verified, so the request was not processed.", HttpStatus.UNAUTHORIZED),
-    NOTIFICATION_UNDELIVERABLE("Notification Undeliverable", URI.create("https://x9.matera.com/api/notification-undeliverable"), "The payee could not be reached, so nothing was delivered. Retry.", HttpStatus.BAD_GATEWAY);
+    NOTIFICATION_UNDELIVERABLE("Notification Undeliverable", URI.create("https://x9.matera.com/api/notification-undeliverable"), "The payee could not be reached, so nothing was delivered. Retry.", HttpStatus.BAD_GATEWAY),
+    // The status carried here is a placeholder: a refusal relays whatever status the payee's
+    // service answered with, so that a payer can tell `already paid` from `not found`.
+    PAYLOAD_REFUSED("Payload Refused", URI.create("https://x9.matera.com/api/payload-refused"), "The payee's service refused to release this payload. Its own reason is relayed in `violations`.", HttpStatus.BAD_REQUEST),
+    PAYLOAD_UNREACHABLE("Payload Unreachable", URI.create("https://x9.matera.com/api/payload-unreachable"), "The payee's service could not be reached, so this QR Code could not be decoded. Retry.", HttpStatus.BAD_GATEWAY);
 
     private final String title;
     private final URI uriType;
