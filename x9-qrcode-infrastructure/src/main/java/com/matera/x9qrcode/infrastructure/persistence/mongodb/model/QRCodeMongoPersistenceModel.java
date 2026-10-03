@@ -80,6 +80,16 @@ public class QRCodeMongoPersistenceModel implements Persistable<UUID> {
     @Field(name = "revised_at")
     private OffsetDateTime revisedAt;
 
+    /**
+     * When a PAYMENT_INITIATED reservation stops counting; null in every other state.
+     *
+     * <p>Persisted so a restart does not reset every reservation's clock — a redeploy would
+     * otherwise hand every payer a fresh 90 seconds, or, if it were held in memory only, drop
+     * every reservation at once.
+     */
+    @Field(name = "initiated_expires_at")
+    private OffsetDateTime initiatedExpiresAt;
+
     @Field(name = "status")
     private String status;
 

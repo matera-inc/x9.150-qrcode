@@ -24,6 +24,8 @@ import com.matera.x9qrcode.domain.vo.enumerated.QRCodeStatusEnum;
 
 import lombok.RequiredArgsConstructor;
 
+import java.time.Duration;
+
 import static java.util.Objects.isNull;
 
 @RequiredArgsConstructor
@@ -31,6 +33,15 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
 
     private final QRCodeRepository qrCodeRepository;
     private final PaymentNotificationAcceptancePolicy acceptancePolicy;
+
+    /**
+     * How long a reservation holds before it stops counting — {@code x9.reservation.ttl-seconds}.
+     *
+     * <p>Declared LAST on purpose: {@code @RequiredArgsConstructor} orders parameters by field
+     * declaration, so inserting a field mid-list silently reorders the constructor and any caller
+     * passing arguments positionally starts passing the wrong ones.
+     */
+    private final Duration reservationTtl;
 
     public Boolean execute(PaymentNotificationQRCodeInput paymentNotificationQRCodeInput) {
         PaymentNotificationDataDTO notificationDataDTO = paymentNotificationQRCodeInput.paymentNotificationData();
@@ -65,7 +76,7 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
         }
 
         switch (intent) {
-            case INITIATE -> qrCodeEntity.notifyPayment(paymentNotificationDataVO, QRCodeStatusEnum.PAYMENT_INITIATED);
+            case INITIATE -> qrCodeEntity.notifyPayment(paymentNotificationDataVO, QRCodeStatusEnum.PAYMENT_INITIATED, reservationTtl);
             case RECORD -> qrCodeEntity.notifyPayment(paymentNotificationDataVO);
         }
     }

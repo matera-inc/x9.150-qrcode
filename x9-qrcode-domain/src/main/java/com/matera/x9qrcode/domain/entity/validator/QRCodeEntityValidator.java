@@ -276,7 +276,7 @@ public final class QRCodeEntityValidator {
                 "This QRCode does not support Instant Payment networks.");
         }
 
-        if (!QRCodeStatusEnum.ACTIVE.equals(this.entity.getStatus())) {
+        if (!QRCodeStatusEnum.ACTIVE.equals(this.entity.effectiveStatus())) {
             String formattedErrorMessage =
                 String.format("Cannot notify %s payments for a QR Code that is not ACTIVE.",
                     newPaymentNotification.payment().network());
@@ -311,7 +311,7 @@ public final class QRCodeEntityValidator {
                 "This QRCode does not support ACH network.");
         }
 
-        if (!QRCodeStatusEnum.ACTIVE.equals(this.entity.getStatus())) {
+        if (!QRCodeStatusEnum.ACTIVE.equals(this.entity.effectiveStatus())) {
             throw new BusinessRuleException("paymentNotification.data",
                 "Cannot notify ACH payments for a QR Code that is not ACTIVE.");
         }
@@ -353,7 +353,7 @@ public final class QRCodeEntityValidator {
         BlockchainVO blockchainDTO = newPaymentNotification.blockchain();
 
         if (ActionEnum.PAYMENT_INITIATED.equals(blockchainDTO.action()) &&
-            !QRCodeStatusEnum.ACTIVE.equals(this.entity.getStatus())) {
+            !QRCodeStatusEnum.ACTIVE.equals(this.entity.effectiveStatus())) {
 
             throw new BusinessRuleException("paymentNotification.data.blockchain.action",
                 "Cannot initiate notify a blockchain payment for a QR Code that is not ACTIVE.");
@@ -362,7 +362,7 @@ public final class QRCodeEntityValidator {
         List<ActionEnum> BLOCKCHAIN_POST_ACTIONS = List.of(ActionEnum.SENT, ActionEnum.NOT_SENT);
 
         if (BLOCKCHAIN_POST_ACTIONS.contains(blockchainDTO.action())) {
-            if (!QRCodeStatusEnum.PAYMENT_INITIATED.equals(this.entity.getStatus())) {
+            if (!QRCodeStatusEnum.PAYMENT_INITIATED.equals(this.entity.effectiveStatus())) {
                 throw new BusinessRuleException("paymentNotification.data.blockchain.action",
                     "Cannot notify a blockchain payment for a QR Code that is not PAYMENT_INITIATED.");
             }

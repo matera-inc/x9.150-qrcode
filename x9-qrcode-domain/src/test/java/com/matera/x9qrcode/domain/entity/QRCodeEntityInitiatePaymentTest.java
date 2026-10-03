@@ -7,6 +7,7 @@
 package com.matera.x9qrcode.domain.entity;
 
 import com.matera.x9qrcode.domain.AbstractTest;
+import java.time.Duration;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 import com.matera.x9qrcode.domain.exception.QRCodeStatusConflictException;
 import com.matera.x9qrcode.domain.vo.PaymentDetailsVO;
@@ -26,6 +27,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  */
 class QRCodeEntityInitiatePaymentTest extends AbstractTest {
 
+    private static final Duration RESERVATION_TTL = Duration.ofSeconds(90);
+
     private static final PaymentDetailsVO PAYMENT_DETAILS =
         new PaymentDetailsVO("XYZ.USBK.X9aTf72qLm.1", NetworkEnum.FEDNOW.value());
 
@@ -41,7 +44,7 @@ class QRCodeEntityInitiatePaymentTest extends AbstractTest {
         QRCodeEntity qrCodeEntity = QR_CODE_ENTITY_FIXTURE.qrCodeEntity();
         assertEquals(QRCodeStatusEnum.ACTIVE, qrCodeEntity.getStatus());
 
-        qrCodeEntity.initiatePayment(null);
+        qrCodeEntity.initiatePayment(null, RESERVATION_TTL);
 
         assertEquals(QRCodeStatusEnum.PAYMENT_INITIATED, qrCodeEntity.getStatus());
     }
@@ -59,7 +62,7 @@ class QRCodeEntityInitiatePaymentTest extends AbstractTest {
     void shouldBumpRevisedAtWhenInitiatingPayment() {
         QRCodeEntity qrCodeEntity = QR_CODE_ENTITY_FIXTURE.qrCodeEntity();
 
-        qrCodeEntity.initiatePayment(null);
+        qrCodeEntity.initiatePayment(null, RESERVATION_TTL);
 
         assertNotEquals(qrCodeEntity.getCreatedAt(), qrCodeEntity.getRevisedAt());
     }
@@ -74,10 +77,10 @@ class QRCodeEntityInitiatePaymentTest extends AbstractTest {
     @Test
     void shouldThrowConflictWhenPaymentIsAlreadyInitiated() {
         QRCodeEntity qrCodeEntity = QR_CODE_ENTITY_FIXTURE.qrCodeEntity();
-        qrCodeEntity.initiatePayment(null);
+        qrCodeEntity.initiatePayment(null, RESERVATION_TTL);
 
         QRCodeStatusConflictException exception =
-            assertThrows(QRCodeStatusConflictException.class, () -> qrCodeEntity.initiatePayment(null));
+            assertThrows(QRCodeStatusConflictException.class, () -> qrCodeEntity.initiatePayment(null, RESERVATION_TTL));
 
         assertEquals(QRCodeStatusEnum.PAYMENT_INITIATED, exception.getCurrentStatus());
     }
@@ -95,7 +98,7 @@ class QRCodeEntityInitiatePaymentTest extends AbstractTest {
         qrCodeEntity.pay(PAYMENT_DETAILS);
 
         QRCodeStatusConflictException exception =
-            assertThrows(QRCodeStatusConflictException.class, () -> qrCodeEntity.initiatePayment(null));
+            assertThrows(QRCodeStatusConflictException.class, () -> qrCodeEntity.initiatePayment(null, RESERVATION_TTL));
 
         assertEquals(QRCodeStatusEnum.PAID, exception.getCurrentStatus());
     }
@@ -113,7 +116,7 @@ class QRCodeEntityInitiatePaymentTest extends AbstractTest {
         qrCodeEntity.cancel(null);
 
         QRCodeStatusConflictException exception =
-            assertThrows(QRCodeStatusConflictException.class, () -> qrCodeEntity.initiatePayment(null));
+            assertThrows(QRCodeStatusConflictException.class, () -> qrCodeEntity.initiatePayment(null, RESERVATION_TTL));
 
         assertEquals(QRCodeStatusEnum.CANCELLED, exception.getCurrentStatus());
     }
@@ -131,7 +134,7 @@ class QRCodeEntityInitiatePaymentTest extends AbstractTest {
     void shouldThrowBusinessRuleExceptionWhenPaymentDetailsAreInformed() {
         QRCodeEntity qrCodeEntity = QR_CODE_ENTITY_FIXTURE.qrCodeEntity();
 
-        assertThrows(BusinessRuleException.class, () -> qrCodeEntity.initiatePayment(PAYMENT_DETAILS));
+        assertThrows(BusinessRuleException.class, () -> qrCodeEntity.initiatePayment(PAYMENT_DETAILS, RESERVATION_TTL));
 
         assertEquals(QRCodeStatusEnum.ACTIVE, qrCodeEntity.getStatus());
     }

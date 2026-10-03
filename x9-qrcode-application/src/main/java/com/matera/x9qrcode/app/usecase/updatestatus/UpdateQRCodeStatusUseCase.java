@@ -7,6 +7,8 @@
 package com.matera.x9qrcode.app.usecase.updatestatus;
 
 import com.matera.x9qrcode.app.repository.QRCodeRepository;
+
+import java.time.Duration;
 import com.matera.x9qrcode.app.usecase.UseCase;
 import com.matera.x9qrcode.domain.entity.QRCodeEntity;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
@@ -27,6 +29,12 @@ public class UpdateQRCodeStatusUseCase extends UseCase<UpdateQRCodeStatusInput, 
 
     private final QRCodeRepository qrCodeRepository;
 
+    /**
+     * How long a reservation holds before it stops counting. Configuration, not a constant, because
+     * the right window depends on the deployment: a till wants seconds, a bank transfer longer.
+     */
+    private final Duration reservationTtl;
+
     @Override
     public UpdateQRCodeStatusOutput execute(UpdateQRCodeStatusInput updateQRCodeStatusInput) {
         QRCodeIdVO qrCodeIdVO = QRCodeIdVO.from(updateQRCodeStatusInput.id());
@@ -45,7 +53,7 @@ public class UpdateQRCodeStatusUseCase extends UseCase<UpdateQRCodeStatusInput, 
 
         switch (updateQRCodeStatusInput.status()) {
             case PAID -> qrCodeEntity.pay(buildPaymentDetails(updateQRCodeStatusInput));
-            case PAYMENT_INITIATED -> qrCodeEntity.initiatePayment(buildPaymentDetails(updateQRCodeStatusInput));
+            case PAYMENT_INITIATED -> qrCodeEntity.initiatePayment(buildPaymentDetails(updateQRCodeStatusInput), reservationTtl);
             case CANCELLED -> qrCodeEntity.cancel(buildPaymentDetails(updateQRCodeStatusInput));
             case ACTIVE -> qrCodeEntity.reactivate(buildPaymentDetails(updateQRCodeStatusInput));
             default -> throw new BusinessRuleException(
@@ -56,7 +64,7 @@ public class UpdateQRCodeStatusUseCase extends UseCase<UpdateQRCodeStatusInput, 
 
         return new UpdateQRCodeStatusOutput(
             qrCodeIdVO.valueAsString(),
-            qrCodeEntity.getStatus().value()
+            qrCodeEntity.effectiveStatus().value()
         );
     }
 
