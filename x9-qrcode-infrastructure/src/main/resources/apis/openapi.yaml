@@ -1685,9 +1685,25 @@ components:
           properties:
             info:
               type: string
-              maxLength: 140
-              description: "An optional free text field that may be included for informational purposes or customer engagement."
-              example: "email@info.com"
+              maxLength: 254
+              description: |-
+                Free text about the payer, and the only payer field the standard defines — there is
+                no payer identifier in X9.150.
+
+                **The 254 limit is the standard's.** ANSI X9.150-2026 **Table 4 — Payment
+                Notification Requirements**, row `3.1 Payer Info`, gives the length as `254`, and
+                §3.1 repeats it in prose: *"If present, SHALL be string with 254 maximum
+                characters"*. Of its content it says only *"Any information related to the Payer."*
+
+                **Send a stable, opaque token rather than a person.** It is the only thing that lets
+                a payee tell two payers at one PSP apart, and an opaque value does that while
+                identifying nobody. The standard's own example is an email address; see
+                [BEST-PRACTICES.md](../../../../../../official-spec/BEST-PRACTICES.md) for why we
+                suggest otherwise.
+
+                Supplied by the sender and verified by nobody, so it can only ever narrow an
+                identity the signing certificate already established — never widen one.
+              example: "p_7f3a9c21e45b"
         expectedDate:
           type: string
           format: date-time

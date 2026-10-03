@@ -46,8 +46,15 @@ other's.
 appearing in a support ticket, or anything a payer did not consent to share. It is transported and
 persisted.
 
-**A note on length.** The standard allows 254 characters. Keep your identifier far shorter than
-that; an opaque token needs a dozen or two.
+**A note on length.** The standard allows 254 characters — **Table 4 — Payment Notification
+Requirements**, row `3.1 Payer Info`, with §3.1 repeating it as *"SHALL be string with 254 maximum
+characters"*. This deployment declared 140 and, it turned out, enforced nothing at all: a payment
+notification arrives as a signed JWS, so the payload is parsed out of the token rather than bound by
+the framework, and the declared limit never ran. A 255-character value was accepted. The bound is
+now 254 and checked in the domain, where it actually executes.
+
+Keep your identifier far shorter than the maximum anyway — an opaque token needs a dozen characters
+or two.
 
 **What we never trust it for.** `payer.info` is supplied by the sender and verified by nobody, so it
 can only ever *narrow* an identity the certificate already established. It can never widen one, and

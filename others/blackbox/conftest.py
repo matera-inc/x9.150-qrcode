@@ -93,14 +93,15 @@ class Api:
         return created["id"]
 
     def notify(self, qr_id, *, amount=BILL, tip=None, currency="USDC", network="Solana",
-               action="PAYMENT_INITIATED", transaction_id=None, blockchain=True, raw=None):
+               action="PAYMENT_INITIATED", transaction_id=None, blockchain=True, raw=None,
+               payer_info="blackbox@example.com"):
         payment = {"qrcodeId": qr_id, "amount": amount, "currency": currency, "network": network}
         if tip is not None:
             payment["tipAmount"] = tip
         if transaction_id:
             payment["transactionId"] = transaction_id
 
-        notification = {"payment": payment, "payer": {"info": "blackbox@example.com"}}
+        notification = {"payment": payment, "payer": {"info": payer_info}}
         if blockchain:
             notification["blockchain"] = {"action": action,
                                           "from": PAYER_WALLET, "to": RECIPIENT}
