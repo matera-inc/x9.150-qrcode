@@ -72,6 +72,16 @@ class Api:
 
     def create_qr(self, *, tip=None, editable=None, networks=None, currency="USDC",
                   valid_until=FAR_FUTURE, amount=BILL):
+        status, created = self.create_qr_detailed(
+            tip=tip, editable=editable, networks=networks, currency=currency,
+            valid_until=valid_until, amount=amount)
+        assert status == 201, f"fixture QR Code could not be created: {status} {created}"
+        return created["id"]
+
+    def create_qr_detailed(self, *, tip=None, editable=None, networks=None, currency="USDC",
+                           valid_until=FAR_FUTURE, amount=BILL):
+        """As create_qr, but returns the whole created object — callers that need the EMV content
+        or the location, rather than only the id."""
         method = {"currency": currency, "validUntil": valid_until, "amount": amount,
                   "networks": networks or {"solana": {"recipient": RECIPIENT}}}
         if editable:
@@ -81,7 +91,7 @@ class Api:
         if tip:
             bill["tip"] = tip
 
-        status, created = self.call("POST", "/api/v1/payment-request", body={
+        return self.call("POST", "/api/v1/payment-request", body={
             "validUntil": valid_until,
             "creditor": {"name": "Blackbox Co",
                          "address": {"line1": "1 A St", "city": "Los Angeles", "country": "US"},
@@ -109,6 +119,15 @@ class Api:
         token = raw if raw is not None else self.sign(notification)
         return self.call("POST", "/pub/api/v1/payment-notification", raw=token,
                          headers={"Content-Type": "application/jose"})
+
+    def mark_paid(self, qr_id, *, end_to_end_id="E2E-BLACKBOX-1", network="solana"):
+        """The payee's order: this bill is settled."""
+        return self.call("PUT", f"/api/v1/payment-request/{qr_id}/status-update",
+                         body={"status": "PAID", "endToEndId": end_to_end_id, "network": network})
+
+    def set_status(self, qr_id, status):
+        return self.call("PUT", f"/api/v1/payment-request/{qr_id}/status-update",
+                         body={"status": status})
 
     def status_of(self, qr_id):
         _, current = self.call("GET", f"/api/v1/payment-request/{qr_id}")

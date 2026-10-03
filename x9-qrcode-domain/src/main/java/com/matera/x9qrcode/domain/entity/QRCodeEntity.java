@@ -712,31 +712,6 @@ public class QRCodeEntity {
     }
 
     /**
-     * The status as it stands <em>now</em>, which is not always the status that is stored.
-     *
-     * <p>Exactly one rule, applying to one state:
-     *
-     * <ul>
-     *   <li>a {@code PAYMENT_INITIATED} whose reservation has <b>not</b> lapsed is
-     *       {@code PAYMENT_INITIATED};</li>
-     *   <li>a {@code PAYMENT_INITIATED} whose reservation <b>has</b> lapsed is {@code ACTIVE} — the
-     *       payer who announced is no longer holding it, so anybody may;</li>
-     *   <li>every other state is itself. {@code PAID} and {@code CANCELLED} are terminal and no
-     *       amount of waiting changes them.</li>
-     * </ul>
-     *
-     * <p><b>Every decision about status must come through here</b>, and that is the whole of the
-     * hazard in this feature. Nine places read the status to decide something. If one keeps reading
-     * the stored field directly, the deployment contradicts itself: the payload endpoint serves a
-     * code the notification endpoint still believes is reserved, or a payer is refused by one half
-     * of a service the other half has already released.
-     *
-     * <p>The stored value is deliberately left alone. It records what was last <em>reported</em> —
-     * a payer did announce, and that remains true — while this reports what is now the
-     * <em>case</em>. Nothing is written when a reservation lapses, so a QR Code sitting untouched
-     * costs nothing and a reservation lapsing at 3am wakes nobody.
-     */
-    /**
      * Stamp the reservation clock on entering {@code PAYMENT_INITIATED}, clear it on leaving.
      *
      * <p>One place, called by both doors into the state, so the two cannot drift apart.
@@ -765,6 +740,31 @@ public class QRCodeEntity {
         this.initiatedExpiresAt = lapses.isAfter(codeExpires) ? codeExpires : lapses;
     }
 
+    /**
+     * The status as it stands <em>now</em>, which is not always the status that is stored.
+     *
+     * <p>Exactly one rule, applying to one state:
+     *
+     * <ul>
+     *   <li>a {@code PAYMENT_INITIATED} whose reservation has <b>not</b> lapsed is
+     *       {@code PAYMENT_INITIATED};</li>
+     *   <li>a {@code PAYMENT_INITIATED} whose reservation <b>has</b> lapsed is {@code ACTIVE} — the
+     *       payer who announced is no longer holding it, so anybody may;</li>
+     *   <li>every other state is itself. {@code PAID} and {@code CANCELLED} are terminal and no
+     *       amount of waiting changes them.</li>
+     * </ul>
+     *
+     * <p><b>Every decision about status must come through here</b>, and that is the whole of the
+     * hazard in this feature. Nine places read the status to decide something. If one keeps reading
+     * the stored field directly, the deployment contradicts itself: the payload endpoint serves a
+     * code the notification endpoint still believes is reserved, or a payer is refused by one half
+     * of a service the other half has already released.
+     *
+     * <p>The stored value is deliberately left alone. It records what was last <em>reported</em> —
+     * a payer did announce, and that remains true — while this reports what is now the
+     * <em>case</em>. Nothing is written when a reservation lapses, so a QR Code sitting untouched
+     * costs nothing and a reservation lapsing at 3am wakes nobody.
+     */
     public QRCodeStatusEnum effectiveStatus(OffsetDateTime at) {
         if (!QRCodeStatusEnum.PAYMENT_INITIATED.equals(this.status)) {
             return this.status;
@@ -782,6 +782,26 @@ public class QRCodeEntity {
     /** {@link #effectiveStatus(OffsetDateTime)} as of now. */
     public QRCodeStatusEnum effectiveStatus() {
         return effectiveStatus(DateTimeUtils.nowUTC());
+    }
+
+    /**
+     * Whether this QR Code is past the life its biller gave it.
+     *
+     * <p>Expiry is <b>not a status</b>, and keeping the two apart is the point. A lapsed QR Code is
+     * still {@code ACTIVE}: nothing happened to it, time simply passed. What expiry governs is what
+     * PAYERS may do — they may no longer fetch the payload, and they may no longer pay it.
+     *
+     * <p>It does not govern the payee. A payee marking a lapsed bill paid is reporting money that
+     * arrived, usually while analysing an exception by hand, and this service never saw that money
+     * and is not in a position to contradict them. See ADR-0020.
+     */
+    public boolean isExpired(OffsetDateTime at) {
+        return this.getValidUntil().isBefore(at);
+    }
+
+    /** {@link #isExpired(OffsetDateTime)} as of now. */
+    public boolean isExpired() {
+        return isExpired(DateTimeUtils.nowUTC());
     }
 
     public boolean isNotActiveOrInitiated() {

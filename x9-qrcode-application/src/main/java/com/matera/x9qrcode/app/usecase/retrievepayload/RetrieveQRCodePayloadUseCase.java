@@ -63,6 +63,17 @@ public class RetrieveQRCodePayloadUseCase extends UseCase<RetrieveQRCodePayloadI
             throw new BusinessRuleException(PAYLOAD_IS_ALREADY_CANCELLED_OR_PAID.formatted(locationId.valueAsString()));
         }
 
+        // Checked explicitly rather than left to the document disappearing. EXPIRED_PAYLOAD below
+        // is only reached once MongoDB's TTL index removes the row, which happens long after
+        // validUntil — so a lapsed QR Code went on serving its payload, and a payer scanning a
+        // week-old code was handed bank details and an amount as if they were still on offer.
+        //
+        // This endpoint is PAYER-facing, so it is strict: expired, paid and cancelled are all
+        // refused. The payee's own endpoints are deliberately not gated this way — ADR-0020.
+        if (qrCodeEntity.isExpired()) {
+            throw new BusinessRuleException(EXPIRED_PAYLOAD_ERROR_MESSAGE.formatted(locationId.valueAsString()));
+        }
+
         FormulaResultDTO formulaResult = null;
 
         BillVO bill = qrCodeEntity.getBill();

@@ -42,6 +42,7 @@ the history of why we changed our minds — the part that is usually lost.
 | [0017](0017-a-tip-is-money-on-top-of-the-bill.md) | **A tip is money on top of the bill** — `payment.amount` is the total, tip included; the merchant's share is `amount - tipAmount` | Accepted |
 | [0018](0018-a-patch-names-every-currency-or-none.md) | **A patch names every currency, or none** — no currency may be added by a patch, and none may be left out; refused with 400, nothing written | Accepted |
 | [0019](0019-a-reservation-expires-and-nothing-sweeps.md) | **A reservation expires, and nothing sweeps** — `PAYMENT_INITIATED` carries the instant it stops counting; the lapse is applied on read, never by a background job | Accepted |
+| [0020](0020-the-payee-states-the-outcome-of-its-own-receivable.md) | **The payee states the outcome of its own receivable** — marking a bill paid is an order, not a claim; payers stay strict, `CANCELLED` stays final | Accepted |
 
 ## Writing a new one
 
