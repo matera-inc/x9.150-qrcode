@@ -252,7 +252,11 @@ class ConditionalStatusUpdateApiTest extends AbstractIntegrationTest {
     void anIllegalTransitionIsStillA409NotA412() {
         String id = createQRCode();
 
-        given().contentType("application/json").body("{\"status\":\"PAYMENT_INITIATED\"}")
+        // PAID -> PAYMENT_INITIATED. Chosen because it is genuinely illegal: the previous example
+        // here was PAYMENT_INITIATED -> PAYMENT_INITIATED, which is now an idempotent no-op under
+        // ADR-0020 and so proves nothing about transitions.
+        given().contentType("application/json")
+                .body("{\"status\":\"PAID\",\"endToEndId\":\"E2E-ILLEGAL-1\",\"network\":\"solana\"}")
                 .when().put(CREATE + "/" + id + "/status-update").then().statusCode(HttpStatus.OK.value());
 
         MockMvcResponse response = given().contentType("application/json")

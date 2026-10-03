@@ -10,6 +10,9 @@ The house rule here is that **a refusal must be refused for the right reason**. 
 unrelated rule fired first — both of which have happened in this repo. `assert_refused` insists
 on the field named in the violation.
 """
+import base64
+import json
+
 import pytest
 
 from conftest import BILL, FAR_FUTURE, FEDNOW, PAYER_WALLET, RECIPIENT, TX_HASH, assert_refused
@@ -337,6 +340,166 @@ class TestTip:
         qr = api.create_qr(tip=tip_0_to_10)
         assert_refused(api.notify(qr, amount=BILL + ceiling + 2, tip=ceiling + 2),
                        naming="payment.tipAmount")
+
+
+class TestPayeeAuthority:
+    """The payee states the outcome of its own receivable. See ADR-0020."""
+
+    def test_an_active_bill_can_be_marked_paid(self, api):
+        """X9-LIFE-120 — the payee may settle an ACTIVE bill.
+
+        Source: Ours. ADR-0020, ADR-0014 — settlement is the consuming system's call because this
+    service never touches money.
+
+        Why: The ordinary case, and the control for the refusals below.
+        """
+        qr = api.create_qr()
+        status, body = api.mark_paid(qr)
+        assert status == 200, f"{status} {body}"
+        assert api.status_of(qr) == "PAID"
+
+    def test_a_reserved_bill_can_be_marked_paid(self, api):
+        """X9-LIFE-121 — the payee may settle a bill a payer has reserved.
+
+        Source: Ours. ADR-0020.
+
+        Why: The payee has seen the money. That a payer announced first does not make the payee's
+    observation less true, and refusing would strand a bill that was actually paid.
+        """
+        qr = api.create_qr()
+        api.set_status(qr, "PAYMENT_INITIATED")
+        status, body = api.mark_paid(qr)
+        assert status == 200, f"{status} {body}"
+
+    def test_an_expired_bill_can_still_be_marked_paid(self, api):
+        """X9-LIFE-122 — the payee may settle a bill whose validUntil has passed.
+
+        Source: Ours. ADR-0020. Expiry is not a status: it stops PAYERS paying, it does not stop a
+    payee recording what already arrived.
+
+        Why: THIS TEST IS THE POINT OF THE SET. The behaviour exists today only because validUntil
+    is never consulted on the status-update path — it is correct by accident. Someone adding an
+    expiry check "for correctness" would silently remove the payee's authority in exactly the
+    situation it exists for: an exception, analysed by hand, after the code lapsed. A domain test
+    cannot catch that, because the check would be added above the domain.
+
+    It sleeps, which no other test here does. The alternative is not testing the one case most
+    likely to be broken by a well-meaning change.
+        """
+        import datetime
+        import time
+
+        soon = (datetime.datetime.now(datetime.timezone.utc)
+                + datetime.timedelta(seconds=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        status, created = api.create_qr_detailed(valid_until=soon)
+        assert status == 201, f"{status} {created}"
+
+        time.sleep(5)
+
+        status, result = api.mark_paid(created["id"])
+        assert status == 200, (
+            f"an expired bill must still be settleable by the payee: {status} {result}")
+
+    def test_a_cancelled_bill_cannot_be_marked_paid(self, api):
+        """X9-LIFE-123 — a cancelled bill cannot be marked paid.
+
+        Source: Ours. ADR-0020.
+
+        Why: The limit of the payee's authority, and not a contradiction of it. A withdrawn bill
+    stays withdrawn: the QR Code's life ended when the biller ended it, and no later payment
+    reopens it. The payee's authority is over the OUTCOME of a live receivable, not over whether a
+    receivable exists — that is the biller's, and they already exercised it.
+        """
+        qr = api.create_qr()
+        api.set_status(qr, "CANCELLED")
+        status, body = api.mark_paid(qr)
+        assert status >= 400, f"CANCELLED is final: {status} {body}"
+        assert api.status_of(qr) == "CANCELLED"
+
+    @pytest.mark.parametrize("status, extra", [
+        ("ACTIVE", {}),
+        ("PAYMENT_INITIATED", {}),
+        ("CANCELLED", {}),
+        ("PAID", {"endToEndId": "E2E-IDEM", "network": "solana"}),
+    ])
+    def test_asking_for_the_status_it_already_has_is_a_no_op(self, api, status, extra):
+        """X9-LIFE-127 — X to X is accepted, on every status.
+
+        (X9-LIFE-125 is the JUnit case for the reserved status alone; this is the whole matrix.)
+
+        Source: Ours. ADR-0020.
+
+        Why: HTTP retries, at-least-once queues and a human clicking twice all produce X to X, and
+    every one means "make sure it is X" — which it already is. Answering 409 makes a caller
+    investigate a success. All four, because a rule that holds for one status and not another is
+    worse than no rule: a caller cannot tell which retries are safe.
+
+    PAYEE-FACING ONLY. A payer announcing twice is two payers reaching for one bill and is still
+    refused — that is the notification endpoint (X9-LIFE-002), not this one.
+        """
+        qr = api.create_qr()
+        body = {"status": status, **extra}
+
+        first, _ = api.call("PUT", f"/api/v1/payment-request/{qr}/status-update", body=body)
+        if status != "ACTIVE":
+            assert first == 200, f"could not reach {status}"
+
+        again, result = api.call("PUT", f"/api/v1/payment-request/{qr}/status-update", body=body)
+        assert again == 200, f"{status} -> {status} must be a no-op: {again} {result}"
+        assert api.status_of(qr) == status
+
+    def test_an_expired_bill_does_not_serve_its_payload(self, api):
+        """X9-LIFE-126 — a payer cannot fetch the payload of an expired QR Code.
+
+        Source: Ours. ADR-0020 — payers are held strictly; expiry stops them fetching and stops
+    them paying.
+
+        Why: It did serve it. The expiry path was only reached once MongoDB's TTL index removed the
+    document, which happens long after validUntil, so a payer scanning a week-old code was handed
+    bank details and an amount as though they were still on offer.
+
+    Note the asymmetry this pins, which is the whole of ADR-0020: the same QR Code the payer may no
+    longer fetch, the PAYEE may still mark paid (X9-LIFE-122).
+        """
+        import datetime
+        import time
+
+        soon = (datetime.datetime.now(datetime.timezone.utc)
+                + datetime.timedelta(seconds=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        status, created = api.create_qr_detailed(valid_until=soon)
+        assert status == 201, created
+
+        time.sleep(5)
+
+        token = api.sign({"qrCodeContent": base64.urlsafe_b64encode(
+            created["qrCode"].encode()).decode().rstrip("=")})
+        status, result = api.call("POST", f"/pub/api/v1/loc/{created['location']['id']}",
+                                  raw=token or "",
+                                  headers={"Content-Type": "application/jose"})
+        assert status >= 400, f"an expired QR Code must not serve its payload: {status} {result}"
+        assert "expired" in json.dumps(result).lower(), f"and must say why: {result}"
+
+    def test_a_paid_bill_stops_attracting_payers(self, api):
+        """X9-LIFE-124 — once PAID, payers are refused.
+
+        Source: Ours. ADR-0020 — the asymmetry is the point: lenient with the payee, strict with
+    payers.
+
+        Why: A settled bill should stop attracting payments. Both payer-facing doors are checked,
+    because closing one and leaving the other open would be worse than closing neither — it would
+    look shut.
+        """
+        qr = api.create_qr()
+        api.mark_paid(qr)
+
+        status, _ = api.notify(qr)
+        assert status >= 400, "a paid bill must not accept a payment notification"
+
+        token = api.sign({"qrCodeContent": "irrelevant"})
+        status, _ = api.call("POST", f"/pub/api/v1/loc/{qr}", raw=token or "",
+                             headers={"Content-Type": "application/jose"})
+        assert status >= 400, "a paid bill must not serve its payload"
 
 
 class TestPayerInfo:

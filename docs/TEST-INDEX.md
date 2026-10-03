@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**308 tests documented** — every JUnit test in the repository and every case in the
+**315 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -154,7 +154,6 @@ single most important thing this index exists for.
 | `X9-LIFE-046` | a QR Code naming an external endpoint refuses notifications here | `PaymentNotificationAcceptanceApiTest.java` |
 | `X9-LIFE-050` | a payment can be initiated on an ACTIVE QR Code over HTTP | `StatusUpdatePaymentInitiatedApiTest.java` |
 | `X9-LIFE-051` | the reservation is visible on subsequent reads | `StatusUpdatePaymentInitiatedApiTest.java` |
-| `X9-LIFE-052` | a second initiation is a conflict | `StatusUpdatePaymentInitiatedApiTest.java` |
 | `X9-LIFE-053` | an already-paid QR Code cannot be initiated | `StatusUpdatePaymentInitiatedApiTest.java` |
 | `X9-LIFE-054` | a cancelled QR Code cannot be initiated | `StatusUpdatePaymentInitiatedApiTest.java` |
 | `X9-LIFE-055` | a reserved QR Code can be reactivated | `StatusUpdatePaymentInitiatedApiTest.java` |
@@ -192,6 +191,14 @@ single most important thing this index exists for.
 | `X9-LIFE-116` | the stamp is cleared when the reservation ends | `QRCodeEntityReservationExpiryTest.java` |
 | `X9-LIFE-117` | a terminal status is never reinterpreted | `QRCodeEntityReservationExpiryTest.java` |
 | `X9-LIFE-118` | a reservation with no stamp is treated as holding | `QRCodeEntityReservationExpiryTest.java` |
+| `X9-LIFE-120` | the payee may settle an ACTIVE bill | `test_payment_notification.py` |
+| `X9-LIFE-121` | the payee may settle a bill a payer has reserved | `test_payment_notification.py` |
+| `X9-LIFE-122` | the payee may settle a bill whose validUntil has passed | `test_payment_notification.py` |
+| `X9-LIFE-123` | a cancelled bill cannot be marked paid | `test_payment_notification.py` |
+| `X9-LIFE-124` | once PAID, payers are refused | `test_payment_notification.py` |
+| `X9-LIFE-125` | asking for the status it already has is an idempotent no-op | `StatusUpdatePaymentInitiatedApiTest.java` |
+| `X9-LIFE-126` | a payer cannot fetch the payload of an expired QR Code | `test_payment_notification.py` |
+| `X9-LIFE-127` | X to X is accepted, on every status | `test_payment_notification.py` |
 
 ## Locations and payload retrieval
 

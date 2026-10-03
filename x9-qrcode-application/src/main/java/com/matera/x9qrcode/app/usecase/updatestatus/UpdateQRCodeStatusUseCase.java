@@ -7,8 +7,6 @@
 package com.matera.x9qrcode.app.usecase.updatestatus;
 
 import com.matera.x9qrcode.app.repository.QRCodeRepository;
-
-import java.time.Duration;
 import com.matera.x9qrcode.app.usecase.UseCase;
 import com.matera.x9qrcode.domain.entity.QRCodeEntity;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
@@ -16,9 +14,11 @@ import com.matera.x9qrcode.domain.vo.PaymentDetailsVO;
 import com.matera.x9qrcode.domain.vo.PaymentMethodVO;
 import com.matera.x9qrcode.domain.vo.QRCodeIdVO;
 import com.matera.x9qrcode.domain.vo.enumerated.NetworkEnum;
+import com.matera.x9qrcode.domain.vo.enumerated.QRCodeStatusEnum;
 
 import lombok.RequiredArgsConstructor;
 
+import java.time.Duration;
 import java.util.List;
 
 import static java.util.Objects.isNull;
@@ -49,6 +49,22 @@ public class UpdateQRCodeStatusUseCase extends UseCase<UpdateQRCodeStatusInput, 
 
         if (nonNull(network)) {
             checkNetworkIsValidPaymentMethod(qrCodeEntity.getPaymentMethods(), network);
+        }
+
+        // Asking for the status it already has is a repeated call, not a transition. HTTP retries,
+        // at-least-once queues and a human clicking twice all produce it, and every one of them
+        // means "make sure it is X", which it already is.
+        //
+        // A true no-op: no event, no revision, no revisedAt. Something that emitted a second
+        // payment.cleared would make a duplicated request indistinguishable from a second payment.
+        //
+        // PAYEE-FACING ONLY. A payer announcing twice is two payers reaching for one bill and is
+        // still refused — that path is the notification endpoint, not this one.
+        // Compared against the STORED status, not the effective one. A lapsed reservation asked to
+        // go ACTIVE is a real transition — it writes the release down and clears the stamp — and
+        // short-circuiting on the effective reading would leave that stamp behind.
+        if (qrCodeEntity.getStatus().equals(QRCodeStatusEnum.fromValue(updateQRCodeStatusInput.status().value()))) {
+            return new UpdateQRCodeStatusOutput(qrCodeIdVO.valueAsString(), qrCodeEntity.effectiveStatus().value());
         }
 
         switch (updateQRCodeStatusInput.status()) {

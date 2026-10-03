@@ -102,22 +102,31 @@ class StatusUpdatePaymentInitiatedApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * <b>X9-LIFE-052</b> — a second initiation is a conflict.
+     * <b>X9-LIFE-125</b> — asking for the status it already has is an idempotent no-op.
      *
-     * <p><b>Source:</b> Ours. ADR-0002.
+     * <p><b>Source:</b> Ours. ADR-0020 — the payee's endpoint obeys, and a repeated call is a
+     * repeated call.
      *
-     * <p><b>Why:</b> 409 rather than 400: the request is well-formed, the state is what refuses it.
+     * <p><b>Why:</b> HTTP retries, at-least-once queues and a human clicking twice all produce X to
+     * X, and every one of them means "make sure it is X", which it already is. Answering 409 makes
+     * a caller investigate a success.
+     *
+     * <p><b>Replaces X9-LIFE-052</b>, which asserted the opposite here. That test's intent — two
+     * payers must not both believe they hold one QR Code — remains correct and remains tested, but
+     * on the endpoint where it actually lives: a PAYER announcing twice is refused on the
+     * notification path (X9-LIFE-042, and X9-LIFE-002 in the black-box suite). LIFE-052 was
+     * asserting a payer-protection property through the payee's API, which is why the rule change
+     * broke it.
      */
     @Test
-    void shouldRejectWithConflictWhenPaymentIsAlreadyInitiated() {
+    void aRepeatedInitiationIsAnIdempotentNoOp() {
         String qrCodeId = createActiveQRCode();
         initiatePayment(qrCodeId);
 
         MockMvcResponse response = initiatePayment(qrCodeId);
 
-        // The contract advertises 409 for this case; it used to be an undifferentiated 400.
-        assertEquals(HttpStatus.CONFLICT.value(), response.statusCode(), response.asString());
-        assertEquals("PAYMENT_INITIATED", response.jsonPath().getString("currentStatus"));
+        assertEquals(HttpStatus.OK.value(), response.statusCode(), response.asString());
+        assertEquals("PAYMENT_INITIATED", response.jsonPath().getString("status"));
     }
 
     /**
