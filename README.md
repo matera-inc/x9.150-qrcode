@@ -40,6 +40,10 @@ The REST APIs are documented in the OpenAPI (Swagger) contract:
 
 - [Official APIs](x9-qrcode-infrastructure/src/main/resources/apis/openapi.yaml)
 
+Counterparties integrating against this service should also read
+[official-spec/BEST-PRACTICES.md](official-spec/BEST-PRACTICES.md) — advice rather than rules, each
+item something that cost somebody real time to discover.
+
 **Provided AS IS.** This software is offered without warranty of any kind. It is source-available under the [Matera Source License v1.0](LICENSE.md) and **may be used and run under the terms of that license** — see [LICENSE.md](LICENSE.md) for the permitted uses and conditions.
 
 # Contributing & Security
