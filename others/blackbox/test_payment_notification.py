@@ -697,3 +697,62 @@ class TestLifecycle:
         qr = api.create_qr()
         assert_refused(api.notify(qr, amount=BILL + 1), naming="payment.amount")
         assert api.status_of(qr) == "ACTIVE", "a refused payment must not reserve the QR Code"
+
+
+class TestDecoderRefusals:
+    """What a payer is told when the code they scanned cannot be paid.
+
+    The decoder calls `/pub/api/v1/loc/{id}` over HTTP on the payer's behalf, and every refusal
+    used to arrive as one string: `Error retrieving payload URI: http://localhost:8080/...`. The
+    reason was formed correctly and lost in the hop, so a payer could not tell a settled bill from
+    an outage, or a tampered code from either.
+    """
+
+    @staticmethod
+    def _decode(api, emv):
+        return api.call("POST", "/api/v1/qrcode-emv-decoder", body={"qrCode": emv})
+
+    def test_a_decode_of_an_expired_code_says_it_expired(self, api):
+        """X9-DEC-006 — a decode of an expired QR Code says so, and says to ask for a fresh one.
+
+        Source: Ours. ADR-0020 added the expiry refusal; this pins that it survives the decoder hop.
+
+        Why: ADR-0020 was a net improvement that briefly made this worse — refusing an expired
+    payload is right, and it moved a fourth case into the flattened bucket. The payer's response to
+    an expired code (go back and ask for a new one) is not the response to an outage (wait).
+        """
+        import datetime
+        import time
+
+        soon = (datetime.datetime.now(datetime.timezone.utc)
+                + datetime.timedelta(seconds=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        created_status, created = api.create_qr_detailed(valid_until=soon)
+        assert created_status == 201, created
+
+        time.sleep(5)
+
+        status, result = self._decode(api, created["qrCode"])
+        body = json.dumps(result).lower()
+
+        assert status >= 400, f"an expired code must not decode: {status} {result}"
+        assert "expired" in body, f"and must say why, not report an outage: {result}"
+        assert "localhost" not in body, f"and must not carry an internal address: {result}"
+
+    def test_a_decode_of_a_paid_bill_says_it_was_paid(self, api):
+        """X9-DEC-007 — the most ordinary refusal reaches the payer intact.
+
+        Source: Ours.
+
+        Why: Somebody got there first is the commonest thing that happens to a QR Code, and it
+    reached the payer as a system failure — which invites exactly the retry that cannot succeed.
+        """
+        qr_status, created = api.create_qr_detailed()
+        assert qr_status == 201, created
+        api.mark_paid(created["id"])
+
+        status, result = self._decode(api, created["qrCode"])
+        body = json.dumps(result).lower()
+
+        assert status >= 400, f"a paid bill must not decode: {status} {result}"
+        assert "paid" in body, f"the payer must be told it is settled: {result}"
+        assert "localhost" not in body, f"and must not see our internals: {result}"

@@ -504,7 +504,27 @@ paths:
   /api/v1/qrcode-emv-decoder:
     post:
       summary: "Decode QR Code EMV"
-      description: "Service that validates the QR Code and calculates the amount due considering discounts and fees so that the final amount due is presented to the payer. It also validates and presents the amount of the debit authorization issued by the payer through QR Code to the receiver."
+      description: |-
+        Validates the QR Code and calculates the amount due, considering discounts and fees, so the
+        final amount can be presented to the payer. It also validates and presents the amount of the
+        debit authorisation the payer issued through the QR Code.
+
+        This endpoint fetches the payload from the location the scanned code names, which means it
+        can fail in two entirely different ways, and **the difference is the payer's whole
+        decision**:
+
+        - **`400` (or whatever the payee's service answered) — refused.** The payee answered, and
+          said no. Its own reason is relayed verbatim in `violations`, so a consumer can tell
+          `has already been paid` from `was cancelled by the biller`, from `is expired`, from
+          `is not the content issued for this location`. The last of those means the scanned code
+          does not match the one issued: **do not pay, and do not retry.**
+        - **`502` — unreachable.** No answer came back. This is the only case in which retrying is
+          the right move.
+
+        The `violations` on a refusal were written by whichever host the scanned code names, which
+        is not necessarily this deployment. They are relayed because they are the only account of
+        what happened, capped and reduced to plain strings on the way through. Render them as a
+        quotation.
       operationId: decodeEmv
       tags:
         - qrcode-emv
@@ -522,7 +542,22 @@ paths:
               schema:
                 $ref: "#/components/schemas/PaymentPayloadResponse"
         "400":
-          $ref: "#/components/responses/BadRequestErrorResponse"
+          description: |-
+            The payee's service refused to release this payload, and said why. `type` is
+            `https://x9.matera.com/api/payload-refused` and `violations` carries its reason.
+            Any other 4xx the payee answered with is relayed the same way.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/BaseError"
+        "502":
+          description: |-
+            The payee's service could not be reached, so the code could not be decoded. Retry.
+            Carries no address: the location is resolved against this deployment's internals.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/BaseError"
         "500":
           $ref: "#/components/responses/InternalServerErrorResponse"
 

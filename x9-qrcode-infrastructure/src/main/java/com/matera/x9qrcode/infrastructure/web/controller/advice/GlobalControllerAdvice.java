@@ -9,6 +9,8 @@ package com.matera.x9qrcode.infrastructure.web.controller.advice;
 import com.matera.x9qrcode.app.exception.EntityNotFoundException;
 import com.matera.x9qrcode.app.exception.InvalidSignatureException;
 import com.matera.x9qrcode.app.exception.NotificationUndeliverableException;
+import com.matera.x9qrcode.app.exception.PayloadRefusedException;
+import com.matera.x9qrcode.app.exception.PayloadUnreachableException;
 import com.matera.x9qrcode.app.exception.ServiceException;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 import com.matera.x9qrcode.domain.exception.QRCodePreconditionFailedException;
@@ -34,6 +36,8 @@ import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.Err
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.HTTP_MESSAGE_NOT_READABLE;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.INVALID_SIGNATURE;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.NOTIFICATION_UNDELIVERABLE;
+import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.PAYLOAD_REFUSED;
+import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.PAYLOAD_UNREACHABLE;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.INVALID_HTTP_HEADER;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.METHOD_ARGUMENT_NOT_VALID;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.RESOURCE_NOT_FOUND;
@@ -205,6 +209,47 @@ public class GlobalControllerAdvice {
         problemDetail.setTitle(NOTIFICATION_UNDELIVERABLE.title());
         problemDetail.setType(NOTIFICATION_UNDELIVERABLE.uriType());
         problemDetail.setDetail(NOTIFICATION_UNDELIVERABLE.description());
+
+        return problemDetail;
+    }
+
+    /**
+     * A decode whose payload the payee's service refused to release.
+     *
+     * <p>The payee's own status and reason are relayed rather than replaced. A decoder that answers
+     * the same thing for "this bill is already paid" and "we could not reach anybody" is telling a
+     * payer to retry in the one case where retrying is the wrong move, and leaving them to shrug at
+     * a tampered code.
+     *
+     * <p>The {@code violations} here were written by whichever host the scanned QR Code names, and
+     * the {@code type} says so. They are a quotation, not this service's own finding.
+     */
+    @ExceptionHandler(PayloadRefusedException.class)
+    public ProblemDetail handlePayloadRefusedException(PayloadRefusedException ex) {
+        logExceptionStacktrace(ex);
+
+        ProblemDetail problemDetail = ProblemDetail.forStatus(ex.upstreamStatus());
+        problemDetail.setTitle(PAYLOAD_REFUSED.title());
+        problemDetail.setType(PAYLOAD_REFUSED.uriType());
+        problemDetail.setDetail(PAYLOAD_REFUSED.description());
+        problemDetail.setProperty(VIOLATIONS_PROPERTY, ex.violations());
+
+        return problemDetail;
+    }
+
+    /**
+     * A decode that never got an answer. The one case where "try again" is the right advice.
+     *
+     * <p>No address in the body: see {@link PayloadUnreachableException}.
+     */
+    @ExceptionHandler(PayloadUnreachableException.class)
+    public ProblemDetail handlePayloadUnreachableException(PayloadUnreachableException ex) {
+        logExceptionStacktrace(ex);
+
+        ProblemDetail problemDetail = ProblemDetail.forStatus(PAYLOAD_UNREACHABLE.status());
+        problemDetail.setTitle(PAYLOAD_UNREACHABLE.title());
+        problemDetail.setType(PAYLOAD_UNREACHABLE.uriType());
+        problemDetail.setDetail(PAYLOAD_UNREACHABLE.description());
 
         return problemDetail;
     }

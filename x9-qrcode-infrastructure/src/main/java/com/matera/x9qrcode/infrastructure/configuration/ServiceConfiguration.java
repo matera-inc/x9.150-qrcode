@@ -119,8 +119,10 @@ public class ServiceConfiguration {
     @Bean
     public QRCodeExternalPayloadService externalPayloadGateway(RestClient restClient,
                                                                QRCodeLocationService qrCodeLocationService,
-                                                               QRCodeSignatureService qrCodeSignatureService) {
-        return new RestClientQRCodeExternalPayloadService(restClient, qrCodeLocationService, qrCodeSignatureService);
+                                                               QRCodeSignatureService qrCodeSignatureService,
+                                                               ObjectMapper objectMapper) {
+        return new RestClientQRCodeExternalPayloadService(
+            restClient, qrCodeLocationService, qrCodeSignatureService, objectMapper);
     }
 
     @Bean
