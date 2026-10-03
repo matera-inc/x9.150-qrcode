@@ -102,6 +102,17 @@ spring:
     enabled: false
 
 x9:
+  # How long a PAYMENT_INITIATED reservation holds before it stops counting.
+  #
+  # A reservation takes the QR Code out of circulation so two payers cannot pay one bill. If the
+  # payer then vanishes, nothing releases it and the bill is unpayable by anybody until validUntil —
+  # hours or days for a code that was held for seconds.
+  #
+  # Nothing is swept: the lapse is applied when somebody reads the status. See
+  # QRCodeEntity.effectiveStatus.
+  reservation:
+    ttl-seconds: 90
+
   public-endpoints:
     jws-ttl-seconds: 300
     base-path: /pub

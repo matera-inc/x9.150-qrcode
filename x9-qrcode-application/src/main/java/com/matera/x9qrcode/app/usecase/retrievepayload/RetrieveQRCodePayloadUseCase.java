@@ -93,7 +93,9 @@ public class RetrieveQRCodePayloadUseCase extends UseCase<RetrieveQRCodePayloadI
             qrCodeEntity.getRevisedAt(),
             DateTimeUtils.nowUTC(),
             qrCodeEntity.getValidUntil(),
-            qrCodeEntity.getStatus().value(),
+            // effectiveStatus: a lapsed reservation reads as ACTIVE, so a caller is told what is
+            // true now rather than what was last reported. See QRCodeEntity.effectiveStatus.
+            qrCodeEntity.effectiveStatus().value(),
             RetrieveQRCodePayloadCreditorMapper.map(qrCodeEntity.getCreditor()),
             RetrieveQRCodePayloadBillMapper.map(bill, formulaResult),
             qrCodeEntity.getUnstructured().value(),

@@ -72,6 +72,7 @@ public final class QRCodeMongoEntityMapper {
             document.getCreatedAt(),
             document.getRevisedAt(),
             document.getValidUntil(),
+            document.getInitiatedExpiresAt(),
             QRCodeStatusEnum.fromValue(document.getStatus()),
             buildCreditor(document.getCreditor()),
             buildBill(document.getBill()),

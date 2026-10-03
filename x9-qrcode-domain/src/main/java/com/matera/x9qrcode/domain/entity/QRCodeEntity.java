@@ -30,6 +30,7 @@ import com.matera.x9qrcode.domain.vo.enumerated.QRCodeStatusEnum;
 
 import lombok.Getter;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -69,6 +70,27 @@ public class QRCodeEntity {
     private Integer lockVersion;
     private final OffsetDateTime createdAt;
     private OffsetDateTime revisedAt;
+
+    /**
+     * When a {@code PAYMENT_INITIATED} reservation stops counting, or null in every other state.
+     *
+     * <p>A reservation takes the QR Code out of circulation so two payers cannot pay one bill. If
+     * the payer then vanishes — their app is closed, their custody provider refuses, their phone
+     * dies — nothing releases it, and the bill is unpayable by anybody until {@code validUntil}.
+     * That is hours or days for a code that was reserved for seconds.
+     *
+     * <p><b>The expiry instant is stamped, not the start.</b> Deciding whether a reservation still
+     * holds is then one comparison against the clock, with no arithmetic and no need to know what
+     * the configured window was when the stamp was made — a window shortened or lengthened later
+     * does not retroactively move reservations already taken.
+     *
+     * <p><b>It is never swept.</b> Nothing scans for lapsed reservations; the state is derived when
+     * somebody looks, by {@link #effectiveStatus(OffsetDateTime)}. A sweeper would mean a background
+     * job, a race between it and an arriving payment, and writes to documents nobody asked about.
+     * The stored status keeps saying what was last REPORTED; time is applied at the point of
+     * reading.
+     */
+    private OffsetDateTime initiatedExpiresAt;
     private ValidUntilVO validUntil;
     private QRCodeStatusEnum status;
     private final CreditorVO creditor;
@@ -187,6 +209,7 @@ public class QRCodeEntity {
                                        OffsetDateTime createdAt,
                                        OffsetDateTime revisedAt,
                                        OffsetDateTime validUntil,
+                                       OffsetDateTime initiatedExpiresAt,
                                        QRCodeStatusEnum status,
                                        CreditorVO creditor,
                                        BillVO bill,
@@ -197,7 +220,7 @@ public class QRCodeEntity {
                                        PaymentDetailsVO paymentDetails,
                                        EmvVO qrcodeEmv,
                                        Integer lockVersion) {
-        return new QRCodeEntity(
+        QRCodeEntity restored = new QRCodeEntity(
             QRCodeIdVO.from(id),
             LocationIdVO.from(locationId),
             revision,
@@ -215,6 +238,13 @@ public class QRCodeEntity {
             qrcodeEmv,
             lockVersion
         );
+
+        // Restored, not recomputed. A reservation's clock was set when the payer announced; a
+        // redeploy must not hand everyone a fresh window, and reading the stored instant is what
+        // keeps the lapse honest across restarts.
+        restored.initiatedExpiresAt = initiatedExpiresAt;
+
+        return restored;
     }
 
     public void updateLocationId(String locationId) {
@@ -480,6 +510,7 @@ public class QRCodeEntity {
         }
 
         this.status = QRCodeStatusEnum.PAID;
+        this.initiatedExpiresAt = null;
         this.paymentDetails = paymentDetails;
         this.touch();
         this.emit(PaymentEventTypeEnum.PAYMENT_CLEARED, null);
@@ -493,11 +524,18 @@ public class QRCodeEntity {
      * this transition on such an event "to prevent duplicate payment" — which is why it is refused
      * for any QR Code that is not ACTIVE.
      */
-    public void initiatePayment(PaymentDetailsVO paymentDetails) {
-        if (!QRCodeStatusEnum.ACTIVE.equals(this.status)) {
+    /**
+     * Reserve this QR Code for a payer who has announced a payment.
+     *
+     * @param reservationTtl how long the reservation holds before it stops counting. The instant is
+     *                       computed once, here, and stamped — see {@link #initiatedExpiresAt}.
+     */
+    public void initiatePayment(PaymentDetailsVO paymentDetails, Duration reservationTtl) {
+        // effectiveStatus, not status: a lapsed reservation must not keep the next payer out.
+        if (!QRCodeStatusEnum.ACTIVE.equals(this.effectiveStatus())) {
             throw new QRCodeStatusConflictException(
-                this.status,
-                "The QRCode needs to be active to have a payment initiated. Current status: %s".formatted(this.getStatus())
+                this.effectiveStatus(),
+                "The QRCode needs to be active to have a payment initiated. Current status: %s".formatted(this.effectiveStatus())
             );
         }
 
@@ -506,6 +544,7 @@ public class QRCodeEntity {
         }
 
         this.status = QRCodeStatusEnum.PAYMENT_INITIATED;
+        this.stampOrClearReservation(this.status, reservationTtl);
         this.touch();
         this.emit(PaymentEventTypeEnum.PAYMENT_INITIATED, null);
     }
@@ -532,13 +571,16 @@ public class QRCodeEntity {
         }
 
         this.status = QRCodeStatusEnum.CANCELLED;
+        this.initiatedExpiresAt = null;
         this.paymentDetails = null;
         this.touch();
         this.emit(PaymentEventTypeEnum.PAYMENT_CANCELLED, null);
     }
 
     public void reactivate(PaymentDetailsVO paymentDetails) {
-        if (!QRCodeStatusEnum.PAYMENT_INITIATED.equals(this.status)) {
+        // A reservation that has already lapsed reads as ACTIVE, so this refuses — correctly:
+        // there is nothing left to reactivate, the QR Code is already open to the next payer.
+        if (!QRCodeStatusEnum.PAYMENT_INITIATED.equals(this.effectiveStatus())) {
             throw new BusinessRuleException("Only QR Codes with PAYMENT_INITIATED status can be reactivated.");
         }
 
@@ -547,20 +589,35 @@ public class QRCodeEntity {
         }
 
         this.status = QRCodeStatusEnum.ACTIVE;
+        this.initiatedExpiresAt = null;
         this.paymentDetails = null;
         this.touch();
     }
 
     public void notifyPayment(PaymentNotificationDataVO paymentNotificationDataVO) {
-        this.notifyPayment(paymentNotificationDataVO, this.status);
+        this.notifyPayment(paymentNotificationDataVO, this.status, null);
     }
 
-    public void notifyPayment(PaymentNotificationDataVO paymentNotificationDataVO, QRCodeStatusEnum status) {
+    /**
+     * The OTHER door into a reservation.
+     *
+     * <p>{@link #initiatePayment} is reached by the biller's status-update API; this one by a
+     * payer's notification. Both end at {@code PAYMENT_INITIATED}, so both must stamp the expiry
+     * through {@link #stampOrClearReservation}. A reservation taken through one door and left
+     * unstamped by the other would hold forever — and would do so only on the path payers actually
+     * use, which is the half that would not be noticed.
+     *
+     * @param reservationTtl used when {@code status} is {@code PAYMENT_INITIATED}; ignored
+     *                       otherwise, since no other state is held against the clock
+     */
+    public void notifyPayment(PaymentNotificationDataVO paymentNotificationDataVO, QRCodeStatusEnum status,
+                              Duration reservationTtl) {
         this.qrCodeEntityValidator.validatePaymentNotification(paymentNotificationDataVO);
 
         QRCodeStatusEnum previousStatus = this.status;
 
         this.status = status;
+        this.stampOrClearReservation(status, reservationTtl);
         this.paymentNotification =
             new PaymentNotificationVO(this.paymentNotification.kind(), this.paymentNotification.endpoint(),
                 paymentNotificationDataVO);
@@ -654,10 +711,83 @@ public class QRCodeEntity {
         return isNull(bill) || isNull(bill.order()) ? null : bill.order().number();
     }
 
+    /**
+     * The status as it stands <em>now</em>, which is not always the status that is stored.
+     *
+     * <p>Exactly one rule, applying to one state:
+     *
+     * <ul>
+     *   <li>a {@code PAYMENT_INITIATED} whose reservation has <b>not</b> lapsed is
+     *       {@code PAYMENT_INITIATED};</li>
+     *   <li>a {@code PAYMENT_INITIATED} whose reservation <b>has</b> lapsed is {@code ACTIVE} — the
+     *       payer who announced is no longer holding it, so anybody may;</li>
+     *   <li>every other state is itself. {@code PAID} and {@code CANCELLED} are terminal and no
+     *       amount of waiting changes them.</li>
+     * </ul>
+     *
+     * <p><b>Every decision about status must come through here</b>, and that is the whole of the
+     * hazard in this feature. Nine places read the status to decide something. If one keeps reading
+     * the stored field directly, the deployment contradicts itself: the payload endpoint serves a
+     * code the notification endpoint still believes is reserved, or a payer is refused by one half
+     * of a service the other half has already released.
+     *
+     * <p>The stored value is deliberately left alone. It records what was last <em>reported</em> —
+     * a payer did announce, and that remains true — while this reports what is now the
+     * <em>case</em>. Nothing is written when a reservation lapses, so a QR Code sitting untouched
+     * costs nothing and a reservation lapsing at 3am wakes nobody.
+     */
+    /**
+     * Stamp the reservation clock on entering {@code PAYMENT_INITIATED}, clear it on leaving.
+     *
+     * <p>One place, called by both doors into the state, so the two cannot drift apart.
+     *
+     * <p>Clearing matters as much as stamping: a stale instant left on a {@code PAID} QR Code would
+     * mean nothing today but would be read by the next person as if it did.
+     */
+    private void stampOrClearReservation(QRCodeStatusEnum newStatus, Duration reservationTtl) {
+        if (!QRCodeStatusEnum.PAYMENT_INITIATED.equals(newStatus)) {
+            this.initiatedExpiresAt = null;
+            return;
+        }
+
+        if (isNull(reservationTtl)) {
+            // Caller gave no window. Leave it unstamped rather than inventing one: an unstamped
+            // reservation reads as holding, which is the safe direction — it keeps a payer's claim
+            // rather than handing their QR Code to somebody else on a guess.
+            return;
+        }
+
+        // Capped by the QR Code's own life: a reservation cannot outlive the thing reserved, and a
+        // stamp past validUntil would claim a hold over a code that has expired anyway.
+        OffsetDateTime lapses = DateTimeUtils.nowUTC().plus(reservationTtl);
+        OffsetDateTime codeExpires = this.getValidUntil();
+
+        this.initiatedExpiresAt = lapses.isAfter(codeExpires) ? codeExpires : lapses;
+    }
+
+    public QRCodeStatusEnum effectiveStatus(OffsetDateTime at) {
+        if (!QRCodeStatusEnum.PAYMENT_INITIATED.equals(this.status)) {
+            return this.status;
+        }
+
+        if (isNull(this.initiatedExpiresAt)) {
+            // Reserved before this field existed. Treated as still holding, because releasing a
+            // reservation we cannot date would be guessing against the payer.
+            return this.status;
+        }
+
+        return at.isAfter(this.initiatedExpiresAt) ? QRCodeStatusEnum.ACTIVE : this.status;
+    }
+
+    /** {@link #effectiveStatus(OffsetDateTime)} as of now. */
+    public QRCodeStatusEnum effectiveStatus() {
+        return effectiveStatus(DateTimeUtils.nowUTC());
+    }
+
     public boolean isNotActiveOrInitiated() {
         List<QRCodeStatusEnum> allowedStatuses = List.of(QRCodeStatusEnum.ACTIVE, QRCodeStatusEnum.PAYMENT_INITIATED);
 
-        return !allowedStatuses.contains(this.status);
+        return !allowedStatuses.contains(this.effectiveStatus());
     }
 
     public OffsetDateTime getValidUntil() {

@@ -87,6 +87,7 @@ class QRCodeEntityTest extends AbstractTest {
                     qrCodeEntity.getCreatedAt(),
                     qrCodeEntity.getRevisedAt(),
                     qrCodeEntity.getValidUntil(),
+                    qrCodeEntity.getInitiatedExpiresAt(),
                     qrCodeEntity.getStatus(),
                     qrCodeEntity.getCreditor(),
                     qrCodeEntity.getBill(),

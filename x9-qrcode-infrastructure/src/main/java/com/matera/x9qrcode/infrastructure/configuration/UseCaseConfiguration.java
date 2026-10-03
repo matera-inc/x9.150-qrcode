@@ -29,7 +29,10 @@ import com.matera.x9qrcode.domain.service.PaymentNotificationAcceptancePolicy;
 import com.matera.x9qrcode.domain.service.factory.FormulaFactory;
 
 import org.springframework.context.annotation.Bean;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+
+import java.time.Duration;
 
 import java.util.UUID;
 
@@ -56,8 +59,10 @@ public class UseCaseConfiguration {
     }
 
     @Bean
-    public UpdateQRCodeStatusUseCase updateQRCodeStatusUseCase(QRCodeRepository qrCodeRepository) {
-        return new UpdateQRCodeStatusUseCase(qrCodeRepository);
+    public UpdateQRCodeStatusUseCase updateQRCodeStatusUseCase(
+            QRCodeRepository qrCodeRepository,
+            @Value("${x9.reservation.ttl-seconds}") long reservationTtlSeconds) {
+        return new UpdateQRCodeStatusUseCase(qrCodeRepository, Duration.ofSeconds(reservationTtlSeconds));
     }
 
     @Bean
@@ -103,9 +108,10 @@ public class UseCaseConfiguration {
 
     @Bean
     public PaymentNotificationQRCodeUseCase paymentNotificationQRCodeUseCase(QRCodeRepository qrCodeRepository,
-                                                                             FormulaFactory formulaFactory) {
+                                                                             FormulaFactory formulaFactory,
+            @Value("${x9.reservation.ttl-seconds}") long reservationTtlSeconds) {
         return new PaymentNotificationQRCodeUseCase(
-            qrCodeRepository, new PaymentNotificationAcceptancePolicy(formulaFactory));
+            qrCodeRepository, new PaymentNotificationAcceptancePolicy(formulaFactory), Duration.ofSeconds(reservationTtlSeconds));
     }
 
 }

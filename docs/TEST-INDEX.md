@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**297 tests documented** — every JUnit test in the repository and every case in the
+**308 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -183,6 +183,15 @@ single most important thing this index exists for.
 | `X9-LIFE-102` | a status transition is applied | `QRCodesApisFlowTest.java` |
 | `X9-LIFE-103` | the new status is visible on a subsequent read | `QRCodesApisFlowTest.java` |
 | `X9-LIFE-104` | a payment notification completes the cycle | `QRCodesApisFlowTest.java` |
+| `X9-LIFE-110` | a reservation inside its window still holds | `QRCodeEntityReservationExpiryTest.java` |
+| `X9-LIFE-111` | a reservation past its window reads as ACTIVE | `QRCodeEntityReservationExpiryTest.java` |
+| `X9-LIFE-112` | the stored status is left alone when a reservation lapses | `QRCodeEntityReservationExpiryTest.java` |
+| `X9-LIFE-113` | a lapsed reservation lets the next payer in | `QRCodeEntityReservationExpiryTest.java` |
+| `X9-LIFE-114` | a reservation inside its window keeps the next payer out | `QRCodeEntityReservationExpiryTest.java` |
+| `X9-LIFE-115` | the window never outlives the QR Code | `QRCodeEntityReservationExpiryTest.java` |
+| `X9-LIFE-116` | the stamp is cleared when the reservation ends | `QRCodeEntityReservationExpiryTest.java` |
+| `X9-LIFE-117` | a terminal status is never reinterpreted | `QRCodeEntityReservationExpiryTest.java` |
+| `X9-LIFE-118` | a reservation with no stamp is treated as holding | `QRCodeEntityReservationExpiryTest.java` |
 
 ## Locations and payload retrieval
 
@@ -318,6 +327,8 @@ single most important thing this index exists for.
 | `X9-SIG-093` | the same guard catches an EC algorithm on an RSA key | `JwkSetFacadeBeanKeyTypeTest.java` |
 | `X9-SIG-100` | an EMV payload decodes and verifies against the published certificate | `QRCodesApisFlowTest.java` |
 | `X9-SIG-101` | signing and payload retrieval work on every interpreted rail | `QRCodesApisFlowTest.java` |
+| `X9-SIG-110` | a payer | `test_payment_notification.py` |
+| `X9-SIG-111` | a payer | `test_payment_notification.py` |
 
 ## Tips
 
