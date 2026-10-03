@@ -23,3 +23,6 @@ file format each require, and what to do about upper- versus lower-case.
 
 Decisions that are ours alone, rather than readings of the standard, are in
 [`docs/adr/`](../docs/adr/README.md).
+
+- **[BEST-PRACTICES.md](BEST-PRACTICES.md)** — advice for counterparties integrating against this
+  deployment. Optional, none of it enforced, all of it learned the hard way.
