@@ -90,6 +90,16 @@ public class QRCodeMongoPersistenceModel implements Persistable<UUID> {
     @Field(name = "initiated_expires_at")
     private OffsetDateTime initiatedExpiresAt;
 
+    /**
+     * Who holds the current reservation; null in every state but PAYMENT_INITIATED.
+     *
+     * <p>Persisted for the same reason as the instant above: a restart must not forget who is
+     * holding a QR Code, or every payer mid-announcement becomes a stranger to it and cannot
+     * report what they did.
+     */
+    @Field(name = "reserved_by")
+    private ReservedBy reservedBy;
+
     @Field(name = "status")
     private String status;
 
@@ -164,6 +174,9 @@ public class QRCodeMongoPersistenceModel implements Persistable<UUID> {
 
         @Field(name = "tip_amount")
         private Long tipAmount;
+
+        @Field(name = "payer_info")
+        private String payerInfo;
 
         @Field(name = "currency")
         private String currency;
@@ -591,6 +604,22 @@ public class QRCodeMongoPersistenceModel implements Persistable<UUID> {
 
         @Field(name = "wallet_address")
         private String walletAddress;
+
+    }
+
+
+    /**
+     * The party holding a reservation: {@code payer.info} as sent, plus the subject of the
+     * certificate that signed the announcement. See {@code ReservationHolderVO}.
+     */
+    @Data
+    public static class ReservedBy {
+
+        @Field(name = "payer_info")
+        private String payerInfo;
+
+        @Field(name = "signer_subject")
+        private String signerSubject;
 
     }
 

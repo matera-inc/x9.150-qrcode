@@ -9,6 +9,8 @@ package com.matera.x9qrcode.app.usecase.sendpaymentnotification;
 import com.matera.x9qrcode.app.service.QRCodeOutboundNotificationService;
 import com.matera.x9qrcode.app.service.QRCodeOutboundNotificationService.OutboundNotificationResult;
 import com.matera.x9qrcode.app.usecase.UseCase;
+import com.matera.x9qrcode.app.dto.BlockchainDTO;
+import com.matera.x9qrcode.app.dto.enumerated.ActionEnumDTO;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 
 import lombok.RequiredArgsConstructor;
@@ -71,7 +73,12 @@ public class SendPaymentNotificationUseCase
                     + "from its absence, so one here would be read as a payment already made.");
         }
 
-        if (PaymentPhase.POST_PAYMENT.equals(input.phase()) && isBlank(transactionId)) {
+        // Keyed on the ACTION, not the phase. NOT_SENT is a post-payment notification whose entire
+        // meaning is that no transaction exists and none will — so requiring a transactionId of it
+        // refused the one message a payer can send to give a reservation back, for lacking the one
+        // thing it cannot have. The domain accepted it without one; this half did not, and the two
+        // halves of the same deployment disagreed.
+        if (PaymentPhase.POST_PAYMENT.equals(input.phase()) && isBlank(transactionId) && reportsAPayment(input)) {
             throw new BusinessRuleException("payment.transactionId",
                 "A post-payment notification must carry the transactionId — the on-chain hash, or the "
                     + "End-to-End ID for an ISO 20022 rail. Reporting a payment without its reference "
@@ -81,6 +88,20 @@ public class SendPaymentNotificationUseCase
         if (nonNull(input.endpoint().getScheme()) && !input.endpoint().isAbsolute()) {
             throw new BusinessRuleException("endpoint", "The notification endpoint must be an absolute URL.");
         }
+    }
+
+
+    /**
+     * Whether this notification reports a payment that happened, as opposed to one that did not.
+     *
+     * <p>Only {@code NOT_SENT} says a payment did not happen. Everything else — including a
+     * notification with no blockchain section at all, on a rail that has no actions — is reporting
+     * money that moved and must carry its reference.
+     */
+    private static boolean reportsAPayment(SendPaymentNotificationInput input) {
+        BlockchainDTO blockchain = input.notification().blockchain();
+
+        return isNull(blockchain) || !ActionEnumDTO.NOT_SENT.equals(blockchain.action());
     }
 
 }

@@ -87,16 +87,19 @@ public class PublicEndpointsController implements PublicEndpointsApi {
         // Nothing below the signature check may touch the payload. The body is unauthenticated input
         // and may be an exploit attempt, so an unverifiable JWS is refused before it is parsed, let
         // alone before any QR Code is read or written.
-        verifySignatureOrReject(body);
+        SignatureValidationOutput verified = verifySignatureOrReject(body);
 
         PaymentNotificationDataDTO notificationData = parseVerifiedPayload(body);
 
-        paymentNotificationQRCodeUseCase.execute(PaymentNotificationRequestMapper.map(notificationData));
+        // The signer's subject travels with the payload: only the party that announced a payment
+        // may re-announce or release it, and `payer.info` alone cannot establish who that is.
+        paymentNotificationQRCodeUseCase.execute(
+            PaymentNotificationRequestMapper.map(notificationData, verified.signerSubject()));
 
         return ResponseEntity.ok().build();
     }
 
-    private void verifySignatureOrReject(String body) {
+    private SignatureValidationOutput verifySignatureOrReject(String body) {
         SignatureValidationOutput validationResult;
 
         try {
@@ -112,6 +115,8 @@ public class PublicEndpointsController implements PublicEndpointsApi {
         if (!validationResult.isValid()) {
             throw new InvalidSignatureException("Payment notification JWS signature is invalid.");
         }
+
+        return validationResult;
     }
 
     private PaymentNotificationDataDTO parseVerifiedPayload(String body) {

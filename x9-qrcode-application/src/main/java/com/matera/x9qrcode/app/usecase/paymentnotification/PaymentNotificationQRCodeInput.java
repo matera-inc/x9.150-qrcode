@@ -8,5 +8,15 @@ package com.matera.x9qrcode.app.usecase.paymentnotification;
 
 import com.matera.x9qrcode.app.dto.PaymentNotificationDataDTO;
 
-public record PaymentNotificationQRCodeInput(PaymentNotificationDataDTO paymentNotificationData) {
+/**
+ * A payment notification, together with who signed it.
+ *
+ * @param signerSubject the subject of the certificate whose chain was validated when the JWS was
+ *                      verified. Carried alongside the payload because the payload alone cannot
+ *                      establish who sent it — {@code payer.info} is a field the sender filled in.
+ *                      Null when the signature path could not name a subject, which reads as "no
+ *                      identity established" and so matches no existing reservation.
+ */
+public record PaymentNotificationQRCodeInput(PaymentNotificationDataDTO paymentNotificationData,
+                                             String signerSubject) {
 }

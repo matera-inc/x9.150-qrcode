@@ -72,14 +72,25 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
      * reconcile from it, so a notification there is a courtesy and changes no status.
      */
     private static String notification(String qrCodeId, long amount, String currency, String network) {
+        return notification(qrCodeId, amount, currency, network, "Jane Payer, Springfield Savings");
+    }
+
+    /**
+     * The same, from a named payer.
+     *
+     * <p>{@code payer.info} decides whether a second announcement is a second payer or the first
+     * one retrying (ADR-0021), so any test about that distinction has to say who is announcing.
+     */
+    private static String notification(String qrCodeId, long amount, String currency, String network,
+                                       String payerInfo) {
         return """
             {
               "payment": { "qrcodeId": "%s", "amount": %d, "currency": "%s", "network": "%s",
                            "transactionId": "021000021.0000001" },
-              "payer": { "info": "Jane Payer, Springfield Savings" },
+              "payer": { "info": "%s" },
               "expectedDate": "2030-10-08T06:59:59Z"
             }
-            """.formatted(qrCodeId, amount, currency, network);
+            """.formatted(qrCodeId, amount, currency, network, payerInfo);
     }
 
     private String createQRCode() {
@@ -299,21 +310,29 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
     // ------------------------------------------------------------------------ QR Code state
 
     /**
-     * <b>X9-LIFE-042</b> — a QR Code already being paid is refused.
+     * <b>X9-LIFE-042</b> — a QR Code already being paid is refused to a DIFFERENT payer.
      *
-     * <p><b>Source:</b> Ours. ADR-0002 — the reservation.
+     * <p><b>Source:</b> Ours. ADR-0003 — the reservation; ADR-0021 — who holds it.
      *
      * <p><b>Why:</b> Two payers must not both believe they hold the same QR Code.
+     *
+     * <p>The two payers are now named, and that is the point. This sent one notification twice and
+     * expected a refusal — which it got, from a rule that refused EVERY second announcement,
+     * including a repeat from the payer who had already announced. The assertion message said
+     * "a second payer" while the test supplied one payer twice, so it read as proof of a property
+     * it was not exercising. The property is unchanged; proving it needs two payers, because one
+     * payer twice is now the accepted case (X9-HOLD-010).
      */
     @Test
-    void aQRCodeAlreadyBeingPaidIsRefused() {
+    void aQRCodeAlreadyBeingPaidIsRefusedToADifferentPayer() {
         String qrCodeId = createQRCode();
         notify(notification(qrCodeId, AMOUNT, "USD"));
         assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
 
-        MockMvcResponse second = notify(notification(qrCodeId, AMOUNT, "USD"));
+        MockMvcResponse second = notify(
+                notification(qrCodeId, AMOUNT, "USD", "ACH", "John Other, Second National"));
 
-        assertNotEquals(HttpStatus.OK.value(), second.statusCode(),
+        assertEquals(HttpStatus.CONFLICT.value(), second.statusCode(),
                 "a second payer must not be able to initiate the same QR Code: " + second.asString());
         assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
     }

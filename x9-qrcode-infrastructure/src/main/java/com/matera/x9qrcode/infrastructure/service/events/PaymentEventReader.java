@@ -110,9 +110,12 @@ public class PaymentEventReader {
         dto.setQrCodeRevision(model.getQrCodeRevision());
         dto.setLocationId(model.getLocationId());
         dto.setAmount(model.getAmount());
-        // JsonNullable so an event with no tip omits the field rather than reporting a tip of zero,
-        // which a consumer would have to tell apart from "none reported".
+        // Null rather than zero when no tip was reported: a consumer must be able to tell "none
+        // reported" from "reported as nothing", and 0 is a tip a payer can genuinely choose.
         dto.setTipAmount(JsonNullable.of(model.getTipAmount()));
+        // Null rather than an empty string, for the same reason and by the same convention every
+        // optional field on this event follows.
+        dto.setPayerInfo(JsonNullable.of(model.getPayerInfo()));
         dto.setCurrency(model.getCurrency());
         dto.setNetwork(model.getNetwork());
         dto.setTransactionId(JsonNullable.of(model.getTransactionId()));

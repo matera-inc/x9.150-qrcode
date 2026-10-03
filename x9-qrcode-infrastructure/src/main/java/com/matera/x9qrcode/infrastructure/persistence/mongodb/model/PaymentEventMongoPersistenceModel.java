@@ -75,6 +75,9 @@ public class PaymentEventMongoPersistenceModel {
     @Field(name = "tip_amount")
     private Long tipAmount;
 
+    @Field(name = "payer_info")
+    private String payerInfo;
+
     @Field(name = "currency")
     private String currency;
 

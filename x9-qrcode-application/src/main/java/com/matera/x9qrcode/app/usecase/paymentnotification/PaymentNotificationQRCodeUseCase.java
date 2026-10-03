@@ -19,6 +19,7 @@ import com.matera.x9qrcode.domain.vo.ExpectedDateVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationDataVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationPayerVO;
 import com.matera.x9qrcode.domain.vo.QRCodeIdVO;
+import com.matera.x9qrcode.domain.vo.ReservationHolderVO;
 import com.matera.x9qrcode.domain.vo.enumerated.NetworkEnum;
 import com.matera.x9qrcode.domain.vo.enumerated.QRCodeStatusEnum;
 
@@ -50,20 +51,28 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
 
         QRCodeEntity qrCodeEntity = qrCodeRepository.findById(qrCodeId);
 
-        processPaymentNotification(qrCodeEntity, notificationDataDTO);
+        processPaymentNotification(qrCodeEntity, notificationDataDTO,
+            paymentNotificationQRCodeInput.signerSubject());
 
         qrCodeRepository.save(qrCodeEntity);
 
         return true;
     }
 
-    private void processPaymentNotification(QRCodeEntity qrCodeEntity, PaymentNotificationDataDTO notificationDataDTO) {
+    private void processPaymentNotification(QRCodeEntity qrCodeEntity, PaymentNotificationDataDTO notificationDataDTO,
+                                            String signerSubject) {
         PaymentNotificationDataVO paymentNotificationDataVO = new PaymentNotificationDataVO(
             PaymentNotificationPaymentMapper.map(notificationDataDTO.payment()),
             isNull(notificationDataDTO.payer()) ? null : new PaymentNotificationPayerVO(notificationDataDTO.payer().info()),
             isNull(notificationDataDTO.expectedDate()) ? null : new ExpectedDateVO(notificationDataDTO.expectedDate()),
             PaymentNotificationBlockchainMapper.map(notificationDataDTO.blockchain())
         );
+
+        // Who is making this announcement: what they said about themselves, paired with who the
+        // certificate says they are. See ReservationHolderVO for why both.
+        ReservationHolderVO announcingParty = ReservationHolderVO.of(
+            isNull(notificationDataDTO.payer()) ? null : notificationDataDTO.payer().info(),
+            signerSubject);
 
         NotificationIntent intent = resolveIntent(notificationDataDTO, paymentNotificationDataVO);
 
@@ -76,8 +85,13 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
         }
 
         switch (intent) {
-            case INITIATE -> qrCodeEntity.notifyPayment(paymentNotificationDataVO, QRCodeStatusEnum.PAYMENT_INITIATED, reservationTtl);
-            case RECORD -> qrCodeEntity.notifyPayment(paymentNotificationDataVO);
+            case INITIATE -> qrCodeEntity.notifyPayment(
+                paymentNotificationDataVO, QRCodeStatusEnum.PAYMENT_INITIATED, reservationTtl, announcingParty);
+            // Back to ACTIVE, and the reservation is cleared with it. The payer is saying the money
+            // is not coming, which is the only thing that can free a bill before its window lapses.
+            case RELEASE -> qrCodeEntity.notifyPayment(
+                paymentNotificationDataVO, QRCodeStatusEnum.ACTIVE, reservationTtl, announcingParty);
+            case RECORD -> qrCodeEntity.notifyPayment(paymentNotificationDataVO, announcingParty);
         }
     }
 
@@ -131,13 +145,20 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
             // Post-commit. The transaction is on-chain, but X9.150 never touches money and cannot
             // observe settlement, so the QR Code STAYS PAYMENT_INITIATED. Whatever system receives
             // the funds matches the transaction and calls the status-update API to mark it PAID.
-            case SENT, NOT_SENT -> NotificationIntent.RECORD;
+            case SENT -> NotificationIntent.RECORD;
+            // The payer giving up. Not a payment at all: no transaction exists and none will, so
+            // the courtesy is in saying so rather than leaving the bill reserved until its window
+            // lapses. It was previously RECORD, which answered 200 and released nothing — the one
+            // door a payer has out of a reservation, reporting success and doing nothing.
+            case NOT_SENT -> NotificationIntent.RELEASE;
         };
     }
 
     private enum NotificationIntent {
         /** Take the QR Code out of circulation: ACTIVE -> PAYMENT_INITIATED. */
         INITIATE,
+        /** Put it back: PAYMENT_INITIATED -> ACTIVE, reservation cleared, payment.failed emitted. */
+        RELEASE,
         /** Record the notification and bump the revision, leaving the status untouched. */
         RECORD
     }

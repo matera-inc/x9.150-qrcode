@@ -43,6 +43,7 @@ the history of why we changed our minds — the part that is usually lost.
 | [0018](0018-a-patch-names-every-currency-or-none.md) | **A patch names every currency, or none** — no currency may be added by a patch, and none may be left out; refused with 400, nothing written | Accepted |
 | [0019](0019-a-reservation-expires-and-nothing-sweeps.md) | **A reservation expires, and nothing sweeps** — `PAYMENT_INITIATED` carries the instant it stops counting; the lapse is applied on read, never by a background job | Accepted |
 | [0020](0020-the-payee-states-the-outcome-of-its-own-receivable.md) | **The payee states the outcome of its own receivable** — marking a bill paid is an order, not a claim; payers stay strict, `CANCELLED` stays final | Accepted |
+| [0021](0021-a-reservation-knows-who-holds-it.md) | **A reservation knows who holds it** — `payer.info` plus the signing certificate's subject; one payer may re-announce or release, a second is refused 409 | Accepted |
 
 ## Writing a new one
 
