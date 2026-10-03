@@ -339,6 +339,37 @@ class TestTip:
                        naming="payment.tipAmount")
 
 
+class TestPayerInfo:
+
+    def test_a_payer_info_at_the_standards_limit_is_accepted(self, api):
+        """X9-SIG-110 — a payer.info of 254 characters is accepted.
+
+        Source: ANSI X9.150-2026 Table 4 (Payment Notification Requirements), row 3.1 Payer Info, which
+    gives the length as 254; §3.1 repeats it as "SHALL be string with 254 maximum characters".
+    Conformance.
+
+        Why: This deployment capped it at 140, so a spec-legal value was refused. 140 is the ISO
+    20022 RemittanceInformation limit and belongs to `unstructured`, a different field; it looks to
+    have been copied across. It matters more than a stray constant because payer.info is the only
+    payer field the standard defines, and the one we ask counterparties to carry an identifier in.
+        """
+        qr = api.create_qr()
+        status, body = api.notify(qr, payer_info="x" * 254)
+        assert status == 200, f"254 is the standard's maximum: {status} {body}"
+
+    def test_a_payer_info_beyond_the_standards_limit_is_refused(self, api):
+        """X9-SIG-111 — a payer.info of 255 characters is refused.
+
+        Source: ANSI X9.150-2026 Table 4, row 3.1 Payer Info, and §3.1. Conformance.
+
+        Why: The limit of X9-SIG-110. Raising a cap to the right number is only half the change —
+    without this the next edit could remove the bound entirely and nothing would notice.
+        """
+        qr = api.create_qr()
+        status, _ = api.notify(qr, payer_info="x" * 255)
+        assert status >= 400, f"255 is past the standard's maximum, got {status}"
+
+
 class TestEventStream:
 
     @staticmethod
