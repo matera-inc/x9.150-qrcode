@@ -148,8 +148,30 @@ point it there with the `SPRING_DATA_MONGODB_*` environment variables — see [R
 
 MongoDB Community is free to run in Docker. The compose files use the official **`mongo`** image
 started as a **single-node replica set** (`mongod --replSet`) — the minimum required for the
-transactions this app uses. For local testing, **`mongo:latest`** works out of the box (a 1-node
-replica set initialized with `rs.initiate`), which is exactly what `docker-compose*.yml` set up.
+transactions this app uses. `docker-compose*.yml` set that up for you (`rs.initiate` on a 1-node
+set), so nothing further is needed for local testing.
+
+> **The MongoDB tag is pinned to `mongo:7.0.45`, and not simply out of caution.**
+> MongoDB **8.x refuses to start on Linux kernels 6.19 and newer** — a deliberate startup check
+> rather than a crash: its bundled tcmalloc violates the kernel's rseq ABI, so it exits instead of
+> risking corruption ([SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912)). 7.0 links a
+> different allocator, has no rseq references and no upper kernel bound, so one tag serves old and
+> new hosts. That kernel is not exotic — on Ubuntu 24.04 it arrives through the HWE track, which
+> rolls forward on its own.
+>
+> The cost is stated plainly: MongoDB 7.0 is supported until **2027-08-31**, against 2029-10-31 for
+> 8.0. For a deployment whose job is to start on a stranger's machine that is the right trade today,
+> since an 8.x that will not boot has no support value either. Revisit once upstream fixes the
+> allocator.
+>
+> **If you already have MongoDB 8.x data on disk, do not simply change the tag.** MongoDB does not
+> support an in-place major *downgrade* once a server has raised the data directory's feature
+> compatibility version, so a 7.0 server started against it can refuse to come up — and the service
+> is then down. The supported route is `mongodump` → wipe → restore, and it has to be done **while
+> 8.x still starts**. Check `featureCompatibilityVersion` before you change anything.
+>
+> Running your own MongoDB (the Helm chart expects an external one) puts the same kernel
+> requirement on you.
 
 # Configuration
 

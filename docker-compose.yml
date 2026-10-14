@@ -29,7 +29,13 @@ services:
           memory: 1G
 
   mongo:
-    image: mongo
+    # Pinned, and pinned to 7.0: MongoDB 8.x refuses to start on Linux kernels >= 6.19
+    # (SERVER-121912 — its tcmalloc violates the kernel's rseq ABI, so it exits rather than
+    # risk corruption). 7.0 links gperftools tcmalloc, has no rseq references and no upper
+    # kernel bound, so one tag serves old and new hosts. Keep every mongo image in this repo
+    # on the SAME tag, including the Testcontainers one in MongoDatabaseInitializer.
+    # Revisit when upstream fixes the allocator; 7.0 is supported until 2027-08-31.
+    image: mongo:7.0.45
     container_name: x9-mongo
     restart: unless-stopped
     ports:
@@ -56,7 +62,7 @@ services:
           memory: 2G
 
   mongo-setup:
-    image: mongo
+    image: mongo:7.0.45
     container_name: x9-mongo-setup
     depends_on:
       mongo:

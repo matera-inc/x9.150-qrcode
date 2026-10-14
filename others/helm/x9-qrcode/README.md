@@ -4,6 +4,12 @@ Deploy the X9 QRCode backend to Kubernetes. It needs a reachable **MongoDB repli
 multi-document transactions) and the signing **keystore/secrets** (see the repo `secrets/` folder
 and [`secrets/README.md`](../../../secrets/README.md)).
 
+> **MongoDB version:** this chart bundles no MongoDB — you bring your own, so the version is your
+> choice and your risk. Note that **MongoDB 8.x refuses to start on Linux kernels 6.19 and newer**
+> ([SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912)); if your nodes are on a current
+> kernel, 8.x will not come up. The compose files in this repository pin `mongo:7.0.45` for that
+> reason, and the same constraint applies to whatever you point `mongodb.uri` at.
+
 ## Values
 
 - `chart/values.yaml` — full configuration (all tunables).
