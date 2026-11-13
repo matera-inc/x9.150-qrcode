@@ -1,6 +1,6 @@
 # ADR-0014 — We transport and sequence; the consumer reconciles
 
-- **Status:** Accepted
+- **Status:** Accepted. The reconciliation promise stands; the single-drainer and cursor-stamping mechanics are superseded by [ADR-0025](0025-a-transition-is-one-transaction-and-its-event-is-in-it.md) (2026-11-13), effective with the Go build (3.0.0).
 - **Date:** 2026-09-27
 - **Context:** `docs/reconciliation-is-the-consumers`
 

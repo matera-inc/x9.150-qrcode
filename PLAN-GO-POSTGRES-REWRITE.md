@@ -1,6 +1,6 @@
 # Plan — Rewrite in Go on PostgreSQL
 
-Status: **Proposed** (evaluation and plan only — no code)
+Status: **Design accepted 2026-11-13** (ADRs 0022–0035); execution not started
 Decisions: [ADR-0022](docs/adr/0022-rewrite-in-go-as-a-standalone-product.md) –
 [ADR-0035](docs/adr/0035-one-event-builder-and-a-written-transition-map.md)
 Owner's intent: same repository, Java kept frozen in `legacy/java/` for history, and the same Docker

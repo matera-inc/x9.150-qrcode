@@ -4,7 +4,7 @@ Date: 2026-11-13
 
 ## Status
 
-Proposed. Part of [0022](0022-rewrite-in-go-as-a-standalone-product.md).
+Accepted 2026-11-13. Part of [0022](0022-rewrite-in-go-as-a-standalone-product.md).
 Keeps [ADR-0019](0019-a-reservation-expires-and-nothing-sweeps.md). Replaces MongoDB's TTL indexes.
 
 ## Context

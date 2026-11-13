@@ -4,7 +4,7 @@ Date: 2026-11-13
 
 ## Status
 
-Proposed. Implements [0030](0030-a-black-box-suite-defines-done-and-migration-writes-only-runtime-valid-rows.md) and
+Accepted 2026-11-13. Implements [0030](0030-a-black-box-suite-defines-done-and-migration-writes-only-runtime-valid-rows.md) and
 uses [0033](0033-the-clock-can-be-moved-in-test-deployments-only.md).
 
 ## Context

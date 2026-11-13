@@ -1,6 +1,6 @@
 # ADR-0013 — Retry what MongoDB says to retry, and nothing else
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR-0023](0023-postgresql-one-schema-portable-sql.md) (2026-11-13). Effective with the Go build (3.0.0); it remains the description of the Java build (`java-final`, frozen in `legacy/java/`).
 - **Date:** 2026-09-27
 - **Context:** `fix/retry-transient-transaction`
 

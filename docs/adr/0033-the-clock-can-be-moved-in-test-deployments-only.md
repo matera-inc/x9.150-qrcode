@@ -4,7 +4,7 @@ Date: 2026-11-13
 
 ## Status
 
-Proposed. Serves [0030](0030-a-black-box-suite-defines-done-and-migration-writes-only-runtime-valid-rows.md).
+Accepted 2026-11-13. Serves [0030](0030-a-black-box-suite-defines-done-and-migration-writes-only-runtime-valid-rows.md).
 Applies to **both** builds, because the suite must pass against Java first.
 
 ## Context
