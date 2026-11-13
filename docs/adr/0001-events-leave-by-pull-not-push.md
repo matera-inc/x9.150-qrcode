@@ -1,6 +1,6 @@
 # ADR-0001 — Events leave X9.150 by pull, not push
 
-- **Status:** Accepted
+- **Status:** Accepted. The pull API and its contract stand; the drain mechanics (embedded outbox → drain → event log, single drainer) are superseded by [ADR-0025](0025-a-transition-is-one-transaction-and-its-event-is-in-it.md) (2026-11-13), effective with the Go build (3.0.0).
 - **Date:** 2026-09-26
 - **Context:** `supporting-payment-notifications`
 

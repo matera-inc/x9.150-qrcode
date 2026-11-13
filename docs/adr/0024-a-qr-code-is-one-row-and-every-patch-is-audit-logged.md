@@ -4,7 +4,7 @@ Date: 2026-11-13
 
 ## Status
 
-Proposed. Part of [0022](0022-rewrite-in-go-as-a-standalone-product.md).
+Accepted 2026-11-13. Part of [0022](0022-rewrite-in-go-as-a-standalone-product.md).
 Keeps [ADR-0016](0016-a-revision-is-a-version-of-the-request-not-of-its-status.md). Deliberately
 **not** a temporal (versioned) model.
 

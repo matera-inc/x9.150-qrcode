@@ -4,8 +4,8 @@ Date: 2026-11-13
 
 ## Status
 
-Proposed. Part of [0022](0022-rewrite-in-go-as-a-standalone-product.md).
-Once accepted, supersedes [ADR-0002](0002-atomic-transitions-with-embedded-outbox.md), and the
+Accepted 2026-11-13. Part of [0022](0022-rewrite-in-go-as-a-standalone-product.md).
+Supersedes [ADR-0002](0002-atomic-transitions-with-embedded-outbox.md), and the
 drain mechanics (outbox → drain → event log, single drainer) of
 [ADR-0001](0001-events-leave-by-pull-not-push.md) and [ADR-0014](0014-we-transport-and-sequence-the-consumer-reconciles.md).
 The pull API and the reconciliation promise stand.

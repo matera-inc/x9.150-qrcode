@@ -4,8 +4,8 @@ Date: 2026-11-13
 
 ## Status
 
-Proposed. Part of [0022](0022-rewrite-in-go-as-a-standalone-product.md).
-Once accepted, supersedes [ADR-0013](0013-retry-what-mongodb-says-to-retry.md).
+Accepted 2026-11-13. Part of [0022](0022-rewrite-in-go-as-a-standalone-product.md).
+Supersedes [ADR-0013](0013-retry-what-mongodb-says-to-retry.md).
 
 ## Context
 

@@ -4,7 +4,7 @@ Date: 2026-11-13
 
 ## Status
 
-Proposed. Frames [0023](0023-postgresql-one-schema-portable-sql.md)–[0035](0035-one-event-builder-and-a-written-transition-map.md).
+Accepted 2026-11-13. Frames [0023](0023-postgresql-one-schema-portable-sql.md)–[0035](0035-one-event-builder-and-a-written-transition-map.md).
 The execution plan is [`PLAN-GO-POSTGRES-REWRITE.md`](../../PLAN-GO-POSTGRES-REWRITE.md).
 
 ## Context

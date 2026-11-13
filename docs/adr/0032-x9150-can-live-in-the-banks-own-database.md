@@ -4,7 +4,7 @@ Date: 2026-11-13
 
 ## Status
 
-Proposed. Part of [0022](0022-rewrite-in-go-as-a-standalone-product.md).
+Accepted 2026-11-13. Part of [0022](0022-rewrite-in-go-as-a-standalone-product.md).
 Sharpens [0023](0023-postgresql-one-schema-portable-sql.md).
 
 ## Context

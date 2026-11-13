@@ -1,6 +1,6 @@
 # ADR-0002 — Atomic state transitions with an embedded outbox
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR-0025](0025-a-transition-is-one-transaction-and-its-event-is-in-it.md) (2026-11-13). Effective with the Go build (3.0.0); it remains the description of the Java build (`java-final`, frozen in `legacy/java/`).
 - **Date:** 2026-09-26
 - **Context:** `supporting-payment-notifications`
 
