@@ -91,3 +91,8 @@ claude.back
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# BMAD — installed locally, never published. _bmad-output holds internal reviews and working notes.
+_bmad/
+_bmad-output/
+.claude/skills/bmad-*/
