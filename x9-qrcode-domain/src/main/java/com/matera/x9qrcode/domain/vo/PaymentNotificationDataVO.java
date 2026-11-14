@@ -38,15 +38,22 @@ public record PaymentNotificationDataVO(
      * <p>A transaction id exists only once the transaction is committed, so {@code transactionId}
      * present means post-commit, Solana included. {@code blockchain.action} does not decide the
      * phase: a {@code PAYMENT_INITIATED} carrying a hash is a post-commit, because the money has
-     * moved whatever the payer called its message. The one thing the action decides on its own is
-     * {@code NOT_SENT}, the payer giving the QR Code back, which by its nature has no transaction.
+     * moved whatever the payer called its message, and a {@code NOT_SENT} carrying a hash is a
+     * post-commit too. The one thing the action decides on its own is a {@code NOT_SENT} without a
+     * transaction: the payer giving the QR Code back.
      */
     public NotificationPhaseEnum phase() {
+        // The evidence first: a transaction id means the money has moved, whatever the action says,
+        // NOT_SENT included (owner, 2026-11-14; ADR-0036).
+        if (hasTransactionId()) {
+            return NotificationPhaseEnum.POST_COMMIT;
+        }
+
         if (nonNull(blockchain) && ActionEnum.NOT_SENT.equals(blockchain.action())) {
             return NotificationPhaseEnum.RELEASE;
         }
 
-        return hasTransactionId() ? NotificationPhaseEnum.POST_COMMIT : NotificationPhaseEnum.PRE_COMMIT;
+        return NotificationPhaseEnum.PRE_COMMIT;
     }
 
     /** Whether the payer reported a transaction id (End-to-End ID, Trace Number, txHash). */
@@ -55,11 +62,14 @@ public record PaymentNotificationDataVO(
     }
 
     /**
-     * Whether the message says "may I pay?" ({@code blockchain.action = PAYMENT_INITIATED}) while
-     * carrying a hash that shows the money has already moved. Bad payer behaviour (ADR-0036).
+     * Whether the action contradicts the hash it carries: {@code PAYMENT_INITIATED} ("may I pay?")
+     * or {@code NOT_SENT} ("I did not pay") with a hash that shows the money has moved. Bad payer
+     * behaviour (ADR-0036).
      */
     public boolean actionContradictsHash() {
-        return nonNull(blockchain) && ActionEnum.PAYMENT_INITIATED.equals(blockchain.action()) && hasTransactionId();
+        return nonNull(blockchain)
+            && (ActionEnum.PAYMENT_INITIATED.equals(blockchain.action()) || ActionEnum.NOT_SENT.equals(blockchain.action()))
+            && hasTransactionId();
     }
 
 }

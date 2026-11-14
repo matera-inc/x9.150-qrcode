@@ -14,6 +14,7 @@ import com.matera.x9qrcode.app.usecase.paymentnotification.mapper.PaymentNotific
 import com.matera.x9qrcode.app.usecase.paymentnotification.mapper.PaymentNotificationPaymentMapper;
 import com.matera.x9qrcode.domain.entity.QRCodeEntity;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
+import com.matera.x9qrcode.domain.exception.QRCodeStatusConflictException;
 import com.matera.x9qrcode.domain.service.PaymentNotificationAcceptancePolicy;
 import com.matera.x9qrcode.domain.utils.DateTimeUtils;
 import com.matera.x9qrcode.domain.vo.ExpectedDateVO;
@@ -23,6 +24,7 @@ import com.matera.x9qrcode.domain.vo.PaymentNotificationPayerVO;
 import com.matera.x9qrcode.domain.vo.QRCodeIdVO;
 import com.matera.x9qrcode.domain.vo.ReservationHolderVO;
 import com.matera.x9qrcode.domain.vo.enumerated.NotificationDeviationEnum;
+import com.matera.x9qrcode.domain.vo.enumerated.QRCodeStatusEnum;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -90,7 +92,13 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
                 return true;
             } catch (QRCodeConcurrentModificationException raceLost) {
                 if (attempt >= MAX_ATTEMPTS) {
-                    throw raceLost;
+                    // Still losing after every re-run: answer 409 "busy" with the status as it now
+                    // stands, never a 500. The payer may simply try again (ADR-0036, as ADR-0025
+                    // says for Go).
+                    QRCodeStatusEnum current = qrCodeRepository.findById(qrCodeId).effectiveStatus();
+                    throw new QRCodeStatusConflictException(current,
+                        "This QR Code is busy: it kept changing while this notification was being "
+                            + "applied. Try again.");
                 }
             }
         }
@@ -122,7 +130,7 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
         switch (data.phase()) {
             case PRE_COMMIT -> preCommit(qrCodeEntity, data, sender);
             case POST_COMMIT -> warnOnDeviations(qrCodeEntity, sender, qrCodeEntity.registerPostCommit(data, sender));
-            case RELEASE -> qrCodeEntity.releaseByPayer(data, sender);
+            case RELEASE -> warnOnDeviations(qrCodeEntity, sender, qrCodeEntity.releaseByPayer(data, sender));
         }
     }
 
@@ -154,23 +162,25 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
 
         if (receipt.deviations().contains(NotificationDeviationEnum.ACTION_CONTRADICTS_HASH)) {
             // !!! BAD PAYER BEHAVIOUR !!!
-            // blockchain.action = PAYMENT_INITIATED says "may I pay?", yet the message carries a
-            // transaction hash: the money has ALREADY moved. Either the payer skipped the question
-            // or it labelled its report wrongly; a payer that follows the protocol never sends this.
+            // blockchain.action = PAYMENT_INITIATED says "may I pay?", or NOT_SENT says "I did not
+            // pay", yet the money has ALREADY moved: the message carries a transaction hash, or the
+            // payer's own hash is already registered. Either the payer skipped the question or it
+            // labelled its report wrongly; a payer that follows the protocol never sends this.
             //
             // It is still a post-commit and its hash is still registered, on purpose. If the funds
             // arrive in the right amount and the hash matches, the payment system has everything it
             // needs to mark the QR Code paid. Refusing the report would throw away the one piece of
             // evidence that links those funds to this QR Code (ADR-0036).
-            log.warn("Payer sent PAYMENT_INITIATED carrying a transaction hash (bad payer behaviour); "
-                    + "registered as a post-commit. qrCodeId={} payerInfo={} signerSubject={} "
-                    + "receivedInStatus={} deviations={}",
+            log.warn("Payer's blockchain.action contradicts its transaction hash (bad payer behaviour): "
+                    + "PAYMENT_INITIATED or NOT_SENT carrying a hash, or NOT_SENT after its hash was "
+                    + "registered. Kept as evidence, status unchanged by it. qrCodeId={} payerInfo={} "
+                    + "signerSubject={} receivedInStatus={} deviations={}",
                 qrCodeEntity.getId().value(), sender.payerInfo(), sender.signerSubject(),
                 receipt.receivedInStatus(), receipt.deviations());
             return;
         }
 
-        log.warn("Post-commit registered from a payer that broke the protocol. qrCodeId={} payerInfo={} "
+        log.warn("Notification accepted from a payer that broke the protocol. qrCodeId={} payerInfo={} "
                 + "signerSubject={} receivedInStatus={} deviations={}",
             qrCodeEntity.getId().value(), sender.payerInfo(), sender.signerSubject(),
             receipt.receivedInStatus(), receipt.deviations());

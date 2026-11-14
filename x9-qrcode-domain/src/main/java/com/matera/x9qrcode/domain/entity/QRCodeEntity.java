@@ -112,6 +112,17 @@ public class QRCodeEntity {
      * is this a second payer, or the same one again? See {@link ReservationHolderVO}.
      */
     private ReservationHolderVO reservedBy;
+
+    /**
+     * Whether a transaction hash has been registered for the current reservation (ADR-0036).
+     *
+     * <p>Once one has, money has moved for this QR Code and <b>no payer message changes its
+     * status</b>: the holder's {@code NOT_SENT} changes nothing, its retried pre-commit is refused
+     * with 409, and the window stops. Only the status-update API ends the reservation. Kept
+     * separately from {@link #initiatedExpiresAt}, whose "no lapse" sentinel does not say why the
+     * window stopped. Cleared with the reservation.
+     */
+    private boolean hashRegistered;
     private ValidUntilVO validUntil;
     private QRCodeStatusEnum status;
     private final CreditorVO creditor;
@@ -232,6 +243,7 @@ public class QRCodeEntity {
                                        OffsetDateTime validUntil,
                                        OffsetDateTime initiatedExpiresAt,
                                        ReservationHolderVO reservedBy,
+                                       Boolean hashRegistered,
                                        QRCodeStatusEnum status,
                                        CreditorVO creditor,
                                        BillVO bill,
@@ -266,6 +278,7 @@ public class QRCodeEntity {
         // keeps the lapse honest across restarts.
         restored.initiatedExpiresAt = initiatedExpiresAt;
         restored.reservedBy = reservedBy;
+        restored.hashRegistered = Boolean.TRUE.equals(hashRegistered);
 
         return restored;
     }
@@ -659,6 +672,14 @@ public class QRCodeEntity {
             return false;
         }
 
+        if (QRCodeStatusEnum.PAYMENT_INITIATED.equals(current) && this.hashRegistered) {
+            // Money has moved for this QR Code: no payer message changes its status now, the
+            // holder's own retry included. Only the payment system ends the reservation (ADR-0036).
+            throw new QRCodeStatusConflictException(current,
+                "A transaction has already been reported for this QR Code, so it can no longer be "
+                    + "pre-committed. Only the payment system ends this reservation.");
+        }
+
         if (QRCodeStatusEnum.PAYMENT_INITIATED.equals(current) && this.isHeldBy(sender)) {
             return true;
         }
@@ -750,11 +771,13 @@ public class QRCodeEntity {
             this.status = QRCodeStatusEnum.PAYMENT_INITIATED;
             this.reservedBy = sender;
             this.initiatedExpiresAt = NO_LAPSE;
+            this.hashRegistered = true;
             this.touch();
             this.emit(PaymentEventTypeEnum.PAYMENT_INITIATED, null, receipt);
         } else {
             if (QRCodeStatusEnum.PAYMENT_INITIATED.equals(receivedIn)) {
                 this.initiatedExpiresAt = NO_LAPSE;
+                this.hashRegistered = true;
             }
             this.touch();
         }
@@ -784,6 +807,15 @@ public class QRCodeEntity {
             throw new QRCodeStatusConflictException(receivedIn,
                 "This QR Code is held by another payer, so it is not yours to release. "
                     + "A payer that sends no payer.info cannot be recognised as the holder.");
+        }
+
+        if (QRCodeStatusEnum.PAYMENT_INITIATED.equals(receivedIn) && this.hashRegistered) {
+            // The holder says "not sent" for money already reported as moved. Bad payer behaviour:
+            // accepted, flagged, and nothing changes; only the payment system ends this
+            // reservation now (ADR-0036). No event: there is no hash to register, and
+            // payment.failed would tell the payment system something untrue. The flag is in the
+            // warning the use case logs.
+            return new NotificationReceiptVO(receivedIn, List.of(NotificationDeviationEnum.ACTION_CONTRADICTS_HASH));
         }
 
         boolean lapsedButStillTheirs = QRCodeStatusEnum.ACTIVE.equals(receivedIn)
@@ -900,10 +932,12 @@ public class QRCodeEntity {
         if (!QRCodeStatusEnum.PAYMENT_INITIATED.equals(newStatus)) {
             this.initiatedExpiresAt = null;
             this.reservedBy = null;
+            this.hashRegistered = false;
             return;
         }
 
         this.reservedBy = holder;
+        this.hashRegistered = false;
         this.initiatedExpiresAt = this.reservationWindow(reservationTtl);
     }
 

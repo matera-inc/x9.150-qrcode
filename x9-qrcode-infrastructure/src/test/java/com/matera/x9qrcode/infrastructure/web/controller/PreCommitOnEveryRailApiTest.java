@@ -194,8 +194,8 @@ class PreCommitOnEveryRailApiTest extends NotificationMatrixApiSupport {
         assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
         assertEquals(HttpStatus.CONFLICT.value(), solana(qrCodeId, "PAYMENT_INITIATED", null, PAYER_B).statusCode(),
             "A still holds it");
-        assertEquals(HttpStatus.OK.value(), solana(qrCodeId, "PAYMENT_INITIATED", null, PAYER_A).statusCode(),
-            "and A may still retry");
+        assertEquals(HttpStatus.CONFLICT.value(), solana(qrCodeId, "PAYMENT_INITIATED", null, PAYER_A).statusCode(),
+            "once a hash is registered, not even the holder may pre-commit again (ADR-0036)");
 
         Map<String, Object> sent = eventsFor(qrCodeId).stream()
             .filter(event -> "payment.sent".equals(event.get("type"))).findFirst().orElseThrow();
@@ -562,6 +562,70 @@ class PreCommitOnEveryRailApiTest extends NotificationMatrixApiSupport {
         assertEquals("PAYMENT_INITIATED", holdersOwn.get("receivedInStatus"));
         assertTrue(eventsFor(heldByA).stream().allMatch(event -> event.containsKey("receivedInStatus")),
             "every event a notification produced records the status it found");
+    }
+
+    // ------------------------------------------------- once a hash is registered (owner, 2026-11-14)
+
+    /**
+     * <b>X9-HOLD-218</b> — after a hash, the holder's NOT_SENT is accepted and changes nothing.
+     *
+     * <p><b>Source:</b> Ours. ADR-0036 (§, owner 2026-11-14).
+     *
+     * <p><b>Why:</b> Releasing a QR Code whose money has moved would let a second payer pay it;
+     * only the payment system ends the reservation. Proves the flag survives the store too.
+     */
+    @Test
+    void afterAHashTheHoldersNotSentChangesNothing() {
+        String qrCodeId = createQRCode();
+        solana(qrCodeId, "PAYMENT_INITIATED", null, PAYER_A);
+        solana(qrCodeId, "SENT", HASH_1, PAYER_A);
+
+        assertEquals(HttpStatus.OK.value(), solana(qrCodeId, "NOT_SENT", null, PAYER_A).statusCode());
+
+        assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
+        assertEquals(List.of("payment.initiated", "payment.sent"), eventTypesFor(qrCodeId), "no payment.failed");
+        assertEquals(HttpStatus.CONFLICT.value(), solana(qrCodeId, "PAYMENT_INITIATED", null, PAYER_B).statusCode());
+    }
+
+    /**
+     * <b>X9-HOLD-219</b> — after a hash, the holder's retried pre-commit is a 409 and does not release.
+     *
+     * <p><b>Source:</b> Ours. ADR-0036 (§, owner 2026-11-14).
+     *
+     * <p><b>Why:</b> A retry judged again could be refused and, as a refused retry, release a QR
+     * Code already paid.
+     */
+    @Test
+    void afterAHashTheHoldersRetryIsAConflict() {
+        String qrCodeId = createQRCode();
+        bank(qrCodeId, "FedNow", null, PAYER_A);
+        bank(qrCodeId, "FedNow", E2E, PAYER_A);
+
+        assertEquals(HttpStatus.CONFLICT.value(), bank(qrCodeId, "FedNow", null, PAYER_A).statusCode());
+        assertEquals(HttpStatus.CONFLICT.value(), bank(qrCodeId, "FedNow", null, PAYER_A, AMOUNT - 1).statusCode());
+
+        assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
+    }
+
+    /**
+     * <b>X9-HOLD-220</b> — a NOT_SENT carrying a transaction id is a post-commit: registered, flagged ACTION_CONTRADICTS_HASH.
+     *
+     * <p><b>Source:</b> Ours. ADR-0036 (owner 2026-11-14): the evidence decides the phase.
+     *
+     * <p><b>Why:</b> Keyed on the action, it released the QR Code and dropped the hash.
+     */
+    @Test
+    void aNotSentCarryingAHashIsRegisteredAsAPostCommit() {
+        String qrCodeId = createQRCode();
+        solana(qrCodeId, "PAYMENT_INITIATED", null, PAYER_A);
+
+        assertEquals(HttpStatus.OK.value(), solana(qrCodeId, "NOT_SENT", HASH_1, PAYER_A).statusCode());
+
+        assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
+        Map<String, Object> sent = lastEventFor(qrCodeId);
+        assertEquals("payment.sent", sent.get("type"));
+        assertEquals(HASH_1, sent.get("transactionId"));
+        assertEquals(List.of(CONTRADICTS), sent.get("deviations"));
     }
 
 }

@@ -639,7 +639,12 @@ paths:
           an `ACTIVE` QR Code it reserves it for you; on one held by somebody else, `PAID` or
           `CANCELLED` it changes nothing. On a chain every hash is registered as its own
           `payment.sent` event, flagged in `deviations` when it arrived in the wrong status.
-        - **`NOT_SENT`** (chain): you give the QR Code back.
+        - **`NOT_SENT`** (chain): you give the QR Code back. A `NOT_SENT` carrying a
+          `transactionId` is a post-commit, flagged `ACTION_CONTRADICTS_HASH`.
+
+        **Once a hash is registered for the QR Code, no payer message changes its status**: a
+        pre-commit, the holder's included, gets `409`, and the holder's `NOT_SENT` is accepted and
+        changes nothing. Only the payment system ends the reservation.
 
         A Solana `PAYMENT_INITIATED` carrying a hash is bad payer behaviour: it is treated as a
         post-commit, its hash is registered, it is flagged `ACTION_CONTRADICTS_HASH`, and a warning
@@ -729,8 +734,12 @@ paths:
             90 by default), unless a transaction hash has been registered for the QR Code, after
             which only the payment system ends it.
 
-            Never returned for a post-commit (`transactionId` present): that is registered whatever
-            the status.
+            Also returned to any pre-commit once a transaction hash is registered for the QR Code,
+            and as "busy" (with the current status) when the notification kept losing a concurrent
+            write; send it again.
+
+            Never returned for a post-commit (`transactionId` present) because of the status: that
+            is registered whatever the status.
             Every answer is signed: body `{"statusCode": 409}` plus the error fields.
           content:
             application/jose:

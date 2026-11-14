@@ -548,8 +548,14 @@ it is registered, flagged, and changes nothing, so the holder keeps the QR Code.
   chain.
 - On a QR Code held by somebody else, `PAID` or `CANCELLED`, it changes nothing; on a chain its hash
   is still published as `payment.sent`.
-- Once any hash is registered for a reserved QR Code, the reservation stops expiring; only the
-  payment system ends it.
+- Once any hash is registered for a reserved QR Code, the reservation stops expiring and **no
+  payer message changes its status**: the holder's retried pre-commit is refused with `409`, and
+  its `NOT_SENT` is accepted, changes nothing and is flagged `ACTION_CONTRADICTS_HASH`. Only the
+  payment system ends the reservation.
+- A `NOT_SENT` carrying a `transactionId` is a post-commit (the evidence decides), flagged
+  `ACTION_CONTRADICTS_HASH`.
+- A notification that keeps losing a concurrent write answers `409` "busy" with the current
+  status, never `500`.
 - Every event a notification produces carries `receivedInStatus` (the QR Code's effective status
   when it arrived) and, when the payer broke the protocol, `deviations`:
   `RECEIVED_IN_WRONG_STATUS` (the QR Code was not `PAYMENT_INITIATED` held by this payer) and

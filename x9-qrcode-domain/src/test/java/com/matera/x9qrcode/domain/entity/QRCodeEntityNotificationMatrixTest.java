@@ -729,21 +729,88 @@ class QRCodeEntityNotificationMatrixTest extends AbstractTest {
         }
 
         /**
-         * <b>X9-HOLD-128</b> — a retry after a hash never restarts the window.
+         * <b>X9-HOLD-128</b> — after a hash, even the holder's retried pre-commit is a 409 and changes nothing.
          *
-         * <p><b>Source:</b> Ours. ADR-0036 (S2.5-AC6). X9.150 defines no reservation and no phase marker.
+         * <p><b>Source:</b> Ours. ADR-0036 (§, owner 2026-11-14). X9.150 defines no reservation.
          *
-         * <p><b>Why:</b> A retry that restarted the window would put back the expiry the hash had
-         * stopped.
+         * <p><b>Why:</b> Once money has moved no payer message may change the QR Code's status; a
+         * retry that was judged again could be refused and release a QR Code already paid, or
+         * restart the window the hash had stopped.
          */
         @Test
-        void aRetryAfterAHashDoesNotRestartTheWindow() {
+        void afterAHashTheHoldersRetryIsAConflict() {
             QRCodeEntity qrCode = heldBy(qrCode(), A);
             qrCode.registerPostCommit(solana(ActionEnum.SENT, HASH_1, A), A);
 
-            qrCode.acceptPreCommit(solana(ActionEnum.PAYMENT_INITIATED, null, A), A, TTL);
+            assertThrows(QRCodeStatusConflictException.class,
+                () -> qrCode.admitPreCommit(solana(ActionEnum.PAYMENT_INITIATED, null, A), A));
 
             assertTrue(qrCode.isWindowStopped());
+            assertTrue(qrCode.isHeldBy(A));
+        }
+
+        /**
+         * <b>X9-HOLD-138</b> — after a hash, the holder's NOT_SENT is accepted, flagged ACTION_CONTRADICTS_HASH, and changes nothing.
+         *
+         * <p><b>Source:</b> Ours. ADR-0036 (§, owner 2026-11-14).
+         *
+         * <p><b>Why:</b> The payer says "not sent" for money it already reported as moved. Releasing
+         * would let a second payer pay a QR Code already paid; only the payment system may end it.
+         */
+        @Test
+        void afterAHashTheHoldersNotSentChangesNothing() {
+            QRCodeEntity qrCode = heldBy(qrCode(), A);
+            qrCode.registerPostCommit(solana(ActionEnum.SENT, HASH_1, A), A);
+            int events = qrCode.getPendingEvents().size();
+
+            NotificationReceiptVO receipt = qrCode.releaseByPayer(solana(ActionEnum.NOT_SENT, null, A), A);
+
+            assertEquals(List.of(NotificationDeviationEnum.ACTION_CONTRADICTS_HASH), receipt.deviations());
+            assertEquals(QRCodeStatusEnum.PAYMENT_INITIATED, qrCode.getStatus());
+            assertTrue(qrCode.isHeldBy(A));
+            assertTrue(qrCode.isHashRegistered());
+            assertEquals(events, qrCode.getPendingEvents().size(), "no payment.failed");
+        }
+
+        /**
+         * <b>X9-HOLD-139</b> — a NOT_SENT carrying a transaction id is a post-commit, flagged ACTION_CONTRADICTS_HASH.
+         *
+         * <p><b>Source:</b> Ours. ADR-0036 (owner 2026-11-14): the evidence decides the phase.
+         *
+         * <p><b>Why:</b> Keyed on the action it released the QR Code and threw the hash away, the
+         * one link between the funds and the bill.
+         */
+        @Test
+        void aNotSentCarryingAHashIsAPostCommit() {
+            PaymentNotificationDataVO notSentWithHash = solana(ActionEnum.NOT_SENT, HASH_1, A);
+            assertEquals(NotificationPhaseEnum.POST_COMMIT, notSentWithHash.phase());
+
+            QRCodeEntity qrCode = heldBy(qrCode(), A);
+            qrCode.registerPostCommit(notSentWithHash, A);
+
+            assertEquals(PaymentEventTypeEnum.PAYMENT_SENT, last(qrCode).type());
+            assertEquals(List.of(NotificationDeviationEnum.ACTION_CONTRADICTS_HASH), last(qrCode).deviations());
+            assertEquals(QRCodeStatusEnum.PAYMENT_INITIATED, qrCode.getStatus());
+        }
+
+        /**
+         * <b>X9-HOLD-140</b> — the status-update API's revert clears the registered hash with the reservation.
+         *
+         * <p><b>Source:</b> Ours. ADR-0036.
+         *
+         * <p><b>Why:</b> A flag left behind would block the next payer's retries on a reservation
+         * that never saw a hash.
+         */
+        @Test
+        void theRevertClearsTheRegisteredHash() {
+            QRCodeEntity qrCode = heldBy(qrCode(), A);
+            qrCode.registerPostCommit(solana(ActionEnum.SENT, HASH_1, A), A);
+
+            qrCode.reactivate(null);
+            heldBy(qrCode, B);
+
+            assertFalse(qrCode.isHashRegistered());
+            assertTrue(qrCode.admitPreCommit(solana(ActionEnum.PAYMENT_INITIATED, null, B), B));
         }
 
         /**

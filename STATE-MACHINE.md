@@ -172,11 +172,12 @@ Messages from a payer:
 
 | Message | ACTIVE | Held by the sender | Held by someone else | PAID or CANCELLED |
 |---|---|---|---|---|
-| **Pre-commit** (no `transactionId`) | Judged at the payee's clock. Yes: → `PAYMENT_INITIATED` held by the sender, `payment.initiated`. No: 400, nothing changes | A retry, judged again. Yes: window refreshed, no event | 409, nothing changes | 400, nothing changes |
+| **Pre-commit** (no `transactionId`) | Judged at the payee's clock. Yes: → `PAYMENT_INITIATED` held by the sender, `payment.initiated`. No: 400, nothing changes | A retry, judged again. Yes: window refreshed, no event. Once a hash is registered: 409, nothing changes § | 409, nothing changes | 400, nothing changes |
 | **Post-commit** (`transactionId` present) | Accepted, never judged: → `PAYMENT_INITIATED` held by the sender; `payment.initiated`, then `payment.sent` on a chain; flagged `RECEIVED_IN_WRONG_STATUS`; the window stops | Accepted, status unchanged; `payment.sent` on a chain; the window stops | Accepted, the holder keeps it; `payment.sent` on a chain, flagged `RECEIVED_IN_WRONG_STATUS`; the window stops | Accepted, status unchanged; `payment.sent` on a chain, flagged `RECEIVED_IN_WRONG_STATUS` |
 | **`PAYMENT_INITIATED` with a hash** (chain) | As a post-commit, also flagged `ACTION_CONTRADICTS_HASH` | same | same | same |
 | **`SENT` without a hash** (chain) | 400 | 400 | 400 | 400 |
-| **`NOT_SENT`** (chain: the payer gives it back) | 400; from the holder of a lapsed reservation: accepted, `payment.failed` | → `ACTIVE`, reservation cleared, `payment.failed` | 409 | 400 |
+| **`NOT_SENT`** (chain: the payer gives it back) | 400; from the holder of a lapsed reservation: accepted, `payment.failed` | → `ACTIVE`, reservation cleared, `payment.failed`. Once a hash is registered: accepted, nothing changes, flagged `ACTION_CONTRADICTS_HASH` (in the warning; no event) § | 409 | 400 |
+| **`NOT_SENT` with a `transactionId`** (chain) | As a post-commit (the evidence decides), also flagged `ACTION_CONTRADICTS_HASH` | same | same | same |
 
 From the payment system (status-update API), and from time:
 
@@ -187,6 +188,12 @@ From the payment system (status-update API), and from time:
 | **→ `CANCELLED`** | → `CANCELLED`, `payment.cancelled` | same | 400 |
 | **→ `ACTIVE`** (reactivate) | 400 | → `ACTIVE`, reservation cleared, no event | 400 |
 | **The reservation's window passes** | — | reads `ACTIVE`, nothing written, no event; never once a hash is registered | — |
+
+§ **Once a hash is registered, no payer message changes the QR Code's status** (owner,
+2026-11-14): money has moved, so only the payment system ends the reservation.
+
+**Losing a concurrent write.** A notification that keeps losing the race after its
+re-runs answers 409 "busy" with the current status, never 500.
 
 `validUntil` is not a status. Past it, a pre-commit is refused by the payee's clock
 (400); a post-commit is still accepted and registered, because the money has moved.

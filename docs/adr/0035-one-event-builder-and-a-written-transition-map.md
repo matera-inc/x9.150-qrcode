@@ -44,6 +44,7 @@ for field. The event contract is unchanged except for ADR-0036's additive `devia
 | status-update `ACTIVE` (reactivate) | `PAYMENT_INITIATED` (effective) | `ACTIVE` | **none** |
 | pre-commit, any rail (no `transactionId`), new holder | `ACTIVE` (effective; a lapsed reservation counts) | `PAYMENT_INITIATED`, held by the sender | `payment.initiated` (also on a takeover of a lapsed reservation) |
 | pre-commit, any rail, same holder (retry) | `PAYMENT_INITIATED` (effective), held by the sender | unchanged, window refreshed (never restarted once a hash is registered) | **none** |
+| pre-commit, any rail, once a hash is registered (holder included) | `PAYMENT_INITIATED` (effective), hash registered | refused, 409 | none |
 | pre-commit, any rail, another payer | `PAYMENT_INITIATED` (effective), held by someone else | refused, 409 | none |
 | pre-commit, any rail | `PAID` or `CANCELLED` | refused, 400 | none |
 | post-commit, bank rail (`transactionId` present) | `ACTIVE` (effective) | `PAYMENT_INITIATED`, held by the sender, window stopped | `payment.initiated`, flagged `RECEIVED_IN_WRONG_STATUS` |
@@ -54,6 +55,8 @@ for field. The event contract is unchanged except for ADR-0036's additive `devia
 | blockchain `PAYMENT_INITIATED` **with** a hash | any | as the post-commit row for that status | as that row, plus `ACTION_CONTRADICTS_HASH`; a warning names the payer |
 | blockchain `SENT` without a hash | any | refused, 400 | none |
 | blockchain `NOT_SENT` (holder) | `PAYMENT_INITIATED` (effective), or a lapsed reservation of the sender's | `ACTIVE` | `payment.failed` |
+| blockchain `NOT_SENT` (holder), once a hash is registered | `PAYMENT_INITIATED` (effective), hash registered | unchanged; `ACTION_CONTRADICTS_HASH` in the warning | none |
+| blockchain `NOT_SENT` **with** a `transactionId` | any | as the post-commit row for that status | as that row, plus `ACTION_CONTRADICTS_HASH` |
 | blockchain `NOT_SENT` | held by someone else: 409; `ACTIVE` with no reservation of the sender's, `PAID`, `CANCELLED`: 400 | unchanged | none |
 | location released by a rebind | not live ([0024](0024-a-qr-code-is-one-row-and-every-patch-is-audit-logged.md)) | unchanged, new random location | none |
 | reservation lapse | — (on read only) | reads as `ACTIVE`; never once a hash is registered (ADR-0036) | **none** (ADR-0019) |

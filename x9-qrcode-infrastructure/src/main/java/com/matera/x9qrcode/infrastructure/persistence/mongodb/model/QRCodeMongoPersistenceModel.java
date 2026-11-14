@@ -91,6 +91,13 @@ public class QRCodeMongoPersistenceModel implements Persistable<UUID> {
     private OffsetDateTime initiatedExpiresAt;
 
     /**
+     * True once a transaction hash is registered for the current reservation; absent otherwise.
+     * After it, no payer message changes the status (ADR-0036).
+     */
+    @Field(name = "hash_registered")
+    private Boolean hashRegistered;
+
+    /**
      * Who holds the current reservation; null in every state but PAYMENT_INITIATED.
      *
      * <p>Persisted for the same reason as the instant above: a restart must not forget who is

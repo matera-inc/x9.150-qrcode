@@ -232,6 +232,7 @@ class QRCodeEntityReservationExpiryTest extends AbstractTest {
             UUID.randomUUID(), UUID.randomUUID(), 0, NOW, NOW, NOW.plusDays(30),
             null,
             null,
+            null,
             QRCodeStatusEnum.PAYMENT_INITIATED,
             CREDITOR_FIXTURE.creditor(),
             new BillVO(new DescriptionVO("legacy"), null, null, TipVO.noTip(),
