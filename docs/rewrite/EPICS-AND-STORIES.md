@@ -722,8 +722,9 @@ ACH gates every notification as a pre-commit, even with a Trace Number.
 **When** payer B sends a pre-commit
 **Then** B gets 409 and nothing changes
 **And** a concurrency test fires A and B together N times: exactly one wins each time
-**And** what happens to a post-commit from B while A holds is **open** (ADR-0036): Java refuses it
-with 409 today, which loses B's hash
+**And** a post-commit from B while A holds is accepted and changes nothing: A keeps the reservation,
+and on Solana a `payment.sent` registers B's hash with `deviations: ["RECEIVED_IN_WRONG_STATUS"]` and
+`receivedInStatus: "PAYMENT_INITIATED"` (ADR-0036); today's 409 is gone
 **And** INTERPRETATION states this: the only payment X9.150 authorizes is the one that won the pre-commit.
 
 **S2.4-AC3. Post-commit on the bank rails.**
@@ -776,10 +777,11 @@ and `receivedInStatus` `PAID` or `CANCELLED`; bank rails publish no `payment.sen
 
 **S2.4-AC8. Every notification records the status it found.**
 **Given** any accepted notification
-**Then** it is stored with the QR Code's effective status when it arrived (`received_in_status` in Go;
-in Java, on the event as `receivedInStatus`)
-**And** a test lists, per payer, the post-commits received in a status other than `PAYMENT_INITIATED`
-held by that payer.
+**Then** it is stored with the QR Code's effective status when it arrived and its `deviations`
+(`received_in_status_code` and `deviations` in Go; in Java, on the event as `receivedInStatus` and
+`deviations`)
+**And** a test lists, per payer, the post-commits flagged `RECEIVED_IN_WRONG_STATUS`, including one
+received while another payer held the QR Code.
 
 **S2.4-AC9. Docs.**
 **Then** STATE-MACHINE, INTERPRETATION and the ADR-0035 transition map get the new rows, and the
