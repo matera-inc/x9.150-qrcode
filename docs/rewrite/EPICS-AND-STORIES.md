@@ -738,7 +738,8 @@ yes; no `payment.sent` (bank rails never emit it).
 **And** in one transaction the QR Code moves to `PAYMENT_INITIATED`, held by that payer, and
 `payment.initiated` is published; on Solana `payment.sent` follows, registering the hash ("if this
 hash arrives, it is for this QR Code"); bank rails publish no `payment.sent`
-**And** both events carry `deviations: ["NO_PRE_COMMIT"]`, and `schemaVersion` is `1.1` (ADR-0036)
+**And** both events carry `deviations: ["RECEIVED_IN_WRONG_STATUS"]` and `receivedInStatus: "ACTIVE"`,
+and `schemaVersion` is `1.1` (ADR-0036)
 **And** another payer's pre-commit is then refused with 409
 **And** whether this reservation may lapse is **open** (ADR-0036 proposes that, once a post-commit is
 recorded, it lasts until the payee marks the QR Code `PAID`, `CANCELLED` or `ACTIVE`).
@@ -751,8 +752,8 @@ amount or time, answered with a signed yes, and logged as a warning naming the p
 **And** a code comment and INTERPRETATION say plainly that this is bad payer behaviour, and that the
 hash is kept because funds that arrive in the right amount with a matching hash are enough for the
 payment system to mark the QR Code paid
-**And** its events carry `ACTION_CONTRADICTS_HASH` in `deviations` (with `NO_PRE_COMMIT` too when the
-payer held no reservation)
+**And** its events carry `ACTION_CONTRADICTS_HASH` in `deviations` (with `RECEIVED_IN_WRONG_STATUS`
+too when the QR Code was not `PAYMENT_INITIATED` held by that payer)
 **And** `SENT` without a hash is still refused with 400, and `NOT_SENT` still releases.
 
 **S2.4-AC6. Every transaction hash is recorded.**
@@ -764,7 +765,23 @@ payment system as its own `payment.sent` (on Solana; the outbox event is the reg
 funds and calls the status-update API, and two hashes for one QR Code are its signal of a duplicate
 payment.
 
-**S2.4-AC7. Docs.**
+**S2.4-AC7. A post-commit on a closed QR Code is registered, and changes nothing.**
+**Given** a QR Code already `PAID` or `CANCELLED`
+**When** a post-commit with a hash arrives, from anyone
+**Then** it is accepted with a signed acknowledgement, never judged on amount or time
+**And** on Solana a `payment.sent` registers the hash with `deviations: ["RECEIVED_IN_WRONG_STATUS"]`
+and `receivedInStatus` `PAID` or `CANCELLED`; bank rails publish no `payment.sent`
+**And** the status does not change: a closed QR Code never reopens
+**And** today's 400 is gone.
+
+**S2.4-AC8. Every notification records the status it found.**
+**Given** any accepted notification
+**Then** it is stored with the QR Code's effective status when it arrived (`received_in_status` in Go;
+in Java, on the event as `receivedInStatus`)
+**And** a test lists, per payer, the post-commits received in a status other than `PAYMENT_INITIATED`
+held by that payer.
+
+**S2.4-AC9. Docs.**
 **Then** STATE-MACHINE, INTERPRETATION and the ADR-0035 transition map get the new rows, and the
 deviation recorded by S1.1-AC4 is closed.
 
@@ -1441,7 +1458,7 @@ key, and migrated events keep their original ids.
 **S6.5-AC4. What can change.**
 **Then** it states the contract: within a major `schemaVersion`, columns and codes are only added;
 readers ignore what they do not know
-**And** it lists the `deviations` codes and what each means
+**And** it lists the `deviations` codes and `receivedInStatus`, and what each means
 **And** it warns that events are purged after `events.retention` (default `P30D`), read or not.
 
 **S6.5-AC5.** **Given** the black-box suite
