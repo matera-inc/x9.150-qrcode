@@ -11,15 +11,15 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 
 import static java.util.Objects.nonNull;
 
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class DateTimeUtils {
 
+    /** Business "now", in UTC, read from {@link BusinessClock} (ADR-0033). */
     public static OffsetDateTime nowUTC() {
-        return OffsetDateTime.now(ZoneOffset.UTC);
+        return OffsetDateTime.now(BusinessClock.clock());
     }
 
 }
