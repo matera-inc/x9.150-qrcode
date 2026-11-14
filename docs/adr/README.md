@@ -58,7 +58,7 @@ the history of why we changed our minds — the part that is usually lost.
 | [0033](0033-the-clock-can-be-moved-in-test-deployments-only.md) | **The clock can be moved in test deployments, and only there** — loopback listener, compiled-in fingerprint guard | Accepted |
 | [0034](0034-the-black-box-suite-is-python-in-this-repository-under-its-licence.md) | **The black-box suite is Python, in this repo, under its licence** | Accepted |
 | [0035](0035-one-event-builder-and-a-written-transition-map.md) | **One event builder, and a written transition map** | Accepted |
-| [0037](0037-the-event-table-is-the-outbox-read-by-cdc-or-plain-sql.md) | **The event table is the outbox, read by CDC or by plain SQL** — X9.150 only inserts; Debezium, a read-status column for SQL readers, or the HTTP API; the columns become a public contract | Proposed |
+| [0037](0037-the-event-table-is-the-outbox-read-by-cdc-or-plain-sql.md) | **The event table is the outbox, read by CDC or by plain SQL** — X9.150 only inserts; Debezium, a read-status column for SQL readers, or the HTTP API; the columns become a public contract | Accepted |
 
 ## Writing a new one
 

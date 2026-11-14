@@ -4,7 +4,7 @@ Date: 2026-11-14
 
 ## Status
 
-Proposed 2026-11-14. Completes [ADR-0001](0001-events-leave-by-pull-not-push.md),
+Accepted 2026-11-14. Completes [ADR-0001](0001-events-leave-by-pull-not-push.md),
 [ADR-0025](0025-a-transition-is-one-transaction-and-its-event-is-in-it.md) and
 [ADR-0026](0026-identifiers-and-the-event-cursor.md). Answers the plan's question Q5 (change data
 capture on `payment_event`).
