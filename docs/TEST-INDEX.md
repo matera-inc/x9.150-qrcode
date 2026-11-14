@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**509 tests documented** — every JUnit test in the repository and every case in the
+**525 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -550,6 +550,30 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-SIG-302` | an unreachable payee is 502, with no verdict | `test_payers.py` |
 | `X9-SIG-303` | a pre-payment carrying a transactionId is refused before sending | `test_payers.py` |
 | `X9-SIG-304` | a post-payment SENT needs a transactionId; NOT_SENT without one is delivered | `test_payers.py` |
+
+## Time edges (the test clock)
+
+Plan §4.2 T1–T12, each at the instant it falls (Story 4.5, ADR-0033). "Just before" an edge means
+judged within the 2 s before it; "1 ms after" is exact.
+
+| Key | What it proves | Where |
+|---|---|---|
+| `X9-TIME-001` | T1: the discount is served, advertised until E and accepted up to E (exactly E via `dateForPayment`); 1 ms after, the face amount is served, the discount refused, the face amount accepted | `test_time_edges.py` |
+| `X9-TIME-002` | T2: the holder's post-commit after E is recorded with a signed yes, not re-checked, and its event carries the amount reported | `test_time_edges.py` |
+| `X9-TIME-003` | T3: no second edge at 23:59:59 UTC of E's day; the discount is neither offered nor accepted after E | `test_time_edges.py` |
+| `X9-TIME-004` | T4: at exactly `dueDate` the full amount and no fee; 1 ms later the first day's fee | `test_time_edges.py` |
+| `X9-TIME-005` | T5: the late fee rises every 24 h from `dueDate`; its advertised `validUntil` is the next boundary, capped by the QR Code's | `test_time_edges.py` |
+| `X9-TIME-006` | T6: a pre-commit 1 ms after `validUntil` is refused, one just before is accepted; the payee may still mark it PAID | `test_time_edges.py` |
+| `X9-TIME-007` | T7: a payment method past its own `validUntil` is absent from the payload and refused; the other is served and accepted | `test_time_edges.py` |
+| `X9-TIME-008` | T8: after a lapse the ETag reads ACTIVE and If-Match with it succeeds; another payer takes over with `payment.initiated`; the first payer's late SENT is registered, flagged | `test_time_edges.py` |
+| `X9-TIME-009` | T8 as S4.5-AC1 words it ("A's late SENT refused"): contradicts ADR-0036, strict xfail | `test_time_edges.py` |
+| `X9-TIME-010` | T9: a reservation taken 30 s before `validUntil` ends at `validUntil` | `test_time_edges.py` |
+| `X9-TIME-011` | T10: a payer `iat` 10 min in the service's past with a 5-min `ttl` is 401 EXPIRED before any lookup | `test_time_edges.py` |
+| `X9-TIME-012` | T11, both builds: an hour past `validUntil` on the test clock, the payload is refused as expired and GET still works | `test_time_edges.py` |
+| `X9-TIME-013` | T11, Java only: MongoDB's TTL monitor deletes an expired QR Code on the real clock (waits real time) | `test_time_edges.py` |
+| `X9-TIME-014` | T11, Go only: an expired QR Code is kept and its location is releasable | `test_time_edges.py` |
+| `X9-TIME-015` | T12, Go only: retention purges events, then QR Codes, by the test clock, and nothing younger | `test_time_edges.py` |
+| `X9-TIME-016` | S4.5-AC2: with the payee's clock ahead of the payer's, the payee's clock decides `validUntil` | `test_time_edges.py` |
 
 ## Tips
 
