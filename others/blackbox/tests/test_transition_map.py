@@ -309,9 +309,6 @@ def test_map_010_status_update_payment_initiated(api, events, start):
 
 
 @pytest.mark.serial
-@xfail("X9-MAP-010", "a status-update PAYMENT_INITIATED on a lapsed reservation (effective ACTIVE) "
-       "takes a new, unattributed reservation and emits payment.initiated",
-       "answers 200 and writes nothing, because the X-to-X no-op compares the STORED status")
 def test_map_010_status_update_payment_initiated_on_a_lapsed_reservation(api, events, clock):
     """X9-MAP-010 — status-update PAYMENT_INITIATED on a lapsed reservation counts as ACTIVE.
 

@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**487 tests documented** — every JUnit test in the repository and every case in the
+**489 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -208,6 +208,8 @@ single most important thing this index exists for.
 | `X9-LIFE-130` | a tag naming another revision or the stored status is still refused | `QRCodeEntityEntityTagTest.java` |
 | `X9-LIFE-140` | an absent bill.paymentTiming on create defaults to immediate | `DefaultedBillFieldsApiTest.java` |
 | `X9-LIFE-141` | an explicit null bill.paymentTiming on create is refused | `DefaultedBillFieldsApiTest.java` |
+| `X9-LIFE-142` | a status-update PAYMENT_INITIATED after the reservation lapsed reserves the QR Code again, with payment.initiated | `StatusUpdateAfterLapsedReservationApiTest.java` |
+| `X9-LIFE-143` | a repeated status-update PAYMENT_INITIATED while the reservation is live is still a no-op | `StatusUpdateAfterLapsedReservationApiTest.java` |
 
 ### Who holds a reservation
 
@@ -321,7 +323,7 @@ One black-box test per row of ADR-0035's map (Story 4.1); the row-to-test table 
 |---|---|---|
 | `X9-MAP-001` | create: ACTIVE, no event | `test_transition_map.py` |
 | `X9-MAP-002` | PATCH: allowed from ACTIVE and PAYMENT_INITIATED, status unchanged, revision moves, no event; refused from PAID and CANCELLED | `test_transition_map.py` |
-| `X9-MAP-010` | status-update PAYMENT_INITIATED: from ACTIVE, unattributed reservation, `payment.initiated`; 409 otherwise (two cells contradict Java, strict xfail) | `test_transition_map.py` |
+| `X9-MAP-010` | status-update PAYMENT_INITIATED: from ACTIVE, unattributed reservation, `payment.initiated`; 409 otherwise (the held cell contradicts Java, strict xfail; the lapsed cell was BUG-002, fixed) | `test_transition_map.py` |
 | `X9-MAP-011` | status-update PAID: from ACTIVE or PAYMENT_INITIATED, `payment.cleared` with the last notification's body; 400 from CANCELLED (PAID → PAID contradicts Java, strict xfail) | `test_transition_map.py` |
 | `X9-MAP-012` | status-update CANCELLED: from ACTIVE or PAYMENT_INITIATED, `payment.cancelled`; 400 from PAID (CANCELLED → CANCELLED contradicts Java, strict xfail) | `test_transition_map.py` |
 | `X9-MAP-013` | status-update ACTIVE: from PAYMENT_INITIATED, no event, the reservation is gone; 400 from PAID, CANCELLED and a lapsed reservation (ACTIVE → ACTIVE contradicts Java, strict xfail) | `test_transition_map.py` |
