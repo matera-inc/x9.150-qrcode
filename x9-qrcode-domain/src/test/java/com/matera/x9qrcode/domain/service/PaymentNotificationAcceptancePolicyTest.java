@@ -46,6 +46,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -271,6 +272,67 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
             () -> policy.accept(qrCode(), notificationOf(FACE + LATE_FEE), afterTheQRCodeExpired));
 
         assertTrue(exception.getMessage().contains("expired"), exception.getMessage());
+    }
+
+    // ------------------------------------------- the payee's clock decides (Story 1.3)
+
+    /**
+     * S1.3-AC1 — a discount quoted before its window closed is refused once the request reaches the
+     * payee after it, and the face amount is then accepted.
+     *
+     * <p><b>Why:</b> {@code at} is the payee's clock at receipt. What the payer's clock said when it
+     * fetched the quote does not enter into it: skew must never lock in a discount no longer granted.
+     */
+    @Test
+    void aDiscountFetchedBeforeTheWindowClosedIsRefusedWhenTheRequestArrivesAfterIt() {
+        OffsetDateTime windowEnds = DUE_DATE.minusDays(60);
+        OffsetDateTime arrivesAfter = windowEnds.plusNanos(1_000_000);
+
+        BusinessRuleException exception = assertThrows(BusinessRuleException.class,
+            () -> policy.accept(qrCode(), notificationOf(FACE - DISCOUNT), arrivesAfter));
+
+        assertEquals("paymentNotification.data.payment.amount", exception.field());
+        assertTrue(exception.getMessage().contains(String.valueOf(FACE - DISCOUNT)),
+            "the reason should name the stale discounted amount: " + exception.getMessage());
+        assertTrue(exception.getMessage().contains(String.valueOf(FACE)),
+            "the reason should name the face amount now owed: " + exception.getMessage());
+
+        assertDoesNotThrow(() -> policy.accept(qrCode(), notificationOf(FACE), arrivesAfter));
+    }
+
+    /**
+     * S1.3-AC2 — a payer whose clock runs behind still sees a request arriving after validUntil (on
+     * the payee's clock) refused on {@code validUntil}.
+     */
+    @Test
+    void aRequestArrivingAfterValidUntilOnThePayeesClockIsRefused() {
+        QRCodeEntity qrCode = qrCode();
+        OffsetDateTime afterValidUntil = qrCode.getValidUntil().plusNanos(1_000_000);
+
+        BusinessRuleException exception = assertThrows(BusinessRuleException.class,
+            () -> policy.accept(qrCode, notificationOf(FACE + LATE_FEE), afterValidUntil));
+
+        assertEquals("validUntil", exception.field());
+    }
+
+    /** S1.3-AC3 — validUntil is inclusive: a request arriving at exactly that instant is accepted. */
+    @Test
+    void aRequestArrivingAtExactlyValidUntilIsAccepted() {
+        QRCodeEntity qrCode = qrCode();
+
+        // validUntil is dueDate + 24 h: exactly one day late, so one day's fee is owed.
+        assertDoesNotThrow(() -> policy.accept(qrCode, notificationOf(FACE + LATE_FEE), qrCode.getValidUntil()));
+    }
+
+    /** S1.3-AC4 — at exactly dueDate the full amount is owed, with no late fee and no exception. */
+    @Test
+    void aRequestArrivingAtExactlyTheDueDateOwesTheFullAmount() {
+        assertDoesNotThrow(() -> policy.accept(qrCode(), notificationOf(FACE), DUE_DATE));
+
+        BusinessRuleException exception = assertThrows(BusinessRuleException.class,
+            () -> policy.accept(qrCode(), notificationOf(FACE + LATE_FEE), DUE_DATE));
+
+        assertEquals("paymentNotification.data.payment.amount", exception.field());
     }
 
     // ------------------------------------------------------- what a third-party payer may send
