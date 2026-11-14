@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**344 tests documented** — every JUnit test in the repository and every case in the
+**349 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -152,6 +152,8 @@ single most important thing this index exists for.
 | `X9-LIFE-044` | an unknown QR Code is refused | `PaymentNotificationAcceptanceApiTest.java` |
 | `X9-LIFE-045` | a QR Code created without a paymentNotification refuses notifications | `PaymentNotificationAcceptanceApiTest.java` |
 | `X9-LIFE-046` | a QR Code naming an external endpoint refuses notifications here | `PaymentNotificationAcceptanceApiTest.java` |
+| `X9-LIFE-047` | after a reservation lapses, a PATCH carrying the ETag GET gave succeeds | `ETagAfterLapsedReservationApiTest.java` |
+| `X9-LIFE-048` | after a lapse, a stale tag is still refused with 412 | `ETagAfterLapsedReservationApiTest.java` |
 | `X9-LIFE-050` | a payment can be initiated on an ACTIVE QR Code over HTTP | `StatusUpdatePaymentInitiatedApiTest.java` |
 | `X9-LIFE-051` | the reservation is visible on subsequent reads | `StatusUpdatePaymentInitiatedApiTest.java` |
 | `X9-LIFE-053` | an already-paid QR Code cannot be initiated | `StatusUpdatePaymentInitiatedApiTest.java` |
@@ -199,6 +201,9 @@ single most important thing this index exists for.
 | `X9-LIFE-125` | asking for the status it already has is an idempotent no-op | `StatusUpdatePaymentInitiatedApiTest.java` |
 | `X9-LIFE-126` | a payer cannot fetch the payload of an expired QR Code | `test_payment_notification.py` |
 | `X9-LIFE-127` | X to X is accepted, on every status | `test_payment_notification.py` |
+| `X9-LIFE-128` | the entity tag of a lapsed reservation carries the effective status | `QRCodeEntityEntityTagTest.java` |
+| `X9-LIFE-129` | If-Match accepts the tag GET gave for a lapsed reservation | `QRCodeEntityEntityTagTest.java` |
+| `X9-LIFE-130` | a tag naming another revision or the stored status is still refused | `QRCodeEntityEntityTagTest.java` |
 
 ### Who holds a reservation
 

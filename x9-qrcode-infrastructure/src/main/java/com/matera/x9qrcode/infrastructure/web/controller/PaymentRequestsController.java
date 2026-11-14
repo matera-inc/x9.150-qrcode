@@ -60,11 +60,11 @@ public class PaymentRequestsController implements PaymentRequestApi {
 
         RetrieveQRCodeOutput retrieveQRCodeOutput = retrieveQRCodeUseCase.execute(retrieveQRCodeInput);
 
-        // The token a conditional status-update echoes back. It encodes the data version AND the
-        // status, because `revision` alone stopped moving for a status change — which is correct,
-        // and would have left a conditional cancel unprotected against the very thing it guards.
+        // The token a conditional request echoes back. Built by QRCodeEntity.entityTag — the same
+        // function every If-Match comparison calls — from the effective status, so a lapsed
+        // reservation hands out a tag the server will accept (ADR-0028).
         return ResponseEntity.ok()
-            .eTag("\"%d-%s\"".formatted(retrieveQRCodeOutput.revision(), retrieveQRCodeOutput.status()))
+            .eTag("\"%s\"".formatted(retrieveQRCodeOutput.entityTag()))
             .body(RetrieveQRCodeResponseMapper.map(retrieveQRCodeOutput));
     }
 
