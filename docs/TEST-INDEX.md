@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**555 tests documented** — every JUnit test in the repository and every case in the
+**568 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -352,6 +352,27 @@ One black-box test per row of ADR-0035's map (Story 4.1); the row-to-test table 
 | `X9-MAP-045` | NOT_SENT not from the holder: 409 while held, 400 on ACTIVE, PAID, CANCELLED | `test_transition_map.py` |
 | `X9-MAP-050` | a location released by a rebind: the donor keeps its status, gets a new location, no event | `test_transition_map.py` |
 | `X9-MAP-051` | a lapse reads ACTIVE, writes nothing, emits nothing; never once a hash is registered | `test_transition_map.py` |
+
+## Status update and the event stream (Story 4.4)
+
+What the transition map does not reach (S4.4-AC1) and the properties of the stream (S4.4-AC2).
+The status-update matrix itself is `X9-MAP-010` to `-013` above.
+
+| Key | What it proves | Where |
+|---|---|---|
+| `X9-LIFE-170` | past `validUntil` the payee may still mark PAID, with `payment.cleared`, while a payer is refused at the same instant | `test_status_update_and_events.py` |
+| `X9-LIFE-171` | PAID on a lapsed reservation is accepted; `payment.cleared` carries the lapsed holder's notification | `test_status_update_and_events.py` |
+| `X9-LIFE-172` | CANCELLED is final: every status-update, pre-commit, NOT_SENT and PATCH, tried on one QR Code, changes nothing | `test_status_update_and_events.py` |
+| `X9-LIFE-173` | a status-update reservation is adopted by no payer, whatever identity it presents: 409 | `test_status_update_and_events.py` |
+| `X9-LIFE-174` | a status-update reservation lapses like any other; the next payer's pre-commit takes it | `test_status_update_and_events.py` |
+| `X9-LIFE-175` | a status-update with an If-Match stale by revision or by status is 412 and changes nothing; the current tag is accepted | `test_status_update_and_events.py` |
+| `X9-LIFE-176` | a PAID retried with the first attempt's If-Match is 412 today (pinned, not decided) | `test_status_update_and_events.py` |
+| `X9-EVT-050` | every status-update transition emits exactly its event, in order per QR Code, interleaved with another | `test_status_update_and_events.py` |
+| `X9-EVT-051` | paging two at a time from an old cursor yields exactly what one large read yields: no gap, no repeat | `test_status_update_and_events.py` |
+| `X9-EVT-052` | `hasMore` is true on a page cut at `limit`; a read past the end is empty, `hasMore` false, no `nextCursor` | `test_status_update_and_events.py` |
+| `X9-EVT-053` | `wait` above 30 clamps to 30 (Java answers 400: strict xfail, a question for the owner) | `test_status_update_and_events.py` |
+| `X9-EVT-054` | an empty long poll is held for `wait` seconds: 0 at once, 2, and 30 | `test_status_update_and_events.py` |
+| `X9-EVT-055` | a replay from an old cursor returns the same events, ids and bodies, so deduplication by `eventId` applies each once | `test_status_update_and_events.py` |
 
 ## Locations and payload retrieval
 
