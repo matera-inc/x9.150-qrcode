@@ -41,7 +41,7 @@ rail, nor what links a payment to its QR Code when the rail cannot.
 
 All three are closed by Story 2.4 of the rewrite breakdown
 ([docs/rewrite/EPICS-AND-STORIES.md](../rewrite/EPICS-AND-STORIES.md)), under
-[ADR-0036](0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md) (proposed),
+[ADR-0036](0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md),
 which **keeps** this ADR's rule on every rail:
 
 - **`blockchain.action` stays a corroborating signal.** The Solana code is brought back in line with
