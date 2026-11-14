@@ -26,6 +26,7 @@ import (
 
 	"github.com/matera-inc/x9.150-qrcode/internal/config"
 	"github.com/matera-inc/x9.150-qrcode/internal/database"
+	"github.com/matera-inc/x9.150-qrcode/internal/health"
 	"github.com/matera-inc/x9.150-qrcode/internal/httplog"
 )
 
@@ -69,29 +70,33 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	slog.SetDefault(logger)
 	logger.Info("x9-qrcode starting", "version", version, "commit", commit, "database", cfg.Database)
 
-	// ── 2. HTTP server ───────────────────────────────────────────────────────────────────────
+	// ── 2. Database pools (they connect lazily) and the health probes ─────────────────────────
+	pools, err := database.Open(ctx, cfg.Database)
+	if err != nil {
+		return fmt.Errorf("opening the database pools: %w", err)
+	}
+	probes := health.New(pools)
+
+	// ── 3. HTTP server: liveness UP from now on, readiness DOWN until the schema check passes ──
 	mux := http.NewServeMux()
+	probes.Register(mux)
 	srv := newServer(cfg.Server.Port, httplog.Middleware(logger, mux))
 	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", srv.Addr)
 	if err != nil {
+		pools.Close()
 		return fmt.Errorf("listening on %s: %w", srv.Addr, err)
 	}
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(listener) }()
 	logger.Info("x9-qrcode listening", "addr", listener.Addr().String())
 
-	// ── 3. Database: two pools, then the schema check (ADR-0032) ─────────────────────────────
-	pools, err := database.Open(ctx, cfg.Database)
-	if err != nil {
-		_ = srv.Close()
-		return fmt.Errorf("opening the database pools: %w", err)
-	}
+	// ── 4. The schema check (ADR-0032), retried while the database is unreachable ────────────
 	runCtx, stopRun := context.WithCancel(ctx)
 	defer stopRun()
 	checked := make(chan error, 1)
 	go func() { checked <- awaitSchema(runCtx, logger, pools, cfg.Database.Schema) }()
 
-	// ── 4. Run until SIGTERM, a refused schema, or a server failure ──────────────────────────
+	// ── 5. Run until SIGTERM, a refused schema, or a server failure ──────────────────────────
 	var runErr error
 	for running := true; running; {
 		select {
@@ -102,38 +107,60 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 			if err != nil && runCtx.Err() == nil {
 				runErr, running = err, false
 			} else if err == nil {
-				logger.Info("x9-qrcode schema checked", "schema", cfg.Database.Schema, "changeset", database.ExpectedChangeset)
+				probes.SetReady(true)
+				logger.Info("x9-qrcode ready", "schema", cfg.Database.Schema, "changeset", database.ExpectedChangeset)
 			}
 		case <-ctx.Done():
 			running = false
 		}
 	}
-
-	// ── 5. Shut down: stop accepting, let in-flight requests finish, then close the pools ───────
-	logger.Info("x9-qrcode shutting down")
 	stopRun()
 	if checked != nil {
 		if err := <-checked; err != nil {
 			logger.Debug("x9-qrcode schema check cut short by the shutdown", "err", err)
 		}
 	}
-	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), drainTimeout)
-	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		_ = srv.Close()
-		runErr = errors.Join(runErr, fmt.Errorf("shutting down: %w", err))
+
+	// ── 6. Shut down (ADR-0031) ──────────────────────────────────────────────────────────────
+	delay := time.Duration(cfg.Server.ShutdownDelaySeconds) * time.Second
+	if runErr != nil {
+		delay = 0 // never ready, or no longer serving: nobody is routed here
 	}
-	if served != nil {
-		if err := <-served; !errors.Is(err, http.ErrServerClosed) {
-			runErr = errors.Join(runErr, err)
-		}
+	if err := shutdown(context.WithoutCancel(ctx), logger, srv, served, probes, pools, delay); err != nil {
+		runErr = errors.Join(runErr, err)
 	}
-	pools.Close()
 	if runErr != nil {
 		return runErr
 	}
 	logger.Info("x9-qrcode stopped")
 	return nil
+}
+
+// shutdown follows ADR-0031: readiness turns DOWN; after delay, so that load balancers have seen
+// it, the listener stops accepting; in-flight requests get up to drainTimeout to finish; then the
+// pools close. ctx must outlive the shutdown (context.WithoutCancel). served is the Serve goroutine's result, or nil if it already returned.
+func shutdown(ctx context.Context, logger *slog.Logger, srv *http.Server, served <-chan error, probes *health.Health,
+	pools *database.Pools, delay time.Duration,
+) error {
+	probes.SetReady(false)
+	logger.Info("x9-qrcode shutting down", "readiness", "DOWN", "delayMs", delay.Milliseconds())
+	if delay > 0 {
+		_ = sleep(ctx, delay)
+	}
+	ctx, cancel := context.WithTimeout(ctx, drainTimeout)
+	defer cancel()
+	var err error
+	if e := srv.Shutdown(ctx); e != nil {
+		_ = srv.Close()
+		err = fmt.Errorf("in-flight requests did not finish within %v: %w", drainTimeout, e)
+	}
+	if served != nil {
+		if e := <-served; !errors.Is(e, http.ErrServerClosed) {
+			err = errors.Join(err, e)
+		}
+	}
+	pools.Close()
+	return err
 }
 
 // awaitSchema runs the schema check until it passes, retrying while the database cannot be

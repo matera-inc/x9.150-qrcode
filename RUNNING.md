@@ -240,6 +240,15 @@ the variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`.
   which ([`db/README.md`](db/README.md)). While the database is unreachable it keeps retrying.
   `go test ./...` starts PostgreSQL 16, Liquibase 4.33.0 and PgBouncer 1.21 with Docker
   (testcontainers); `go test -short ./...` skips those tests.
+- **Health, as before.** `/actuator/health`, `/actuator/health/liveness` and
+  `/actuator/health/readiness` answer on the API port in the Java build's JSON shape
+  (`{"status":"UP"}`; the aggregate adds `"groups":["liveness","readiness"]`). Liveness is UP while
+  the process serves. Readiness is DOWN (503) until the schema check passes, while the database is
+  unreachable, and from the moment shutdown begins.
+- **Graceful shutdown.** On SIGTERM readiness turns DOWN, the listener keeps serving for
+  `X9_SERVER_SHUTDOWNDELAYSECONDS` (default 5) so load balancers see it leave, then stops accepting;
+  requests in flight get up to 20 s to finish; the pools close; the process exits 0. A pod's
+  `terminationGracePeriodSeconds` must be above the sum (30 s is enough).
 - **One clock.** Business time comes from `internal/clock` only
   ([ADR-0033](docs/adr/0033-the-clock-can-be-moved-in-test-deployments-only.md)). Lint refuses
   `time.Now`, `Since`, `Until`, `After`, `Tick` and `NewTimer` anywhere else, except at a
