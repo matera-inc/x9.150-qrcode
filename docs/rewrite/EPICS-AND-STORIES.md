@@ -1135,7 +1135,7 @@ So that the Go build cannot accept what Java refuses, or the reverse.
 (`usd`); a missing currency (no default); currencies from two peg groups; duplicate currency;
 `validUntil` in the past or exactly now; `dueDate` after `validUntil`; a method's `validUntil` after
 the QR Code's; tip `allowed: false` with a range and `true` with neither a range nor presets; a negative amount; a
-19-digit amount (today's behaviour pinned); a host too long for EMV tag 26.
+19-digit amount refused, 18 nines accepted (ADR-0005); a host too long for EMV tag 26.
 
 **S4.2-AC2. PATCH (group B).**
 **Then** tests cover: non-patchable fields never applied; adding or dropping a currency (ADR-0018);
