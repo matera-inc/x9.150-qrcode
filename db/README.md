@@ -25,7 +25,7 @@ written to `public`, and no extension is installed.
 | `qr_code` | One row per QR Code: its current state | conditional `UPDATE` only |
 | `qr_code_audit_log` | One row per PATCH: the changed fields' previous values | append-only |
 | `qr_code_notification` | Every accepted payment notification, with the raw JWS | append-only |
-| `payment_event` | The event log, which is also the outbox the payment system reads ([EVENTS-TABLE](../docs/EVENTS-TABLE.md) once Story 6.5 lands) | append-only; only its two read-status columns are ever updated, by the event reader |
+| `payment_event` | The event log, which is also the outbox the payment system reads ([EVENTS-TABLE.md](../docs/EVENTS-TABLE.md)) | append-only; only its two read-status columns are ever updated, by the event reader |
 | `event_sequence` | One row: the last event number handed out | `UPDATE` of its one row |
 | `payment_event_legacy_cursor` | Cursors of events migrated from the Java build | append-only |
 | `qr_code_status`, `event_type`, `event_read_status` | Lookups, seeded by the changelog | never at runtime |

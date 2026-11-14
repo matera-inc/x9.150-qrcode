@@ -11,11 +11,13 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - "db/**"
+      - "docs/EVENTS-TABLE.md"
       - ".github/workflows/db-schema.yml"
   push:
     branches: [main]
     paths:
       - "db/**"
+      - "docs/EVENTS-TABLE.md"
       - ".github/workflows/db-schema.yml"
 
 permissions:
