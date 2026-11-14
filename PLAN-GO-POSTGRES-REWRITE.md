@@ -364,7 +364,7 @@ rewrite is cancelled.
 | Q2 | `qrcode.retention` default: is `P400D` right for adopters' reconciliation? | Phase 8 |
 | Q3 | Should `qr_code_notification` keep **refused** notifications too (with reason), for dispute evidence? Today they leave no trace | Phase 6 |
 | Q4 | Do ADRs 0003 / 0006 / 0007 / 0011 stay *Accepted-but-unbuilt* or move to *Deferred*? | Phase 12 |
-| Q5 | ~~Should change data capture on `payment_event` ever replace the pull API for push-minded consumers?~~ **Resolved (proposed, ADR-0037):** `payment_event` is the outbox. CDC (Debezium expected) and plain SQL with a read-status column are documented ways to read it; the HTTP pull API stays | — |
+| Q5 | ~~Should change data capture on `payment_event` ever replace the pull API for push-minded consumers?~~ **Resolved (ADR-0037):** `payment_event` is the outbox. CDC (Debezium expected) and plain SQL with a read-status column are documented ways to read it; the HTTP pull API stays | — |
 | Q7 | Who runs the repository's compose against an existing Mongo volume? If anyone outside Matera does, the compose file must refuse to start PostgreSQL next to a populated Mongo volume until `x9-migrate` has run | Phase 10 |
 | Q8 | Which dedicated host runs the benchmark campaign? It must be reservable exclusively for the whole campaign (§9.1) | Phase 1b |
 | Q9 | Shared-database test: run the black-box suite with X9.150 in a schema of a PostgreSQL that is also running an unrelated load, using the application role. Is a pgbench background load enough, or should another real service share it? | Phase 10 |
