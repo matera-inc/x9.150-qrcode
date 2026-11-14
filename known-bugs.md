@@ -53,6 +53,44 @@ Either add `NO_FALLBACK` when the end entity has no AIA OCSP entry, or catch the
 "no responder" case and let the CRL's soft failure stand. Decide together with ADR-0027's Go
 implementation, which must give the same four answers.
 
+---
+
+## BUG-004 — An expired `ACTIVE` QR Code does not give up its location to a rebind
+
+- **Reported:** 2026-11-14 (Story 4.2, S4.2-AC4)
+- **Severity:** Low — a biller re-pointing an expired printed code gets a 400 until MongoDB's TTL
+  monitor deletes the holder, normally within about a minute of its `validUntil`.
+- **Pinned by:** `others/blackbox/tests/test_payment_requests_pinned.py::test_an_expired_active_holder_of_the_same_creditor_gives_up_its_location`
+  (`X9-LOC-421`), a strict expected failure.
+- **Area:** `QRCodeEntity.releaseLocation` (domain)
+
+### Steps to reproduce
+
+1. Create a QR Code with `validUntil` two minutes ahead.
+2. Move the test clock three minutes forward (or wait, and race the TTL monitor).
+3. Create a QR Code for the same creditor with `locationId` set to the first one's location.
+
+### Expected
+
+ADR-0024's location rule: a holder is not live when its stored status is `PAID` or `CANCELLED`, **or
+its `validUntil` is in the past**. The create is accepted, and the expired holder moves to a fresh
+random location without an event.
+
+### Actual
+
+400 `The QRCode needs to be inactive to reuse location. Current status: ACTIVE`; nothing changes.
+
+### Root cause
+
+`releaseLocation` asks `isNotActiveOrInitiated()`, which reads the status and never `validUntil`.
+Java got away with it because the TTL index deletes an expired QR Code, after which the location is
+simply free. ADR-0024 names this "the gap closed" for the Go build, whose rows are retained.
+
+### Suggested direction
+
+Leave the frozen Java build as it is and let the Go build close the gap, as ADR-0024 decides; or, if
+Java is to agree with the suite, make `releaseLocation` also accept `isExpired()`.
+
 ## Fixed
 
 ---

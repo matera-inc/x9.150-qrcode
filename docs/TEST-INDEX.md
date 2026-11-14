@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**524 tests documented** — every JUnit test in the repository and every case in the
+**555 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -426,6 +426,46 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-PATCH-023` | a patch that changes nothing is still refused | `PatchAmountOnlyApiTest.java` |
 | `X9-PATCH-030` | a payment request is edited | `QRCodesApisFlowTest.java` |
 | `X9-PATCH-031` | the edit is visible on a subsequent read | `QRCodesApisFlowTest.java` |
+
+## Payment requests pinned: create, PATCH, ETag, rebind (Story 4.2)
+
+Black-box pins of today's Java behaviour for plan §4.1 groups A, B, B2 and B3, all in
+`test_payment_requests_pinned.py`. Field-by-field refusals are `contract.py`'s; patching in each
+status is `X9-MAP-002`.
+
+| Key | What it proves | Where |
+|---|---|---|
+| `X9-RAIL-420` | an unsupported network is refused at create naming it: alone, beside a supported one, and a known rail in another case (`FedNow`) | `test_payment_requests_pinned.py` |
+| `X9-CUR-420` | an unsupported currency (`EUR`) and a wrong-case one (`usd`, `Usdc`) are refused by name | `test_payment_requests_pinned.py` |
+| `X9-CUR-421` | a payment method without a currency does not inherit the bill's: no default | `test_payment_requests_pinned.py` |
+| `X9-CUR-422` | currencies from two peg groups (USD + BRL) are refused, the allow-list naming BRL first | `test_payment_requests_pinned.py` |
+| `X9-CUR-423` | a duplicate currency is refused by name | `test_payment_requests_pinned.py` |
+| `X9-LIFE-420` | a `validUntil` in the past or exactly now is refused | `test_payment_requests_pinned.py` |
+| `X9-LIFE-421` | an invoice `dueDate` after `validUntil` is refused | `test_payment_requests_pinned.py` |
+| `X9-LIFE-422` | a payment method's `validUntil` after the QR Code's is refused | `test_payment_requests_pinned.py` |
+| `X9-TIP-420` | a tip offer that contradicts itself is refused: not allowed with a range or presets, allowed with neither | `test_payment_requests_pinned.py` |
+| `X9-TIP-421` | a tip allowed with presets and no range is accepted (pinned) | `test_payment_requests_pinned.py` |
+| `X9-AMT-420` | a negative amount is refused, in the bill or in the method alone | `test_payment_requests_pinned.py` |
+| `X9-AMT-421` | a 19-digit amount up to 2^63−1 is accepted and read back to the unit (pinned) | `test_payment_requests_pinned.py` |
+| `X9-AMT-422` | an amount past 2^63−1 is an unreadable body: 400 `malformed-json`, nothing created (pinned) | `test_payment_requests_pinned.py` |
+| `X9-LOC-425` | tag 26 fits in 99 characters, which limits the configured host to 37 | `test_payment_requests_pinned.py` |
+| `X9-PATCH-420` | fields that are not patchable (creditor, status, id, revision, …) are never applied | `test_payment_requests_pinned.py` |
+| `X9-PATCH-421` | a patch changing only fields that are not patchable is a refused no-op | `test_payment_requests_pinned.py` |
+| `X9-PATCH-422` | a no-op patch is refused and nothing moves | `test_payment_requests_pinned.py` |
+| `X9-PATCH-423` | restating the bill unchanged counts as a change: 200, revision moves (pinned, not endorsed) | `test_payment_requests_pinned.py` |
+| `X9-PATCH-424` | a patch may not add a currency to a single-currency QR Code | `test_payment_requests_pinned.py` |
+| `X9-PATCH-425` | no status move (pre-commit, status-update, release, PAID, CANCELLED) moves the revision | `test_payment_requests_pinned.py` |
+| `X9-PATCH-430` | the ETag is `"<revision>-<STATUS>"` | `test_payment_requests_pinned.py` |
+| `X9-PATCH-431` | `If-Match` is accepted quoted, bare, `W/"…"` and `W/…`, on PATCH and status-update | `test_payment_requests_pinned.py` |
+| `X9-PATCH-432` | a stale revision is 412 and nothing moves | `test_payment_requests_pinned.py` |
+| `X9-PATCH-433` | a stale status is 412 and nothing moves | `test_payment_requests_pinned.py` |
+| `X9-PATCH-434` | a malformed `If-Match` is 412; `*` is unconditional (pinned) | `test_payment_requests_pinned.py` |
+| `X9-PATCH-435` | after a lapsed reservation the ETag reads `ACTIVE` and is accepted | `test_payment_requests_pinned.py` |
+| `X9-LOC-420` | a `PAID` or `CANCELLED` holder of the same creditor gives up its location: fresh location, no event, the old one resolves the new code | `test_payment_requests_pinned.py` |
+| `X9-LOC-421` | an expired `ACTIVE` holder gives up its location (Java contradicts ADR-0024, strict xfail, BUG-004) | `test_payment_requests_pinned.py` |
+| `X9-LOC-422` | a live holder (`ACTIVE` in time, `PAYMENT_INITIATED`) keeps its location, on create and PATCH | `test_payment_requests_pinned.py` |
+| `X9-LOC-423` | a different creditor never takes the location, on create and PATCH | `test_payment_requests_pinned.py` |
+| `X9-LOC-424` | a refused create does not release the holder | `test_payment_requests_pinned.py` |
 
 ## Networks and rails
 
