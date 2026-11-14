@@ -1,0 +1,56 @@
+name: DB schema
+
+# Story 6.3: the changelog is applied on PostgreSQL 16 and on the newest major (S6.3-AC2), a smoke
+# query checks the tables, comments, roles and search_path, the role tests run, and the SQL that
+# `liquibase update-sql` produces is published as a build artifact for a DBA to review (S6.3-AC3).
+# Everything runs in throwaway containers; see db/ci/apply-and-check.sh and db/README.md.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - "db/**"
+      - ".github/workflows/db-schema.yml"
+  push:
+    branches: [main]
+    paths:
+      - "db/**"
+      - ".github/workflows/db-schema.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    name: apply on ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: postgres-16
+            image: postgres:16
+          # The newest major, whatever it is on the day the job runs (ADR-0023).
+          - label: postgres-newest
+            image: postgres:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pull the images
+        run: |
+          docker pull -q "${{ matrix.image }}"
+          docker pull -q liquibase/liquibase:4.33.0
+
+      - name: Apply the changelog and check the result
+        run: db/ci/apply-and-check.sh "${{ matrix.image }}" db-out
+
+      - name: Publish the SQL a DBA reviews (update-sql)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: update-sql-${{ matrix.label }}
+          path: |
+            db-out/update-sql.sql
+            db-out/server-version.txt
+          if-no-files-found: warn

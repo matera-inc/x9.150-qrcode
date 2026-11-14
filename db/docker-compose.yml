@@ -1,0 +1,72 @@
+# Copyright © 2026 Matera Systems, Inc.
+# Licensed under the Matera Source License v1.0 (source-available; not open source). See LICENSE.md.
+# Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
+# based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
+#
+# A THROWAWAY PostgreSQL 16 with the X9.150 schema applied (Story 6.3). Not for production: the
+# database trusts every connection and is published on 127.0.0.1 only. See db/README.md.
+#
+#   docker compose -f db/docker-compose.yml up -d --build   # PostgreSQL, then the one-shots
+#   docker compose -f db/docker-compose.yml logs liquibase  # every changeset runs the first time
+#   docker compose -f db/docker-compose.yml run --rm liquibase   # again: applies nothing, exits 0
+#   docker compose -f db/docker-compose.yml run --rm liquibase update-sql   # the SQL, for review
+#   docker compose -f db/docker-compose.yml down -v         # throw it away
+#
+# Connect: psql -h 127.0.0.1 -p 55432 -U x9_qrcode_app postgres   (any of the four roles)
+
+name: x9-qrcode-db
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      # Local only: no password exists anywhere in this setup (S6.2-AC5).
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "127.0.0.1:${X9_DB_PORT:-55432}:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # The DBA's one-time step: the owner role and the schema it owns.
+  bootstrap:
+    build:
+      context: .
+      dockerfile: local/bootstrap.Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - psql
+      - "-X"
+      - "-h"
+      - postgres
+      - "-U"
+      - postgres
+      - "-v"
+      - owner=x9_qrcode_owner
+      - "-v"
+      - schema=x9_qrcode
+      - "-f"
+      - /x9/bootstrap.sql
+
+  # Liquibase as the owner role. The command defaults to `update`; pass another (update-sql,
+  # status, history) to `docker compose run --rm liquibase <command>`.
+  liquibase:
+    build:
+      context: .
+      dockerfile: local/liquibase.Dockerfile
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    environment:
+      LIQUIBASE_SEARCH_PATH: /liquibase/x9
+      LIQUIBASE_COMMAND_CHANGELOG_FILE: changelog/db.changelog-master.yaml
+      LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres:5432/postgres
+      LIQUIBASE_COMMAND_USERNAME: x9_qrcode_owner
+      LIQUIBASE_COMMAND_DEFAULT_SCHEMA_NAME: x9_qrcode
+      LIQUIBASE_LIQUIBASE_SCHEMA_NAME: x9_qrcode
+      LIQUIBASE_SHOW_BANNER: "false"
+    command: ["update"]

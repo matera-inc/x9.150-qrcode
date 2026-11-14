@@ -96,3 +96,6 @@ __pycache__/
 _bmad/
 _bmad-output/
 .claude/skills/bmad-*/
+
+# db/ci/apply-and-check.sh output (update-sql, logs)
+db-out/
