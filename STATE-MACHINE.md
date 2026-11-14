@@ -2,8 +2,9 @@
 
 The lifecycle of a QR Code (payment payload) is modeled by `QRCodeStatusEnum`
 (`ACTIVE`, `PAYMENT_INITIATED`, `PAID`, `CANCELLED`) and the transition methods on
-`QRCodeEntity` (`pay`, `cancel`, `reactivate`, `notifyPayment`), guarded by
-`QRCodeEntityValidator`.
+`QRCodeEntity` (`pay`, `cancel`, `reactivate`, `initiatePayment`, and the payer
+notification methods `admitPreCommit` / `acceptPreCommit`, `registerPostCommit` and
+`releaseByPayer`), guarded by `QRCodeEntityValidator`.
 
 ## States
 
@@ -11,7 +12,7 @@ The lifecycle of a QR Code (payment payload) is modeled by `QRCodeStatusEnum`
 |-------|---------|----------|
 | **ACTIVE** | Created and available for payment (initial state). | No |
 | **PAYMENT_INITIATED** | A payment is in flight — announced/initiated but not yet settled. | No |
-| **PAID** | Payment settled. | **Yes** |
+| **PAID** | Payment settled, as the payment system reported through the status-update API. | **Yes** |
 | **CANCELLED** | Payload cancelled by the biller. | **Yes** |
 
 ### PAYMENT_INITIATED is held against a clock
@@ -25,14 +26,18 @@ Nothing sweeps. The stored status keeps saying what was last *reported*, and the
 lapse is applied when somebody looks, so a reservation expiring at 3am wakes nobody
 and writes nothing ([ADR-0019](docs/adr/0019-a-reservation-expires-and-nothing-sweeps.md)).
 
-Two consequences that are easy to miss:
+Consequences that are easy to miss:
 
 - **Expiry is not a status.** A QR Code past its `validUntil` is still `ACTIVE`;
   nothing happened to it, time simply passed. What expiry governs is what *payers*
   may do ([ADR-0020](docs/adr/0020-the-payee-states-the-outcome-of-its-own-receivable.md)).
-- **The lapse does not revoke the right to report.** The party that announced may
-  still send `SENT` afterwards: the money moved, and the window exists to stop a
-  vanished payer locking a bill, not to decide what is true about money.
+- **A post-commit is never refused for status reasons.** The money has moved, and
+  the window exists to stop a vanished payer locking a bill, not to decide what is
+  true about money. See [the matrix](#every-case-by-message-and-status).
+- **A registered hash stops the window.** Once any post-commit is registered for a
+  `PAYMENT_INITIATED` QR Code, whoever sent it, the reservation stops expiring and the
+  holder does not change; only the payment system ends it, through the status-update
+  API ([ADR-0036](docs/adr/0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md)).
 
 ## Core lifecycle
 
@@ -40,8 +45,8 @@ Two consequences that are easy to miss:
 stateDiagram-v2
     [*] --> ACTIVE : create()
 
-    ACTIVE --> PAYMENT_INITIATED : notifyPayment(…, PAYMENT_INITIATED)
-    PAYMENT_INITIATED --> ACTIVE : reactivate()
+    ACTIVE --> PAYMENT_INITIATED : acceptPreCommit() / registerPostCommit() / initiatePayment()
+    PAYMENT_INITIATED --> ACTIVE : reactivate() / releaseByPayer()
 
     ACTIVE --> PAID : pay(paymentDetails)
     PAYMENT_INITIATED --> PAID : pay(paymentDetails)
@@ -53,9 +58,9 @@ stateDiagram-v2
     CANCELLED --> [*]
 
     note right of PAYMENT_INITIATED
-        Payment in flight. notifyPayment(data)
-        records the notification and bumps the
-        revision WITHOUT changing status.
+        Payment in flight. A payer's post-commit
+        is registered WITHOUT changing status;
+        only the payment system marks PAID.
     end note
 ```
 
@@ -67,41 +72,28 @@ stateDiagram-v2
 | → PAID | `pay(paymentDetails)` | ACTIVE, PAYMENT_INITIATED | `paymentDetails` **required** |
 | → CANCELLED | `cancel(paymentDetails)` | ACTIVE, PAYMENT_INITIATED | `paymentDetails` **must be null** |
 | → ACTIVE | `reactivate(paymentDetails)` | **PAYMENT_INITIATED only** | `paymentDetails` **must be null** |
-| record / → PAYMENT_INITIATED | `notifyPayment(data[, status])` | see below | Records notification, bumps revision |
+| → PAYMENT_INITIATED | `initiatePayment()` (status-update) | ACTIVE (effective) | unattributed reservation |
+| payer notifications | `admitPreCommit` / `acceptPreCommit`, `registerPostCommit`, `releaseByPayer` | see [the matrix](#every-case-by-message-and-status) | |
 
-`PAID` and `CANCELLED` are terminal — `pay()`, `cancel()` and `notifyPayment()`
-all reject a QR Code that is not ACTIVE or PAYMENT_INITIATED.
+`PAID` and `CANCELLED` are terminal: `pay()` and `cancel()` reject them, a pre-commit
+or `NOT_SENT` on them is refused, and a post-commit on them is registered without
+reopening them.
 
-## Payment-notification effects (by network)
+## Payment notifications
 
-`PaymentNotificationQRCodeUseCase` dispatches on `$.payment.network`, and
-`QRCodeEntityValidator` enforces the preconditions:
+`PaymentNotificationQRCodeUseCase` decides the phase from the evidence and
+`QRCodeEntity` applies [the matrix below](#every-case-by-message-and-status)
+(`admitPreCommit` / `acceptPreCommit`, `registerPostCommit`, `releaseByPayer`).
+`QRCodeEntityValidator` checks only that the notification is well formed for this
+QR Code (a rail it offers, a positive amount, `blockchain` on a chain and not on a
+bank rail, `payer.info` and `expectedDate` on ACH, a hash on `SENT`).
 
-| Network | Precondition | Status effect | `transactionId` |
-|---------|--------------|---------------|-----------------|
-| **FedNow / RTP** (instant) | QR = ACTIVE (or reserved by the same party); `transactionId` required | records (status unchanged) | ISO 20022 End-to-End ID, **required** |
-| **ACH** | QR = ACTIVE (or reserved by the same party); payer info + expectedDate present | ACTIVE → **PAYMENT_INITIATED** (goes through the acceptance gate) | Trace Number, optional |
-| **Solana** | `blockchain` object present; the action decides | see the `blockchain.action` table [below](#pre-commit-and-post-commit) | transaction hash, required on `SENT` |
-| Anything else | — | **refused at creation**, so no notification can name it ([ADR-0012](docs/adr/0012-refuse-what-this-deployment-cannot-honour.md)) | — |
-
-> FedNow / RTP note: the payment notification is **not required for reconciliation**
-> on these rails — the QR Code ID travels inside the ISO 20022 payment message
-> itself, so the Payee's PSP can reconcile directly from that message. When a
-> notification *is* sent for FedNow/RTP it is essentially a **courtesy** and/or a
-> way to convey **segregation between the principal amount and the tip** (see
-> `$.payment.amount` vs `$.payment.tipAmount`).
-
-> **Settlement note — answered: a post-commit notification never marks a QR paid.**
-> X9.150 does not touch money and cannot observe settlement; it only knows what a
-> payer *claimed*. So a `SENT` notification carrying a transaction hash publishes
-> `payment.sent` and leaves the QR at `PAYMENT_INITIATED`.
->
-> Reaching **PAID** requires a system that actually received the funds: it matches
-> the reported transaction against what arrived and calls
-> `PUT /api/v1/payment-request/{id}/status-update`, which is what emits
-> `payment.cleared`. Auto-clearing on a payer's say-so would let a payer mark a QR
-> paid by asserting a transaction — the QR's own defence against double payment
-> would then rest on the word of the party it is defending against.
+> **Only the payment system marks a QR Code `PAID`. This software never does.** It
+> never sees funds arrive, on any rail or chain. Pre-commits, post-commits, hashes
+> and flags are evidence handed to the payment system, which matches each hash
+> against what arrived and calls `PUT /api/v1/payment-request/{id}/status-update`,
+> which emits `payment.cleared`. Auto-clearing on a payer's say-so would let a payer
+> mark a QR Code paid by asserting a transaction.
 
 ## Pre-commit and post-commit
 
@@ -122,7 +114,8 @@ The evidence that tells them apart is the transaction reference
 > **Post-commit** ⇔ `$.payment.transactionId` is present.
 
 The committee rejected an explicit phase marker, so this inference is the only
-mechanism the standard leaves.
+mechanism the standard leaves. It holds on every rail, Solana included:
+`blockchain.action` only corroborates, and decides one thing on its own, `NOT_SENT`.
 
 ### What links a payment to its QR Code, per rail
 
@@ -137,43 +130,115 @@ the post-commit is the link.
 | **Solana** | Only if the optional memo `{QRCD:"id"}` is set and survives ([SOLANA-FIELDS.md](official-spec/SOLANA-FIELDS.md)). Some custody providers' webhooks do not expose the memo | **the link, in practice** |
 | **Any other blockchain**, once interpreted | Most chains carry no memo at all | **the link** — pre-commit / post-commit is the mechanism for every chain |
 
-### What the code does today, and where it departs from this
+### Every case, by message and status
 
-| Rail | Pre-commit (no `transactionId`) | Post-commit (with `transactionId`) |
-|---|---|---|
-| **FedNow / RTP** | **Not available**: every notification must carry an End-to-End ID (`QRCodeEntityValidator.validatePaymentNotificationFromInstantPayments`), so no reservation is ever taken on these rails | recorded, status unchanged, no event |
-| **ACH** | gated, reserves the QR Code | **gated as a pre-commit too**: `PaymentNotificationQRCodeUseCase.resolveIntent` treats every ACH notification as a request for permission, Trace Number or not |
-| **Solana** | `blockchain.action = PAYMENT_INITIATED` | `SENT` (hash required) / `NOT_SENT`, from the reservation holder only |
+This is [ADR-0036](docs/adr/0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md)'s
+matrix, and the code follows it on every rail.
 
-On Solana the code reads the phase from `blockchain.action`. On the bank rails the two
-departures above — **no pre-commit on FedNow / RTP**, and **ACH post-commit judged as a pre-commit** — are
-**known deviations**, closed by Story 2.4 of the
-[rewrite breakdown](docs/rewrite/EPICS-AND-STORIES.md).
+**The happy path.**
 
-### On Solana
+```mermaid
+sequenceDiagram
+    participant PS as Payment system
+    participant X as X9.150
+    participant P as Payer (PSP)
+    PS->>X: create the QR Code
+    P->>X: fetch the signed payload
+    P->>X: pre-commit: may I pay this amount?
+    X-->>P: yes (PAYMENT_INITIATED, held by P)
+    Note over X: inserts payment.initiated
+    P--)PS: the money, on the rail or the chain
+    P->>X: post-commit: paid, here is the hash
+    X-->>P: acknowledgement
+    Note over X: inserts payment.sent (the hash, on a chain)
+    PS->>X: read the events
+    PS->>X: status-update PAID
+    Note over X: inserts payment.cleared
+```
 
-`payment.sent` and `payment.failed` report a transaction already committed to a public
-ledger — a distinction only a blockchain offers, because the payer can point at a txHash
-anyone can verify. So they fire on `solana` and never on `fednow`, `rtp` or `ach`:
+**The matrix.** Columns are the QR Code's effective status when the message
+arrives; every event the message produces carries it as `receivedInStatus`.
 
-| `blockchain.action` | what it means | effect |
-|---|---|---|
-| `PAYMENT_INITIATED` | about to pay | `ACTIVE` → `PAYMENT_INITIATED`, `payment.initiated` |
-| `SENT` | paid, here is the hash | status unchanged, `payment.sent` |
-| `NOT_SENT` | not paying after all | `PAYMENT_INITIATED` → `ACTIVE`, `payment.failed` |
+- **ACTIVE**: never reserved, or the reservation's window has passed.
+- **Held by the sender**: `PAYMENT_INITIATED`, and the sender is the same payer
+  (`payer.info` paired with the certificate subject,
+  [ADR-0021](docs/adr/0021-a-reservation-knows-who-holds-it.md)).
+- **Held by someone else**: `PAYMENT_INITIATED`, held by another payer, or by
+  nobody identifiable (taken through the status-update API).
+- **On a chain** means Solana and any chain interpreted later. Bank rails never
+  publish `payment.sent`; the QR Code id travels in their payment (`QRCD`).
 
-`NOT_SENT` is the exception to the "post-commit carries a transaction reference"
-rule above, and the exception is the point: its whole meaning is that no transaction
-exists and none will. It is the only message by which a payer can give a reserved
-bill back, so it is keyed on the **action** rather than on the presence of a
-transaction reference — a rule that demanded one of every post-commit notification
-refused the one notification that cannot carry one
+Messages from a payer:
+
+| Message | ACTIVE | Held by the sender | Held by someone else | PAID or CANCELLED |
+|---|---|---|---|---|
+| **Pre-commit** (no `transactionId`) | Judged at the payee's clock. Yes: → `PAYMENT_INITIATED` held by the sender, `payment.initiated`. No: 400, nothing changes | A retry, judged again. Yes: window refreshed, no event. Once a hash is registered: 409, nothing changes § | 409, nothing changes | 400, nothing changes |
+| **Post-commit** (`transactionId` present) | Accepted, never judged: → `PAYMENT_INITIATED` held by the sender; `payment.initiated`, then `payment.sent` on a chain; flagged `RECEIVED_IN_WRONG_STATUS`; the window stops | Accepted, status unchanged; `payment.sent` on a chain; the window stops | Accepted, the holder keeps it; `payment.sent` on a chain, flagged `RECEIVED_IN_WRONG_STATUS`; the window stops | Accepted, status unchanged; `payment.sent` on a chain, flagged `RECEIVED_IN_WRONG_STATUS` |
+| **`PAYMENT_INITIATED` with a hash** (chain) | As a post-commit, also flagged `ACTION_CONTRADICTS_HASH` | same | same | same |
+| **`SENT` without a hash** (chain) | 400 | 400 | 400 | 400 |
+| **`NOT_SENT`** (chain: the payer gives it back) | 400; from the holder of a lapsed reservation: accepted, `payment.failed` | → `ACTIVE`, reservation cleared, `payment.failed`. Once a hash is registered: accepted, nothing changes, flagged `ACTION_CONTRADICTS_HASH` (in the warning; no event) § | 409 | 400 |
+| **`NOT_SENT` with a `transactionId`** (chain) | As a post-commit (the evidence decides), also flagged `ACTION_CONTRADICTS_HASH` | same | same | same |
+
+From the payment system (status-update API), and from time:
+
+| Change | ACTIVE | Held by a payer | PAID or CANCELLED |
+|---|---|---|---|
+| **→ `PAYMENT_INITIATED`** | → `PAYMENT_INITIATED`, held by nobody identifiable; `payment.initiated` | 409 | 409 |
+| **→ `PAID`** | → `PAID`, `payment.cleared` | same | 400 |
+| **→ `CANCELLED`** | → `CANCELLED`, `payment.cancelled` | same | 400 |
+| **→ `ACTIVE`** (reactivate) | 400 | → `ACTIVE`, reservation cleared, no event | 400 |
+| **The reservation's window passes** | — | reads `ACTIVE`, nothing written, no event; never once a hash is registered | — |
+
+§ **Once a hash is registered, no payer message changes the QR Code's status** (owner,
+2026-11-14): money has moved, so only the payment system ends the reservation.
+
+**Losing a concurrent write.** A notification that keeps losing the race after its
+re-runs answers 409 "busy" with the current status, never 500.
+
+`validUntil` is not a status. Past it, a pre-commit is refused by the payee's clock
+(400); a post-commit is still accepted and registered, because the money has moved.
+
+**`deviations`** (on the events, and in the warning logged for the payer):
+`RECEIVED_IN_WRONG_STATUS` when a post-commit reached a QR Code that was not
+`PAYMENT_INITIATED` held by this payer; `ACTION_CONTRADICTS_HASH` when
+`blockchain.action = PAYMENT_INITIATED` carries a hash. Absent when the payer
+followed the rules. The Java document keeps only the latest notification; every
+hash survives in the event log as its own `payment.sent`, and two hashes for one QR
+Code are the payment system's signal of a duplicate payment.
+
+**The unhappy paths, drawn.** Every arrow is a row of the matrix; a loop changes
+nothing but still registers the hash.
+
+```mermaid
+stateDiagram-v2
+    [*] --> ACTIVE : create
+    ACTIVE --> PAYMENT_INITIATED : pre-commit accepted
+    ACTIVE --> PAYMENT_INITIATED : post-commit, flagged (no pre-commit)
+    ACTIVE --> PAYMENT_INITIATED : status-update, held by nobody
+    PAYMENT_INITIATED --> PAYMENT_INITIATED : retry accepted, or a post-commit (flagged if not the holder's)
+    PAYMENT_INITIATED --> ACTIVE : NOT_SENT, reactivate, or the window passes (never once a hash is registered)
+    ACTIVE --> PAID : status-update
+    PAYMENT_INITIATED --> PAID : status-update
+    ACTIVE --> CANCELLED : status-update
+    PAYMENT_INITIATED --> CANCELLED : status-update
+    PAID --> PAID : post-commit, flagged
+    CANCELLED --> CANCELLED : post-commit, flagged
+    PAID --> [*]
+    CANCELLED --> [*]
+```
+
+**Two payers, one QR Code.** A reservation is held by the payer whose pre-commit won;
+the only payment X9.150 authorizes is that one. Two pre-commits that arrive together
+both read `ACTIVE`, but only one save can win: the loser reads the QR Code again and
+is told `409`.
+
+**`NOT_SENT` is keyed on the action,** not on the transaction reference: its whole
+meaning is that no transaction exists and none will. It is the only message by which
+a payer can give a reserved bill back
 ([ADR-0021](docs/adr/0021-a-reservation-knows-who-holds-it.md)).
 
-**Only the party that announced may send `SENT` or `NOT_SENT`**, and only they may
-announce again — identified by `payer.info` paired with the signing certificate's
-subject. A repeat from that party refreshes the reservation's window and publishes
-nothing; anybody else gets `409`.
+**`payment.sent` and `payment.failed` fire on chains only.** They report a
+transaction on a public ledger, a distinction only a blockchain offers.
 
 ### ⚠️ Where a transaction reference goes
 
@@ -182,31 +247,12 @@ There is **no dedicated `txHash` field**. The network-agnostic
 whatever reference the rail uses: the ISO 20022 End-to-End ID for FedNow/RTP, the
 Trace Number for ACH, and the on-chain transaction hash for Solana.
 
-```mermaid
-stateDiagram-v2
-    direction LR
-    [*] --> ACTIVE
-    ACTIVE --> PAYMENT_INITIATED : ACH notification (accepted by the gate)
-    ACTIVE --> ACTIVE : FedNow / RTP notification (recorded, courtesy)
-    PAYMENT_INITIATED --> ACTIVE : reactivate()
-    PAYMENT_INITIATED --> PAID : pay() via status-update
-    ACTIVE --> CANCELLED : cancel()
-    PAYMENT_INITIATED --> CANCELLED : cancel()
-
-    note right of PAYMENT_INITIATED
-        Only a system that actually received the
-        funds may call status-update to reach PAID.
-        X9.150 never marks a QR paid on a payer's
-        say-so.
-    end note
-```
-
 ## Source references
 
 - States: `x9-qrcode-domain/.../vo/enumerated/QRCodeStatusEnum.java`
-- Transitions: `x9-qrcode-domain/.../entity/QRCodeEntity.java` (`pay`, `cancel`, `reactivate`, `notifyPayment`)
+- Transitions: `x9-qrcode-domain/.../entity/QRCodeEntity.java` (`pay`, `cancel`, `reactivate`, `initiatePayment`, and the payer-notification block: `admitPreCommit`, `acceptPreCommit`, `registerPostCommit`, `releaseByPayer`)
 - Guards: `x9-qrcode-domain/.../entity/validator/QRCodeEntityValidator.java`
-- Notification dispatch: `x9-qrcode-application/.../usecase/paymentnotification/PaymentNotificationQRCodeUseCase.java`
+- Notification dispatch: `x9-qrcode-application/.../usecase/paymentnotification/PaymentNotificationQRCodeUseCase.java`; the phase: `PaymentNotificationDataVO.phase`
 - Transaction ID field: ANSI X9.150-2026 §2.5
 
 ---

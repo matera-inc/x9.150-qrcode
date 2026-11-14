@@ -121,23 +121,37 @@ class PaymentEventConsumerFlowTest extends AbstractIntegrationTest {
     /** Polls the events API exactly as an external consumer would: cursor in, cursor out. */
     private record Consumer(List<Map<String, Object>> seen, String cursor) { }
 
+    /**
+     * Reads every page from the consumer's cursor until the log says there is no more, as a real
+     * consumer catching up does. Reading one page only made these tests depend on how many events
+     * other test classes had written before them: past the default page of 100, this QR Code's
+     * events were simply not on it.
+     */
     private Consumer poll(Consumer consumer) {
         // Force a drain rather than waiting for the scheduler, so the test is deterministic.
         paymentEventDrain.drainOnce();
 
-        JsonPath page = given()
-                .queryParam("after", consumer.cursor() == null ? "" : consumer.cursor())
-                .when().get(EVENTS)
-                .then().statusCode(HttpStatus.OK.value())
-                .extract().jsonPath();
-
-        List<Map<String, Object>> events = page.getList("events");
         List<Map<String, Object>> seen = new ArrayList<>(consumer.seen());
-        seen.addAll(events);
+        String cursor = consumer.cursor();
+        boolean hasMore = true;
 
-        String nextCursor = page.getString("nextCursor");
+        while (hasMore) {
+            JsonPath page = given()
+                    .queryParam("after", cursor == null ? "" : cursor)
+                    .queryParam("limit", 500)
+                    .when().get(EVENTS)
+                    .then().statusCode(HttpStatus.OK.value())
+                    .extract().jsonPath();
 
-        return new Consumer(seen, nextCursor == null ? consumer.cursor() : nextCursor);
+            List<Map<String, Object>> events = page.getList("events");
+            seen.addAll(events);
+
+            String nextCursor = page.getString("nextCursor");
+            hasMore = page.getBoolean("hasMore") && nextCursor != null;
+            cursor = nextCursor == null ? cursor : nextCursor;
+        }
+
+        return new Consumer(seen, cursor);
     }
 
     private List<String> typesFor(Consumer consumer, String qrCodeId) {
@@ -225,7 +239,7 @@ class PaymentEventConsumerFlowTest extends AbstractIntegrationTest {
                 .filter(e -> qrCodeId.equals(e.get("qrCodeId"))).findFirst().orElseThrow();
 
         assertNotNull(event.get("eventId"), "consumers deduplicate on eventId");
-        assertEquals("1.0", event.get("schemaVersion"));
+        assertEquals("1.1", event.get("schemaVersion"), "1.1 added deviations and receivedInStatus (ADR-0036)");
         assertNotNull(consumer.cursor(), "a page must hand back a cursor to resume from");
 
         // Re-reading from the cursor returns nothing new — the cursor is exclusive.

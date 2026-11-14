@@ -75,8 +75,7 @@ class ReservationRefreshApiTest extends AbstractIntegrationTest {
     private static String announcement(String qrCodeId, String payerInfo) {
         return """
             {
-              "payment": { "qrcodeId": "%s", "amount": %d, "currency": "USD", "network": "ACH",
-                           "transactionId": "021000021.0000001" },
+              "payment": { "qrcodeId": "%s", "amount": %d, "currency": "USD", "network": "ACH" },
               "payer": { "info": "%s" },
               "expectedDate": "2030-10-08T06:59:59Z"
             }

@@ -15,19 +15,22 @@ which body, is spread across `QRCodeEntity` (`pay`, `cancel`, `initiatePayment`,
 on the body. One might take the amount from the payer's notification and another from the QR Code;
 one might emit on a repeat announcement and another not.
 
-Java's actual rules (`QRCodeEntity.java:512-700`):
+Java's actual rules (`QRCodeEntity`, the payer-notification block, after Story 2.4):
 
 - **The body** comes from the **last stored notification** if there is one. Otherwise it comes from
   the first payment method and the payment details.
 - **A repeat announcement** by the holder refreshes the reservation and emits nothing.
-- **`SENT`** emits without changing status.
+- **A post-commit** never changes a closed QR Code, and reserves an `ACTIVE` one (ADR-0036).
+- **Every event a payer's notification produces** carries `receivedInStatus` and, when the payer
+  broke the protocol, `deviations` (ADR-0036; `schemaVersion` `1.1`).
 - **`reactivate`** emits nothing.
 
 ## Decision
 
 **One function builds every event: `domain.BuildEvent(type, row, lastNotification, now,
 reason)`.** No other code constructs a `payment_event`. The body follows Java's rule above, field
-for field. The event contract and its `schemaVersion` are unchanged.
+for field. The event contract is unchanged except for ADR-0036's additive `deviations` and
+`receivedInStatus` (`schemaVersion` `1.1`).
 
 **The transition map is normative.** The suite pins every row:
 
@@ -39,14 +42,24 @@ for field. The event contract and its `schemaVersion` are unchanged.
 | status-update `PAID` | `ACTIVE` or `PAYMENT_INITIATED` (stored, ADR-0020) | `PAID` | `payment.cleared` |
 | status-update `CANCELLED` | `ACTIVE` or `PAYMENT_INITIATED` (stored) | `CANCELLED` | `payment.cancelled` |
 | status-update `ACTIVE` (reactivate) | `PAYMENT_INITIATED` (effective) | `ACTIVE` | **none** |
-| bank-rail notification (FedNow/RTP) | `ACTIVE` (effective) | unchanged (courtesy) | none |
-| bank-rail notification (ACH) | `ACTIVE` (effective) | `PAYMENT_INITIATED` | `payment.initiated` if the status changed |
-| Solana `PAYMENT_INITIATED`, new holder | `ACTIVE` (effective) | `PAYMENT_INITIATED` | `payment.initiated` |
-| Solana `PAYMENT_INITIATED`, same holder | `PAYMENT_INITIATED` (effective) | unchanged, window refreshed | **none** |
-| Solana `SENT` (holder) | `PAYMENT_INITIATED`, or lapsed (ADR-0019) | unchanged | `payment.sent` |
-| Solana `NOT_SENT` (holder) | `PAYMENT_INITIATED` (effective) | `ACTIVE` | `payment.failed` |
+| pre-commit, any rail (no `transactionId`), new holder | `ACTIVE` (effective; a lapsed reservation counts) | `PAYMENT_INITIATED`, held by the sender | `payment.initiated` (also on a takeover of a lapsed reservation) |
+| pre-commit, any rail, same holder (retry) | `PAYMENT_INITIATED` (effective), held by the sender | unchanged, window refreshed (never restarted once a hash is registered) | **none** |
+| pre-commit, any rail, once a hash is registered (holder included) | `PAYMENT_INITIATED` (effective), hash registered | refused, 409 | none |
+| pre-commit, any rail, another payer | `PAYMENT_INITIATED` (effective), held by someone else | refused, 409 | none |
+| pre-commit, any rail | `PAID` or `CANCELLED` | refused, 400 | none |
+| post-commit, bank rail (`transactionId` present) | `ACTIVE` (effective) | `PAYMENT_INITIATED`, held by the sender, window stopped | `payment.initiated`, flagged `RECEIVED_IN_WRONG_STATUS` |
+| post-commit, blockchain | `ACTIVE` (effective) | `PAYMENT_INITIATED`, held by the sender, window stopped | `payment.initiated` then `payment.sent`, both flagged `RECEIVED_IN_WRONG_STATUS` |
+| post-commit, any rail | `PAYMENT_INITIATED`, held by the sender | unchanged, window stopped | blockchain: `payment.sent`; bank rail: none |
+| post-commit, any rail | `PAYMENT_INITIATED`, held by someone else | unchanged, the holder keeps it, window stopped | blockchain: `payment.sent`, flagged; bank rail: none |
+| post-commit, any rail | `PAID` or `CANCELLED` | unchanged (never reopens) | blockchain: `payment.sent`, flagged; bank rail: none |
+| blockchain `PAYMENT_INITIATED` **with** a hash | any | as the post-commit row for that status | as that row, plus `ACTION_CONTRADICTS_HASH`; a warning names the payer |
+| blockchain `SENT` without a hash | any | refused, 400 | none |
+| blockchain `NOT_SENT` (holder) | `PAYMENT_INITIATED` (effective), or a lapsed reservation of the sender's | `ACTIVE` | `payment.failed` |
+| blockchain `NOT_SENT` (holder), once a hash is registered | `PAYMENT_INITIATED` (effective), hash registered | unchanged; `ACTION_CONTRADICTS_HASH` in the warning | none |
+| blockchain `NOT_SENT` **with** a `transactionId` | any | as the post-commit row for that status | as that row, plus `ACTION_CONTRADICTS_HASH` |
+| blockchain `NOT_SENT` | held by someone else: 409; `ACTIVE` with no reservation of the sender's, `PAID`, `CANCELLED`: 400 | unchanged | none |
 | location released by a rebind | not live ([0024](0024-a-qr-code-is-one-row-and-every-patch-is-audit-logged.md)) | unchanged, new random location | none |
-| reservation lapse | — (on read only) | reads as `ACTIVE` | **none** (ADR-0019) |
+| reservation lapse | — (on read only) | reads as `ACTIVE`; never once a hash is registered (ADR-0036) | **none** (ADR-0019) |
 
 Phase 1 verifies the table against the Java code and the suite. Any row Java contradicts is
 corrected here before Go is built.

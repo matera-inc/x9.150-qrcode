@@ -529,21 +529,50 @@ id travels only in an optional memo that some custody providers' webhooks do not
 other chains have no memo at all, so **on blockchains the post-commit is the link**, and pre-commit / post-commit is the
 mechanism for every chain. See [STATE-MACHINE.md](../STATE-MACHINE.md#pre-commit-and-post-commit).
 
-**Known deviations, today.** FedNow / RTP have no pre-commit (every notification must carry an
-End-to-End ID); ACH judges a notification carrying a Trace Number as a pre-commit; and Solana decides
-the phase from `blockchain.action`, so a `PAYMENT_INITIATED` carrying a hash is judged as a
-pre-commit. All three are closed by Story 2.4 of the rewrite breakdown
-([docs/rewrite/EPICS-AND-STORIES.md](../docs/rewrite/EPICS-AND-STORIES.md)), under
-[ADR-0036](../docs/adr/0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md).
+**The phase comes from the evidence on every rail**, Solana included
+([ADR-0036](../docs/adr/0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md)):
+FedNow and RTP have a pre-commit, an ACH Trace Number makes a post-commit, and `blockchain.action`
+only corroborates (it decides `NOT_SENT` alone). The three deviations recorded here before Story 2.4
+(no pre-commit on FedNow / RTP, ACH gating every notification, Solana keyed on the action) are
+closed.
+
+**The only payment X9.150 authorizes is the one that won the pre-commit.** While a payer holds the
+reservation, another payer's pre-commit is refused with `409`; two pre-commits that arrive together
+end with exactly one winner. A post-commit from another payer is not refused (the money has moved):
+it is registered, flagged, and changes nothing, so the holder keeps the QR Code.
+
+**A post-commit is never refused for status reasons.**
+
+- On an `ACTIVE` QR Code (a payer that skipped the pre-commit, or whose reservation lapsed) it
+  reserves the QR Code for that payer and publishes `payment.initiated`, then `payment.sent` on a
+  chain.
+- On a QR Code held by somebody else, `PAID` or `CANCELLED`, it changes nothing; on a chain its hash
+  is still published as `payment.sent`.
+- Once any hash is registered for a reserved QR Code, the reservation stops expiring and **no
+  payer message changes its status**: the holder's retried pre-commit is refused with `409`, and
+  its `NOT_SENT` is accepted, changes nothing and is flagged `ACTION_CONTRADICTS_HASH`. Only the
+  payment system ends the reservation.
+- A `NOT_SENT` carrying a `transactionId` is a post-commit (the evidence decides), flagged
+  `ACTION_CONTRADICTS_HASH`.
+- A notification that keeps losing a concurrent write answers `409` "busy" with the current
+  status, never `500`.
+- Every event a notification produces carries `receivedInStatus` (the QR Code's effective status
+  when it arrived) and, when the payer broke the protocol, `deviations`:
+  `RECEIVED_IN_WRONG_STATUS` (the QR Code was not `PAYMENT_INITIATED` held by this payer) and
+  `ACTION_CONTRADICTS_HASH`. The event schema moved from `1.0` to `1.1`, additively.
+- On a bank rail no `payment.sent` is published (the payment carries `QRCD`); the deviation is then
+  in the `payment.initiated` event when there is one, and in the warning log otherwise.
 
 > ⚠️ **A `PAYMENT_INITIATED` carrying a transaction hash is bad behaviour by the payer:** it asks
-> permission for money that has already moved. Its hash is still recorded, as a post-commit, with a
-> warning. Funds that arrive in the right amount with a matching hash are enough for the payment
-> system to mark the QR Code paid. Every hash is recorded, a second one included, so the payment
-> system can detect a duplicate payment. "Recorded" means registered: the hash is published through
-> the outbox as `payment.sent`, telling the payment system which QR Code it pays. And a post-commit
-> that reaches an `ACTIVE` QR Code (a payer who skipped the pre-commit) is not refused: it moves the
-> QR Code to `PAYMENT_INITIATED` for that payer. Java refuses it today.
+> permission for money that has already moved. Either the payer skipped the question or it labelled
+> its report wrongly. **Its hash is still kept**, as a post-commit, because funds that arrive in the
+> right amount with a matching hash are enough for the payment system to mark the QR Code paid, and
+> refusing the report would throw away the one piece of evidence linking those funds to this QR
+> Code. It is recorded as received (its declared `action` included), flagged
+> `ACTION_CONTRADICTS_HASH`, and logged as a warning naming the payer. Every hash is registered, a
+> second one included, so the payment system can detect a duplicate payment. **This service never
+> marks a QR Code `PAID`**: the payment system matches each hash against the funds and calls the
+> status-update API.
 
 ## I-12 — The answer to a payment notification is signed, as the A.4.5 note models it
 

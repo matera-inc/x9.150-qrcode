@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**375 tests documented** — every JUnit test in the repository and every case in the
+**428 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -229,6 +229,59 @@ Only the party that announced a payment may re-announce it, report it, or give i
 | `X9-HOLD-024` | only the holder may report a payment as sent | `test_payment_notification.py` |
 | `X9-HOLD-030` | a repeated announcement moves the window | `ReservationRefreshApiTest.java` |
 | `X9-HOLD-031` | without a repeat, the same wait releases it | `ReservationRefreshApiTest.java` |
+| `X9-HOLD-101` | a transaction hash makes a post-commit on every rail, Solana included, whatever the action says | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-102` | no transaction id makes a pre-commit on every rail, FedNow and RTP included | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-103` | NOT_SENT is the one phase the action decides on its own | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-104` | a pre-commit on an ACTIVE QR Code reserves it for the sender | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-105` | the holder's pre-commit is a retry: the window moves and nothing is emitted | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-106` | another payer's pre-commit on a held QR Code is a 409 | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-107` | a pre-commit on a PAID or CANCELLED QR Code is a 400 | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-108` | a takeover of a lapsed reservation emits payment.initiated | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-109` | a post-commit on an ACTIVE QR Code on a chain reserves it and registers the hash, flagged | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-110` | a post-commit on an ACTIVE QR Code on a bank rail reserves it with payment.initiated only | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-111` | after a post-commit reserved it, another payer's pre-commit is a 409 | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-112` | the holder's bank-rail post-commit is recorded with no event | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-113` | the holder's post-commit on a chain emits payment.sent with no deviations | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-114` | another payer's post-commit on a held QR Code is registered, flagged, and the holder keeps it | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-115` | a post-commit on a PAID or CANCELLED QR Code is registered, flagged, and nothing reopens | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-116` | a bank-rail post-commit on a closed QR Code publishes nothing | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-117` | every hash is registered as its own payment.sent, none overwritten | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-118` | a PAYMENT_INITIATED carrying a hash on an ACTIVE QR Code carries both deviation codes | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-119` | a PAYMENT_INITIATED carrying a hash from the holder carries ACTION_CONTRADICTS_HASH only | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-120` | a PAYMENT_INITIATED carrying a hash on a held or closed QR Code carries both codes | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-121` | SENT without a hash is a 400 in every status | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-122` | NOT_SENT from the holder releases the QR Code | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-123` | NOT_SENT on an ACTIVE QR Code is a 400, unless from the holder of a lapsed reservation | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-124` | NOT_SENT from anybody but the holder is a 409 | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-125` | NOT_SENT on a PAID or CANCELLED QR Code is a 400 | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-126` | a hash from the holder stops the window | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-127` | a hash from anybody stops the window, and the holder does not change | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-128` | after a hash, even the holder's retried pre-commit is a 409 and changes nothing | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-129` | only the status-update API ends a reservation whose window a hash stopped | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-138` | after a hash, the holder's NOT_SENT is accepted, flagged ACTION_CONTRADICTS_HASH, and changes nothing | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-139` | a NOT_SENT carrying a transaction id is a post-commit, flagged ACTION_CONTRADICTS_HASH | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-140` | the status-update API's revert clears the registered hash with the reservation | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-201` | a FedNow or RTP pre-commit is gated at the payee's clock and reserves the QR Code (S2.4-AC1) | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-202` | a second payer's pre-commit is a 409 on every rail (S2.4-AC2) | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-203` | two payers racing for one QR Code end with exactly one winner and one 409 (S2.4-AC2) | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-204` | another payer's Solana post-commit is registered, flagged, and the holder keeps the QR Code (S2.4-AC2) | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-205` | another payer's bank-rail post-commit changes nothing and publishes nothing (S2.4-AC2) | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-206` | the holder's bank-rail post-commit is recorded, never judged, with no payment.sent (S2.4-AC3) | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-207` | a Solana post-commit on an ACTIVE QR Code reserves it, registers the hash, flags both events (S2.4-AC4) | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-208` | a bank-rail post-commit on an ACTIVE QR Code reserves it with payment.initiated only (S2.4-AC4) | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-209` | a Solana PAYMENT_INITIATED carrying a hash is a post-commit, recorded as received and flagged (S2.4-AC5) | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-210` | the holder's PAYMENT_INITIATED carrying a hash is flagged ACTION_CONTRADICTS_HASH only (S2.4-AC5) | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-211` | a PAYMENT_INITIATED carrying a hash on a held or PAID QR Code carries both codes (S2.4-AC5) | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-212` | SENT without a hash is a 400 in every status (S2.4-AC5) | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-213` | NOT_SENT still releases the reservation (S2.4-AC5) | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-214` | every hash is registered as its own payment.sent, and X9.150 never marks PAID (S2.4-AC6) | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-215` | a post-commit on a PAID or CANCELLED QR Code is registered, flagged, and nothing reopens (S2.4-AC7) | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-216` | a bank-rail post-commit on a closed QR Code is accepted and publishes nothing (S2.4-AC7) | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-217` | the payee can list, per payer, the post-commits flagged RECEIVED_IN_WRONG_STATUS (S2.4-AC8) | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-218` | after a hash, the holder's NOT_SENT is accepted and changes nothing | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-219` | after a hash, the holder's retried pre-commit is a 409 and does not release | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-220` | a NOT_SENT carrying a transaction id is a post-commit: registered, flagged ACTION_CONTRADICTS_HASH | `PreCommitOnEveryRailApiTest.java` |
+| `X9-HOLD-221` | losing the save race after every re-run answers 409 busy with the current status, never 500 | `PaymentNotificationRaceExhaustedTest.java` |
 
 ## Locations and payload retrieval
 
@@ -337,7 +390,7 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-RAIL-081` | anything outside digits and letters is refused | `BankAccountNumberApiTest.java` |
 | `X9-RAIL-090` | a destination this QR Code never published is refused | `SolanaTwoPhaseNotificationApiTest.java` |
 | `X9-RAIL-100` | an ACH notification takes the QR Code out of circulation | `PaymentNotificationDispatchApiTest.java` |
-| `X9-RAIL-101` | a FedNow notification is recorded without settling | `PaymentNotificationDispatchApiTest.java` |
+| `X9-RAIL-101` | a FedNow post-commit on an ACTIVE QR Code reserves it, and never settles it | `PaymentNotificationDispatchApiTest.java` |
 | `X9-RAIL-102` | a rail the QR Code does not offer is refused | `PaymentNotificationDispatchApiTest.java` |
 | `X9-RAIL-103` | an uninterpreted network is rejected, not ignored | `PaymentNotificationDispatchApiTest.java` |
 | `X9-RAIL-110` | the full create-and-settle flow works on every interpreted rail | `QRCodesApisFlowTest.java` |

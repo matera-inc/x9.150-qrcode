@@ -629,29 +629,46 @@ paths:
       description: |-
         Standardized message sent from the Payer's PSP to the Payee's PSP around payment initiation.
 
-        **Only the party that announced a payment may re-announce it, report it, or give it back**
-        (ADR-0021). That party is `payer.info` paired with the subject of the certificate that
-        signed this JWS — both must match. `payer.info` is a field you filled in, so on its own it
-        would let any signer claim to be any payer; paired with the certificate it distinguishes
-        between customers of an institution that has already been authenticated.
+        **The phase comes from the evidence, on every rail** (ADR-0004, ADR-0036):
+
+        - **Pre-commit**, no `transactionId`: "may I pay this?". Judged at the payee's clock
+          (amount, currency, destination, validity) and, if accepted, the QR Code is reserved for
+          you. FedNow and RTP have a pre-commit too.
+        - **Post-commit**, `transactionId` present (End-to-End ID, Trace Number, txHash): the money
+          has moved. **Never refused for the QR Code's status**, never judged on amount or time. On
+          an `ACTIVE` QR Code it reserves it for you; on one held by somebody else, `PAID` or
+          `CANCELLED` it changes nothing. On a chain every hash is registered as its own
+          `payment.sent` event, flagged in `deviations` when it arrived in the wrong status.
+        - **`NOT_SENT`** (chain): you give the QR Code back. A `NOT_SENT` carrying a
+          `transactionId` is a post-commit, flagged `ACTION_CONTRADICTS_HASH`.
+
+        **Once a hash is registered for the QR Code, no payer message changes its status**: a
+        pre-commit, the holder's included, gets `409`, and the holder's `NOT_SENT` is accepted and
+        changes nothing. Only the payment system ends the reservation.
+
+        A Solana `PAYMENT_INITIATED` carrying a hash is bad payer behaviour: it is treated as a
+        post-commit, its hash is registered, it is flagged `ACTION_CONTRADICTS_HASH`, and a warning
+        names you. A `SENT` without a hash is refused with `400`. **This service never marks a QR
+        Code `PAID`**; only the payment system does, through the status-update API.
+
+        **Only the party holding the reservation may retry its pre-commit, report as the holder, or
+        give it back** (ADR-0021). That party is `payer.info` paired with the subject of the
+        certificate that signed this JWS, both must match. `payer.info` is a field you filled in,
+        so on its own it would let any signer claim to be any payer; paired with the certificate it
+        distinguishes between customers of an institution that has already been authenticated.
 
         What follows from that:
 
-        - **Re-announcing is safe.** A repeat from the same party answers `200` and refreshes the
-          reservation's window. Retry freely after a timeout or a crash — it publishes no second
+        - **Retrying is safe.** A repeated pre-commit from the holder is judged again; if accepted
+          it answers `200` and refreshes the reservation's window. It publishes no second
           `payment.initiated`, so a consumer cannot mistake your retry for a second payer.
-        - **A second payer gets `409`**, not `400`. Your request is well formed; somebody else is
-          holding the bill. Come back later rather than looking for a mistake.
+        - **A second payer's pre-commit gets `409`**, not `400`. Your request is well formed;
+          somebody else is holding the bill. Come back later rather than looking for a mistake.
+          The only payment this service authorizes is the one that won the pre-commit.
         - **`NOT_SENT` gives the bill back**: the QR Code returns to `ACTIVE`, `payment.failed` is
-          published, and the next payer may take it. This is the only door out of a reservation
-          that a payer has, and only the party holding it may use it.
-        - **A late `SENT` is still accepted.** Reporting is gated on who announced, not on the
-          clock, so a reservation that lapsed while your settlement was in flight does not stop you
-          recording what happened. The money moved; refusing the report would not un-move it.
+          published, and the next payer may take it. Only the party holding it may use it.
 
-        **Send `payer.info`.** It is optional in the standard, and without it identity falls back to
-        your certificate alone — so two of your own customers read as the same party and either may
-        refresh or release the other's reservation. See `official-spec/BEST-PRACTICES.md`.
+        **Send `payer.info`.** See `official-spec/BEST-PRACTICES.md`.
       operationId: processPaymentNotification
       tags:
         - public-endpoints
@@ -718,12 +735,19 @@ paths:
                 $ref: "#/components/schemas/SignedNotificationAnswer"
         "409":
           description: |-
-            Another payer holds this QR Code. The request is well formed and it is the state that
-            refuses it, so retry later rather than correcting the request — a reservation lapses on
-            its own (`x9.reservation.ttl-seconds`, 90 by default).
+            Another payer holds this QR Code, and this is a pre-commit or a `NOT_SENT`. The request
+            is well formed and it is the state that refuses it, so retry later rather than
+            correcting the request: a reservation lapses on its own (`x9.reservation.ttl-seconds`,
+            90 by default), unless a transaction hash has been registered for the QR Code, after
+            which only the payment system ends it.
 
-            Also returned for a `SENT` or `NOT_SENT` reporting on a payment somebody else
-            announced. A signed answer, body `{"statusCode": 409}` plus the error fields.
+            Also returned to any pre-commit once a transaction hash is registered for the QR Code,
+            and as "busy" (with the current status) when the notification kept losing a concurrent
+            write; send it again.
+
+            Never returned for a post-commit (`transactionId` present) because of the status: that
+            is registered whatever the status.
+            Every answer is signed: body `{"statusCode": 409}` plus the error fields.
           content:
             application/jose:
               schema:
@@ -986,9 +1010,39 @@ components:
         reason:
           type: string
           nullable: true
+        deviations:
+          type: array
+          description: |-
+            How the payer departed from the protocol in the notification behind this event
+            (ADR-0036). **Absent when the payer followed the rules**, never an empty list, and
+            absent on events the status-update API produced. The hash is registered either way;
+            these codes only describe how it arrived, so the payment system can, for example, hold
+            a deviating registration for review.
+
+            - `RECEIVED_IN_WRONG_STATUS`: a post-commit reached a QR Code that was not
+              `PAYMENT_INITIATED` held by this payer. `receivedInStatus` says which status it found.
+            - `ACTION_CONTRADICTS_HASH`: `blockchain.action = PAYMENT_INITIATED`, but the message
+              carries a transaction hash.
+
+            A closed list owned by ADR-0036; ignore a code you do not know. Added in schema `1.1`.
+          items:
+            type: string
+            enum: [RECEIVED_IN_WRONG_STATUS, ACTION_CONTRADICTS_HASH]
+          example: ["RECEIVED_IN_WRONG_STATUS"]
+        receivedInStatus:
+          type: string
+          enum: [ACTIVE, PAYMENT_INITIATED, PAID, CANCELLED]
+          description: |-
+            The QR Code's effective status at the instant the payer's notification arrived (a lapsed
+            reservation reads as `ACTIVE`). Absent on events the status-update API produced. Added in
+            schema `1.1`.
+          example: "ACTIVE"
         schemaVersion:
           type: string
-          example: "1.0"
+          description: |-
+            `1.1` added `deviations` and `receivedInStatus`. Additive: a consumer that ignores fields
+            it does not know is unaffected. Events stored before the change keep `1.0`.
+          example: "1.1"
 
     JwkSetInformationResponse:
       type: object

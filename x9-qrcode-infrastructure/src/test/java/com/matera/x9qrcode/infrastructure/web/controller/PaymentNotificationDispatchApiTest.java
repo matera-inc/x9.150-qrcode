@@ -110,7 +110,8 @@ class PaymentNotificationDispatchApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * <b>X9-RAIL-100</b> — an ACH notification takes the QR Code out of circulation.
+     * <b>X9-RAIL-100</b> — an ACH notification takes the QR Code out of circulation (a Trace Number
+     * makes it a post-commit, which on an ACTIVE QR Code reserves it too, ADR-0036).
      *
      * <p><b>Source:</b> ANSI X9.150-2026 A.11 — for ACH the payee's PSP should update status to initiated on receipt.
      * Conformance.
@@ -131,23 +132,25 @@ class PaymentNotificationDispatchApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * <b>X9-RAIL-101</b> — a FedNow notification is recorded without settling.
+     * <b>X9-RAIL-101</b> — a FedNow post-commit on an ACTIVE QR Code reserves it, and never settles it.
      *
      * <p><b>Source:</b> ANSI X9.150-2026 A.11 — on a successful payment the payer's PSP sends the notification.
-     * Conformance; what the payee then does with it is ours, ADR-0014.
+     * ADR-0036 (S2.4-AC4): a payer that skipped the pre-commit has still paid, so its post-commit
+     * takes the QR Code out of circulation.
      *
      * <p><b>Why:</b> We transport and sequence; the consuming system reconciles. Settling automatically would mean
-     * trusting a counterparty's claim about money we have not seen arrive.
+     * trusting a counterparty's claim about money we have not seen arrive. It used to be a courtesy that
+     * changed nothing, which left the QR Code open to a second payer after the first had paid.
      */
     @Test
-    void aFedNowNotificationIsRecordedWithoutChangingStatus() {
+    void aFedNowPostCommitOnAnActiveQRCodeReservesItWithoutSettling() {
         String qrCodeId = create(qrCodeOffering("fednow"));
 
         MockMvcResponse response = notify(qrCodeId, "FedNow");
 
         assertEquals(HttpStatus.OK.value(), response.statusCode(), response.asString());
-        assertEquals("ACTIVE", statusOf(qrCodeId),
-                "FedNow reconciles from the ISO 20022 message, so the notification is a courtesy");
+        assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId),
+                "the money has moved: the QR Code is out of circulation, and only the payment system marks it PAID");
     }
 
     /**

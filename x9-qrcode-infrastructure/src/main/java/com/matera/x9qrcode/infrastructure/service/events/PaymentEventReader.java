@@ -122,6 +122,13 @@ public class PaymentEventReader {
         dto.setInvoiceNumber(JsonNullable.of(model.getInvoiceNumber()));
         dto.setOrderNumber(JsonNullable.of(model.getOrderNumber()));
         dto.setReason(JsonNullable.of(model.getReason()));
+        // Absent, not empty, when the payer followed the rules (ADR-0036).
+        dto.setDeviations(isNull(model.getDeviations()) || model.getDeviations().isEmpty()
+            ? null
+            : model.getDeviations().stream().map(PaymentEventDTO.DeviationsEnum::fromValue).toList());
+        dto.setReceivedInStatus(isNull(model.getReceivedInStatus())
+            ? null
+            : PaymentEventDTO.ReceivedInStatusEnum.fromValue(model.getReceivedInStatus()));
         dto.setSchemaVersion(model.getSchemaVersion());
 
         return dto;

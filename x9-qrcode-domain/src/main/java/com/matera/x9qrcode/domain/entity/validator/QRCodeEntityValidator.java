@@ -8,22 +8,17 @@ package com.matera.x9qrcode.domain.entity.validator;
 
 import com.matera.x9qrcode.domain.entity.QRCodeEntity;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
-import com.matera.x9qrcode.domain.exception.QRCodeStatusConflictException;
 import com.matera.x9qrcode.domain.utils.DateTimeUtils;
 import com.matera.x9qrcode.domain.vo.BillVO;
-import com.matera.x9qrcode.domain.vo.BlockchainVO;
 import com.matera.x9qrcode.domain.vo.DiscountVO;
 import com.matera.x9qrcode.domain.vo.InvoiceVO;
 import com.matera.x9qrcode.domain.vo.PaymentMethodVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationDataVO;
-import com.matera.x9qrcode.domain.vo.ReservationHolderVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationVO;
 import com.matera.x9qrcode.domain.vo.TipVO;
 import com.matera.x9qrcode.domain.vo.enumerated.ActionEnum;
-import com.matera.x9qrcode.domain.vo.enumerated.NetworkEnum;
 import com.matera.x9qrcode.domain.vo.enumerated.NotificationKindEnum;
 import com.matera.x9qrcode.domain.vo.enumerated.PaymentTimingEnum;
-import com.matera.x9qrcode.domain.vo.enumerated.QRCodeStatusEnum;
 
 import org.apache.commons.lang3.StringUtils;
 
@@ -161,8 +156,14 @@ public final class QRCodeEntityValidator {
             .forEach(index -> validateIfPaymentMethodValidUntilIsBeforeOrEqualToPaymentRequest(paymentMethods.get(index), index));
     }
 
-    public void validatePaymentNotification(PaymentNotificationDataVO newPaymentNotification,
-                                            ReservationHolderVO announcingParty) {
+    /**
+     * Whether a payer's notification is well formed for THIS QR Code, whatever its status.
+     *
+     * <p>The status is not judged here: what a notification may do in each status depends on its
+     * phase and on who holds the reservation, and that is ADR-0036's matrix, applied by the
+     * entity's notification methods.
+     */
+    public void validatePaymentNotification(PaymentNotificationDataVO newPaymentNotification) {
 
         PaymentNotificationVO entityPaymentNotification = this.entity.getPaymentNotification();
 
@@ -176,7 +177,7 @@ public final class QRCodeEntityValidator {
 
         validatePaymentNotificationAmounts(newPaymentNotification);
 
-        validatePaymentNotificationNetwork(newPaymentNotification, announcingParty);
+        validatePaymentNotificationNetwork(newPaymentNotification);
     }
 
     private void validateRequiredProperties() {
@@ -240,8 +241,7 @@ public final class QRCodeEntityValidator {
         }
     }
 
-    private void validatePaymentNotificationNetwork(PaymentNotificationDataVO newPaymentNotification,
-                                                    ReservationHolderVO announcingParty) {
+    private void validatePaymentNotificationNetwork(PaymentNotificationDataVO newPaymentNotification) {
         // A switch EXPRESSION, deliberately. The statement form this replaced did not force a case
         // per rail, so adding Solana to the enum silently dropped its notifications through
         // unvalidated — the same fall-through that once let Base, XRP and Arc be accepted and
@@ -249,18 +249,21 @@ public final class QRCodeEntityValidator {
         newPaymentNotification.payment().interpretedRail().ifPresentOrElse(
             rail -> {
                 Runnable validation = switch (rail) {
-                    case FEDNOW, RTP -> () -> validatePaymentNotificationFromInstantPayments(newPaymentNotification, announcingParty);
-                    case ACH -> () -> validatePaymentNotificationFromACH(newPaymentNotification, announcingParty);
-                    case SOLANA -> () -> validatePaymentNotificationFromBlockchain(newPaymentNotification, announcingParty);
+                    case FEDNOW, RTP -> () -> validatePaymentNotificationFromInstantPayments(newPaymentNotification);
+                    case ACH -> () -> validatePaymentNotificationFromACH(newPaymentNotification);
+                    case SOLANA -> () -> validatePaymentNotificationFromBlockchain(newPaymentNotification);
                 };
 
                 validation.run();
             },
-            () -> validatePaymentNotificationFromBlockchain(newPaymentNotification, announcingParty));
+            () -> validatePaymentNotificationFromBlockchain(newPaymentNotification));
     }
 
-    private void validatePaymentNotificationFromInstantPayments(PaymentNotificationDataVO newPaymentNotification,
-                                                                ReservationHolderVO announcingParty) {
+    /**
+     * FedNow and RTP. The End-to-End ID is no longer required: without it the notification is a
+     * pre-commit, which is what gives these rails a reservation at all (ADR-0036, S2.4-AC1).
+     */
+    private void validatePaymentNotificationFromInstantPayments(PaymentNotificationDataVO newPaymentNotification) {
         List<PaymentMethodVO> paymentMethods = this.entity.getPaymentMethods();
         boolean networkFounded = false;
 
@@ -280,17 +283,9 @@ public final class QRCodeEntityValidator {
             throw new BusinessRuleException("paymentNotification.data.payment.network",
                 "This QRCode does not support Instant Payment networks.");
         }
-
-        validateAnnouncement(announcingParty);
-
-        if (StringUtils.isBlank(newPaymentNotification.payment().transactionId())) {
-            throw new BusinessRuleException("paymentNotification.data.payment.transactionId",
-                "Transaction ID is required for Instant Payment notifications.");
-        }
     }
 
-    private void validatePaymentNotificationFromACH(PaymentNotificationDataVO newPaymentNotification,
-                                                    ReservationHolderVO announcingParty) {
+    private void validatePaymentNotificationFromACH(PaymentNotificationDataVO newPaymentNotification) {
         List<PaymentMethodVO> paymentMethods = this.entity.getPaymentMethods();
         boolean networkFounded = false;
 
@@ -311,8 +306,6 @@ public final class QRCodeEntityValidator {
                 "This QRCode does not support ACH network.");
         }
 
-        validateAnnouncement(announcingParty);
-
         if (isNull(newPaymentNotification.payer()) || StringUtils.isBlank(newPaymentNotification.payer().info())) {
             throw new BusinessRuleException("paymentNotification.data.payer.info", "Payer info is required for ACH payments.");
         }
@@ -322,8 +315,7 @@ public final class QRCodeEntityValidator {
         }
     }
 
-    private void validatePaymentNotificationFromBlockchain(PaymentNotificationDataVO newPaymentNotification,
-                                                           ReservationHolderVO announcingParty) {
+    private void validatePaymentNotificationFromBlockchain(PaymentNotificationDataVO newPaymentNotification) {
         List<PaymentMethodVO> paymentMethods = this.entity.getPaymentMethods();
         boolean networkFounded = false;
 
@@ -348,109 +340,13 @@ public final class QRCodeEntityValidator {
                 "Blockchain data is required for blockchain payment notifications.");
         }
 
-        BlockchainVO blockchainDTO = newPaymentNotification.blockchain();
-
-        if (ActionEnum.PAYMENT_INITIATED.equals(blockchainDTO.action())) {
-            validateAnnouncement(announcingParty);
+        // SENT claims a committed transaction, and a committed transaction with no hash cannot
+        // exist: there is nothing to record. Refused in every status (ADR-0036).
+        if (ActionEnum.SENT.equals(newPaymentNotification.blockchain().action())
+            && !newPaymentNotification.hasTransactionId()) {
+            throw new BusinessRuleException("paymentNotification.data.payment.transactionId",
+                "Transaction ID is required when blockchain notification action is 'sent'.");
         }
-
-        List<ActionEnum> BLOCKCHAIN_POST_ACTIONS = List.of(ActionEnum.SENT, ActionEnum.NOT_SENT);
-
-        if (BLOCKCHAIN_POST_ACTIONS.contains(blockchainDTO.action())) {
-            validatePostPayment(announcingParty);
-
-            if (ActionEnum.SENT.equals(blockchainDTO.action()) && StringUtils.isBlank(newPaymentNotification.payment().transactionId())) {
-                throw new BusinessRuleException(
-                    "Transaction ID is required when blockchain notification action is 'sent'.");
-            }
-        }
-    }
-
-    /**
-     * Who may announce a payment on this QR Code.
-     *
-     * <p>Three outcomes, and the middle one is the whole of this rule:
-     *
-     * <ul>
-     *   <li><b>ACTIVE</b> — nobody is holding it. The announcement takes it.</li>
-     *   <li><b>PAYMENT_INITIATED, held by this same party</b> — a repeat, not a second payer.
-     *       Accepted: it refreshes the window and changes nothing else.</li>
-     *   <li><b>PAYMENT_INITIATED, held by somebody else</b> — two payers reaching for one bill.
-     *       Refused with 409, because the request is well formed and it is the state that says
-     *       no — and because the caller should come back, not correct their request.</li>
-     * </ul>
-     *
-     * <p>The second case used to be refused along with the third. The commonest reason to receive
-     * one announcement twice is not a second payer; it is one payer whose request timed out or
-     * whose process died between sending and recording. Refusing them punished the party the
-     * reservation exists to protect, and did it at the moment their software was already in
-     * trouble.
-     *
-     * <p>Anything else — PAID, CANCELLED, or a reservation nobody can be matched against — is
-     * refused as before.
-     *
-     * <p><b>Every rail comes through here.</b> There used to be three copies of "refuse unless
-     * ACTIVE", one per rail, and fixing the blockchain copy alone left ACH refusing the retries it
-     * had always refused — found by a test, not by reading. A rule worth stating once is worth
-     * having one caller able to get wrong, not three.
-     */
-    private void validateAnnouncement(ReservationHolderVO announcingParty) {
-        QRCodeStatusEnum current = this.entity.effectiveStatus();
-
-        if (QRCodeStatusEnum.ACTIVE.equals(current)) {
-            return;
-        }
-
-        if (QRCodeStatusEnum.PAYMENT_INITIATED.equals(current) && this.entity.isHeldBy(announcingParty)) {
-            return;
-        }
-
-        if (QRCodeStatusEnum.PAYMENT_INITIATED.equals(current)) {
-            throw new QRCodeStatusConflictException(current,
-                "Another payer has already announced a payment for this QR Code. "
-                    + "Wait for their reservation to lapse and try again.");
-        }
-
-        throw new BusinessRuleException("paymentNotification.data.blockchain.action",
-            "Cannot initiate notify a blockchain payment for a QR Code that is not ACTIVE.");
-    }
-
-    /**
-     * Who may report the outcome of a payment they announced.
-     *
-     * <p>Only the party that announced it. A {@code SENT} or {@code NOT_SENT} from anybody else is
-     * reporting on somebody else's payment, and a {@code NOT_SENT} in particular would let a
-     * stranger release a reservation they never took.
-     *
-     * <p><b>Gated on the holder rather than on the clock</b>, and that difference is the whole
-     * reason this is not a one-line check. A payer whose reservation has lapsed may still report:
-     * the money moved, and refusing the report does not un-move it — it only means this service
-     * never hears about a payment that happened. The 90-second window exists to stop a vanished
-     * payer locking a bill forever, not to decide what is true about money.
-     *
-     * <p>It matters because not every settlement path is bounded. A payment routed through a
-     * custody provider can return before its transaction hash exists, with the hash arriving later
-     * from a ledger subscription that has no deadline at all. No window covers that, however wide,
-     * so a rule keyed on the window would refuse those reports as a matter of course.
-     *
-     * <p><b>The one case this still cannot serve</b> is a report arriving after the reservation
-     * lapsed AND another payer has since taken the QR Code: that overwrites who was holding it, so
-     * the late reporter no longer matches anybody. Recording a history of holders would answer it,
-     * at the cost of unbounded growth on every document for a case nobody has yet hit. The refusal
-     * at least says what happened, which is what the payee needs in order to sort it out by hand.
-     */
-    private void validatePostPayment(ReservationHolderVO announcingParty) {
-        if (this.entity.isHeldBy(announcingParty)) {
-            return;
-        }
-
-        if (QRCodeStatusEnum.PAYMENT_INITIATED.equals(this.entity.getStatus())) {
-            throw new QRCodeStatusConflictException(this.entity.effectiveStatus(),
-                "This QR Code is reserved by another payer, so this payment is not yours to report.");
-        }
-
-        throw new BusinessRuleException("paymentNotification.data.blockchain.action",
-            "Cannot notify a blockchain payment for a QR Code that is not PAYMENT_INITIATED.");
     }
 
     private void validateTip() {

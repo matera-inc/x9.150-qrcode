@@ -82,15 +82,25 @@ class PaymentEventLogContractTest extends AbstractIntegrationTest {
 
         paymentEventDrain.drainOnce();
 
-        JsonPath page = given().queryParam("after", "")
-                .when().get("/pub/api/v1/events")
-                .then().statusCode(HttpStatus.OK.value())
-                .extract().jsonPath();
+        // Read every page: other tests in this context publish events too, and the first page of
+        // the log need not contain this QR Code's.
+        List<Map<String, Object>> mine = new java.util.ArrayList<>();
+        String cursor = "";
+        boolean hasMore = true;
+        while (hasMore && cursor != null) {
+            JsonPath page = given().queryParam("after", cursor).queryParam("limit", 500)
+                    .when().get("/pub/api/v1/events")
+                    .then().statusCode(HttpStatus.OK.value())
+                    .extract().jsonPath();
 
-        List<Map<String, Object>> mine = page.getList("events", Map.class).stream()
-                .map(event -> (Map<String, Object>) event)
-                .filter(event -> qrCodeId.equals(event.get("qrCodeId")))
-                .toList();
+            page.getList("events", Map.class).stream()
+                    .map(event -> (Map<String, Object>) event)
+                    .filter(event -> qrCodeId.equals(event.get("qrCodeId")))
+                    .forEach(mine::add);
+
+            hasMore = page.getBoolean("hasMore");
+            cursor = page.getString("nextCursor");
+        }
 
         Map<String, Long> amountByType = mine.stream().collect(java.util.stream.Collectors.toMap(
             event -> (String) event.get("type"),

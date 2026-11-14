@@ -6,6 +6,7 @@
  */
 package com.matera.x9qrcode.infrastructure.persistence.mongodb;
 
+import com.matera.x9qrcode.app.exception.QRCodeConcurrentModificationException;
 import com.matera.x9qrcode.app.exception.QRCodeEntityNotFoundException;
 import com.matera.x9qrcode.app.repository.QRCodeRepository;
 import com.matera.x9qrcode.domain.entity.QRCodeEntity;
@@ -20,6 +21,7 @@ import com.matera.x9qrcode.infrastructure.persistence.mongodb.repository.QRCodeM
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.OptimisticLockingFailureException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -49,6 +51,12 @@ public class QRCodeMongoRepository implements QRCodeRepository {
             qrCodeEntity.applyLockVersion(saved.getLockVersion());
 
             return qrCodeEntity;
+        } catch (OptimisticLockingFailureException ex) {
+            // Somebody else saved this QR Code after we read it. Said in the application's terms,
+            // so a use case can re-read and decide again: two payers racing for one reservation
+            // must end with one winner and one 409, never with a 500 (S2.4-AC2).
+            throw new QRCodeConcurrentModificationException(
+                "QR Code " + qrCodeEntity.getId() + " was modified concurrently.", ex);
         } catch (DuplicateKeyException ex) {
             log.error("Duplicate key error while saving QRCodeEntity: {}", qrCodeEntity, ex);
 

@@ -122,6 +122,8 @@ public class PaymentEventDrain {
         model.setInvoiceNumber(event.getInvoiceNumber());
         model.setOrderNumber(event.getOrderNumber());
         model.setReason(event.getReason());
+        model.setDeviations(event.getDeviations());
+        model.setReceivedInStatus(event.getReceivedInStatus());
         model.setSchemaVersion(com.matera.x9qrcode.domain.event.PaymentEvent.SCHEMA_VERSION);
 
         if (eventRepository.existsById(event.getEventId())) {

@@ -62,6 +62,8 @@ public final class QRCodeMongoDocumentMapper {
         qrCodeMongoPersistenceModel.setRevisedAt(entity.getRevisedAt());
         qrCodeMongoPersistenceModel.setInitiatedExpiresAt(entity.getInitiatedExpiresAt());
         qrCodeMongoPersistenceModel.setReservedBy(buildReservedBy(entity.getReservedBy()));
+        // Written only while true, so documents without a registered hash are unchanged.
+        qrCodeMongoPersistenceModel.setHashRegistered(entity.isHashRegistered() ? Boolean.TRUE : null);
         qrCodeMongoPersistenceModel.setValidUntil(entity.getValidUntil());
         qrCodeMongoPersistenceModel.setStatus(entity.getStatus().value());
         qrCodeMongoPersistenceModel.setCreditor(buildCreditor(entity.getCreditor()));
@@ -483,6 +485,10 @@ public final class QRCodeMongoDocumentMapper {
             document.setInvoiceNumber(event.invoiceNumber());
             document.setOrderNumber(event.orderNumber());
             document.setReason(event.reason());
+            document.setDeviations(isNull(event.deviations())
+                ? null
+                : event.deviations().stream().map(Enum::name).toList());
+            document.setReceivedInStatus(isNull(event.receivedInStatus()) ? null : event.receivedInStatus().value());
             outbox.add(document);
         });
 

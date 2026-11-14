@@ -89,7 +89,8 @@ curl "https://x9.example.com/pub/api/v1/events?after=&limit=100&wait=25"
       "qrCodeRevision": 2,
       "amount": 22500, "currency": "USDC", "network": "Solana",
       "transactionId": "5Vfydn…", "invoiceNumber": "INV-2026-09-00124",
-      "schemaVersion": "1.0" }
+      "receivedInStatus": "PAYMENT_INITIATED",
+      "schemaVersion": "1.1" }
   ],
   "nextCursor": "01M3JFXNB4XNR7P61NZVG8474J",
   "hasMore": false
@@ -114,6 +115,15 @@ curl "https://x9.example.com/pub/api/v1/events?after=&limit=100&wait=25"
    system that actually saw them says so via `PUT /api/v1/payment-request/{id}/status-update`.
 5. **Ignore what you do not recognise.** Unknown fields and unknown `type` values are additive
    within a major version; failing on them will break you on our next release.
+
+**`deviations` and `receivedInStatus` (schema `1.1`, additive).** An event a payer's notification
+produced says the QR Code's status when the notification arrived, and, when the payer broke the
+protocol, lists `deviations`: `RECEIVED_IN_WRONG_STATUS` (a post-commit reached a QR Code that was
+not reserved by that payer: `ACTIVE`, held by another payer, `PAID` or `CANCELLED`) and
+`ACTION_CONTRADICTS_HASH` (a Solana `PAYMENT_INITIATED` carrying a hash). The hash is registered
+either way; a payment system may hold a deviating registration for review. More than one
+`payment.sent` for one QR Code is the signal of a duplicate payment
+([ADR-0036](docs/adr/0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md)).
 
 Ordering is per `qrCodeId`. Nothing is promised across QR Codes, and `qrCodeRevision` is monotonic
 per QR Code but **not gap-free** — a notification that only records details bumps the revision

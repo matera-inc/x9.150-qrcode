@@ -13,6 +13,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.mapping.Field;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -95,6 +96,14 @@ public class PaymentEventMongoPersistenceModel {
 
     @Field(name = "reason")
     private String reason;
+
+    /** ADR-0036 deviation codes; null when the payer followed the rules. Since schema 1.1. */
+    @Field(name = "deviations")
+    private List<String> deviations;
+
+    /** The QR Code's effective status when the payer's notification arrived. Since schema 1.1. */
+    @Field(name = "received_in_status")
+    private String receivedInStatus;
 
     @Field(name = "schema_version")
     private String schemaVersion;

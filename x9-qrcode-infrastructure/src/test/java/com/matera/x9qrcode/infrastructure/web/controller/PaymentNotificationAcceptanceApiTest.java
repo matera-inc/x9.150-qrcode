@@ -66,10 +66,10 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * An ACH notification. ACH is the rail that goes through the acceptance gate: the payer is
-     * announcing a debit it has not yet originated, so the QR Code comes out of circulation only if
-     * everything checks out. FedNow and RTP carry the QR Code id inside the ISO 20022 message and
-     * reconcile from it, so a notification there is a courtesy and changes no status.
+     * A pre-commit (no {@code transactionId}), the notification that goes through the acceptance
+     * gate on every rail: the payer asks before the money moves, so the QR Code comes out of
+     * circulation only if everything checks out (ADR-0036). A Trace Number would make it a
+     * post-commit, which is recorded and never judged.
      */
     private static String notification(String qrCodeId, long amount, String currency, String network) {
         return notification(qrCodeId, amount, currency, network, "Jane Payer, Springfield Savings");
@@ -85,8 +85,7 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
                                        String payerInfo) {
         return """
             {
-              "payment": { "qrcodeId": "%s", "amount": %d, "currency": "%s", "network": "%s",
-                           "transactionId": "021000021.0000001" },
+              "payment": { "qrcodeId": "%s", "amount": %d, "currency": "%s", "network": "%s" },
               "payer": { "info": "%s" },
               "expectedDate": "2030-10-08T06:59:59Z"
             }
@@ -139,8 +138,11 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
     private static final int VALIDITY_SECONDS = 20;
 
     private static String expiringShortly() {
-        return OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(VALIDITY_SECONDS).withNano(0)
-                .toString().replace("+00:00", "Z");
+        // Formatted with seconds always present. OffsetDateTime.toString() drops ":00" when the
+        // seconds are zero ("14:05Z"), which the API refuses as unparseable: a create that failed
+        // with 400 once a minute, whenever the window happened to end on a whole minute.
+        return OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(VALIDITY_SECONDS)
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'"));
     }
 
     /**

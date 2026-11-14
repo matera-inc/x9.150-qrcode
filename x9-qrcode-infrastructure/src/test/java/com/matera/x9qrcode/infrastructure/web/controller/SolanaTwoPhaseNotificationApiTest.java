@@ -33,7 +33,9 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
  * so restoring it restores the distinction, and these are the first tests to exercise it since.
  *
  * <p>The phase itself is inferred rather than declared: ANSI X9.150 has no phase marker because the
- * committee rejected one (ADR-0004), so {@code blockchain.action} carries it.
+ * committee rejected one (ADR-0004), so the evidence decides it, on Solana as on every rail: a
+ * transaction hash means post-commit (ADR-0036). {@code blockchain.action} only corroborates, and
+ * decides {@code NOT_SENT} alone.
  *
  * <p>What stays constant is the settlement boundary. X9.150 never touches money, so a payer saying
  * "sent" does not make a QR Code PAID — only a system that actually saw the funds may say that, via
@@ -97,6 +99,7 @@ class SolanaTwoPhaseNotificationApiTest extends AbstractIntegrationTest {
         String body = """
             {
               "payment": { "qrcodeId": "%s", %s "amount": %d, "currency": "USDC", "network": "Solana" },
+              "payer": { "info": "sol-payer-1" },
               "expectedDate": "2030-10-08T06:59:59Z",
               "blockchain": { "action": "%s", "to": "%s", "from": "%s" }
             }
@@ -114,17 +117,27 @@ class SolanaTwoPhaseNotificationApiTest extends AbstractIntegrationTest {
     private List<String> eventTypesFor(String qrCodeId) {
         paymentEventDrain.drainOnce();
 
-        JsonPath page = given().queryParam("after", "")
-                .when().get(EVENTS)
-                .then().statusCode(HttpStatus.OK.value())
-                .extract().jsonPath();
+        // Read every page: other tests publish events too, and the first page need not hold ours.
+        List<String> types = new java.util.ArrayList<>();
+        String cursor = "";
+        boolean hasMore = true;
+        while (hasMore && cursor != null) {
+            JsonPath page = given().queryParam("after", cursor).queryParam("limit", 500)
+                    .when().get(EVENTS)
+                    .then().statusCode(HttpStatus.OK.value())
+                    .extract().jsonPath();
 
-        List<Map<String, Object>> events = page.getList("events");
+            List<Map<String, Object>> events = page.getList("events");
+            events.stream()
+                    .filter(event -> qrCodeId.equals(event.get("qrCodeId")))
+                    .map(event -> (String) event.get("type"))
+                    .forEach(types::add);
 
-        return events.stream()
-                .filter(event -> qrCodeId.equals(event.get("qrCodeId")))
-                .map(event -> (String) event.get("type"))
-                .toList();
+            hasMore = page.getBoolean("hasMore");
+            cursor = page.getString("nextCursor");
+        }
+
+        return types;
     }
 
     // ---------------------------------------------------------------------- the flow, end to end

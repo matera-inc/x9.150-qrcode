@@ -9,7 +9,6 @@ package com.matera.x9qrcode.domain.vo;
 import com.matera.x9qrcode.domain.exception.ValueObjectRuleException;
 import com.matera.x9qrcode.domain.vo.enumerated.NetworkEnum;
 
-import java.util.List;
 import java.util.Optional;
 
 import static java.util.Objects.isNull;
@@ -29,11 +28,6 @@ public record PaymentNotificationPaymentVO(
     String network,
     String transactionId
 ) {
-
-    private static final List<NetworkEnum> NETWORKS_REQUIRING_TRANSACTION_ID = List.of(
-        NetworkEnum.RTP,
-        NetworkEnum.FEDNOW
-    );
 
     /**
      * The rail of this name, if this service interprets one. Empty for every other network.
@@ -68,12 +62,6 @@ public record PaymentNotificationPaymentVO(
     public PaymentNotificationPaymentVO {
         if (isNull(amount)) {
             throw new ValueObjectRuleException("Payment Notification amount must not be null.");
-        }
-
-        if (NetworkEnum.find(network).filter(NETWORKS_REQUIRING_TRANSACTION_ID::contains).isPresent()
-            && isNull(transactionId)) {
-            throw new ValueObjectRuleException(
-                "Payment Notification transactionId must not be null when network is RTP or FedNow.");
         }
 
         if (isNull(currency)) {
