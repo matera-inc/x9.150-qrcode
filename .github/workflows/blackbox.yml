@@ -1,0 +1,44 @@
+name: Black-box
+
+# Runs the black-box suite (others/blackbox) against the Java build on every pull request to main
+# (Story 3.6, FR13): the image as the publish gate builds it, a MongoDB replica set, the movable
+# clock on, and the black-box truststore, with the suite inside the service's network namespace so
+# the service can reach the suite's test payee and CRL server.
+#
+# Separate from the `build` job in ci.yml, which it leaves unchanged. A suite that could not run
+# fails this job: the service never healthy, zero tests collected, or any capability missing
+# (X9_REQUIRE_ALL) is red, never a green skip.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  blackbox:
+    name: blackbox
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - name: Build the image (buildpacks, as `make image` does)
+        run: |
+          chmod +x mvnw
+          ./mvnw -B -ntp -Pdocker -DskipTests package -Dbuild.image.name=x9-qrcode:ci \
+            -Doci.revision="$GITHUB_SHA" -Doci.version="${GITHUB_SHA::7}"
+
+      - name: Run the black-box suite against it
+        env:
+          X9_IMAGE: x9-qrcode:ci
+        run: ./others/blackbox/deployment/run-against-image.sh
