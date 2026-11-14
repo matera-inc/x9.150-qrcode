@@ -1565,11 +1565,12 @@ So that my probes and dashboards keep working unchanged.
 **Acceptance Criteria:**
 
 **S7.3-AC1.** **Given** `/actuator/health`, `/liveness` and `/readiness`
-**Then** they answer in the existing JSON shape; readiness is DOWN until the schema check passes and
-while the database is unreachable.
+**Then** they answer in the existing JSON shape; readiness is `OUT_OF_SERVICE` (503, the Java build's
+word) until the schema check passes, while the database is unreachable and from shutdown on; the
+aggregate is `DOWN` while the database is unreachable, `OUT_OF_SERVICE` otherwise.
 
 **S7.3-AC2.** **Given** SIGTERM
-**Then** readiness goes DOWN, in-flight requests finish within the ADR-0031 timeout, pools close,
+**Then** readiness goes `OUT_OF_SERVICE`, in-flight requests finish within the ADR-0031 timeout, pools close,
 and the process exits 0.
 
 ### Story 7.4: There is one clock, and lint enforces it

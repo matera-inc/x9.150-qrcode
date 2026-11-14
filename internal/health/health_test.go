@@ -38,8 +38,9 @@ func get(t *testing.T, h http.Handler, path, accept string) (int, string, string
 	return rec.Code, rec.Body.String(), rec.Header().Get("Content-Type")
 }
 
-// S7.3-AC1: the three paths, in the Java build's JSON shape; readiness DOWN until the schema check
-// passes and while the database is unreachable.
+// S7.3-AC1: the three paths, in the Java build's JSON shape; readiness OUT_OF_SERVICE until the
+// schema check passes and while the database is unreachable; the aggregate DOWN while the database
+// is unreachable, OUT_OF_SERVICE otherwise.
 func TestProbes(t *testing.T) {
 	db := &fakeDB{}
 	h := New(db)
@@ -60,12 +61,13 @@ func TestProbes(t *testing.T) {
 		}
 	}
 	up := answer{http.StatusOK, `{"status":"UP"}`}
-	down := answer{http.StatusServiceUnavailable, `{"status":"DOWN"}`}
+	down := answer{http.StatusServiceUnavailable, `{"status":"OUT_OF_SERVICE"}`}
 	aggUp := answer{http.StatusOK, `{"status":"UP","groups":["liveness","readiness"]}`}
 	aggDown := answer{http.StatusServiceUnavailable, `{"status":"DOWN","groups":["liveness","readiness"]}`}
+	aggOut := answer{http.StatusServiceUnavailable, `{"status":"OUT_OF_SERVICE","groups":["liveness","readiness"]}`}
 
 	check("before the schema check", map[string]answer{
-		"/actuator/health": aggDown, "/actuator/health/liveness": up, "/actuator/health/readiness": down,
+		"/actuator/health": aggOut, "/actuator/health/liveness": up, "/actuator/health/readiness": down,
 	})
 	h.SetReady(true)
 	check("ready", map[string]answer{
@@ -79,7 +81,7 @@ func TestProbes(t *testing.T) {
 	check("database back", map[string]answer{"/actuator/health/readiness": up})
 	h.SetReady(false)
 	check("shutting down", map[string]answer{
-		"/actuator/health": aggDown, "/actuator/health/liveness": up, "/actuator/health/readiness": down,
+		"/actuator/health": aggOut, "/actuator/health/liveness": up, "/actuator/health/readiness": down,
 	})
 }
 

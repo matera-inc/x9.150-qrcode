@@ -11,9 +11,11 @@
 //	GET /actuator/health/readiness  {"status":"UP"}
 //
 // Liveness means the process is serving. Readiness means both that the schema check has passed
-// and that the database answers now; it is DOWN (503) before the check, while the database is
-// unreachable, and from the moment shutdown begins. The aggregate is DOWN whenever readiness is.
-// Details are never shown, as in the Java build without credentials.
+// and that the database answers now; when it is not ready it answers OUT_OF_SERVICE (503), the word
+// the Java build's readiness group used, before the check, while the database is unreachable, and
+// from the moment shutdown begins. The aggregate answers 503 whenever readiness does: DOWN while
+// the database is unreachable (as the Java build's database indicator did), OUT_OF_SERVICE
+// otherwise. Details are never shown, as in the Java build without credentials.
 package health
 
 import (
@@ -56,20 +58,25 @@ func (h *Health) Register(mux *http.ServeMux) {
 // Ready reports readiness: the schema check passed, shutdown has not begun, and the database
 // answers.
 func (h *Health) Ready(ctx context.Context) bool {
-	if !h.ready.Load() {
-		return false
-	}
+	return h.ready.Load() && h.dbUp(ctx)
+}
+
+func (h *Health) dbUp(ctx context.Context) bool {
 	ctx, cancel := context.WithTimeout(ctx, pingTimeout)
 	defer cancel()
 	return h.db.Ping(ctx) == nil
 }
 
 func (h *Health) aggregate(w http.ResponseWriter, r *http.Request) {
-	if h.Ready(r.Context()) {
+	dbUp := h.dbUp(r.Context())
+	switch {
+	case !dbUp:
+		write(w, r, http.StatusServiceUnavailable, `{"status":"DOWN","groups":["liveness","readiness"]}`)
+	case !h.ready.Load():
+		write(w, r, http.StatusServiceUnavailable, `{"status":"OUT_OF_SERVICE","groups":["liveness","readiness"]}`)
+	default:
 		write(w, r, http.StatusOK, `{"status":"UP","groups":["liveness","readiness"]}`)
-		return
 	}
-	write(w, r, http.StatusServiceUnavailable, `{"status":"DOWN","groups":["liveness","readiness"]}`)
 }
 
 func (h *Health) liveness(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +88,7 @@ func (h *Health) readiness(w http.ResponseWriter, r *http.Request) {
 		write(w, r, http.StatusOK, `{"status":"UP"}`)
 		return
 	}
-	write(w, r, http.StatusServiceUnavailable, `{"status":"DOWN"}`)
+	write(w, r, http.StatusServiceUnavailable, `{"status":"OUT_OF_SERVICE"}`)
 }
 
 // actuatorV3 is the media type Spring Boot's actuator answers with unless the caller asks for

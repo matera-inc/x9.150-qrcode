@@ -104,7 +104,7 @@ with a converter.**
   - idle 120 s;
   - headers ≤ 30 KB, as today.
 - **Graceful shutdown on SIGTERM:**
-  1. readiness turns DOWN;
+  1. readiness turns `OUT_OF_SERVICE` (503, the Java build's word);
   2. stop accepting new requests;
   3. wake parked long-polls, which return their current page;
   4. let in-flight requests finish for up to 20 s;
