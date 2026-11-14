@@ -566,6 +566,37 @@ answer, the payer holds nothing that proves the payee said yes.
 refusals included, and the answers this service receives verified. Until then this is a deviation
 from the A.4.5 note, recorded here so nobody mistakes it for a reading.
 
+## I-13 — The payee's clock decides, and the due date's last instant is on time
+
+**Where:** §13.5.2 (adjustments: discounts before the due date, late fees after it), §11 and §14.2
+(`validUntil` of the payload and of each payment method)
+
+**What the standard says.** It defines a due date, discounts that apply before it and late fees
+that apply after it, and a `validUntil` on the payload and on each payment method. It does not say
+whose clock judges those instants, nor what is owed at exactly the due date.
+
+**What we do.**
+
+- **The payee's clock at receipt decides.** A pre-commit (an approval request) is judged at the
+  instant it reaches the payee, by the payee's own clock: whether the QR Code and the payment
+  method are still valid, and which amount is owed (discounted, face, or with a late fee).
+- **The payer's check is advisory.** A payer may check `validUntil` and the quoted amount before
+  sending, and should, but under clock skew it can be wrong in good faith: a payer whose clock runs
+  behind can believe a discount or a `validUntil` still holds when, on the payee's clock, it has
+  passed. The request is then refused (400 on `paymentNotification.data.payment.amount`, naming the
+  amount carried and the amount owed, or 400 on `validUntil`), and the payer's remedy is to fetch
+  the payload again and resend. Skew is the payer's risk; it never lets a payer lock in a discount
+  or a validity the payee no longer grants.
+- **`validUntil` is inclusive.** A request arriving at exactly `validUntil` is accepted; one
+  millisecond later it is refused.
+- **The due date is an instant, and a payment up to and including it is on time.** At exactly
+  `dueDate` the full amount is owed, with no late fee. The first day's late fee applies from
+  `dueDate + 1 ms`. (Before this, the formula threw at exactly `dueDate`, so that instant had no
+  answer at all.)
+
+A post-commit (money already moved, a `transactionId` present) is recorded and not judged again
+against the clock; see I-11.
+
 ---
 
 ## Reporting

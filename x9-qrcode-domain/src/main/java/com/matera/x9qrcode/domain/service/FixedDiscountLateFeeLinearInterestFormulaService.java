@@ -50,25 +50,24 @@ public class FixedDiscountLateFeeLinearInterestFormulaService implements Formula
             );
         }
 
-        if (currentDate.isBefore(dueDate)) {
-            if (isNull(parameters.discounts()) || parameters.discounts().isEmpty()) {
-                return null;
-            }
-
-            Optional<DiscountVO> maximumEligibleDiscount = parameters.discounts().stream()
-                .filter(discount -> !currentDate.isAfter(dueDate.minusDays(discount.daysBefore())))
-                .max(Comparator.comparingLong(DiscountVO::discount));
-
-            return maximumEligibleDiscount.map(
-                discount -> new FormulaResultDTO(
-                    originalAmount - discount.discount(),
-                    Math.negateExact(discount.discount()),
-                    discount.explanation(), currency,
-                    calculateValidUntil(dueDate, discount.daysBefore()))
-            ).orElse(null);
+        // On or before the due date. The due date is an instant, and a payment up to and including
+        // it is on time: the full amount, no late fee. Every discount ends at least a day before
+        // it (daysBefore > 0), so at exactly dueDate none is eligible and no adjustment applies.
+        if (isNull(parameters.discounts()) || parameters.discounts().isEmpty()) {
+            return null;
         }
 
-        throw new IllegalCallerException("Unable to calculate adjustments for bill.");
+        Optional<DiscountVO> maximumEligibleDiscount = parameters.discounts().stream()
+            .filter(discount -> !currentDate.isAfter(dueDate.minusDays(discount.daysBefore())))
+            .max(Comparator.comparingLong(DiscountVO::discount));
+
+        return maximumEligibleDiscount.map(
+            discount -> new FormulaResultDTO(
+                originalAmount - discount.discount(),
+                Math.negateExact(discount.discount()),
+                discount.explanation(), currency,
+                calculateValidUntil(dueDate, discount.daysBefore()))
+        ).orElse(null);
     }
 
     private OffsetDateTime getCurrentDate(OffsetDateTime dateForPayment) {
