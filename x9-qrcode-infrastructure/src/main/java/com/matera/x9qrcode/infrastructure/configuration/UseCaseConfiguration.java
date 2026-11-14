@@ -62,7 +62,7 @@ public class UseCaseConfiguration {
     public UpdateQRCodeStatusUseCase updateQRCodeStatusUseCase(
             QRCodeRepository qrCodeRepository,
             @Value("${x9.reservation.ttl-seconds}") long reservationTtlSeconds) {
-        return new UpdateQRCodeStatusUseCase(qrCodeRepository, Duration.ofSeconds(reservationTtlSeconds));
+        return new UpdateQRCodeStatusUseCase(qrCodeRepository, reservationTtl(reservationTtlSeconds));
     }
 
     @Bean
@@ -111,7 +111,22 @@ public class UseCaseConfiguration {
                                                                              FormulaFactory formulaFactory,
             @Value("${x9.reservation.ttl-seconds}") long reservationTtlSeconds) {
         return new PaymentNotificationQRCodeUseCase(
-            qrCodeRepository, new PaymentNotificationAcceptancePolicy(formulaFactory), Duration.ofSeconds(reservationTtlSeconds));
+            qrCodeRepository, new PaymentNotificationAcceptancePolicy(formulaFactory), reservationTtl(reservationTtlSeconds));
+    }
+
+    /**
+     * {@code x9.reservation.ttl-seconds} as a window: {@code 0} means no window (ADR-0036), a positive
+     * value is the window, and a negative value is an invalid configuration that stops the service
+     * from starting. A negative window would make every reservation lapse before it was taken.
+     */
+    static Duration reservationTtl(long reservationTtlSeconds) {
+        if (reservationTtlSeconds < 0) {
+            throw new IllegalStateException(
+                "x9.reservation.ttl-seconds (X9_RESERVATION_TTL_SECONDS) must be 0 (no window) or positive, but is "
+                    + reservationTtlSeconds + ".");
+        }
+
+        return Duration.ofSeconds(reservationTtlSeconds);
     }
 
 }

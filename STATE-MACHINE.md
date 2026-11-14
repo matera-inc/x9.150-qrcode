@@ -25,7 +25,8 @@ code held for seconds.
 
 **`0` means no window** (a bank that wants full control): a reservation never expires,
 and ends only by the holder's refused retry, its `NOT_SENT`, or the status-update API
-(`ACTIVE`, `PAID` or `CANCELLED`). `0` used to mean "expire at once".
+(`ACTIVE`, `PAID` or `CANCELLED`). `0` used to mean "expire at once". A negative value
+is invalid: the service refuses to start.
 
 Nothing sweeps. The stored status keeps saying what was last *reported*, and the
 lapse is applied when somebody looks, so a reservation expiring at 3am wakes nobody
