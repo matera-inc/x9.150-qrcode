@@ -111,6 +111,26 @@ or time, and in one transaction:
 
 A contradictory `PAYMENT_INITIATED` carrying a hash takes this same path.
 
+### The registration says when the payer broke the rules
+
+An event published for a post-commit carries an optional **`deviations`** list, so the payment
+system knows that the hash it is told to expect came from a payer that did not follow the protocol.
+The hash is registered either way; the list only describes how it arrived.
+
+| Code | When |
+|---|---|
+| `NO_PRE_COMMIT` | The post-commit reached a QR Code this payer did not hold: it never sent a pre-commit, or its reservation had already passed to nobody (lapsed). |
+| `ACTION_CONTRADICTS_HASH` | `blockchain.action = PAYMENT_INITIATED`, but the message carries a hash. |
+
+- **Both may appear together**, on both events of the transition (`payment.initiated` and
+  `payment.sent`).
+- **Absent when the payer followed the rules.** It is never an empty list.
+- **The field is additive.** Consumers already ignore fields they do not know
+  ([ENDPOINTS.md](../../ENDPOINTS.md)), so `schemaVersion` moves from `1.0` to `1.1`, not to a new major.
+- **The codes are a closed list owned by this ADR.** A new code is added here, never invented at a
+  call site.
+- The same codes are logged with the warning, and the event is the durable record of them.
+
 **To be confirmed (open):** whether a reservation taken or held through a post-commit may lapse.
 Today it keeps the window of the pre-commit (Java's `SENT` does not restamp it), so once the window
 passes the QR Code reads `ACTIVE` and a second payer can be authorized, although money has already
@@ -135,6 +155,8 @@ today (409 and 400), which loses the hash that would reveal a duplicate payment.
 - A payer that skips the pre-commit is not refused: its post-commit reserves the QR Code and
   registers its hash. FedNow/RTP payers that send only a post-commit today keep working, and their
   courtesy notification now takes the QR Code out of circulation.
+- The payment system can treat a deviating registration differently (hold it for review, for
+  example) without X9.150 refusing anything.
 - ADR-0035's transition map gains rows: post-commit on `ACTIVE` (bank rail: `payment.initiated`;
   blockchain: `payment.initiated` then `payment.sent`), and the contradictory `PAYMENT_INITIATED`.
 - The change ships in Java before the freeze (Stories 2.4 and 2.5), and Go ports it through the
