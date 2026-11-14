@@ -1,0 +1,58 @@
+# The black-box suite against one build of the service (Story 3.6). Run it with
+# run-against-image.sh, which builds the two local images this file names; CI and
+# `make blackbox-image` both do.
+#
+#   mongo       MongoDB 7.0.45 as a single-node replica set (transactions need one)
+#   x9-qrcode   the image under test: clock control on, the demo signing key, and the black-box
+#               truststore (the test CA plus the demo certificate)
+#   blackbox    the suite, in x9-qrcode's network namespace: the service reaches the suite's CRL
+#               server and test payee on 127.0.0.1, and the suite reaches the clock listener,
+#               which never leaves the service's loopback
+#
+# NON-PRODUCTION. The truststore trusts keys anybody can download.
+name: x9-blackbox
+
+services:
+  mongo:
+    image: mongo:7.0.45
+    command: ["mongod", "--replSet", "x9-qrcode", "--bind_ip_all"]
+    healthcheck:
+      # Initiates the replica set on its first run; healthy once this node is primary.
+      test: ["CMD", "mongosh", "--quiet", "--eval",
+             "try { rs.status().ok } catch (e) { rs.initiate({_id: 'x9-qrcode', members: [{_id: 0, host: 'mongo:27017'}]}).ok }; db.hello().isWritablePrimary ? 0 : quit(1)"]
+      interval: 2s
+      timeout: 10s
+      retries: 60
+      start_period: 5s
+    tmpfs:
+      - /data/db
+      - /data/configdb
+
+  x9-qrcode:
+    image: x9-qrcode-under-test:local
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      SPRING_DATA_MONGODB_URI: "mongodb://mongo:27017/x9-qrcode?replicaSet=x9-qrcode"
+      X9_PUBLICENDPOINTS_HOST: "x9-150.example.com"
+      X9_TESTING_CLOCKCONTROL: "true"
+      X9_TESTING_CLOCKLISTEN: "127.0.0.1:8099"
+      X9_CERTIFICATE_TRUSTSTORE_LOCATION: "file:/x9-blackbox/x9-blackbox-truststore.jks"
+      X9_CERTIFICATE_TRUSTSTORE_PASSWORD: "x9test123"
+      X9_CERTIFICATE_TRUSTSTORE_ALIAS: "x9-test-ca"
+
+  blackbox:
+    image: x9-blackbox-runner:local
+    network_mode: "service:x9-qrcode"
+    depends_on:
+      - x9-qrcode
+    environment:
+      X9_BASE_URL: "http://127.0.0.1:8080"
+      X9_CLOCK_URL: "http://127.0.0.1:8099"
+      X9_SUITE_HOST: "127.0.0.1"
+      X9_DATABASE_URL: "mongodb://mongo:27017/x9-qrcode?directConnection=true"
+      # A capability the run cannot use (clock, database, payee) is a failure here, not a skip.
+      X9_REQUIRE_ALL: "1"
+      # The service is a JVM starting in a container: wait for its health before testing.
+      X9_WAIT_SECONDS: "${X9_WAIT_SECONDS:-240}"

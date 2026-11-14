@@ -25,6 +25,25 @@ optional database inspectors.
 If nothing answers at `X9_BASE_URL`, the suite **skips with a reason** rather than failing —
 but the publish gate treats a suite that could not run as a refusal to publish.
 
+### In CI, and against any image
+
+```bash
+make image && make blackbox-image                 # the image `make image` built
+X9_IMAGE=materainc/x9-qrcode:git-<sha> ./others/blackbox/deployment/run-against-image.sh
+```
+
+`run-against-image.sh` runs the whole suite in containers (`deployment/docker-compose.yml`):
+MongoDB as a replica set; the image under test with the clock on and the black-box truststore
+copied in; and the suite in the service's network namespace, so the service reaches the suite's
+test payee and CRL server on `127.0.0.1`, and the suite reaches the clock, which never leaves the
+service's loopback. Nothing is bind-mounted, so it works on Colima. It sets `X9_REQUIRE_ALL=1` and
+`X9_DATABASE_URL`, so every test runs: a missing capability, a service that never comes up, or
+zero tests collected fails the run.
+
+The `blackbox` job (`.github/workflows/blackbox.yml`) builds the image with buildpacks on every
+pull request and runs exactly this. It is separate from the `build` job. The publish gate
+(`make publish`) still runs `make blackbox` against each architecture it is about to push.
+
 ### The deployment under test
 
 The suite never asks the service to sign for it (no call to `/api/v1/signature/generate`). Its
