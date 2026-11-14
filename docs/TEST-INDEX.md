@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**525 tests documented** — every JUnit test in the repository and every case in the
+**524 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -566,7 +566,6 @@ judged within the 2 s before it; "1 ms after" is exact.
 | `X9-TIME-006` | T6: a pre-commit 1 ms after `validUntil` is refused, one just before is accepted; the payee may still mark it PAID | `test_time_edges.py` |
 | `X9-TIME-007` | T7: a payment method past its own `validUntil` is absent from the payload and refused; the other is served and accepted | `test_time_edges.py` |
 | `X9-TIME-008` | T8: after a lapse the ETag reads ACTIVE and If-Match with it succeeds; another payer takes over with `payment.initiated`; the first payer's late SENT is registered, flagged | `test_time_edges.py` |
-| `X9-TIME-009` | T8 as S4.5-AC1 words it ("A's late SENT refused"): contradicts ADR-0036, strict xfail | `test_time_edges.py` |
 | `X9-TIME-010` | T9: a reservation taken 30 s before `validUntil` ends at `validUntil` | `test_time_edges.py` |
 | `X9-TIME-011` | T10: a payer `iat` 10 min in the service's past with a 5-min `ttl` is 401 EXPIRED before any lookup | `test_time_edges.py` |
 | `X9-TIME-012` | T11, both builds: an hour past `validUntil` on the test clock, the payload is refused as expired and GET still works | `test_time_edges.py` |

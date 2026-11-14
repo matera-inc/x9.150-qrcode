@@ -16,7 +16,7 @@ info:
 
     - **`dueDate`**, and every other `date-time` field (e.g. `validUntil`, `createdAt`, `revisedAt`, `sentAt`), MUST be a UTC timestamp ending in `Z`. There is no separate timezone field when creating a QR Code: the biller must convert the bill's due date/time **from the biller's own local timezone to UTC** before submitting it (e.g. end-of-day 2030-05-15 in a UTC-03:00 timezone is sent as `2030-05-16T02:59:59Z`).
     - **Date-only** fields — `invoice.date` and the `dateForPayment` query parameter — are plain calendar dates (`YYYY-MM-DD`) and are interpreted at UTC start-of-day.
-    - Late-fee / discount amounts and their `validUntil` are calculated at request time in UTC. A `validUntil` of `...T23:59:59Z` therefore means end-of-day **UTC**, not the biller's local day; the caller is responsible for any local-day interpretation.
+    - Late-fee / discount amounts are calculated at request time, on the payee's clock, in UTC. Every `validUntil` is an exact instant, inclusive: a request at that instant is in time, one a millisecond later is not. There is no end-of-day rounding; a biller who means the end of its local day sends that instant, converted to UTC.
 
     ## Compatibility with future versions
 
