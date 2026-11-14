@@ -198,6 +198,38 @@ docker manifest create REPO:latest REPO:latest-arm64 REPO:latest-amd64
 docker manifest push   REPO:latest
 ```
 
+## The Go build (in progress)
+
+The Go + PostgreSQL rewrite ([ADR-0022](docs/adr/0022-rewrite-in-go-as-a-standalone-product.md))
+is being built alongside the Java build, which stays the one you run. It serves no business
+endpoint yet. It needs Go (the version `go.mod` pins; with the default `GOTOOLCHAIN=auto`, `go`
+fetches it).
+
+```bash
+go test ./...                     # unit tests
+# against the throwaway database of db/docker-compose.yml (it trusts every local connection):
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=postgres DATABASE_USER=x9_qrcode_app \
+DATABASE_PASSWORD=unused DATABASE_SSLMODE=disable go run ./cmd/x9-qrcode
+```
+
+**Configuration** is one YAML file plus environment variables, which take precedence
+([ADR-0031](docs/adr/0031-same-image-lighter-and-3-0-is-a-configuration-migration.md)).
+[`cmd/x9-qrcode/config.example.yaml`](cmd/x9-qrcode/config.example.yaml) lists every key and
+the variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`.
+
+- **Everything is checked at start.** A missing or invalid key stops the service with an error
+  naming the key and its variable, all problems at once. Unknown keys are refused too.
+- **Nothing security-relevant has a default.** The database host, user, credential
+  (`DATABASE_PASSWORD` or `DATABASE_PASSWORD_FILE`) and TLS mode (`DATABASE_SSLMODE`) must be
+  given; `verify-full` also needs `DATABASE_SSLROOTCERT`.
+- **The Java build's configuration is refused, not half-read.** A Spring-style file (`spring:`,
+  `management:` or `x9:` at the top, Jasypt `ENC(…)`, `classpath:`, `${…}` placeholders, a
+  `.properties` file) or any `SPRING_*`, `MONGO*` or `JASYPT_*` variable stops the service and
+  names `x9-config-convert`, the converter that ships with the 3.0.0 migration.
+- **Logs are JSON** (`log/slog`), one line per request with `method`, `path`, `status` and
+  `durationMs`. An incoming `b3`, `X-B3-TraceId`/`X-B3-SpanId` or `traceparent` header adds
+  `traceId` and `spanId`. The ids are logged only; nothing is exported.
+
 ## Troubleshooting
 
 | Symptom | Likely cause / fix |

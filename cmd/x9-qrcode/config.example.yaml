@@ -1,0 +1,48 @@
+# Copyright © 2026 Matera Systems, Inc.
+# Licensed under the Matera Source License v1.0 (source-available; not open source). See LICENSE.md.
+# Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
+# based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
+#
+# The Go build's configuration (ADR-0031): this one YAML file, plus the environment variables named
+# beside each key, which take precedence over it. Pass the file with `-config <path>` or
+# X9_CONFIG_FILE; without one, the environment alone must supply every required key.
+#
+# The service validates everything at start and refuses to start on any problem, naming the key and
+# its variable. Keys marked REQUIRED have no default, on purpose: a host, a credential or a TLS mode
+# is never guessed. Unknown keys are refused, so a typo is not silently ignored.
+#
+# The Java build's configuration (Spring YAML, application-secrets.yml, Jasypt ENC(…), SPRING_* or
+# MongoDB variables) is refused at start: convert it with x9-config-convert.
+
+server:
+  port: 8080                     # X9_SERVER_PORT. API and health share it, as in the Java build.
+  shutdown-delay-seconds: 5      # X9_SERVER_SHUTDOWNDELAYSECONDS. Readiness is DOWN this long
+                                 # after SIGTERM before new connections are refused.
+
+database:
+  host: postgres.example.com     # DATABASE_HOST            REQUIRED
+  port: 5432                     # DATABASE_PORT
+  name: bank                     # DATABASE_NAME            REQUIRED
+  user: x9_qrcode_app            # DATABASE_USER            REQUIRED: the application role (db/README.md)
+  # One of the two, REQUIRED. The file is re-read on every new connection, so rotating the
+  # credential is a file change and a reconnect.
+  # password: …                  # DATABASE_PASSWORD
+  password-file: /run/secrets/x9-qrcode-db-password   # DATABASE_PASSWORD_FILE
+  schema: x9_qrcode              # DATABASE_SCHEMA. The application role's search_path must select it.
+  sslmode: verify-full           # DATABASE_SSLMODE         REQUIRED: disable, allow, prefer, require,
+                                 #                          verify-ca or verify-full (recommended)
+  sslrootcert: /etc/x9-qrcode/db-ca.pem   # DATABASE_SSLROOTCERT, REQUIRED for verify-ca / verify-full
+  pool-writes: 8                 # DATABASE_POOL_WRITES. Writes and reads together are the ceiling
+  pool-reads: 4                  # DATABASE_POOL_READS   of connections this service opens (12).
+  query-exec-mode: ""            # DATABASE_QUERY_EXEC_MODE. Empty is pgx's default; "exec" behind a
+                                 # PgBouncer older than 1.21 or with max_prepared_statements=0.
+
+log:
+  level: info                    # X9_LOG_LEVEL: debug, info, warn or error. The log is JSON.
+
+reservation:
+  ttl-seconds: 90                # X9_RESERVATION_TTL_SECONDS. 0 = no window; negative is invalid.
+
+testing:
+  clock-control: false           # X9_TESTING_CLOCKCONTROL. Must stay false in this build: the movable
+                                 # test clock (ADR-0033) arrives with the signing keys.
