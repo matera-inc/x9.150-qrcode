@@ -145,7 +145,7 @@ class SignedNotificationAnswerApiTest extends AbstractIntegrationTest {
 
     /** A question signed while this deployment's clock reads {@code seconds} ahead: its iat is in the future. */
     private Question signAhead(String payload, long seconds) {
-        BusinessClock.setOffsetSeconds(seconds);
+        BusinessClock.setOffsetMillis(seconds * 1000L);
         try {
             return sign(payload);
         } finally {

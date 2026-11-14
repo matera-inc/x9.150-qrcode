@@ -253,13 +253,13 @@ class JwsQRCodeSignatureServiceTest extends AbstractIntegrationTest {
     void theVerifierRefusesAnIatAheadOfItsClockBeyondTheSkew() {
         UUID correlationId = UUID.randomUUID();
 
-        BusinessClock.setOffsetSeconds(90);
+        BusinessClock.setOffsetMillis(90_000L);
         String ahead;
         String drifting;
         try {
             ahead = signatureService.signData(new SignatureInputDataDTO(SignatureTypeEnumDTO.X9,
                 Map.of("statusCode", 200), correlationId, TTL, 200)).jwsToken();
-            BusinessClock.setOffsetSeconds(45);
+            BusinessClock.setOffsetMillis(45_000L);
             drifting = signatureService.signData(new SignatureInputDataDTO(SignatureTypeEnumDTO.X9,
                 Map.of("statusCode", 200), correlationId, TTL, 200)).jwsToken();
         } finally {

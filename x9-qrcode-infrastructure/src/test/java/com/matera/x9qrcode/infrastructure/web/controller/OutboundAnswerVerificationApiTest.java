@@ -439,7 +439,7 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
 
     /** Signed by this deployment while its clock reads {@code offsetSeconds} away from now. */
     private static String signedAt(long offsetSeconds, int statusCode, UUID correlationId) {
-        BusinessClock.setOffsetSeconds(offsetSeconds);
+        BusinessClock.setOffsetMillis(offsetSeconds * 1000L);
         try {
             return signed(statusCode, correlationId);
         } finally {
