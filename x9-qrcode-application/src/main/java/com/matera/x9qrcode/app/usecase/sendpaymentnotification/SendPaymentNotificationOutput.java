@@ -6,5 +6,16 @@
  */
 package com.matera.x9qrcode.app.usecase.sendpaymentnotification;
 
-public record SendPaymentNotificationOutput(int statusCode, boolean accepted, String body) {
+import com.matera.x9qrcode.app.dto.enumerated.AnswerSignatureEnumDTO;
+
+/**
+ * The payee's answer, as reported to the payer: its status, its body verbatim, and whether the
+ * answer was signed as ANSI X9.150 A.4.5 asks ({@code signature}, with {@code signatureProblem}
+ * saying why when it was not).
+ */
+public record SendPaymentNotificationOutput(int statusCode,
+                                            boolean accepted,
+                                            String body,
+                                            AnswerSignatureEnumDTO signature,
+                                            String signatureProblem) {
 }

@@ -86,6 +86,29 @@ lives on a separate listener and is never in `openapi.yaml`.
 - The Java build gets one deliberate fix (the ETag) before it is frozen.
 - Contract improvements found during the rewrite are queued, not mixed in.
 
+### Amendment, 2026-11-14: a second deliberate Java fix, the signed answer to a payment notification
+
+**Open until now:** this ADR allowed one change to the Java contract before the freeze, the ETag.
+`POST /pub/api/v1/payment-notification` answered an accepted notification with an empty, unsigned
+200 and a refusal with plain JSON, while the note under ANSI X9.150 A.4.5 asks for a signed
+`{"statusCode": integer}`. The outbound sender passed the payee's answer through unverified.
+
+**Closed (Story 2.3, FR33):** the response body of that endpoint changes, in Java first, so that the
+differential run sees both builds agree.
+
+- Every answer is a compact JWS, `Content-Type: application/jose`, signed with the payee's X9 key.
+  A yes has body `{"statusCode": 200}`. A refusal keeps its HTTP status (400, 401, 404, 409, 422)
+  and its error fields (`type`, `title`, `status`, `detail`, `violations`, and any other property
+  such as `currentStatus`), with `statusCode` added.
+- The answer's `correlationId` echoes the notification's once the notification's signature has
+  verified; a notification that cannot be verified is refused under a fresh `correlationId`. The
+  answer's `iat` is the payee's clock at the decision.
+- `OutboundPaymentNotificationResult` gains `signature` (`VERIFIED` / `ABSENT` / `INVALID`) and
+  `signatureProblem`, additively. A 200 that is not verified is still reported as `accepted`: an
+  unsigned yes.
+
+So the Java build gets **two** deliberate fixes before it is frozen: the ETag and the signed answer.
+
 ## Alternatives rejected
 
 - **Byte-identity checked by schema validation.** It catches nothing that matters here.

@@ -297,7 +297,7 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
         MockMvcResponse response = notify(qrCodeId, 999_999L);
 
         assertNotEquals(HttpStatus.OK.value(), response.statusCode(), response.asString());
-        assertTrue(response.asString().contains("editable"), response.asString());
+        assertTrue(answerBody(response).contains("editable"), answerBody(response));
         assertEquals("ACTIVE", statusOf(qrCodeId));
     }
 

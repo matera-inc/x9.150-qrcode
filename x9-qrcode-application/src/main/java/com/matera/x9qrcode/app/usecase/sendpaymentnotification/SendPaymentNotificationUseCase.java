@@ -42,7 +42,8 @@ public class SendPaymentNotificationUseCase
         OutboundNotificationResult result = outboundNotificationService.send(
             input.notification(), input.endpoint(), input.correlationId());
 
-        return new SendPaymentNotificationOutput(result.statusCode(), result.accepted(), result.body());
+        return new SendPaymentNotificationOutput(result.statusCode(), result.accepted(), result.body(),
+            result.signature(), result.signatureProblem());
     }
 
     /**

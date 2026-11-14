@@ -148,7 +148,8 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
                 if (!input.correlationId().equals(correlationId)) {
                     log.error("Correlation ID mismatch. Expected: {}, Found: {}", input.correlationId(), correlationId);
 
-                    return SignatureValidationOutput.invalidSignature();
+                    return SignatureValidationOutput.invalidSignature(
+                        "correlationId mismatch: expected %s, found %s".formatted(input.correlationId(), correlationId));
                 }
             }
 
@@ -157,7 +158,8 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         } catch (Exception e) {
             log.error("Error validating JWS signature: {}", e.getMessage(), e);
 
-            return SignatureValidationOutput.invalidSignature();
+            return SignatureValidationOutput.invalidSignature(
+                isBlank(e.getMessage()) ? e.getClass().getSimpleName() : e.getMessage());
         }
     }
 
