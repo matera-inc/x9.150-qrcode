@@ -34,15 +34,20 @@ Every table and column has a `COMMENT`, so `\d+` in psql, or any catalog browser
 conventions ([ADR-0023](../docs/adr/0023-postgresql-one-schema-portable-sql.md)) are portable SQL:
 
 - no `JSONB`, `ENUM`, arrays, `TIMESTAMPTZ`, unbounded `TEXT`, `SERIAL`, triggers or procedures;
+- no key repeated within one YAML mapping (YAML keeps the last one, and Liquibase only warns);
 - times are `TIMESTAMP` holding UTC, and money is `BIGINT` in minor units;
 - "none" is a sentinel, never `NULL`.
 
-An applied changeset is never edited, and a change is a new numbered file.
+An applied changeset is never edited, and a change is a new numbered file. "Applied" means "on
+`main`": CI compares every pull request with its base branch. `db/check/check_changelog.py`
+enforces all of this on every pull request that touches `db/`.
 
 ## Roles
 
-ADR-0032 names three roles. [ADR-0037](../docs/adr/0037-the-event-table-is-the-outbox-read-by-cdc-or-plain-sql.md)
-adds a fourth, the event reader. Their names are changelog properties; use lowercase identifiers.
+There are four roles: the three of ADR-0032 (owner, application, read-only) and the event reader
+of [ADR-0037](../docs/adr/0037-the-event-table-is-the-outbox-read-by-cdc-or-plain-sql.md). You
+create the owner once (below); the changelog runs as the owner and creates the three runtime roles,
+or uses them if you created them. Their names are changelog properties; use lowercase identifiers.
 
 | Role (property, default) | For | May |
 |---|---|---|
@@ -101,6 +106,8 @@ which roles already exist, when it writes the file. The file also records the ch
 `databasechangelog`, so a later `liquibase update` knows they ran. CI checks exactly this: the
 generated file runs cleanly, and Liquibase then finds nothing left to apply. Every CI run publishes
 the file it generated as the `update-sql-postgres-16` and `update-sql-postgres-newest` artifacts.
+The newest major is pinned in `.github/workflows/db-schema.yml` (PostgreSQL 18 today) and moved
+deliberately, so a new PostgreSQL release cannot change CI's result without a commit.
 
 ## What the service asks of your database
 

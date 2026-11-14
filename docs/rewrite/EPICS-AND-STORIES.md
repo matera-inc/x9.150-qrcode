@@ -136,23 +136,28 @@ FR15: A Liquibase changelog (`db/changelog/`) creates the schema of plan §2.1:
   `payment_event(occurred_at)`;
 - **no FK** from `payment_event` to `qr_code`.
 
-FR16: The changelog creates the three roles of ADR-0032:
-- **owner:** migrations only;
+FR16: Four roles, the three of ADR-0032 and the event reader of ADR-0037:
+- **owner:** migrations only. The DBA creates it once with the schema; the changelog runs as it
+  and uses it, but does not create it (ADR-0032, amendment of 2026-11-14);
 - **application:** DML on its own tables;
-- **read-only:** `SELECT` only.
+- **read-only:** `SELECT` only;
+- **event reader:** `SELECT` on `payment_event`, `UPDATE` of its two read-status columns only.
+
+The changelog creates the three runtime roles, or uses them when the DBA created them.
 
 It also writes explicit grants and `ALTER DEFAULT PRIVILEGES`, and sets the application role's
 `search_path` (`ALTER ROLE … SET search_path`). The schema name is a changelog parameter.
 
 FR17: Compose runs PostgreSQL 16 plus a `liquibase/liquibase:4.33.0` one-shot. CI applies the
-changelog on PostgreSQL 16 and on the newest major. `liquibase update-sql` produces DBA-reviewable
-SQL.
+changelog on PostgreSQL 16 and on the newest major (pinned, PostgreSQL 18 today, and moved
+deliberately). `liquibase update-sql` produces DBA-reviewable SQL.
 
 FR18: A CI check enforces the changelog conventions:
 - no edits to applied changesets;
 - `COMMENT` present for every table and column;
 - no banned non-portable constructs (`JSONB`, `ENUM`, arrays, `TIMESTAMPTZ`, unbounded `TEXT`,
-  `SERIAL`, triggers or procedures).
+  `SERIAL`, triggers or procedures);
+- no duplicate YAML keys in a changelog file.
 
 FR19: A Go module at the repository root provides `cmd/x9-qrcode` with:
 - configuration from one YAML file plus the documented environment variables, which take
@@ -338,7 +343,7 @@ None. The service has no UI.
 | FR12 | Epic 4 | golden JWS/EMV corpora |
 | FR14 | Epic 5 | benchmark harness + Java baseline |
 | FR15 | Epic 6 | changelog: tables, lookups, comments, indexes |
-| FR16 | Epic 6 | three roles, grants, default privileges, role `search_path` |
+| FR16 | Epic 6 | four roles, grants, default privileges, role `search_path` |
 | FR17 | Epic 6 | compose + Liquibase one-shot; CI on PostgreSQL 16 and newest; `update-sql` |
 | FR18 | Epic 6 | changelog conventions check |
 | FR19 | Epic 7 | Go skeleton: config, logging, pools, schema check, health, shutdown |
@@ -399,7 +404,7 @@ committed Java + MongoDB baseline are captured while Java is still the live buil
 
 ### Epic 6: A bank's DBA can host X9.150 in its own PostgreSQL
 
-A DBA can review and apply the schema: one configurable schema, documented tables, three roles,
+A DBA can review and apply the schema: one configurable schema, documented tables, four roles,
 SQL they can run themselves. CI proves the result on PostgreSQL 16 and on the newest major.
 
 **FRs covered:** FR15, FR16, FR17, FR18
@@ -1388,10 +1393,10 @@ So that the application can never alter the schema and the test suite can never 
 **Acceptance Criteria:**
 
 **S6.2-AC1.** **Given** the changelog
-**Then** it creates (or uses, when the DBA pre-created them) an owner role (migrations only), an
+**Then** it runs as, and uses, an owner role the DBA created once with the schema (migrations
+only; the changelog does not create it), and it creates (or uses, when the DBA pre-created them) an
 application role (DML on its own tables), a read-only role (`SELECT` only) and an event-reader role
-(S6.2-AC4), with explicit grants
-and `ALTER DEFAULT PRIVILEGES`.
+(S6.2-AC4), with explicit grants and `ALTER DEFAULT PRIVILEGES`.
 
 **S6.2-AC2.** **Given** the application role
 **Then** `ALTER ROLE … SET search_path` points it at the schema
@@ -1431,8 +1436,9 @@ the tables, comments, roles and `search_path`.
 **Then** CI publishes the SQL as a build artifact, so a DBA can review exactly what will run.
 
 **S6.3-AC4.** **Given** `db/README.md`
-**Then** it tells a DBA: what is created, the three roles, the connection ceiling (12 from the two
-pools), PgBouncer ≥ 1.21 in transaction mode, TLS, and that nothing couples to other schemas.
+**Then** it tells a DBA: what is created, the four roles (owner, application, read-only, event
+reader; ADR-0037), the connection ceiling (12 from the two pools), PgBouncer ≥ 1.21 in
+transaction mode, TLS, and that nothing couples to other schemas.
 
 ### Story 6.4: The changelog conventions are enforced, not remembered
 
@@ -1453,6 +1459,11 @@ So that the schema stays portable without anyone policing it by hand.
 **S6.4-AC3.** **Given** `JSONB`, `ENUM`, arrays, `TIMESTAMPTZ`, unbounded `TEXT`, `SERIAL`, triggers
 or procedures
 **Then** the check fails, naming the construct and the file.
+
+**S6.4-AC4. Duplicate YAML keys (Epic 6 follow-up).**
+**Given** a changelog file in which one mapping repeats a key (YAML keeps the last value and
+Liquibase only warns; a repeated `constraints`/`defaultValue` once left a column NULL-able)
+**Then** the check fails, naming the file, the changeset, the key and both lines.
 
 ### Story 6.5: A payment system can read the event table without asking us
 

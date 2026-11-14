@@ -6,6 +6,7 @@ Date: 2026-11-13
 
 Accepted 2026-11-13. Part of [0022](0022-rewrite-in-go-as-a-standalone-product.md).
 Sharpens [0023](0023-postgresql-one-schema-portable-sql.md).
+Amended 2026-11-14: four roles, and the owner is created by the DBA (see "Amendment" below).
 
 ## Context
 
@@ -54,9 +55,24 @@ schema. The README states that `qr_code`, `qr_code_audit_log`, `qr_code_notifica
 ## Consequences
 
 - A small bank runs one small container next to the database it already operates.
-- The DBA reviews one schema, its comments, three roles and a connection ceiling, and can run the
-  DDL themselves.
+- The DBA reviews one schema, its comments, four roles (see the amendment) and a connection
+  ceiling, and can run the DDL themselves.
 - Every statement stays polite: a store test asserts that no transaction calls out over HTTP.
+
+## Amendment (2026-11-14)
+
+- **Four roles, not three.** [0037](0037-the-event-table-is-the-outbox-read-by-cdc-or-plain-sql.md)
+  adds the **event reader**: `SELECT` on `payment_event` and its lookups, and `UPDATE` of
+  `read_status_code` and `read_at` only. The Roles row above lists the first three; all four are
+  in `db/README.md`.
+- **The changelog uses the owner role; it does not create it.** The changelog runs as the owner, so
+  it cannot create it. The DBA creates the owner and the schema once
+  (`CREATE SCHEMA … AUTHORIZATION <owner>`), and the first changeset halts unless Liquibase is
+  connected as that role. Every object then has one owner, so `ALTER DEFAULT PRIVILEGES FOR ROLE
+  <owner>` reaches every table a later changeset adds. The changelog creates the three runtime
+  roles, or uses them when the DBA created them.
+- **"The newest major" is pinned in CI** (PostgreSQL 18 today) and moved deliberately, so a new
+  PostgreSQL release cannot turn CI red without a commit.
 
 ## Alternatives rejected
 
