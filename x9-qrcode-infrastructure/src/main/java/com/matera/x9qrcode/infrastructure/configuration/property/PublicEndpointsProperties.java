@@ -14,6 +14,12 @@ import java.net.URI;
 public class PublicEndpointsProperties {
 
     private Long jwsTtlSeconds;
+
+    /**
+     * How far ahead of this service's clock a verified JWS's {@code iat} may be before it is refused
+     * as dated in the future. Applies to every JWS this service verifies. Default 60.
+     */
+    private Long jwsClockSkewSeconds = 60L;
     private String host;
     private String basePath;
     private String payloadPath;

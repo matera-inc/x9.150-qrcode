@@ -8,10 +8,15 @@ package com.matera.x9qrcode.infrastructure.web.controller;
 
 import com.matera.x9qrcode.app.dto.SignatureInputDataDTO;
 import com.matera.x9qrcode.app.dto.enumerated.SignatureTypeEnumDTO;
+import com.matera.x9qrcode.app.service.JwkService;
 import com.matera.x9qrcode.app.service.QRCodeSignatureService;
+import com.matera.x9qrcode.domain.utils.BusinessClock;
 import com.matera.x9qrcode.infrastructure.AbstractIntegrationTest;
 
+import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.JWSObject;
+import com.nimbusds.jose.JWSSigner;
+import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.util.Base64URL;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -27,10 +32,14 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.UnaryOperator;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -65,9 +74,13 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
     private static final AtomicReference<Function<String, Answer>> answering = new AtomicReference<>();
     private static final AtomicReference<String> lastSignedYes = new AtomicReference<>();
     private static QRCodeSignatureService signer;
+    private static JwkService<JWK, JWSSigner> keys;
 
     @Autowired
     private QRCodeSignatureService qrCodeSignatureService;
+
+    @Autowired
+    private JwkService<JWK, JWSSigner> jwkService;
 
     @BeforeAll
     static void startPayee() throws IOException {
@@ -86,6 +99,7 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
     @BeforeEach
     void wireSigner() {
         signer = qrCodeSignatureService;
+        keys = jwkService;
     }
 
     private static void handle(HttpExchange exchange) throws IOException {
@@ -141,8 +155,10 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
         assertEquals(signature, response.jsonPath().getString("signature"), response.asString());
     }
 
-    private static String problemOf(MockMvcResponse response) {
-        return String.valueOf(response.jsonPath().getString("signatureProblem"));
+    /** The fixed code, from the closed list; the free text is in {@code signatureDetail}. */
+    private static void assertProblem(MockMvcResponse response, String code) {
+        assertEquals(code, response.jsonPath().getString("signatureProblem"), response.asString());
+        assertFalse(String.valueOf(response.jsonPath().getString("signatureDetail")).isBlank(), response.asString());
     }
 
     // -------------------------------------------------------------------------------- VERIFIED
@@ -163,6 +179,7 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
 
         assertReported(response, 200, true, "VERIFIED");
         assertNull(response.jsonPath().getString("signatureProblem"));
+        assertNull(response.jsonPath().getString("signatureDetail"));
         assertTrue(response.jsonPath().getString("body").contains("."), "the signed answer is passed back");
     }
 
@@ -205,7 +222,7 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
         MockMvcResponse response = notifyPayee();
 
         assertReported(response, 200, true, "INVALID");
-        assertTrue(problemOf(response).contains("correlationId"), problemOf(response));
+        assertProblem(response, "CORRELATION_ID_MISMATCH");
     }
 
     /**
@@ -226,7 +243,7 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
         MockMvcResponse response = notifyPayee();
 
         assertReported(response, 200, true, "INVALID");
-        assertFalse(problemOf(response).isBlank());
+        assertProblem(response, "BAD_SIGNATURE");
     }
 
     /**
@@ -244,7 +261,7 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
         MockMvcResponse response = notifyPayee();
 
         assertReported(response, 200, true, "INVALID");
-        assertTrue(problemOf(response).contains("statusCode mismatch"), problemOf(response));
+        assertProblem(response, "STATUS_MISMATCH");
     }
 
     /**
@@ -264,6 +281,7 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
         MockMvcResponse response = notifyPayee();
 
         assertReported(response, 200, true, "INVALID");
+        assertProblem(response, "ALG_NONE");
     }
 
     // ----------------------------------------------------------------------------------- ABSENT
@@ -283,7 +301,7 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
         MockMvcResponse response = notifyPayee();
 
         assertReported(response, 200, true, "ABSENT");
-        assertFalse(problemOf(response).isBlank());
+        assertProblem(response, "ABSENT_BODY");
     }
 
     /**
@@ -297,10 +315,14 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
     @Test
     void unsignedJsonAndPlainTextAreAbsent() {
         answering.set(received -> new Answer(200, "{\"statusCode\":200}"));
-        assertReported(notifyPayee(), 200, true, "ABSENT");
+        MockMvcResponse json = notifyPayee();
+        assertReported(json, 200, true, "ABSENT");
+        assertProblem(json, "NOT_JWS");
 
         answering.set(received -> new Answer(200, "OK"));
-        assertReported(notifyPayee(), 200, true, "ABSENT");
+        MockMvcResponse text = notifyPayee();
+        assertReported(text, 200, true, "ABSENT");
+        assertProblem(text, "NOT_JWS");
     }
 
     /**
@@ -317,6 +339,123 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
         MockMvcResponse response = notifyPayee();
 
         assertReported(response, 400, false, "ABSENT");
+        assertProblem(response, "NOT_JWS");
         assertTrue(response.jsonPath().getString("body").contains("does not match"), response.asString());
+    }
+
+    // ------------------------------------------------------------------- time, body and header
+
+    /**
+     * <b>X9-SIG-140</b> — an answer whose iat is in the future beyond the allowed skew is INVALID,
+     * {@code FUTURE_IAT}; within the skew it is VERIFIED.
+     *
+     * <p><b>Source:</b> Ours (owner decision, Story 2.3 follow-up). Story 3.5 case 11, the future half.
+     *
+     * <p><b>Why:</b> An answer dated ahead stretches its own {@code iat + ttl} window past what the
+     * signer's real clock allowed. The skew ({@code x9.public-endpoints.jws-clock-skew-seconds}, 60 s
+     * by default) forgives honest drift between two clocks, and nothing more.
+     */
+    @Test
+    void anAnswerFromTheFutureIsInvalidAndWithinTheSkewItIsVerified() {
+        answering.set(received -> new Answer(200, signedAt(300, 200, correlationIdOf(received))));
+        MockMvcResponse ahead = notifyPayee();
+        assertReported(ahead, 200, true, "INVALID");
+        assertProblem(ahead, "FUTURE_IAT");
+
+        answering.set(received -> new Answer(200, signedAt(30, 200, correlationIdOf(received))));
+        assertReported(notifyPayee(), 200, true, "VERIFIED");
+    }
+
+    /**
+     * <b>X9-SIG-141</b> — an answer whose {@code iat + ttl} has passed is INVALID, {@code EXPIRED}.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §10.3.2 ({@code iat}, {@code ttl}). Story 3.5 case 11, the
+     * expired half.
+     *
+     * <p><b>Why:</b> A signature outside its own window says nothing about now.
+     */
+    @Test
+    void anExpiredAnswerIsInvalid() {
+        // Signed ten minutes ago with the default five-minute ttl.
+        answering.set(received -> new Answer(200, signedAt(-600, 200, correlationIdOf(received))));
+
+        MockMvcResponse response = notifyPayee();
+
+        assertReported(response, 200, true, "INVALID");
+        assertProblem(response, "EXPIRED");
+    }
+
+    /**
+     * <b>X9-SIG-142</b> — a signed body without an integer {@code statusCode} is INVALID,
+     * {@code STATUS_MISSING}.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 A.4.5 note (the body is {@code {"statusCode": integer}}).
+     *
+     * <p><b>Why:</b> A signature over something other than the decision is not the decision signed.
+     */
+    @Test
+    void aSignedBodyWithoutAStatusCodeIsInvalid() {
+        answering.set(received -> new Answer(200, signer.signData(new SignatureInputDataDTO(SignatureTypeEnumDTO.X9,
+            Map.of("ok", true), correlationIdOf(received), null, 200)).jwsToken()));
+
+        MockMvcResponse response = notifyPayee();
+
+        assertReported(response, 200, true, "INVALID");
+        assertProblem(response, "STATUS_MISSING");
+    }
+
+    /**
+     * <b>X9-SIG-143</b> — a correctly signed answer with an unknown {@code crit} header, or without a
+     * {@code correlationId} header, is INVALID, {@code BAD_HEADER}.
+     *
+     * <p><b>Source:</b> RFC 7515 §4.1.11 (crit); ANSI X9.150-2026 §10.3.2. Story 3.5 cases 13 and 3.
+     *
+     * <p><b>Why:</b> The signature verifies, but the header breaks the profile: a recipient must not
+     * accept a critical parameter it does not understand, and an answer without a correlationId
+     * cannot be linked to any question.
+     */
+    @Test
+    void aSignedAnswerWithABrokenHeaderIsInvalid() {
+        answering.set(received -> new Answer(200, resigned(signed(200, correlationIdOf(received)), header -> {
+            Set<String> crit = new HashSet<>(header.getCriticalParams());
+            crit.add("x-unknown");
+            Map<String, Object> params = new HashMap<>(header.getCustomParams());
+            params.put("x-unknown", 1);
+            return new JWSHeader.Builder(header).criticalParams(crit).customParams(params).build();
+        })));
+        MockMvcResponse unknownCrit = notifyPayee();
+        assertReported(unknownCrit, 200, true, "INVALID");
+        assertProblem(unknownCrit, "BAD_HEADER");
+
+        answering.set(received -> new Answer(200, resigned(signed(200, correlationIdOf(received)), header -> {
+            Map<String, Object> params = new HashMap<>(header.getCustomParams());
+            params.remove("correlationId");
+            return new JWSHeader.Builder(header).customParams(params).build();
+        })));
+        MockMvcResponse noCorrelationId = notifyPayee();
+        assertReported(noCorrelationId, 200, true, "INVALID");
+        assertProblem(noCorrelationId, "BAD_HEADER");
+    }
+
+    /** Signed by this deployment while its clock reads {@code offsetSeconds} away from now. */
+    private static String signedAt(long offsetSeconds, int statusCode, UUID correlationId) {
+        BusinessClock.setOffsetSeconds(offsetSeconds);
+        try {
+            return signed(statusCode, correlationId);
+        } finally {
+            BusinessClock.reset();
+        }
+    }
+
+    /** The same payload, under a rewritten header, signed again with this deployment's key. */
+    private static String resigned(String jws, UnaryOperator<JWSHeader> rewrite) {
+        try {
+            JWSObject original = JWSObject.parse(jws);
+            JWSObject rewritten = new JWSObject(rewrite.apply(original.getHeader()), original.getPayload());
+            rewritten.sign(keys.retrieveSigner());
+            return rewritten.serialize();
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

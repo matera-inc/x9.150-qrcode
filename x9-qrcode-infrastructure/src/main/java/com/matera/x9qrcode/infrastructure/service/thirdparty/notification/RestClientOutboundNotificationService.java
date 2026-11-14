@@ -10,6 +10,7 @@ import com.matera.x9qrcode.app.dto.PaymentNotificationDataDTO;
 import com.matera.x9qrcode.app.dto.SignatureInputDataDTO;
 import com.matera.x9qrcode.app.dto.SignatureOutputDataDTO;
 import com.matera.x9qrcode.app.dto.enumerated.AnswerSignatureEnumDTO;
+import com.matera.x9qrcode.app.dto.enumerated.SignatureProblemEnumDTO;
 import com.matera.x9qrcode.app.dto.enumerated.SignatureTypeEnumDTO;
 import com.matera.x9qrcode.app.exception.NotificationUndeliverableException;
 import com.matera.x9qrcode.app.service.QRCodeOutboundNotificationService;
@@ -17,7 +18,6 @@ import com.matera.x9qrcode.app.service.QRCodeSignatureService;
 import com.matera.x9qrcode.app.usecase.validatesignature.SignatureValidationInput;
 import com.matera.x9qrcode.app.usecase.validatesignature.SignatureValidationOutput;
 
-import com.nimbusds.jose.JOSEObject;
 import com.nimbusds.jose.JWSObject;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -107,52 +107,47 @@ public class RestClientOutboundNotificationService implements QRCodeOutboundNoti
      */
     private OutboundNotificationResult checkAnswer(int httpStatus, String body, UUID sentCorrelationId) {
         if (isBlank(body)) {
-            return unsigned(httpStatus, body, AnswerSignatureEnumDTO.ABSENT, "the answer has no body");
+            return unsigned(httpStatus, body, SignatureProblemEnumDTO.ABSENT_BODY, "the answer has no body");
         }
 
-        JOSEObject answer;
-        try {
-            answer = JOSEObject.parse(body.trim());
-        } catch (ParseException notJose) {
-            return unsigned(httpStatus, body, AnswerSignatureEnumDTO.ABSENT, "the answer is not a JWS");
-        }
-
-        if (!(answer instanceof JWSObject)) {
-            // alg "none", or an encrypted object: presented as JOSE, carrying no signature we accept.
-            return unsigned(httpStatus, body, AnswerSignatureEnumDTO.INVALID,
-                "the answer is a JOSE object without a signature (alg %s)".formatted(answer.getHeader().getAlgorithm()));
-        }
-
+        // The shared verifier names what the body is when it is not a JWS (NOT_JWS, ALG_NONE,
+        // ENCRYPTED), and every check a JWS can fail, each with its fixed code.
         SignatureValidationOutput verified;
         try {
             verified = qrCodeSignatureService.validateSignature(
                 new SignatureValidationInput(SignatureTypeEnumDTO.X9, sentCorrelationId, body.trim(), null));
         } catch (Exception e) {
-            verified = SignatureValidationOutput.invalidSignature(e.getMessage());
+            verified = SignatureValidationOutput.invalidSignature(SignatureProblemEnumDTO.UNVERIFIABLE, e.getMessage());
         }
 
         if (!verified.isValid()) {
-            return unsigned(httpStatus, body, AnswerSignatureEnumDTO.INVALID,
-                isNull(verified.problem()) ? "the signature did not verify" : verified.problem());
+            return unsigned(httpStatus, body,
+                isNull(verified.problem()) ? SignatureProblemEnumDTO.UNVERIFIABLE : verified.problem(),
+                isBlank(verified.problemDetail()) ? "the signature did not verify" : verified.problemDetail());
         }
 
-        Integer signedStatus = signedStatusCode((JWSObject) answer);
+        Integer signedStatus = signedStatusCode(body.trim());
 
         if (isNull(signedStatus)) {
-            return unsigned(httpStatus, body, AnswerSignatureEnumDTO.INVALID,
+            return unsigned(httpStatus, body, SignatureProblemEnumDTO.STATUS_MISSING,
                 "the signed body has no integer statusCode");
         }
 
         if (signedStatus != httpStatus) {
-            return unsigned(httpStatus, body, AnswerSignatureEnumDTO.INVALID,
+            return unsigned(httpStatus, body, SignatureProblemEnumDTO.STATUS_MISMATCH,
                 "statusCode mismatch: HTTP %d, signed %d".formatted(httpStatus, signedStatus));
         }
 
-        return new OutboundNotificationResult(signedStatus, body, AnswerSignatureEnumDTO.VERIFIED, null);
+        return new OutboundNotificationResult(signedStatus, body, AnswerSignatureEnumDTO.VERIFIED, null, null);
     }
 
-    private static Integer signedStatusCode(JWSObject answer) {
-        Map<String, Object> payload = answer.getPayload().toJSONObject();
+    private static Integer signedStatusCode(String verifiedJws) {
+        Map<String, Object> payload;
+        try {
+            payload = JWSObject.parse(verifiedJws).getPayload().toJSONObject();
+        } catch (ParseException e) {
+            return null;
+        }
 
         if (isNull(payload) || !(payload.get(STATUS_CODE) instanceof Number number)) {
             return null;
@@ -161,11 +156,21 @@ public class RestClientOutboundNotificationService implements QRCodeOutboundNoti
         return number.intValue();
     }
 
+    /**
+     * An answer that is not the payee's verified decision. {@code ABSENT} when there is no JWS at all
+     * (an empty body, or one that is not JOSE); {@code INVALID} when the body is presented as JOSE and
+     * fails a check.
+     */
     private static OutboundNotificationResult unsigned(int httpStatus, String body,
-                                                       AnswerSignatureEnumDTO signature, String problem) {
-        log.warn("Payee answer reported as {} ({}), HTTP {}", signature, problem, httpStatus);
+                                                       SignatureProblemEnumDTO problem, String detail) {
+        AnswerSignatureEnumDTO signature = switch (problem) {
+            case ABSENT_BODY, NOT_JWS -> AnswerSignatureEnumDTO.ABSENT;
+            default -> AnswerSignatureEnumDTO.INVALID;
+        };
 
-        return new OutboundNotificationResult(httpStatus, body, signature, problem);
+        log.warn("Payee answer reported as {} ({}: {}), HTTP {}", signature, problem, detail, httpStatus);
+
+        return new OutboundNotificationResult(httpStatus, body, signature, problem, detail);
     }
 
     /**

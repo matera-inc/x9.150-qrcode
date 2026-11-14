@@ -19,6 +19,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
+import static java.util.Objects.isNull;
+
 /**
  * The payer's side of the two-phase flow.
  *
@@ -69,7 +71,9 @@ public class OutboundPaymentNotificationController implements PaymentNotificatio
             .accepted(output.accepted())
             .body(output.body())
             .signature(OutboundPaymentNotificationResultDTO.SignatureEnum.fromValue(output.signature().name()))
-            .signatureProblem(output.signatureProblem());
+            .signatureProblem(isNull(output.signatureProblem()) ? null
+                : OutboundPaymentNotificationResultDTO.SignatureProblemEnum.fromValue(output.signatureProblem().name()))
+            .signatureDetail(output.signatureDetail());
     }
 
 }

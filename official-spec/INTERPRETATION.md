@@ -567,11 +567,35 @@ pre-commit. All three are closed by Story 2.4 of the rewrite breakdown
   echoing a claim nobody checked.
 - The header also carries `statusCode` and names it in `crit`, as our other responses do.
 
+- **Every answer from the endpoint is signed**, including those the controller never writes: a
+  request Spring refuses before reading it (an empty or unreadable body is a signed `400`, a wrong
+  `Content-Type` a signed `415`) and an exception nothing maps (a signed `500` that says nothing
+  about its cause). These go out under a fresh `correlationId`, except a `500` raised after the
+  question verified, which echoes it. Only a failure to sign leaves an answer unsigned.
+
 When this service sends a notification on a payer's behalf, it checks the payee's answer the same
 way, against the payee's X9 certificate and the `correlationId` it sent, and reports `signature` as
 `VERIFIED`, `ABSENT` (not a JWS at all) or `INVALID` (a JWS failing a check, including a signed
-`statusCode` that differs from the HTTP status), with `signatureProblem`. It reports and never
-refuses: a 200 that is not verified is an unsigned yes, and what that is worth is the payer's call.
+`statusCode` that differs from the HTTP status). When it is not `VERIFIED`, `signatureProblem` is a
+fixed code from a closed list (`ABSENT_BODY`, `NOT_JWS`, `ALG_NONE`, `ENCRYPTED`, `BAD_HEADER`,
+`CERTIFICATE_UNAVAILABLE`, `UNTRUSTED_CHAIN`, `BAD_SIGNATURE`, `EXPIRED`, `FUTURE_IAT`,
+`CORRELATION_ID_MISMATCH`, `STATUS_MISSING`, `STATUS_MISMATCH`, `UNVERIFIABLE`; see the OpenAPI) and
+`signatureDetail` says the same in words. It reports and never refuses: a 200 that is not verified
+is an unsigned yes, and what that is worth is the payer's call.
+
+**Time.** The standard defines `iat` and `ttl` but no clock skew. We refuse a JWS whose `iat + ttl`
+has passed (`EXPIRED`), and also one whose `iat` is ahead of our clock by more than an allowed skew
+(`FUTURE_IAT`; `x9.public-endpoints.jws-clock-skew-seconds`, 60 s by default). The second rule is
+**ours** (owner decision, 2026-11-14): a JWS dated ahead stretches its own window past what its
+signer's real clock allowed, so it could be held back and replayed later. One verifier checks
+everything we receive, so the rule applies to the payee's answers and to the payer's questions
+alike: our clock judges, as I-13 says.
+
+**`typ` stays `JOSE`.** The answer is signed with `typ: JOSE`, like every other JWS this service
+signs. The standard lists profile values (`payreq+jws`, `payresp+jws`, `paynote+jws`, `qr+jws`) but
+none for the answer to a payment notification. Keeping `JOSE` here was decided (owner decision,
+2026-11-14), and will be revisited together with all the `typ` values this service emits and
+accepts, not for this answer alone.
 
 **Why it matters.** The signed question (the payer's notification) plus the payee's signed answer,
 linked by `correlationId`, is the evidence of what was authorized and when, checkable by anyone with

@@ -1023,7 +1023,10 @@ So that I never mistake a forged, replayed or unsigned answer for authorization.
 
 The outbound result (`OutboundPaymentNotificationResultDTO`: `statusCode`, `accepted`, `body`) gains
 `signature` = `VERIFIED` / `ABSENT` / `INVALID` and `signatureProblem` (additive in the OpenAPI;
-built in Story 2.3, AC6). Order note: this story precedes CI (3.6), which runs it.
+built in Story 2.3, AC6). `signatureProblem` is a fixed code from a closed list (`CORRELATION_ID_MISMATCH`,
+`BAD_SIGNATURE`, `UNTRUSTED_CHAIN`, `EXPIRED`, `FUTURE_IAT`, `STATUS_MISMATCH`, ...; the list is in
+the OpenAPI), with the words in `signatureDetail` (Story 2.3 follow-up), so the suite asserts on the
+code. Order note: this story precedes CI (3.6), which runs it.
 
 **Implements:** FR5, FR33
 
