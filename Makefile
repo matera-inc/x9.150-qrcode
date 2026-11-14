@@ -8,11 +8,12 @@ COMPOSE ?= docker compose
 IMAGE   ?= x9-qrcode:latest
 
 .DEFAULT_GOAL := help
-.PHONY: help build test run-local image image-amd64 publish up up-prod down clean smoke
+.PHONY: help build test run-local image image-amd64 publish up up-prod down clean smoke \
+	go-build go-test go-image go-image-multiarch go-image-smoke
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
-		awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-11s\033[0m %s\n", $$1, $$2}'
+		awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 build: ## Compile, test and install all modules (./mvnw clean install)
 	$(MVNW) clean install
@@ -80,6 +81,33 @@ down: ## Stop and remove containers from both compose files
 smoke: ## Liveness check against a running app on :8080 (health + public JWKS)
 	@curl -fsS http://localhost:8080/actuator/health && echo "  <- health OK"
 	@curl -fsS http://localhost:8080/pub/.well-known/jwks >/dev/null && echo "public JWKS OK"
+
+# ── The Go build (ADR-0022), alongside Java until the cutover renames these targets ──────────────
+GO_IMAGE      ?= x9-qrcode:go
+GO_PLATFORMS  ?= linux/amd64,linux/arm64
+GO_LDFLAGS     = -X main.version=$(OCI_VERSION) -X main.commit=$(OCI_REVISION)
+GO_IMAGE_ARGS  = --build-arg VERSION=$(OCI_VERSION) --build-arg REVISION=$(OCI_REVISION)
+
+go-build: ## Build the Go binary into bin/x9-qrcode (static, cgo-free)
+	CGO_ENABLED=0 go build -trimpath -ldflags "$(GO_LDFLAGS)" -o bin/x9-qrcode ./cmd/x9-qrcode
+
+go-test: ## Run the Go tests (race, shuffled, leak-checked; the database tests need Docker)
+	others/scripts/ci-go.sh test
+
+go-image: ## Build the Go image for this machine's architecture (x9-qrcode:go); never pushed
+	@if docker buildx version >/dev/null 2>&1; then \
+		docker buildx build --load -t $(GO_IMAGE) $(GO_IMAGE_ARGS) . ; \
+	else \
+		docker build -t $(GO_IMAGE) $(GO_IMAGE_ARGS) \
+			--build-arg BUILDPLATFORM=linux/$$(docker version -f '{{.Server.Arch}}') . ; \
+	fi
+	@docker image inspect $(GO_IMAGE) --format 'built $(GO_IMAGE): {{.Os}}/{{.Architecture}}, {{.Size}} bytes, user {{.Config.User}}'
+
+go-image-multiarch: ## Build the Go image for amd64 and arm64 with docker buildx (no push, no load)
+	docker buildx build --platform $(GO_PLATFORMS) $(GO_IMAGE_ARGS) .
+
+go-image-smoke: ## Check the Go image: non-root, health UP against PostgreSQL, exit 0 on SIGTERM; records size
+	others/scripts/go-image-smoke.sh $(GO_IMAGE)
 
 clean: ## Remove build output (target/)
 	$(MVNW) clean

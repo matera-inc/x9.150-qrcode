@@ -3,6 +3,10 @@ name: Go
 # Story 7.5: every check of the Go build on every pull request that touches Go. The checks live in
 # others/scripts/ci-go.sh, which runs the same on a laptop; every tool is pinned with a `tool`
 # directive in go.mod. The Java `build` job (ci.yml) is separate and unchanged.
+#
+# Story 7.6: the `go image` job builds the Dockerfile for amd64 and arm64 with buildx, checks the
+# image (non-root, health UP against PostgreSQL, exit 0 on SIGTERM) and records its size. No image
+# is pushed anywhere.
 
 on:
   pull_request:
@@ -19,6 +23,12 @@ on:
       - "db/changelog/**"
       - "others/scripts/ci-go.sh"
       - "others/scripts/check-go-lint-planted.sh"
+      - "others/scripts/go-image-smoke.sh"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "Makefile"
+      - "db/docker-compose.yml"
+      - "db/local/**"
       - ".github/workflows/go.yml"
   push:
     branches: [main]
@@ -33,6 +43,12 @@ on:
       - "db/changelog/**"
       - "others/scripts/ci-go.sh"
       - "others/scripts/check-go-lint-planted.sh"
+      - "others/scripts/go-image-smoke.sh"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "Makefile"
+      - "db/docker-compose.yml"
+      - "db/local/**"
       - ".github/workflows/go.yml"
 
 permissions:
@@ -77,4 +93,62 @@ jobs:
         with:
           name: go-sbom
           path: go-ci-out/*.sbom.json
+          if-no-files-found: warn
+
+  image:
+    name: go image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Only to run the arm64 image's -version check: the build itself cross-compiles.
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build for amd64 and arm64 (no push)
+        run: |
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            --build-arg VERSION="${GITHUB_SHA::7}" --build-arg REVISION="$GITHUB_SHA" .
+
+      - name: Load each architecture and check it
+        run: |
+          mkdir -p go-ci-out
+          for arch in amd64 arm64; do
+            docker buildx build --platform "linux/$arch" --load -t "x9-qrcode:go-$arch" \
+              --build-arg VERSION="${GITHUB_SHA::7}" --build-arg REVISION="$GITHUB_SHA" .
+            docker image inspect "x9-qrcode:go-$arch" \
+              --format "{{.Os}}/{{.Architecture}} user={{.Config.User}} size={{.Size}}"
+            docker run --rm --platform "linux/$arch" "x9-qrcode:go-$arch" -version | grep -q "$GITHUB_SHA"
+          done
+
+      - name: Health UP against PostgreSQL, exit 0 on SIGTERM, footprint (amd64)
+        run: others/scripts/go-image-smoke.sh x9-qrcode:go-amd64 go-ci-out
+
+      - name: Record the image sizes (S7)
+        run: |
+          {
+            echo "### Go image footprint (${GITHUB_SHA::7})"
+            echo
+            echo "| Platform | Size (bytes) | User |"
+            echo "|---|---|---|"
+            for arch in amd64 arm64; do
+              docker image inspect "x9-qrcode:go-$arch" --format "| {{.Os}}/{{.Architecture}} | {{.Size}} | {{.Config.User}} |"
+            done
+            echo
+            echo "Cold start to /actuator/health UP (amd64): $(sed -nE 's/.*"coldStartToHealthUpMs":([0-9]+).*/\1/p' go-ci-out/go-image.json) ms"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          for arch in amd64 arm64; do
+            docker image inspect "x9-qrcode:go-$arch" \
+              --format '{"platform":"{{.Os}}/{{.Architecture}}","sizeBytes":{{.Size}}}' >> go-ci-out/go-image-sizes.jsonl
+          done
+
+      - name: Publish the footprint
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-image-footprint
+          path: |
+            go-ci-out/go-image.json
+            go-ci-out/go-image-sizes.jsonl
           if-no-files-found: warn

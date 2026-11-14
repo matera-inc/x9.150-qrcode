@@ -209,6 +209,11 @@ fetches it).
 go test ./...                     # unit tests
 go tool golangci-lint run ./...   # lint (.golangci.yml; the linter is pinned in go.mod)
 others/scripts/check-go-lint-planted.sh   # proves each lint rule still fires (testdata/lint)
+make go-build                     # static binary in bin/x9-qrcode, version and commit stamped
+make go-test                      # the tests, as CI runs them
+make go-image                     # image x9-qrcode:go for this machine (never pushed)
+make go-image-smoke               # non-root, health UP against PostgreSQL, exit 0 on SIGTERM, size
+make go-image-multiarch           # amd64 + arm64 with docker buildx (no push)
 others/scripts/ci-go.sh           # everything CI's `go` job runs: vet, lint, nilaway, govulncheck,
                                   # go-licenses, race + shuffle + leak checks, fuzz smoke,
                                   # reproducible build, SBOM. `ci-go.sh lint test` runs just those.
@@ -249,6 +254,13 @@ the variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`.
   `X9_SERVER_SHUTDOWNDELAYSECONDS` (default 5) so load balancers see it leave, then stops accepting;
   requests in flight get up to 20 s to finish; the pools close; the process exits 0. A pod's
   `terminationGracePeriodSeconds` must be above the sum (30 s is enough).
+- **The image.** A multi-stage [`Dockerfile`](Dockerfile): the pinned Go image cross-compiles a
+  static binary (`CGO_ENABLED=0`, `-trimpath`, version and commit from `-ldflags`) onto
+  `gcr.io/distroless/static-debian13:nonroot`, both pinned by digest. It runs as user 65532, has
+  no shell, and is about 5 MB. CI builds it for amd64 and arm64 and records its size and cold
+  start in the `go image` job's summary. Without `docker buildx`, `make go-image` falls back to
+  the legacy builder for this machine's architecture. The Java image (`make image`) is unchanged,
+  and no Go image is published before the Go build ships.
 - **One clock.** Business time comes from `internal/clock` only
   ([ADR-0033](docs/adr/0033-the-clock-can-be-moved-in-test-deployments-only.md)). Lint refuses
   `time.Now`, `Since`, `Until`, `After`, `Tick` and `NewTimer` anywhere else, except at a
