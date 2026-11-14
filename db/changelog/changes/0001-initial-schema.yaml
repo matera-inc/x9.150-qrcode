@@ -431,6 +431,15 @@ databaseChangeLog:
             constraints:
               nullable: false
         - column:
+            name: received_in_status_code
+            type: VARCHAR(4)
+            remarks: 'The QR Code''s effective status when the notification arrived (qr_code_status.code,
+              ADR-0036). For a POST_COMMIT anything but INIT held by the same payer is payer misbehaviour:
+              ACTV (no pre-commit, or a lapsed reservation), PAID or CANC (a closed QR Code). Lets the payee
+              count misbehaviour per payer.'
+            constraints:
+              nullable: false
+        - column:
             name: phase
             type: VARCHAR(16)
             remarks: 'What the notification was taken as (ADR-0004, ADR-0036): PRE_COMMIT (no transactionId; a request
@@ -516,6 +525,21 @@ databaseChangeLog:
         columns:
         - column:
             name: qr_code_id
+    - addForeignKeyConstraint:
+        constraintName: fk_qr_code_notification_received_in_status
+        baseTableSchemaName: ${x9.schema}
+        baseTableName: qr_code_notification
+        baseColumnNames: received_in_status_code
+        referencedTableSchemaName: ${x9.schema}
+        referencedTableName: qr_code_status
+        referencedColumnNames: code
+    - createIndex:
+        schemaName: ${x9.schema}
+        tableName: qr_code_notification
+        indexName: ix_qr_code_notification_received_in_status
+        columns:
+        - column:
+            name: received_in_status_code
 - changeSet:
     id: 0001-06-event-sequence
     author: x9-qrcode
@@ -687,7 +711,16 @@ databaseChangeLog:
             name: deviations
             type: VARCHAR(255)
             remarks: 'How the payer broke the protocol (ADR-0036), comma-separated codes in a closed list:
-              NO_PRE_COMMIT, ACTION_CONTRADICTS_HASH. Empty string = the payer followed the rules.'
+              RECEIVED_IN_WRONG_STATUS, ACTION_CONTRADICTS_HASH. Empty string = the payer followed the rules.'
+        - column:
+            name: received_in_status_code
+            type: VARCHAR(4)
+            remarks: 'receivedInStatus on the wire: the QR Code''s status when the notification behind this event
+              arrived (qr_code_status.code). Empty string = the event was not caused by a notification. No
+              foreign key, because of that sentinel; events are a transport.'
+            constraints:
+              nullable: false
+            defaultValue: ''
             constraints:
               nullable: false
             defaultValue: ''
