@@ -208,7 +208,7 @@ so the payment system can detect a duplicate payment. Today Solana keys on `bloc
 FedNow/RTP refuse a notification without an End-to-End ID (no pre-commit, no
 race protection) and ACH gates every notification as a pre-commit. Fixed in Java first.
 
-FR35: The reservation holder may retry its pre-commit (same `payer.info` and certificate subject): the retry
+FR35: The reservation holder may retry its pre-commit (same `payer.info`, present on both, and certificate subject; without `payer.info` two payers are assumed different): the retry
 is judged again at the payee's clock. If it is accepted, the window is refreshed and no event is
 emitted. If it is refused, the refusal also releases the reservation: the QR Code goes back to
 `ACTIVE` at once, instead of staying reserved until the window lapses. A payer who takes over a
@@ -820,9 +820,13 @@ emitting what a release emits on that rail (Solana: `payment.failed`; bank rails
 **S2.5-AC4. Identity is `payer.info` plus the certificate subject.**
 **Given** two notifications signed by the same certificate
 **Then** with different `payer.info` they are different payers (409 for the second)
-**And** with no `payer.info` they read as the same party (the payer's bank); a test pins this and
-INTERPRETATION warns PSPs to send `payer.info`
-**And** two anonymous announcements never match.
+**And** with `payer.info` absent on either, they are **different** payers: without a means to tell
+them apart, X9.150 assumes they are not the same (ADR-0036, replacing ADR-0021's certificate-only
+fallback in `ReservationHolderVO.isSameParty`)
+**And** so a holder without `payer.info` cannot retry (409) or release with `NOT_SENT` (refused), and
+its post-commit is registered with `RECEIVED_IN_WRONG_STATUS` and changes nothing; tests pin each
+**And** INTERPRETATION and BEST-PRACTICES tell PSPs that sending `payer.info` is what lets their
+payers retry, release and report cleanly.
 
 **S2.5-AC5. A takeover is evented.**
 **Given** A's reservation lapsed (stored status still `PAYMENT_INITIATED`)
