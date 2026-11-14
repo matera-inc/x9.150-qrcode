@@ -6,8 +6,14 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**568 tests documented** — every JUnit test in the repository and every case in the
-black-box suite.
+**568 tests documented** — every test that carries a key. Some black-box cases and a few JUnit
+classes (the test clock, the formula service) have no key yet;
+[RULE-COVERAGE.md](RULE-COVERAGE.md) names those as `File::function`.
+
+**From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
+(STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map and ADR-0036), the
+tests that prove it and the acceptance criteria they cite, and the rules that have no test yet. A
+check in CI keeps it true (`docs/check/check_rule_coverage.py`).
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
 many of these rules are ours rather than X9.150's, and keeping that distinction visible is the

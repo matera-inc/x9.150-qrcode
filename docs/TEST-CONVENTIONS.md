@@ -59,6 +59,14 @@ def test_a_tip_taken_out_of_the_merchants_share_is_refused(self, api):
     """
 ```
 
+## A rule and its test
+
+When a test proves a rule written in STATE-MACHINE.md, ENDPOINTS.md, INTERPRETATION.md or an ADR,
+name the test in that rule's row of [RULE-COVERAGE.md](RULE-COVERAGE.md). When it proves an
+acceptance criterion, cite the criterion's ID (`S4.2-AC1`) in the javadoc or docstring. A check in
+CI (`docs/check/check_rule_coverage.py`) fails on a criterion ID that does not exist, on a rule
+with no test, and on a row naming a test that does not exist.
+
 ## What not to do
 
 **Do not restate the assertion.** `"checks that the status is 400"` is visible one line below and

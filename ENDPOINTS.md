@@ -126,8 +126,9 @@ either way; a payment system may hold a deviating registration for review. More 
 ([ADR-0036](docs/adr/0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md)).
 
 Ordering is per `qrCodeId`. Nothing is promised across QR Codes, and `qrCodeRevision` is monotonic
-per QR Code but **not gap-free** — a notification that only records details bumps the revision
-without emitting an event.
+per QR Code but **not gap-free**: a PATCH moves the revision and emits no event, and a status
+change emits an event without moving it
+([ADR-0016](docs/adr/0016-a-revision-is-a-version-of-the-request-not-of-its-status.md)).
 
 The stream is **operator-internal, not merchant-facing**: it returns every QR Code's events for the
 deployment, because X9.150 is tenant-agnostic and has no axis to filter on. Fanning out to the right
