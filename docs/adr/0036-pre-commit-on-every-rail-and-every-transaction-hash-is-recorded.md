@@ -6,7 +6,8 @@ Date: 2026-11-14
 
 Proposed 2026-11-14. **Keeps** [ADR-0004](0004-phase-inferred-from-transaction-id.md) and brings the
 Solana code back in line with it. Completes [ADR-0003](0003-two-phase-payment-notification-approval.md)
-and [ADR-0021](0021-a-reservation-knows-who-holds-it.md).
+and [ADR-0021](0021-a-reservation-knows-who-holds-it.md), and **supersedes in part** ADR-0021: its
+bank-level fallback when `payer.info` is absent.
 
 ## Context
 
@@ -88,11 +89,32 @@ payment system.
   when payers follow the protocol, and keeping every hash is what lets the payment system detect it
   when it does.
 
+### The same payer only when `payer.info` proves it
+
+Two notifications come from the same payer only when **both** carry `payer.info`, the two values are
+equal, **and** the certificate subjects are equal. **Without `payer.info` there is no means to tell
+two payers apart, so they are assumed to be different.**
+
+This replaces ADR-0021's fallback, which matched on the certificate alone when `payer.info` was
+absent, so two customers of one PSP read as one party and could retry or release each other's
+reservation. Now:
+
+- a payer without `payer.info` may still win a pre-commit and hold the reservation;
+- it cannot retry that pre-commit (409), nor release it with `NOT_SENT` (refused): nothing shows the
+  retry or the release comes from the payer that holds it;
+- its post-commit is registered like any other payer's, flagged `RECEIVED_IN_WRONG_STATUS`, and
+  changes nothing;
+- an unattributed reservation (taken through the status-update API) still matches nobody.
+
+ACH already requires `payer.info`. On FedNow, RTP and Solana it stays optional on the wire, and
+sending it is what lets a payer retry, release and report cleanly. INTERPRETATION and
+BEST-PRACTICES say so.
+
 ### Pre-commit on every rail
 
 - A pre-commit goes through the acceptance gate at the payee's clock, and takes the reservation.
 - While a reservation holds, another payer's pre-commit is refused with 409.
-- The holder may retry its pre-commit, and the retry is judged again.
+- The holder may retry its pre-commit (same payer, as defined above), and the retry is judged again.
 - A refused retry from the holder releases the reservation: the QR Code returns to `ACTIVE` in the
   same transaction.
 - Winning a pre-commit on a lapsed reservation emits `payment.initiated` for the new holder.
@@ -168,9 +190,16 @@ these fields only describe how it arrived.
 
 **Does a reservation lapse after a post-commit?** Today it keeps the pre-commit's window (90 s by
 default; Java's `SENT` does not restamp it). Once the window passes the QR Code reads `ACTIVE`, and a
-second payer can be approved although money has already moved. Proposal: once a post-commit is
-recorded, the reservation no longer lapses (`reserved_until` takes the "no lapse" sentinel); it ends
-only when the payment system marks the QR Code `PAID`, `CANCELLED` or `ACTIVE`.
+second payer can be approved although money has already moved.
+
+The rule above on `payer.info` makes this sharper: a holder that sent no `payer.info` cannot be
+recognised when it reports its own payment, so its post-commit changes nothing, and its reservation
+lapses after 90 s with the money already sent.
+
+Proposal: once **any** hash is registered for a QR Code that is `ACTIVE` or `PAYMENT_INITIATED`,
+whoever sent it, the reservation no longer lapses (`reserved_until` takes the "no lapse" sentinel).
+The holder does not change. It ends only when the payment system marks the QR Code `PAID`,
+`CANCELLED` or `ACTIVE`.
 
 
 ## Consequences
@@ -195,6 +224,8 @@ only when the payment system marks the QR Code `PAID`, `CANCELLED` or `ACTIVE`.
 
 - **Let `blockchain.action` decide the phase on blockchains** (an earlier draft of this ADR). It
   refuses a contradictory message, so the payee loses the hash of money that has already moved.
+- **Keep ADR-0021's certificate-only fallback.** Two customers of one PSP could retry, release or
+  report for each other's reservation: the collision the reservation exists to prevent.
 - **Refuse a post-commit on a closed or held QR Code** (what Java does, with 400 or 409). The money has moved
   anyway; refusing only hides it from the payment system.
 - **Refuse a second or later hash.** It hides the one signal that a QR Code was paid twice.
