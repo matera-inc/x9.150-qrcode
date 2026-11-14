@@ -6,6 +6,8 @@
  */
 package com.matera.x9qrcode.app.exception;
 
+import com.matera.x9qrcode.app.dto.enumerated.SignatureProblemEnumDTO;
+
 /**
  * The JWS accompanying a request did not verify, so nothing in it may be acted on.
  *
@@ -17,12 +19,33 @@ package com.matera.x9qrcode.app.exception;
  */
 public class InvalidSignatureException extends RuntimeException {
 
+    /**
+     * Which check failed, by its fixed code: the same closed list the outbound check reports for a
+     * payee's answer. A code, never words: the words could describe this verifier's internals, and
+     * the caller is unauthenticated. Null when the failure has no code.
+     */
+    private final transient SignatureProblemEnumDTO problem;
+
     public InvalidSignatureException(String message) {
+        this(message, (SignatureProblemEnumDTO) null);
+    }
+
+    public InvalidSignatureException(String message, SignatureProblemEnumDTO problem) {
         super(message);
+        this.problem = problem;
     }
 
     public InvalidSignatureException(String message, Throwable cause) {
+        this(message, SignatureProblemEnumDTO.UNVERIFIABLE, cause);
+    }
+
+    public InvalidSignatureException(String message, SignatureProblemEnumDTO problem, Throwable cause) {
         super(message, cause);
+        this.problem = problem;
+    }
+
+    public SignatureProblemEnumDTO problem() {
+        return problem;
     }
 
 }

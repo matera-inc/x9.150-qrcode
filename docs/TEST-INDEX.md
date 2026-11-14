@@ -470,7 +470,7 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-SIG-121` | an accepted post-commit is answered with a signed yes too | `SignedNotificationAnswerApiTest.java` |
 | `X9-SIG-122` | a refusal keeps its status and error fields, signed, correlationId echoed | `SignedNotificationAnswerApiTest.java` |
 | `X9-SIG-123` | another holder's 409 is signed as well | `SignedNotificationAnswerApiTest.java` |
-| `X9-SIG-124` | a question that cannot be read is refused, signed, under a fresh correlationId | `SignedNotificationAnswerApiTest.java` |
+| `X9-SIG-124` | a question that cannot be read is refused, signed, under a fresh correlationId, naming the failed check by its `signatureProblem` code | `SignedNotificationAnswerApiTest.java` |
 | `X9-SIG-125` | a SENT report after the discount edge is recorded and answered with a signed yes | `SignedNotificationAnswerApiTest.java` |
 | `X9-SIG-126` | with public keys only, a verifier links question and answer | `SignedNotificationAnswerApiTest.java` |
 | `X9-SIG-130` | a signed yes with the correlationId sent is VERIFIED | `OutboundAnswerVerificationApiTest.java` |

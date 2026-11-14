@@ -43,6 +43,7 @@ import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.Err
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.RESOURCE_NOT_FOUND;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.PRECONDITION_FAILED;
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.STATUS_CONFLICT;
+import static java.util.Objects.nonNull;
 import static org.apache.commons.lang3.StringUtils.isBlank;
 
 @Slf4j
@@ -51,6 +52,7 @@ public class GlobalControllerAdvice {
 
     private static final String VIOLATIONS_MESSAGE_PATTERN = "%s: %s";
     private static final String VIOLATIONS_PROPERTY = "violations";
+    private static final String SIGNATURE_PROBLEM_PROPERTY = "signatureProblem";
     private static final String CURRENT_STATUS_PROPERTY = "currentStatus";
     private static final String CURRENT_REVISION_PROPERTY = "currentRevision";
     private static final String INVALID_PROPERTY_VIOLATION = "%s has invalid value.";
@@ -119,13 +121,18 @@ public class GlobalControllerAdvice {
     @ExceptionHandler(InvalidSignatureException.class)
     public ProblemDetail handleInvalidSignatureException(InvalidSignatureException ex) {
         // Deliberately does not echo the exception message: the caller is unauthenticated and the
-        // detail could describe our verification internals. The reason is in the log, not the body.
+        // detail could describe our verification internals. The words are in the log; the body
+        // carries only the fixed code of the check that failed, from the closed list the outbound
+        // check already reports (OpenAPI SignatureProblem), which says nothing the caller did not send.
         log.warn("Rejected a request whose JWS did not verify: {}", ex.getMessage());
 
         ProblemDetail problemDetail = ProblemDetail.forStatus(INVALID_SIGNATURE.status());
         problemDetail.setTitle(INVALID_SIGNATURE.title());
         problemDetail.setType(INVALID_SIGNATURE.uriType());
         problemDetail.setDetail(INVALID_SIGNATURE.description());
+        if (nonNull(ex.problem())) {
+            problemDetail.setProperty(SIGNATURE_PROBLEM_PROPERTY, ex.problem().name());
+        }
 
         return problemDetail;
     }
