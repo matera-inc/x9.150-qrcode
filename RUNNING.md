@@ -207,6 +207,8 @@ fetches it).
 
 ```bash
 go test ./...                     # unit tests
+go tool golangci-lint run ./...   # lint (.golangci.yml; the linter is pinned in go.mod)
+others/scripts/check-go-lint-planted.sh   # proves each lint rule still fires (testdata/lint)
 # against the throwaway database of db/docker-compose.yml (it trusts every local connection):
 DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=postgres DATABASE_USER=x9_qrcode_app \
 DATABASE_PASSWORD=unused DATABASE_SSLMODE=disable go run ./cmd/x9-qrcode
@@ -229,6 +231,12 @@ the variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`.
 - **Logs are JSON** (`log/slog`), one line per request with `method`, `path`, `status` and
   `durationMs`. An incoming `b3`, `X-B3-TraceId`/`X-B3-SpanId` or `traceparent` header adds
   `traceId` and `spanId`. The ids are logged only; nothing is exported.
+- **One clock.** Business time comes from `internal/clock` only
+  ([ADR-0033](docs/adr/0033-the-clock-can-be-moved-in-test-deployments-only.md)). Lint refuses
+  `time.Now`, `Since`, `Until`, `After`, `Tick` and `NewTimer` anywhere else, except at a
+  `//nolint:forbidigo` that says which real duration it measures. The clock supports a
+  millisecond offset, but it stays disabled in the Go build until the `/test/clock` listener and
+  its certificate guard arrive with the signing keys.
 
 ## Troubleshooting
 

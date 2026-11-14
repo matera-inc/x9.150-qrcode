@@ -35,14 +35,14 @@ func Middleware(logger *slog.Logger, next http.Handler) http.Handler {
 				return
 			}
 		}
-		start := time.Now()
+		start := time.Now() //nolint:forbidigo // measures the request's real latency, not business time
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
 		attrs := []slog.Attr{
 			slog.String("method", r.Method),
 			slog.String("path", r.URL.Path),
 			slog.Int("status", rec.status),
-			slog.Int64("durationMs", time.Since(start).Milliseconds()),
+			slog.Int64("durationMs", time.Since(start).Milliseconds()), //nolint:forbidigo // real latency
 		}
 		if t, ok := TraceFrom(r.Header); ok {
 			attrs = append(attrs, slog.String("traceId", t.TraceID), slog.String("spanId", t.SpanID))

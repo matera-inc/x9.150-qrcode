@@ -1,0 +1,28 @@
+# Copyright © 2026 Matera Systems, Inc.
+# Licensed under the Matera Source License v1.0 (source-available; not open source). See LICENSE.md.
+# Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
+# based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
+#
+# The Go lint configuration: the only one in the repository. Run it with
+#   go tool golangci-lint run ./...
+# A //nolint must name the linter and give its reason.
+
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - forbidigo   # banned identifiers, below
+  settings:
+    forbidigo:
+      analyze-types: true
+      forbid:
+        # ADR-0033: one business clock. internal/clock is the only place that reads the wall clock.
+        - pattern: ^time\.(Now|Since|Until|After|Tick|NewTimer)$
+          msg: >-
+            business time comes from internal/clock (ADR-0033). Measuring a real duration (latency,
+            a timeout) may use it with //nolint:forbidigo // <what it measures>
+  exclusions:
+    rules:
+      - path: ^internal/clock/
+        linters: [forbidigo]
