@@ -483,6 +483,10 @@ public final class QRCodeMongoDocumentMapper {
             document.setInvoiceNumber(event.invoiceNumber());
             document.setOrderNumber(event.orderNumber());
             document.setReason(event.reason());
+            document.setDeviations(isNull(event.deviations())
+                ? null
+                : event.deviations().stream().map(Enum::name).toList());
+            document.setReceivedInStatus(isNull(event.receivedInStatus()) ? null : event.receivedInStatus().value());
             outbox.add(document);
         });
 

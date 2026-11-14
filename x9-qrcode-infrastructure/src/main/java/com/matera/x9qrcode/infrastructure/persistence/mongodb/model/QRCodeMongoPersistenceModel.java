@@ -196,6 +196,14 @@ public class QRCodeMongoPersistenceModel implements Persistable<UUID> {
         @Field(name = "reason")
         private String reason;
 
+        /** ADR-0036 deviation codes; null when the payer followed the rules. */
+        @Field(name = "deviations")
+        private List<String> deviations;
+
+        /** The QR Code's effective status when the payer's notification arrived; null for API events. */
+        @Field(name = "received_in_status")
+        private String receivedInStatus;
+
     }
 
     @Data

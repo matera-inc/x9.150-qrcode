@@ -85,10 +85,10 @@ pre-payment carrying a `transactionId` reads as a payment already made: the QR C
 reserved, and you pay against something another payer can still claim. X9.150 refuses that with a
 400 before anything is sent, but design so it cannot arise.
 
-**Rails differ.** ACH and Solana reserve the QR Code on a pre-payment. FedNow and RTP carry the QR
-Code id inside the ISO 20022 message and reconcile from it, and the notification needs an
-End-to-End ID that exists only once the payment has been initiated — so for those, go straight to
-`post-payment`.
+**Every rail has a pre-payment** (ADR-0036): FedNow, RTP, ACH and Solana all reserve the QR Code on
+a pre-payment without a `transactionId`. A post-payment that reaches an `ACTIVE` QR Code is accepted
+and reserves it too, but it is flagged `RECEIVED_IN_WRONG_STATUS`: you skipped the question, and
+another payer may already have paid.
 
 ## Consuming the event stream correctly
 
@@ -99,7 +99,7 @@ GET /pub/api/v1/events?after={cursor}&limit=100&wait=25
 ```json
 { "events": [ { "eventId": "…", "type": "payment.sent", "qrCodeId": "…",
                 "amount": 22500, "currency": "USDC", "transactionId": "…",
-                "schemaVersion": "1.0" } ],
+                "schemaVersion": "1.1" } ],
   "nextCursor": "01M3JFXNB4XNR7P61NZVG8474J", "hasMore": false }
 ```
 

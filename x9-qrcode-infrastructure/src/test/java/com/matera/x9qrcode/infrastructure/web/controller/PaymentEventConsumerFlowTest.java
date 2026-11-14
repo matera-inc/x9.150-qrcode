@@ -225,7 +225,7 @@ class PaymentEventConsumerFlowTest extends AbstractIntegrationTest {
                 .filter(e -> qrCodeId.equals(e.get("qrCodeId"))).findFirst().orElseThrow();
 
         assertNotNull(event.get("eventId"), "consumers deduplicate on eventId");
-        assertEquals("1.0", event.get("schemaVersion"));
+        assertEquals("1.1", event.get("schemaVersion"), "1.1 added deviations and receivedInStatus (ADR-0036)");
         assertNotNull(consumer.cursor(), "a page must hand back a cursor to resume from");
 
         // Re-reading from the cursor returns nothing new — the cursor is exclusive.

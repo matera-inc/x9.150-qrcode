@@ -18,6 +18,7 @@ import com.matera.x9qrcode.domain.vo.BillVO;
 import com.matera.x9qrcode.domain.vo.CreditorVO;
 import com.matera.x9qrcode.domain.vo.EmvVO;
 import com.matera.x9qrcode.domain.vo.LocationIdVO;
+import com.matera.x9qrcode.domain.vo.NotificationReceiptVO;
 import com.matera.x9qrcode.domain.vo.PaymentDetailsVO;
 import com.matera.x9qrcode.domain.vo.PaymentMethodVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationDataVO;
@@ -26,6 +27,7 @@ import com.matera.x9qrcode.domain.vo.PaymentNotificationVO;
 import com.matera.x9qrcode.domain.vo.QRCodeIdVO;
 import com.matera.x9qrcode.domain.vo.UnstructuredVO;
 import com.matera.x9qrcode.domain.vo.ValidUntilVO;
+import com.matera.x9qrcode.domain.vo.enumerated.NotificationDeviationEnum;
 import com.matera.x9qrcode.domain.vo.enumerated.PaymentEventTypeEnum;
 import com.matera.x9qrcode.domain.vo.enumerated.QRCodeStatusEnum;
 
@@ -33,6 +35,7 @@ import lombok.Getter;
 
 import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -51,6 +54,14 @@ import static java.util.Objects.nonNull;
 
 @Getter
 public class QRCodeEntity {
+
+    /**
+     * The "no lapse" sentinel for {@link #initiatedExpiresAt}: a reservation that never expires on
+     * its own (ADR-0036). Taken once any transaction hash is registered for the QR Code. Only the payment
+     * system ends it then, through the status-update API ({@code PAID}, {@code CANCELLED} or
+     * {@code ACTIVE}). Go stores the same instant in {@code reserved_until}.
+     */
+    public static final OffsetDateTime NO_LAPSE = OffsetDateTime.of(9999, 12, 31, 23, 59, 59, 0, ZoneOffset.UTC);
 
     private final QRCodeEntityValidator qrCodeEntityValidator;
     private final QRCodeIdVO id;
@@ -608,85 +619,194 @@ public class QRCodeEntity {
         this.touch();
     }
 
+    // ------------------------------------------------------------------ payer notifications
+    //
+    // ADR-0036's "Every case, by message and status" matrix, one method per row. The phase comes
+    // from the evidence (PaymentNotificationDataVO.phase), on every rail. Every decision reads the
+    // EFFECTIVE status, so a lapsed reservation counts as ACTIVE.
+    //
+    // ONLY THE PAYMENT SYSTEM MARKS A QR CODE PAID. Nothing below ever does, whatever a payer says:
+    // this service never sees funds arrive. A post-commit is evidence handed to the payment system.
+
     /**
-     * Record a notification without moving the status.
+     * Whether a pre-commit may be judged at all, before the acceptance gate looks at its amount.
      *
-     * <p>Takes the ANNOUNCING party, never {@code this.reservedBy}. Passing the stored holder here
-     * made the rule check the QR Code against itself: it always matched, so every post-payment
-     * report was accepted whoever sent it, and a stranger could report on a payment they had
-     * nothing to do with. The parameter exists to be compared against what is stored — handing it
-     * the stored value is a check that cannot fail.
+     * <p>The status is decided first, so a second payer reaching for a held QR Code is told 409
+     * (come back later), not a 400 about its amount.
+     *
+     * @return true when this is the holder's own retry, which is judged again
+     * @throws QRCodeStatusConflictException when another payer holds the QR Code, or the sender
+     *                                       cannot be shown to be the holder (no {@code payer.info})
+     * @throws BusinessRuleException         when the QR Code is {@code PAID} or {@code CANCELLED}
      */
-    public void notifyPayment(PaymentNotificationDataVO paymentNotificationDataVO,
-                              ReservationHolderVO announcingParty) {
-        this.notifyPayment(paymentNotificationDataVO, this.status, null, announcingParty);
+    public boolean admitPreCommit(PaymentNotificationDataVO data, ReservationHolderVO sender) {
+        this.qrCodeEntityValidator.validatePaymentNotification(data);
+
+        QRCodeStatusEnum current = this.effectiveStatus();
+
+        if (QRCodeStatusEnum.ACTIVE.equals(current)) {
+            return false;
+        }
+
+        if (QRCodeStatusEnum.PAYMENT_INITIATED.equals(current) && this.isHeldBy(sender)) {
+            return true;
+        }
+
+        if (QRCodeStatusEnum.PAYMENT_INITIATED.equals(current)) {
+            throw new QRCodeStatusConflictException(current,
+                "Another payer holds this QR Code. Wait for its reservation to end and try again. "
+                    + "A payer that sends no payer.info cannot be recognised as the holder.");
+        }
+
+        throw new BusinessRuleException("paymentNotification.data.payment",
+            "This QR Code is %s, so it can no longer be paid.".formatted(current));
     }
 
     /**
-     * The OTHER door into a reservation.
+     * A pre-commit that passed {@link #admitPreCommit} and the acceptance gate.
      *
-     * <p>{@link #initiatePayment} is reached by the biller's status-update API; this one by a
-     * payer's notification. Both end at {@code PAYMENT_INITIATED}, so both must stamp the expiry
-     * through {@link #stampOrClearReservation}. A reservation taken through one door and left
-     * unstamped by the other would hold forever — and would do so only on the path payers actually
-     * use, which is the half that would not be noticed.
-     *
-     * @param reservationTtl used when {@code status} is {@code PAYMENT_INITIATED}; ignored
-     *                       otherwise, since no other state is held against the clock
+     * <ul>
+     *   <li><b>ACTIVE</b>: the sender takes the reservation, {@code payment.initiated}. A lapsed
+     *       reservation reads as ACTIVE, so a takeover emits too (S2.5-AC5): the transition is
+     *       decided on the effective status, not the stored one.</li>
+     *   <li><b>Held by the sender</b>: a retry. The window moves, nothing is emitted. A window that
+     *       a registered hash has stopped stays stopped.</li>
+     * </ul>
      */
-    public void notifyPayment(PaymentNotificationDataVO paymentNotificationDataVO, QRCodeStatusEnum status,
-                              Duration reservationTtl, ReservationHolderVO holder) {
-        this.qrCodeEntityValidator.validatePaymentNotification(paymentNotificationDataVO, holder);
+    public NotificationReceiptVO acceptPreCommit(PaymentNotificationDataVO data, ReservationHolderVO sender,
+                                                 Duration reservationTtl) {
+        QRCodeStatusEnum receivedIn = this.effectiveStatus();
+        NotificationReceiptVO receipt = new NotificationReceiptVO(receivedIn, List.of());
 
-        QRCodeStatusEnum previousStatus = this.status;
+        this.recordNotification(data);
 
-        this.status = status;
-        this.stampOrClearReservation(status, reservationTtl, holder);
-        this.paymentNotification =
-            new PaymentNotificationVO(this.paymentNotification.kind(), this.paymentNotification.endpoint(),
-                paymentNotificationDataVO);
+        if (QRCodeStatusEnum.PAYMENT_INITIATED.equals(receivedIn)) {
+            if (!this.isWindowStopped()) {
+                this.initiatedExpiresAt = this.reservationWindow(reservationTtl);
+            }
+            this.touch();
+            return receipt;
+        }
+
+        this.status = QRCodeStatusEnum.PAYMENT_INITIATED;
+        this.stampOrClearReservation(this.status, reservationTtl, sender);
         this.touch();
+        this.emit(PaymentEventTypeEnum.PAYMENT_INITIATED, null, receipt);
 
-        emitForNotification(previousStatus, paymentNotificationDataVO);
+        return receipt;
     }
 
     /**
-     * A notification emits an event only when it tells a consumer something new.
+     * A post-commit: the money has moved. Never refused for status reasons, never judged on amount
+     * or time, and every transaction hash is registered (ADR-0036).
      *
-     * <p>Crucially, a post-commit notification does NOT clear the QR Code. X9.150 never touches
-     * money and cannot observe settlement — it only knows what a payer claimed. So a reported
-     * transaction is published as {@code payment.sent} and the QR Code stays PAYMENT_INITIATED;
-     * whatever system actually receives the funds matches the transaction and calls the status
-     * endpoint, and only that produces {@code payment.cleared}.
+     * <ul>
+     *   <li><b>ACTIVE</b> (the payer skipped the pre-commit, or its reservation lapsed): the sender
+     *       takes the reservation, {@code payment.initiated}, then on a chain {@code payment.sent};
+     *       flagged {@code RECEIVED_IN_WRONG_STATUS}.</li>
+     *   <li><b>Held by the sender</b>: status unchanged; on a chain {@code payment.sent}.</li>
+     *   <li><b>Held by someone else</b> (or the sender sent no {@code payer.info}): the holder keeps
+     *       it; on a chain {@code payment.sent}, flagged.</li>
+     *   <li><b>PAID or CANCELLED</b>: nothing changes, a closed QR Code never reopens; on a chain
+     *       {@code payment.sent}, flagged.</li>
+     * </ul>
+     *
+     * <p>In every {@code PAYMENT_INITIATED} outcome the reservation stops expiring (S2.5-AC6):
+     * money has moved for this QR Code, so only the payment system may now end the reservation.
+     *
+     * <p><b>The Java document keeps only the latest notification</b>; every hash survives in the
+     * event log, one {@code payment.sent} each. Two hashes for one QR Code are the payment system's
+     * signal of a duplicate payment.
      */
-    private void emitForNotification(QRCodeStatusEnum previousStatus, PaymentNotificationDataVO data) {
-        boolean statusChanged = !previousStatus.equals(this.status);
+    public NotificationReceiptVO registerPostCommit(PaymentNotificationDataVO data, ReservationHolderVO sender) {
+        this.qrCodeEntityValidator.validatePaymentNotification(data);
 
-        if (isNull(data.blockchain())) {
-            // A courtesy notification on a rail that reconciles from the payment message itself.
-            // Nothing to key on but the transition.
-            if (statusChanged) {
-                emit(PaymentEventTypeEnum.PAYMENT_INITIATED, null);
+        QRCodeStatusEnum receivedIn = this.effectiveStatus();
+        boolean heldBySender = QRCodeStatusEnum.PAYMENT_INITIATED.equals(receivedIn) && this.isHeldBy(sender);
+
+        List<NotificationDeviationEnum> deviations = new ArrayList<>();
+        if (!heldBySender) {
+            deviations.add(NotificationDeviationEnum.RECEIVED_IN_WRONG_STATUS);
+        }
+        if (data.actionContradictsHash()) {
+            deviations.add(NotificationDeviationEnum.ACTION_CONTRADICTS_HASH);
+        }
+        NotificationReceiptVO receipt = new NotificationReceiptVO(receivedIn, deviations);
+
+        this.recordNotification(data);
+
+        if (QRCodeStatusEnum.ACTIVE.equals(receivedIn)) {
+            this.status = QRCodeStatusEnum.PAYMENT_INITIATED;
+            this.reservedBy = sender;
+            this.initiatedExpiresAt = NO_LAPSE;
+            this.touch();
+            this.emit(PaymentEventTypeEnum.PAYMENT_INITIATED, null, receipt);
+        } else {
+            if (QRCodeStatusEnum.PAYMENT_INITIATED.equals(receivedIn)) {
+                this.initiatedExpiresAt = NO_LAPSE;
             }
-            return;
+            this.touch();
         }
 
-        // Keyed on the ACTION, not on the transition. Both of the interesting cases here are ones
-        // where the two disagree: a repeated announcement changes no status and must emit nothing,
-        // while NOT_SENT changes the status back to ACTIVE and must emit payment.failed rather
-        // than a second payment.initiated.
-        switch (data.blockchain().action()) {
-            case SENT -> emit(PaymentEventTypeEnum.PAYMENT_SENT, null);
-            case NOT_SENT -> emit(PaymentEventTypeEnum.PAYMENT_FAILED, "payer reported the payment did not proceed");
-            case PAYMENT_INITIATED -> {
-                // Only the announcement that actually took the QR Code out of circulation. A repeat
-                // from the party already holding it refreshes the window and says nothing: a second
-                // payment.initiated on the stream would be indistinguishable from a second payer.
-                if (statusChanged) {
-                    emit(PaymentEventTypeEnum.PAYMENT_INITIATED, null);
-                }
-            }
+        // Bank rails never emit payment.sent: their payment itself carries the QR Code id (QRCD).
+        if (isOnChain(data)) {
+            this.emit(PaymentEventTypeEnum.PAYMENT_SENT, null, receipt);
         }
+
+        return receipt;
+    }
+
+    /**
+     * {@code NOT_SENT}: the payer gives the QR Code back. Keyed on the action, because by its nature
+     * it carries no transaction.
+     *
+     * <p>Accepted from the holder, including the holder of a reservation that has lapsed (nobody has
+     * taken it since, so it is still theirs to give back). A payer without {@code payer.info} is
+     * never shown to be the holder, so it cannot release.
+     */
+    public NotificationReceiptVO releaseByPayer(PaymentNotificationDataVO data, ReservationHolderVO sender) {
+        this.qrCodeEntityValidator.validatePaymentNotification(data);
+
+        QRCodeStatusEnum receivedIn = this.effectiveStatus();
+
+        if (QRCodeStatusEnum.PAYMENT_INITIATED.equals(receivedIn) && !this.isHeldBy(sender)) {
+            throw new QRCodeStatusConflictException(receivedIn,
+                "This QR Code is held by another payer, so it is not yours to release. "
+                    + "A payer that sends no payer.info cannot be recognised as the holder.");
+        }
+
+        boolean lapsedButStillTheirs = QRCodeStatusEnum.ACTIVE.equals(receivedIn)
+            && QRCodeStatusEnum.PAYMENT_INITIATED.equals(this.status)
+            && this.isHeldBy(sender);
+
+        if (!QRCodeStatusEnum.PAYMENT_INITIATED.equals(receivedIn) && !lapsedButStillTheirs) {
+            throw new BusinessRuleException("paymentNotification.data.blockchain.action",
+                "NOT_SENT releases a reservation, and this QR Code is %s with no reservation of yours."
+                    .formatted(receivedIn));
+        }
+
+        NotificationReceiptVO receipt = new NotificationReceiptVO(receivedIn, List.of());
+
+        this.recordNotification(data);
+        this.status = QRCodeStatusEnum.ACTIVE;
+        this.stampOrClearReservation(this.status, null, null);
+        this.touch();
+        this.emit(PaymentEventTypeEnum.PAYMENT_FAILED, "payer reported the payment did not proceed", receipt);
+
+        return receipt;
+    }
+
+    private void recordNotification(PaymentNotificationDataVO data) {
+        this.paymentNotification =
+            new PaymentNotificationVO(this.paymentNotification.kind(), this.paymentNotification.endpoint(), data);
+    }
+
+    /**
+     * Whether the notification's rail settles on a public ledger, the only kind that emits
+     * {@code payment.sent} and {@code payment.failed}.
+     */
+    private static boolean isOnChain(PaymentNotificationDataVO data) {
+        return !data.payment().isBankRail();
     }
 
 
@@ -696,6 +816,14 @@ public class QRCodeEntity {
     }
 
     private void emit(PaymentEventTypeEnum type, String reason) {
+        this.emit(type, reason, null);
+    }
+
+    /**
+     * @param receipt how the payer's notification behind this event arrived, or null for an event
+     *                the status-update API produced
+     */
+    private void emit(PaymentEventTypeEnum type, String reason, NotificationReceiptVO receipt) {
         PaymentNotificationDataVO data =
             nonNull(this.paymentNotification) ? this.paymentNotification.data() : null;
 
@@ -716,7 +844,9 @@ public class QRCodeEntity {
             nonNull(data) ? data.payment().transactionId() : endToEndIdOfPaymentDetails(),
             invoiceNumber(),
             orderNumber(),
-            reason
+            reason,
+            nonNull(receipt) ? receipt.deviations() : null,
+            nonNull(receipt) ? receipt.receivedInStatus() : null
         ));
     }
 
@@ -763,20 +893,37 @@ public class QRCodeEntity {
         }
 
         this.reservedBy = holder;
+        this.initiatedExpiresAt = this.reservationWindow(reservationTtl);
+    }
 
+    /**
+     * When a reservation taken now stops counting.
+     *
+     * <ul>
+     *   <li>No window given: unstamped. An unstamped reservation reads as holding, which is the
+     *       safe direction: it keeps a payer's claim rather than handing their QR Code to somebody
+     *       else on a guess.</li>
+     *   <li>Otherwise now plus the window, capped by the QR Code's own life: a reservation cannot
+     *       outlive the thing reserved.</li>
+     * </ul>
+     */
+    private OffsetDateTime reservationWindow(Duration reservationTtl) {
         if (isNull(reservationTtl)) {
-            // Caller gave no window. Leave it unstamped rather than inventing one: an unstamped
-            // reservation reads as holding, which is the safe direction — it keeps a payer's claim
-            // rather than handing their QR Code to somebody else on a guess.
-            return;
+            return null;
         }
 
-        // Capped by the QR Code's own life: a reservation cannot outlive the thing reserved, and a
-        // stamp past validUntil would claim a hold over a code that has expired anyway.
         OffsetDateTime lapses = DateTimeUtils.nowUTC().plus(reservationTtl);
         OffsetDateTime codeExpires = this.getValidUntil();
 
-        this.initiatedExpiresAt = lapses.isAfter(codeExpires) ? codeExpires : lapses;
+        return lapses.isAfter(codeExpires) ? codeExpires : lapses;
+    }
+
+    /**
+     * Whether the reservation has stopped expiring because a hash was registered.
+     * A retry never restarts a stopped window.
+     */
+    public boolean isWindowStopped() {
+        return nonNull(this.initiatedExpiresAt) && !this.initiatedExpiresAt.isBefore(NO_LAPSE);
     }
 
     /**

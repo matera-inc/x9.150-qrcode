@@ -7,6 +7,7 @@
 package com.matera.x9qrcode.app.usecase.paymentnotification;
 
 import com.matera.x9qrcode.app.dto.PaymentNotificationDataDTO;
+import com.matera.x9qrcode.app.exception.QRCodeConcurrentModificationException;
 import com.matera.x9qrcode.app.repository.QRCodeRepository;
 import com.matera.x9qrcode.app.usecase.UseCase;
 import com.matera.x9qrcode.app.usecase.paymentnotification.mapper.PaymentNotificationBlockchainMapper;
@@ -16,27 +17,51 @@ import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 import com.matera.x9qrcode.domain.service.PaymentNotificationAcceptancePolicy;
 import com.matera.x9qrcode.domain.utils.DateTimeUtils;
 import com.matera.x9qrcode.domain.vo.ExpectedDateVO;
+import com.matera.x9qrcode.domain.vo.NotificationReceiptVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationDataVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationPayerVO;
 import com.matera.x9qrcode.domain.vo.QRCodeIdVO;
 import com.matera.x9qrcode.domain.vo.ReservationHolderVO;
-import com.matera.x9qrcode.domain.vo.enumerated.NetworkEnum;
-import com.matera.x9qrcode.domain.vo.enumerated.QRCodeStatusEnum;
+import com.matera.x9qrcode.domain.vo.enumerated.NotificationDeviationEnum;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
 
 import static java.util.Objects.isNull;
 
+/**
+ * A payer's payment notification, applied by ADR-0036's "Every case, by message and status" matrix.
+ *
+ * <ul>
+ *   <li><b>Pre-commit</b> (no {@code transactionId}), on every rail: "may I pay this?". Judged at
+ *       the payee's clock; an accepted one takes the reservation, which is what stops two payers
+ *       paying the same QR Code.</li>
+ *   <li><b>Post-commit</b> ({@code transactionId} present), on every rail: the money has moved.
+ *       Never refused for status reasons, never judged on amount or time; every hash is
+ *       registered.</li>
+ *   <li><b>{@code NOT_SENT}</b>: the holder gives the QR Code back.</li>
+ * </ul>
+ *
+ * <p><b>Only the payment system marks a QR Code PAID.</b> Nothing here ever does.
+ */
+@Slf4j
 @RequiredArgsConstructor
 public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificationQRCodeInput, Boolean> {
+
+    /**
+     * How many times a notification is decided again after losing a save race. A race resolves in
+     * one re-read (the loser then sees the winner's reservation), so this is generous.
+     */
+    static final int MAX_ATTEMPTS = 5;
 
     private final QRCodeRepository qrCodeRepository;
     private final PaymentNotificationAcceptancePolicy acceptancePolicy;
 
     /**
-     * How long a reservation holds before it stops counting — {@code x9.reservation.ttl-seconds}.
+     * How long a pre-commit's reservation holds before it stops counting —
+     * {@code x9.reservation.ttl-seconds}.
      *
      * <p>Declared LAST on purpose: {@code @RequiredArgsConstructor} orders parameters by field
      * declaration, so inserting a field mid-list silently reorders the constructor and any caller
@@ -49,118 +74,106 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
 
         QRCodeIdVO qrCodeId = QRCodeIdVO.from(notificationDataDTO.qrCodeId());
 
-        QRCodeEntity qrCodeEntity = qrCodeRepository.findById(qrCodeId);
+        // Two payers reaching for one QR Code at the same instant both read it ACTIVE; only one save
+        // can win. The loser re-reads and is decided again against what the winner wrote, so it
+        // gets the answer the matrix gives it (409 for a pre-commit, a registration for a
+        // post-commit) instead of a 500 (S2.4-AC2).
+        for (int attempt = 1; ; attempt++) {
+            QRCodeEntity qrCodeEntity = qrCodeRepository.findById(qrCodeId);
 
-        processPaymentNotification(qrCodeEntity, notificationDataDTO,
-            paymentNotificationQRCodeInput.signerSubject());
+            try {
+                processPaymentNotification(qrCodeEntity, notificationDataDTO,
+                    paymentNotificationQRCodeInput.signerSubject());
 
-        qrCodeRepository.save(qrCodeEntity);
+                qrCodeRepository.save(qrCodeEntity);
 
-        return true;
+                return true;
+            } catch (QRCodeConcurrentModificationException raceLost) {
+                if (attempt >= MAX_ATTEMPTS) {
+                    throw raceLost;
+                }
+            }
+        }
     }
 
     private void processPaymentNotification(QRCodeEntity qrCodeEntity, PaymentNotificationDataDTO notificationDataDTO,
                                             String signerSubject) {
-        PaymentNotificationDataVO paymentNotificationDataVO = new PaymentNotificationDataVO(
+        PaymentNotificationDataVO data = new PaymentNotificationDataVO(
             PaymentNotificationPaymentMapper.map(notificationDataDTO.payment()),
             isNull(notificationDataDTO.payer()) ? null : new PaymentNotificationPayerVO(notificationDataDTO.payer().info()),
             isNull(notificationDataDTO.expectedDate()) ? null : new ExpectedDateVO(notificationDataDTO.expectedDate()),
             PaymentNotificationBlockchainMapper.map(notificationDataDTO.blockchain())
         );
 
-        // Who is making this announcement: what they said about themselves, paired with who the
-        // certificate says they are. See ReservationHolderVO for why both.
-        ReservationHolderVO announcingParty = ReservationHolderVO.of(
+        // Who sent this: what they said about themselves, paired with who the certificate says they
+        // are. Without payer.info nobody can be shown to be the same payer (ADR-0036).
+        ReservationHolderVO sender = ReservationHolderVO.of(
             isNull(notificationDataDTO.payer()) ? null : notificationDataDTO.payer().info(),
             signerSubject);
 
-        NotificationIntent intent = resolveIntent(notificationDataDTO, paymentNotificationDataVO);
-
-        // A pre-funds notification is a request for permission, so it must earn its OK: correct
-        // amount, a currency and destination this QR Code actually published, nothing expired. A
-        // post-commit notification reports money that has already moved and is only recorded —
-        // refusing it would be a lie about reality, and there is nothing left to permit.
-        if (NotificationIntent.INITIATE.equals(intent)) {
-            acceptancePolicy.accept(qrCodeEntity, paymentNotificationDataVO, DateTimeUtils.nowUTC());
-        }
-
-        switch (intent) {
-            case INITIATE -> qrCodeEntity.notifyPayment(
-                paymentNotificationDataVO, QRCodeStatusEnum.PAYMENT_INITIATED, reservationTtl, announcingParty);
-            // Back to ACTIVE, and the reservation is cleared with it. The payer is saying the money
-            // is not coming, which is the only thing that can free a bill before its window lapses.
-            case RELEASE -> qrCodeEntity.notifyPayment(
-                paymentNotificationDataVO, QRCodeStatusEnum.ACTIVE, reservationTtl, announcingParty);
-            case RECORD -> qrCodeEntity.notifyPayment(paymentNotificationDataVO, announcingParty);
-        }
-    }
-
-    /**
-     * What a notification asks us to do, decided exhaustively over {@link NetworkEnum}.
-     *
-     * <p>Both switches below are switch EXPRESSIONS, so a rail added to the enum without being
-     * classified here fails to compile. That is deliberate: the previous switch statement listed
-     * only four blockchains and had no default, so a Base, XRP or Arc notification fell straight
-     * through — never validated, never applied, and answered 200 OK for a payment it ignored.
-     */
-    private NotificationIntent resolveIntent(PaymentNotificationDataDTO notificationDataDTO,
-                                             PaymentNotificationDataVO paymentNotificationDataVO) {
-        // A network this service does not interpret cannot reach a QR Code any more — it is refused
-        // at creation (ADR-0012) — but a notification can still name one, and it takes the generic
-        // on-chain path rather than falling through in silence.
-        if (!paymentNotificationDataVO.payment().isInterpretedRail()) {
-            return onChainIntent(notificationDataDTO, paymentNotificationDataVO);
-        }
-
-        return switch (paymentNotificationDataVO.payment().interpretedRail().orElseThrow()) {
-            // The QR Code id travels inside the ISO 20022 message, so the payee reconciles from the
-            // message itself; a notification on these rails is a courtesy and changes no status.
-            case FEDNOW, RTP -> NotificationIntent.RECORD;
-            case ACH -> NotificationIntent.INITIATE;
-            // Solana is the one interpreted rail with a public ledger, so it is the one that can
-            // distinguish before-the-funds-move from after. That distinction is the whole two-phase
-            // protocol, and it has had no trigger since the blockchains were removed.
-            case SOLANA -> onChainIntent(notificationDataDTO, paymentNotificationDataVO);
-        };
-    }
-
-    /**
-     * Pre-commit or post-commit, for a rail that settles on a public ledger.
-     *
-     * <p>The phase is carried by {@code blockchain.action} because ANSI X9.150 has no phase marker —
-     * the committee rejected one (ADR-0004) — so the only signal is whether a transaction exists yet.
-     */
-    private NotificationIntent onChainIntent(PaymentNotificationDataDTO notificationDataDTO,
-                                             PaymentNotificationDataVO paymentNotificationDataVO) {
-        if (isNull(paymentNotificationDataVO.blockchain())) {
+        if (!data.payment().isBankRail() && isNull(data.blockchain())) {
             throw new BusinessRuleException(
                 "Blockchain data is required for a notification on the %s network."
-                    .formatted(paymentNotificationDataVO.payment().network()));
+                    .formatted(data.payment().network()));
         }
 
-        return switch (notificationDataDTO.blockchain().action()) {
-            // Pre-commit: nothing has moved on-chain yet, so this is the notification that takes the
-            // QR Code out of circulation.
-            case PAYMENT_INITIATED -> NotificationIntent.INITIATE;
-            // Post-commit. The transaction is on-chain, but X9.150 never touches money and cannot
-            // observe settlement, so the QR Code STAYS PAYMENT_INITIATED. Whatever system receives
-            // the funds matches the transaction and calls the status-update API to mark it PAID.
-            case SENT -> NotificationIntent.RECORD;
-            // The payer giving up. Not a payment at all: no transaction exists and none will, so
-            // the courtesy is in saying so rather than leaving the bill reserved until its window
-            // lapses. It was previously RECORD, which answered 200 and released nothing — the one
-            // door a payer has out of a reservation, reporting success and doing nothing.
-            case NOT_SENT -> NotificationIntent.RELEASE;
-        };
+        // The phase comes from the evidence, on every rail: transactionId present means the money
+        // has moved (ADR-0004, ADR-0036). blockchain.action decides only NOT_SENT.
+        switch (data.phase()) {
+            case PRE_COMMIT -> preCommit(qrCodeEntity, data, sender);
+            case POST_COMMIT -> warnOnDeviations(qrCodeEntity, sender, qrCodeEntity.registerPostCommit(data, sender));
+            case RELEASE -> qrCodeEntity.releaseByPayer(data, sender);
+        }
     }
 
-    private enum NotificationIntent {
-        /** Take the QR Code out of circulation: ACTIVE -> PAYMENT_INITIATED. */
-        INITIATE,
-        /** Put it back: PAYMENT_INITIATED -> ACTIVE, reservation cleared, payment.failed emitted. */
-        RELEASE,
-        /** Record the notification and bump the revision, leaving the status untouched. */
-        RECORD
+    /**
+     * A request for permission, so it must earn its yes: the correct amount, a currency and
+     * destination this QR Code published, nothing expired, all at the payee's clock.
+     *
+     * <p>The status is decided before the gate, so a second payer is told 409, not a 400 about its
+     * amount. The holder's own retry is judged again.
+     */
+    private void preCommit(QRCodeEntity qrCodeEntity, PaymentNotificationDataVO data, ReservationHolderVO sender) {
+        qrCodeEntity.admitPreCommit(data, sender);
+
+        acceptancePolicy.accept(qrCodeEntity, data, DateTimeUtils.nowUTC());
+
+        qrCodeEntity.acceptPreCommit(data, sender, reservationTtl);
+    }
+
+    /**
+     * Name the payer when it broke the protocol. The hash is registered either way; the warning and
+     * the event's {@code deviations} are how the payee counts misbehaviour per payer and takes the
+     * numbers back to it.
+     */
+    private static void warnOnDeviations(QRCodeEntity qrCodeEntity, ReservationHolderVO sender,
+                                         NotificationReceiptVO receipt) {
+        if (!receipt.hasDeviations()) {
+            return;
+        }
+
+        if (receipt.deviations().contains(NotificationDeviationEnum.ACTION_CONTRADICTS_HASH)) {
+            // !!! BAD PAYER BEHAVIOUR !!!
+            // blockchain.action = PAYMENT_INITIATED says "may I pay?", yet the message carries a
+            // transaction hash: the money has ALREADY moved. Either the payer skipped the question
+            // or it labelled its report wrongly; a payer that follows the protocol never sends this.
+            //
+            // It is still a post-commit and its hash is still registered, on purpose. If the funds
+            // arrive in the right amount and the hash matches, the payment system has everything it
+            // needs to mark the QR Code paid. Refusing the report would throw away the one piece of
+            // evidence that links those funds to this QR Code (ADR-0036).
+            log.warn("Payer sent PAYMENT_INITIATED carrying a transaction hash (bad payer behaviour); "
+                    + "registered as a post-commit. qrCodeId={} payerInfo={} signerSubject={} "
+                    + "receivedInStatus={} deviations={}",
+                qrCodeEntity.getId().value(), sender.payerInfo(), sender.signerSubject(),
+                receipt.receivedInStatus(), receipt.deviations());
+            return;
+        }
+
+        log.warn("Post-commit registered from a payer that broke the protocol. qrCodeId={} payerInfo={} "
+                + "signerSubject={} receivedInStatus={} deviations={}",
+            qrCodeEntity.getId().value(), sender.payerInfo(), sender.signerSubject(),
+            receipt.receivedInStatus(), receipt.deviations());
     }
 
 }

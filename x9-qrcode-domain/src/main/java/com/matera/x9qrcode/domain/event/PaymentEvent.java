@@ -6,10 +6,15 @@
  */
 package com.matera.x9qrcode.domain.event;
 
+import com.matera.x9qrcode.domain.vo.enumerated.NotificationDeviationEnum;
 import com.matera.x9qrcode.domain.vo.enumerated.PaymentEventTypeEnum;
+import com.matera.x9qrcode.domain.vo.enumerated.QRCodeStatusEnum;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
+
+import static java.util.Objects.isNull;
 
 /**
  * A fact about a QR Code's payment, published for anyone to consume.
@@ -70,10 +75,32 @@ public record PaymentEvent(
     String transactionId,
     String invoiceNumber,
     String orderNumber,
-    String reason
+    String reason,
+
+    /**
+     * How the payer departed from the protocol in the notification that produced this event, or
+     * null when it followed the rules (never an empty list) and for events the payment system's
+     * status-update API produced. A closed list owned by ADR-0036.
+     */
+    List<NotificationDeviationEnum> deviations,
+
+    /**
+     * The QR Code's effective status when the payer's notification arrived, or null for events the
+     * status-update API produced. With {@code deviations}, it tells the payment system how a
+     * registered hash arrived (ADR-0036).
+     */
+    QRCodeStatusEnum receivedInStatus
 ) {
 
-    public static final String SCHEMA_VERSION = "1.0";
+    /**
+     * {@code 1.1} added {@code deviations} and {@code receivedInStatus}. Additive: a consumer that
+     * ignores fields it does not know is unaffected (ADR-0036).
+     */
+    public static final String SCHEMA_VERSION = "1.1";
+
+    public PaymentEvent {
+        deviations = isNull(deviations) || deviations.isEmpty() ? null : List.copyOf(deviations);
+    }
 
     public String schemaVersion() {
         return SCHEMA_VERSION;

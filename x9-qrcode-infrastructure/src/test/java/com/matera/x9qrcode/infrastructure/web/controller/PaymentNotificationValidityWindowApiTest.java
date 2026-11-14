@@ -138,8 +138,7 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
     private MockMvcResponse notify(String qrCodeId, long amount) {
         String body = """
             {
-              "payment": { "qrcodeId": "%s", "amount": %d, "currency": "USD", "network": "ACH",
-                           "transactionId": "021000021.0000001" },
+              "payment": { "qrcodeId": "%s", "amount": %d, "currency": "USD", "network": "ACH" },
               "payer": { "info": "Jane Payer, Springfield Savings" },
               "expectedDate": "2030-10-08T06:59:59Z"
             }

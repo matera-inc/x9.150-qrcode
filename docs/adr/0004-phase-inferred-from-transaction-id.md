@@ -52,6 +52,11 @@ which **keeps** this ADR's rule on every rail:
 - **Every hash is recorded,** a second one included, so the payment system can detect a duplicate
   payment.
 
+**Closed by Story 2.4 (2026-11-14).** The code now decides the phase from `transactionId` on every
+rail, Solana included (`PaymentNotificationDataVO.phase`): FedNow and RTP have a pre-commit, an ACH
+Trace Number makes a post-commit, and a Solana `PAYMENT_INITIATED` carrying a hash is a post-commit,
+registered with `ACTION_CONTRADICTS_HASH`. `blockchain.action` decides only `NOT_SENT`.
+
 ## Decision
 
 Infer it from `$.payment.transactionId`:
