@@ -8,6 +8,10 @@ This application is a backend implementation of the **ANSI X9.150-2026 Payment Q
 **It never touches money.** Read that first, because almost every question about this repository
 resolves once it is clear.
 
+**So it never marks a QR Code `PAID`.** It has no means to: it never sees funds arrive, and receiving
+and matching money is outside its scope. Only the payment system that receives the funds marks a QR
+Code `PAID`, through the status-update API. Nothing a payer sends, in any status, does.
+
 This service does two things: it **raises payment requests** — minting and managing the QR Code a
 merchant presents — and it **validates payment notifications** that payers' PSPs send back about
 them. That is the whole of it.
