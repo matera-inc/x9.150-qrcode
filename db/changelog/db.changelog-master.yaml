@@ -1,0 +1,30 @@
+# Copyright © 2026 Matera Systems, Inc.
+# Licensed under the Matera Source License v1.0 (source-available; not open source). See LICENSE.md.
+# Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
+# based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
+#
+# The X9.150 schema (ADR-0023, ADR-0024, ADR-0025, ADR-0026, ADR-0032).
+#
+# Everything lives in ONE schema, named by the `x9.schema` property (default `x9_qrcode`).
+# The schema itself is not created here: it belongs to the bank's DBA (ADR-0032), who creates it
+# before the first run. Liquibase's own tracking tables go into the same schema, so nothing is ever
+# written to `public`:
+#
+#   liquibase update \
+#     --changelog-file=db/changelog/db.changelog-master.yaml \
+#     --default-schema-name=x9_qrcode --liquibase-schema-name=x9_qrcode \
+#     -Dx9.schema=x9_qrcode
+#
+# Rules for this directory (ADR-0023):
+#   - an applied changeset is never edited; a change is a new numbered file;
+#   - every table and column carries a COMMENT (`remarks`);
+#   - portable types only: no JSONB, ENUM, arrays, TIMESTAMPTZ, unbounded TEXT or SERIAL,
+#     no triggers or procedures. Times are TIMESTAMP holding UTC; "not yet" is a sentinel, not NULL.
+
+databaseChangeLog:
+  - property:
+      name: x9.schema
+      value: x9_qrcode
+  - include:
+      file: changes/0001-initial-schema.yaml
+      relativeToChangelogFile: true
