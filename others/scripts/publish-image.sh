@@ -38,7 +38,9 @@ NETWORK="${NETWORK:-x9-qrcode-network}"
 # happens to be installed globally on the machine doing it.
 PYTEST="${PYTEST:-$PWD/.blackbox-venv/bin/pytest}"
 
-if [ ! -x "$PYTEST" ]; then
+# The suite signs as independent payers, so it needs `cryptography` as well as pytest. A venv from
+# before that (pytest only) is rebuilt, not reused.
+if [ ! -x "$PYTEST" ] || ! "$(dirname "$PYTEST")/python" -c 'import cryptography' >/dev/null 2>&1; then
     # Missing SETUP is not a failed check — build it. A check that still cannot run after this
     # is a refusal to publish, handled at the call site.
     python3 -m venv "$PWD/.blackbox-venv" >/dev/null 2>&1 \
@@ -129,9 +131,22 @@ verify_image() {
     local container="x9-publish-verify-$arch"
     docker rm -f "$container" >/dev/null 2>&1 || true
 
-    if ! docker run -d --name "$container" $platform --network "$NETWORK" -p "$port:8080" \
+    # The black-box suite signs as independent payers issued by the bundled TEST CA, so the
+    # container trusts that CA as well as its own demo certificate (others/blackbox/deployment).
+    # The truststore is copied in, not mounted: Colima cannot bind-mount paths under /Volumes.
+    # The payers' certificates name a CRL the suite serves on this host, which the container
+    # reaches as host.docker.internal; without it every payer would be refused as undeterminable.
+    if ! docker create --name "$container" $platform --network "$NETWORK" -p "$port:8080" \
+            --add-host host.docker.internal:host-gateway \
             -e SPRING_DATA_MONGODB_URI="$MONGO_URI" \
-            -e X9_PUBLICENDPOINTS_HOST="localhost:$port" "$image" >/dev/null 2>&1; then
+            -e X9_CERTIFICATE_TRUSTSTORE_LOCATION=file:/tmp/x9-blackbox-truststore.jks \
+            -e X9_CERTIFICATE_TRUSTSTORE_PASSWORD=x9test123 \
+            -e X9_CERTIFICATE_TRUSTSTORE_ALIAS=x9-test-ca \
+            -e X9_PUBLICENDPOINTS_HOST="localhost:$port" "$image" >/dev/null 2>&1 \
+        || ! docker cp others/blackbox/deployment/x9-blackbox-truststore.jks \
+                "$container:/tmp/x9-blackbox-truststore.jks" >/dev/null 2>&1 \
+        || ! docker start "$container" >/dev/null 2>&1; then
+        docker rm -f "$container" >/dev/null 2>&1 || true
         echo "unstartable"
         return
     fi
@@ -166,11 +181,13 @@ verify_image() {
         return
     fi
 
-    if X9_BASE_URL="http://localhost:$port" "$PYTEST" others/blackbox -q >/dev/null 2>&1; then
+    if X9_BASE_URL="http://localhost:$port" X9_SUITE_HOST=host.docker.internal \
+            "$PYTEST" others/blackbox -q >/dev/null 2>&1; then
         docker rm -f "$container" >/dev/null 2>&1 || true
         echo "pass"
     else
-        X9_BASE_URL="http://localhost:$port" "$PYTEST" others/blackbox -q 2>&1 | tail -30
+        X9_BASE_URL="http://localhost:$port" X9_SUITE_HOST=host.docker.internal \
+            "$PYTEST" others/blackbox -q 2>&1 | tail -30
         docker rm -f "$container" >/dev/null 2>&1 || true
         echo "fail"
     fi

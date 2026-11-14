@@ -221,22 +221,3 @@ class X9Api(Api):
         token = (signer or self).sign(
             {"qrCodeContent": base64.b64encode(emv.encode()).decode()})
         return self.post_jose(f"/pub/api/v1/loc/{location_id}", token)
-
-
-class ServiceSigner:
-    """Signs with the deployment's OWN key, through ``POST /api/v1/signature/generate``.
-
-    NON-PRODUCTION and temporary: it lets one deployment stand in for both sides of a payment, and
-    it cannot produce any signature the service would refuse. Story 3.2 replaces it with
-    independent test-CA payers.
-    """
-
-    def __init__(self, api):
-        self.api = api
-
-    def sign(self, payload):
-        import uuid
-        status, body = self.api.call("POST", "/api/v1/signature/generate", body=payload, headers={
-            "Correlation-Id": str(uuid.uuid4()), "TTL-Seconds": "300"})
-        assert status == 200, f"the deployment would not sign: {status} {body}"
-        return body

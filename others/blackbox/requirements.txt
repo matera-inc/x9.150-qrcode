@@ -1,4 +1,7 @@
-# Deliberately just pytest. The suite speaks HTTP through the standard library so that it runs
-# anywhere the service does, and so a dependency resolution failure can never be mistaken for a
-# passing run.
-pytest>=8.0
+# Pinned, and kept in step with the PEP 723 header of run.py (ADR-0034).
+#
+# HTTP stays on the standard library. cryptography is here because the suite signs as independent
+# payers and tampers with their signatures: the standard library cannot produce an RSA or EC
+# signature, and a suite that cannot sign cannot test a signature refusal.
+pytest==9.2.0
+cryptography==50.0.2
