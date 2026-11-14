@@ -186,6 +186,88 @@ these fields only describe how it arrived.
   call site.
 - The same codes are logged with the warning.
 
+### Every case, by message and status
+
+**The happy path.** Everything else is in the matrix below.
+
+```mermaid
+sequenceDiagram
+    participant PS as Payment system
+    participant X as X9.150
+    participant P as Payer (PSP)
+    PS->>X: create the QR Code
+    P->>X: fetch the signed payload
+    P->>X: pre-commit: may I pay this amount?
+    X-->>P: signed yes (PAYMENT_INITIATED, held by P)
+    Note over X: inserts payment.initiated
+    P--)PS: the money, on the rail or the chain
+    P->>X: post-commit: paid, here is the hash
+    X-->>P: signed acknowledgement
+    Note over X: inserts payment.sent (the hash, on a chain)
+    PS->>X: read the events (CDC, SQL or HTTP)
+    PS->>X: status-update PAID
+    Note over X: inserts payment.cleared
+```
+
+**The matrix.** Columns are the QR Code's effective status when the message arrives; that status is
+stored on the notification row as `received_in_status`.
+
+- **ACTIVE**: never reserved, or the reservation's window has passed.
+- **Held by the sender**: `PAYMENT_INITIATED`, and the sender is the same payer (`payer.info` present
+  on both and equal, and the same certificate subject).
+- **Held by someone else**: `PAYMENT_INITIATED`, held by another payer, by nobody identifiable (taken
+  through the status-update API), or the sender sent no `payer.info`.
+- **On a chain** means Solana and any chain interpreted later. Bank rails never publish
+  `payment.sent`; the QR Code id travels in their payment (`QRCD`).
+- Every answer to a payer, refusals included, is a signed JWS. Every accepted payer message is stored
+  with its `deviations`.
+
+Messages from a payer:
+
+| Message | ACTIVE | Held by the sender | Held by someone else | PAID or CANCELLED |
+|---|---|---|---|---|
+| **Pre-commit** (no `transactionId`) | Judged at the payee's clock. Yes: → `PAYMENT_INITIATED` held by the sender, `payment.initiated`. No: 400, nothing changes | A retry, judged again. Yes: window refreshed, no event. No: → `ACTIVE`, reservation cleared (Solana: `payment.failed`) | 409, nothing changes | 400, nothing changes |
+| **Post-commit** (`transactionId` present) | Accepted, never judged: → `PAYMENT_INITIATED` held by the sender; `payment.initiated`, then `payment.sent` on a chain; flagged `RECEIVED_IN_WRONG_STATUS` † | Accepted, status unchanged; `payment.sent` on a chain † | Accepted, the holder keeps it; `payment.sent` on a chain, flagged `RECEIVED_IN_WRONG_STATUS` † | Accepted, status unchanged; `payment.sent` on a chain, flagged `RECEIVED_IN_WRONG_STATUS` |
+| **`PAYMENT_INITIATED` with a hash** (chain) | As a post-commit, also flagged `ACTION_CONTRADICTS_HASH` | same | same | same |
+| **`SENT` without a hash** (chain) | 400 | 400 | 400 | 400 |
+| **`NOT_SENT`** (chain: the payer gives it back) | 400; from the holder of a lapsed reservation: accepted, `payment.failed` | → `ACTIVE`, reservation cleared, `payment.failed` | 409 | 400 |
+
+From the payment system (status-update API), and from time:
+
+| Change | ACTIVE | Held by the sender | Held by someone else | PAID or CANCELLED |
+|---|---|---|---|---|
+| **→ `PAYMENT_INITIATED`** | → `PAYMENT_INITIATED`, held by nobody identifiable; `payment.initiated` | 409 | 409 | 409 |
+| **→ `PAID`** | → `PAID`, `payment.cleared` | same | same | 400 |
+| **→ `CANCELLED`** | → `CANCELLED`, `payment.cancelled` | same | same | 400 |
+| **→ `ACTIVE`** (reactivate) | 400 | → `ACTIVE`, no event | → `ACTIVE`, no event | 400 |
+| **The reservation's window passes** | — | reads `ACTIVE`, nothing written, no event † | same † | — |
+
+† **Open point** (below): once a hash is registered, the window would no longer pass.
+
+**`validUntil` is not a status.** Past it, a pre-commit is refused by the payee's clock (400); a
+post-commit is still accepted and registered, because the money has moved.
+
+**The unhappy paths, drawn.** Every arrow is a row of the matrix; a loop changes nothing but still
+registers the hash.
+
+```mermaid
+stateDiagram-v2
+    [*] --> ACTIVE : create
+    ACTIVE --> PAYMENT_INITIATED : pre-commit accepted
+    ACTIVE --> PAYMENT_INITIATED : post-commit, flagged (no pre-commit)
+    ACTIVE --> PAYMENT_INITIATED : status-update, held by nobody
+    PAYMENT_INITIATED --> PAYMENT_INITIATED : retry accepted, or a post-commit (flagged if not the holder's)
+    PAYMENT_INITIATED --> ACTIVE : refused retry, NOT_SENT, reactivate, or the window passes †
+    ACTIVE --> PAID : status-update
+    PAYMENT_INITIATED --> PAID : status-update
+    ACTIVE --> CANCELLED : status-update
+    PAYMENT_INITIATED --> CANCELLED : status-update
+    PAID --> PAID : post-commit, flagged
+    CANCELLED --> CANCELLED : post-commit, flagged
+    PAID --> [*]
+    CANCELLED --> [*]
+```
+
 ### Open point
 
 **Does a reservation lapse after a post-commit?** Today it keeps the pre-commit's window (90 s by
