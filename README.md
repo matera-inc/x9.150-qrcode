@@ -14,8 +14,41 @@ them. That is the whole of it.
 
 | | |
 |---|---|
-| **It does** | mint QR Codes, publish the signed payload a payer's app fetches, validate notifications against what the QR Code actually asked for, and report what happened on a payment event stream |
+| **It does** | mint QR Codes, publish the signed payload a payer's app fetches, validate notifications against what the QR Code actually asked for, and record what happened as events for the payment system to read |
 | **It does NOT** | move funds, receive funds, hold balances, settle, reconcile against a bank or ledger, or pay anyone — including paying out tips to staff |
+| **Nor does it** | call a payment system, a core banking system, a rail (FedNow, RTP, ACH), a wallet, a custody provider or a chain node |
+
+**It never touches a payment system either.** The system that receives the funds integrates with
+this service, never the other way round:
+
+- **This service only records events.** Each status change writes an event in the same transaction:
+  a MongoDB collection today, the `payment_event` table in the Go build, where that table is the
+  outbox ([ADR-0037](docs/adr/0037-the-event-table-is-the-outbox-read-by-cdc-or-plain-sql.md),
+  proposed).
+- **The payment system reads them** through the HTTP event API, or in the Go build straight from the
+  table, by change data capture (Debezium, for example) or by plain SQL.
+- **The payment system tells this service** when it has matched the money, through the status-update
+  API. Only then is a QR Code `PAID`.
+- **The only messages this service sends are X9.150's own:** signed answers to payers, and, when it
+  acts for a payer, a signed payment notification to a payee's X9.150 endpoint.
+
+```mermaid
+flowchart LR
+  payer["Payer's app or PSP"]
+  subgraph perimeter["This service: no money, no payment system"]
+    x9["X9.150 QR Code service"]
+    ev[("events")]
+    x9 -- "inserts" --> ev
+  end
+  ps["Payment system that receives the funds"]
+  payer -- "fetches the signed payload,<br/>sends signed notifications" --> x9
+  x9 -- "signed answers" --> payer
+  ps -- "reads: HTTP, CDC or SQL" --> ev
+  ps -- "status-update: PAID" --> x9
+  payer -. "the money, on a rail or chain" .-> ps
+```
+
+The money travels only on the dotted line, which never crosses this service.
 
 So when a payer reports paying 1100 of which 100 was a tip, this service checks the arithmetic
 against the bill, records both figures, and publishes them. **Whether that money arrived is something
