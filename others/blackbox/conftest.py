@@ -139,7 +139,7 @@ def api(payer_a, pki):
     client = X9Api(base_url, signer=payer_a)
 
     status, _ = client.get("/actuator/health")
-    if status != 200:
+    if status != 200 and client.get("/actuator/health/readiness").status != 200:
         unavailable(f"no deployment answering at {base_url} (health returned {status})")
 
     probe = client.notify(client.create_qr(), payer_info="trust-probe@example.com")

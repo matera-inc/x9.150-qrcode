@@ -116,6 +116,39 @@ marks.
 | Lifecycle | second pre-payment, payment on a CANCELLED code, post-payment with no pre-payment (reserves, flagged), and a refused notification leaving the QR Code ACTIVE |
 | **Signatures** (`test_signatures.py`) | payers A and B on their own keys; wrong key, untrusted CA, revoked certificate, expired `iat + ttl`, `iat` in the future, missing or unknown `crit`, missing `x5c`, altered payload, `alg: none`; B cannot take or release A's reservation; every answer verified against the payee's certificate, echoing the question's `correlationId` (fresh when the question could not be verified); the same signed question twice |
 
+## One suite: `acceptance.py` was folded in
+
+`others/acceptance/acceptance.py` (a standard-library script that signed through the service under
+test) and `make acceptance` are gone (Story 3.4). Each of its sections is now a test module here,
+signed by independent payers:
+
+| Section of `acceptance.py` | Module |
+|---|---|
+| 0. The deployment is up | `test_deployment.py` |
+| 1. A generated QR Code is correct (EMV, CRC, tag 26, `qrCodeB64`, location) | `test_qr_code.py` |
+| 2. A payer can fetch the signed payload | `test_payload.py` |
+| 3. A payer notifies the payee (two phases) | `test_two_phase.py::TestTwoPhases` |
+| 4. The event stream reports it | `test_two_phase.py::TestTheEventStream` |
+| 5. Settlement is the payment system's call | `test_settlement.py` |
+| 6. It refuses what it cannot honour, by name | `test_create_refusals.py` |
+| 7. Public signing metadata is served | `test_public_metadata.py` |
+| 8. Conditional requests and what a revision counts | `test_conditional_requests.py` |
+| 9. A tip is money on top of the bill | `test_tip_offers.py` |
+| 10. A patch names every currency, or none of them | `test_patch_currencies.py` |
+| 11. A location handed over goes to somebody | `test_location_handover.py` |
+
+The publish gate (`make publish`) runs `make blackbox` and nothing else.
+
+### Against TLS and Kubernetes
+
+- **A self-signed certificate:** `SSL_CERT_FILE=/path/to/cert.pem make blackbox` with
+  `X9_BASE_URL=https://host`. Python then trusts that certificate; TLS is still verified.
+- **On Kubernetes, `/actuator/health` may be DOWN for a reason unrelated to X9.150.**
+  `SPRING_CLOUD_KUBERNETES_ENABLED=false` does not unregister the Kubernetes health indicator; it
+  calls the API server without RBAC, fails, and drags the aggregate to DOWN while MongoDB and the
+  liveness and readiness states are UP. The suite falls back to `/actuator/health/readiness`; the
+  flag that removes the indicator is `MANAGEMENT_HEALTH_KUBERNETES_ENABLED=false`.
+
 ## The contract writes the boring tests
 
 `contract.py` reads `openapi.yaml` and generates one case for every `maxLength`, `minLength`,

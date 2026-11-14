@@ -12,10 +12,10 @@
 #
 # WHY THE VERIFY STEP EXISTS. On 2026-09-30 an image was published whose acceptance suite passed
 # 37/37 and which an adopter then reported as missing three features. It was not — their node had a
-# stale layer — but the suite WOULD have passed with all three missing, because it tests the payment
+# stale layer — but the suite WOULD have passed with all three missing, because it tested the payment
 # flow and not the behaviours most recently changed. Green is not the same as present. So this runs
-# a short set of probes for exactly those, against the built container, and refuses to push if any
-# of them fails.
+# the black-box suite (`make blackbox`, which since Story 3.4 includes those probes) against the
+# built container, and refuses to push if any of it fails.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -165,13 +165,6 @@ verify_image() {
         return
     fi
 
-    if ! ./others/acceptance/acceptance.py "http://localhost:$port" >/dev/null 2>&1; then
-        ./others/acceptance/acceptance.py "http://localhost:$port" | tail -40
-        docker rm -f "$container" >/dev/null 2>&1 || true
-        echo "fail"
-        return
-    fi
-
     # The black-box unhappy paths. A suite that cannot run is NOT a suite that passed, so a
     # missing pytest is a refusal to publish rather than a quiet skip — the whole point of this
     # gate is that it is unable to report success for a check that never executed.
@@ -181,13 +174,14 @@ verify_image() {
         return
     fi
 
+    # `make blackbox`, and nothing else: one suite decides (Story 3.4 folded acceptance.py in).
     if X9_BASE_URL="http://localhost:$port" X9_SUITE_HOST=host.docker.internal \
-            "$PYTEST" others/blackbox -q >/dev/null 2>&1; then
+            make -s blackbox >/dev/null 2>&1; then
         docker rm -f "$container" >/dev/null 2>&1 || true
         echo "pass"
     else
         X9_BASE_URL="http://localhost:$port" X9_SUITE_HOST=host.docker.internal \
-            "$PYTEST" others/blackbox -q 2>&1 | tail -30
+            make -s blackbox 2>&1 | tail -30
         docker rm -f "$container" >/dev/null 2>&1 || true
         echo "fail"
     fi
@@ -203,7 +197,7 @@ for pair in "x9-qrcode:latest arm64 $PORT_ARM64" "x9-qrcode:latest-amd64 amd64 $
     result="$(verify_image "$1" "$2" "$3")"
 
     case "$result" in
-        pass)        ok "$2 — acceptance suite and the black-box unhappy paths" ;;
+        pass)        ok "$2 — the black-box suite (make blackbox)" ;;
         fail)        die "$2 builds but does not behave. NOTHING was pushed." ;;
         no-pytest)   die "pytest is missing, so others/blackbox did not run. Run 'make blackbox-venv' and retry — a check that did not execute is not a check that passed." ;;
         unstartable) bad "$2 could not be started on this machine"; UNVERIFIED="$UNVERIFIED $2" ;;
