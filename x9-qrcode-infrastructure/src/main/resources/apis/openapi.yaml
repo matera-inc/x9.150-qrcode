@@ -1319,8 +1319,8 @@ components:
         validUntil:
           type: string
           format: date-time
-          description: "UTC timestamp until which the currency option is valid. Expected pattern: `^(\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d{1,3})?Z$`"
-          example: "2030-05-10T23:59:59Z"
+          description: "The exact instant this adjusted amount stops applying, inclusive: a pre-commit carrying it is accepted up to and including this instant and refused one millisecond after. For a discount it is `dueDate − daysBefore`; for a late fee k days late it is `dueDate + k × 24 h`. Never later than the QR Code's `validUntil` or the last served payment method's `validUntil`. Expected pattern: `^(\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d{1,3})?Z$`"
+          example: "2030-05-10T14:30:15Z"
 
     AmountDue:
       type: object

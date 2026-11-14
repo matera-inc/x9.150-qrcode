@@ -45,7 +45,7 @@ class FixedDiscountLateFeeLinearInterestFormulaServiceTest {
         new FixedDiscountLateFeeLinearInterestFormulaService();
 
     private static AdjustmentParametersVO parameters(List<DiscountVO> discounts) {
-        return new AdjustmentParametersVO(discounts, new LateFeesVO(PER_DAY, FIXED_FEE, "late"));
+        return new AdjustmentParametersVO(discounts, new LateFeesVO(FIXED_FEE, PER_DAY, "late"));
     }
 
     private FormulaResultDTO at(OffsetDateTime when, AdjustmentParametersVO parameters) {
@@ -84,6 +84,117 @@ class FixedDiscountLateFeeLinearInterestFormulaServiceTest {
         assertNotNull(result);
         assertEquals(PER_DAY + FIXED_FEE, result.adjustmentAmount());
         assertEquals(FACE + PER_DAY + FIXED_FEE, result.amount());
+    }
+
+    // ------------------------------- the advertised validUntil is the edge (Story 2.6)
+
+    private static OffsetDateTime plusMs(OffsetDateTime instant, long millis) {
+        return instant.plus(millis, ChronoUnit.MILLIS);
+    }
+
+    /** S2.6-AC1, AC4: fetched before E = dueDate − N days, the discount is advertised until exactly E. */
+    @Test
+    void aDiscountIsAdvertisedUntilExactlyTheInstantItStopsApplying() {
+        OffsetDateTime eligibilityEnds = DUE_DATE.minusDays(10);
+        AdjustmentParametersVO parameters = parameters(List.of(new DiscountVO(10, DISCOUNT, "early")));
+
+        FormulaResultDTO hoursBefore = at(eligibilityEnds.minusHours(3), parameters);
+
+        assertNotNull(hoursBefore);
+        assertEquals(FACE - DISCOUNT, hoursBefore.amount());
+        assertEquals(eligibilityEnds, hoursBefore.validUntil(),
+            "the discount must be advertised until E itself, not the end of E's calendar day");
+    }
+
+    /** S2.6-AC1, AC4: the discount still applies at E and no longer 1 ms after: one edge, not two. */
+    @Test
+    void aDiscountAppliesAtItsEdgeAndNotOneMillisecondAfter() {
+        OffsetDateTime eligibilityEnds = DUE_DATE.minusDays(10);
+        AdjustmentParametersVO parameters = parameters(List.of(new DiscountVO(10, DISCOUNT, "early")));
+
+        FormulaResultDTO atTheEdge = at(eligibilityEnds, parameters);
+
+        assertNotNull(atTheEdge);
+        assertEquals(FACE - DISCOUNT, atTheEdge.amount());
+        assertEquals(eligibilityEnds, atTheEdge.validUntil());
+
+        assertNull(at(plusMs(eligibilityEnds, 1), parameters), "1 ms past E the full amount is owed");
+    }
+
+    /** S2.6-AC3: of several discounts the largest eligible is served, advertised until its own E. */
+    @Test
+    void ofSeveralDiscountsTheLargestEligibleIsServedUntilItsOwnEdge() {
+        DiscountVO earlyAndLarge = new DiscountVO(30, 2 * DISCOUNT, "early");
+        DiscountVO laterAndSmaller = new DiscountVO(10, DISCOUNT, "later");
+        AdjustmentParametersVO parameters = parameters(List.of(laterAndSmaller, earlyAndLarge));
+
+        OffsetDateTime largeEnds = DUE_DATE.minusDays(30);
+        OffsetDateTime smallEnds = DUE_DATE.minusDays(10);
+
+        FormulaResultDTO beforeBoth = at(largeEnds.minusHours(1), parameters);
+        assertEquals(FACE - 2 * DISCOUNT, beforeBoth.amount());
+        assertEquals(largeEnds, beforeBoth.validUntil());
+
+        FormulaResultDTO afterTheLarge = at(plusMs(largeEnds, 1), parameters);
+        assertEquals(FACE - DISCOUNT, afterTheLarge.amount());
+        assertEquals(smallEnds, afterTheLarge.validUntil());
+    }
+
+    /** S2.6-AC3: the largest discount wins even when a smaller one would last longer. */
+    @Test
+    void theLargestEligibleDiscountWinsAndCarriesItsOwnEdge() {
+        DiscountVO lateButLarge = new DiscountVO(10, 3 * DISCOUNT, "large");
+        DiscountVO earlyButSmall = new DiscountVO(30, DISCOUNT, "small");
+
+        FormulaResultDTO result = at(DUE_DATE.minusDays(40),
+            parameters(List.of(earlyButSmall, lateButLarge)));
+
+        assertEquals(FACE - 3 * DISCOUNT, result.amount());
+        assertEquals(DUE_DATE.minusDays(10), result.validUntil());
+    }
+
+    /** S2.6-AC2, AC4: k days late, the fee is advertised until exactly dueDate + k × 24 h. */
+    @Test
+    void aLateFeeIsAdvertisedUntilTheNextTwentyFourHourBoundaryFromTheDueDate() {
+        FormulaResultDTO firstDay = at(DUE_DATE.plusHours(5), parameters(null));
+
+        assertEquals(FACE + PER_DAY, firstDay.amount());
+        assertEquals(DUE_DATE.plusDays(1), firstDay.validUntil(),
+            "the first day's fee must be advertised until dueDate + 24 h, not the end of the calendar day");
+
+        FormulaResultDTO thirdDay = at(DUE_DATE.plusDays(2).plusMinutes(1), parameters(null));
+
+        assertEquals(FACE + 3 * PER_DAY, thirdDay.amount());
+        assertEquals(DUE_DATE.plusDays(3), thirdDay.validUntil());
+    }
+
+    /** S2.6-AC2, AC4: the fee for k days applies at dueDate + k × 24 h, and the next one 1 ms later. */
+    @Test
+    void aLateFeeAppliesAtItsBoundaryAndRisesOneMillisecondAfter() {
+        OffsetDateTime boundary = DUE_DATE.plusDays(1);
+
+        FormulaResultDTO atTheBoundary = at(boundary, parameters(null));
+        assertEquals(FACE + PER_DAY, atTheBoundary.amount());
+        assertEquals(boundary, atTheBoundary.validUntil());
+
+        FormulaResultDTO justAfter = at(plusMs(boundary, 1), parameters(null));
+        assertEquals(FACE + 2 * PER_DAY, justAfter.amount());
+        assertEquals(DUE_DATE.plusDays(2), justAfter.validUntil());
+    }
+
+    /** S2.6-AC1, AC2: the advertised validUntil is capped by whatever ends sooner. */
+    @Test
+    void theAdvertisedValidUntilIsCappedByAnEarlierEnd() {
+        OffsetDateTime eligibilityEnds = DUE_DATE.minusDays(10);
+        FormulaResultDTO result = at(eligibilityEnds.minusDays(5),
+            parameters(List.of(new DiscountVO(10, DISCOUNT, "early"))));
+
+        OffsetDateTime methodEnds = eligibilityEnds.minusDays(2);
+
+        assertEquals(methodEnds, result.cappedAt(methodEnds).validUntil());
+        assertEquals(eligibilityEnds, result.cappedAt(eligibilityEnds.plusDays(1)).validUntil(),
+            "a later cap leaves the edge alone");
+        assertEquals(result.amount(), result.cappedAt(methodEnds).amount());
     }
 
 }

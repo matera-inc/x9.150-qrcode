@@ -597,6 +597,29 @@ whose clock judges those instants, nor what is owed at exactly the due date.
 A post-commit (money already moved, a `transactionId` present) is recorded and not judged again
 against the clock; see I-11.
 
+## I-14 — The payee honours what it signed: an adjusted amount's `validUntil` is its exact edge
+
+**Where:** §13.5.3 (the adjustment in the payload: explanation, amount, `validUntil`)
+
+**What the standard says.** Each adjustment in the payload carries a `validUntil`. The standard does
+not say whether that is a calendar day, a rounded time, or the exact instant the adjustment's rule
+changes.
+
+**What we do.** The `validUntil` signed next to a discounted or late-fee amount is the exact instant
+that amount stops applying, so that the instant advertised and the instant accepted are the same:
+
+- **Discount:** E = `dueDate − daysBefore`. The discount is served, advertised and accepted up to
+  and including E, and refused one millisecond after (the face amount is still accepted). Of
+  several discounts, the largest eligible one is served and its `validUntil` is that discount's E.
+- **Late fee:** k days late, with k = ceil((t − `dueDate`) / 24 h), the fee is k × per-day + fixed,
+  and its `validUntil` is `dueDate + k × 24 h`. One millisecond later, one more day is owed.
+- **Capped:** never later than the QR Code's `validUntil`, nor than the last of the payment methods
+  served with it. Each method still carries its own `validUntil` beside its amount.
+
+Before this, the value was rounded to `23:59:59` UTC of the day. A discount ending at E was
+advertised until up to ~21 h later, and a pre-commit made inside that gap was refused while its
+signed quote said it was valid.
+
 ---
 
 ## Reporting
