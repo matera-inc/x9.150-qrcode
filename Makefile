@@ -49,10 +49,10 @@ dockerhub-overview-dry-run: ## Show what the Overview push would change, without
 	./others/scripts/push-dockerhub-overview.sh --dry-run
 
 blackbox: ## Run the black-box suite (X9_BASE_URL, default http://localhost:8080; see others/blackbox/README.md)
-	@.blackbox-venv/bin/python -c 'import pytest, cryptography' 2>/dev/null || $(MAKE) blackbox-venv
+	@.blackbox-venv/bin/python -c 'import pytest, cryptography, yaml' 2>/dev/null || $(MAKE) blackbox-venv
 	@.blackbox-venv/bin/pytest others/blackbox -q
 
-blackbox-venv: ## Create .blackbox-venv with the suite's pinned dependencies (pytest, cryptography)
+blackbox-venv: ## Create .blackbox-venv with the suite's pinned dependencies (pytest, cryptography, pyyaml)
 	python3 -m venv .blackbox-venv
 	.blackbox-venv/bin/pip install -q -r others/blackbox/requirements.txt
 

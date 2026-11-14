@@ -73,6 +73,8 @@ others/blackbox/
 │   ├── samples.py     request bodies a scenario starts from
 │   └── checks.py      assert_refused: refused, and for the right reason
 ├── tests/             the scenarios
+├── contract.py        generates a refusal case per maxLength/minLength/pattern/required in openapi.yaml
+├── contract-known-gaps.yaml   constraints the service does not enforce today, each with its reason
 ├── deployment/        the truststore a deployment under test runs with, and how it is built
 ├── conftest.py        fixtures: api, events, clock, db, pki, payer_a, payer_b, tamperer
 ├── run.py             `uv run` entry point (PEP 723)
@@ -113,6 +115,23 @@ marks.
 | Currency & rail | a currency not offered, a destination address never published, blockchain data on a bank rail |
 | Lifecycle | second pre-payment, payment on a CANCELLED code, post-payment with no pre-payment (reserves, flagged), and a refused notification leaving the QR Code ACTIVE |
 | **Signatures** (`test_signatures.py`) | payers A and B on their own keys; wrong key, untrusted CA, revoked certificate, expired `iat + ttl`, `iat` in the future, missing or unknown `crit`, missing `x5c`, altered payload, `alg: none`; B cannot take or release A's reservation; every answer verified against the payee's certificate, echoing the question's `correlationId` (fresh when the question could not be verified); the same signed question twice |
+
+## The contract writes the boring tests
+
+`contract.py` reads `openapi.yaml` and generates one case for every `maxLength`, `minLength`,
+`pattern` and `required` in the JSON request schemas (create, PATCH, status-update, the payer-side
+pre/post-payment, signature validation, the EMV decoder): a sample body the service accepts, with
+one field broken. `tests/test_contract.py` asserts 400, the field's path in the violations, and
+that nothing changed. Add a field with a `maxLength` to the contract and its refusal test exists.
+
+```bash
+python3 others/blackbox/contract.py        # list the cases, send nothing
+```
+
+A constraint the service does not enforce is listed in `contract-known-gaps.yaml` with the reason;
+it still runs, as a strict expected failure, so it turns red the day it starts being enforced.
+Every run ends with one line: `contract.py: N cases generated, N executed (G known gaps, F failed),
+S skipped`.
 
 ## One test pins behaviour rather than endorsing it
 

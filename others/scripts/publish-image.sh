@@ -38,9 +38,9 @@ NETWORK="${NETWORK:-x9-qrcode-network}"
 # happens to be installed globally on the machine doing it.
 PYTEST="${PYTEST:-$PWD/.blackbox-venv/bin/pytest}"
 
-# The suite signs as independent payers, so it needs `cryptography` as well as pytest. A venv from
-# before that (pytest only) is rebuilt, not reused.
-if [ ! -x "$PYTEST" ] || ! "$(dirname "$PYTEST")/python" -c 'import cryptography' >/dev/null 2>&1; then
+# The suite signs as independent payers and reads openapi.yaml, so it needs `cryptography` and
+# `pyyaml` as well as pytest. A venv from before that is rebuilt, not reused.
+if [ ! -x "$PYTEST" ] || ! "$(dirname "$PYTEST")/python" -c 'import cryptography, yaml' >/dev/null 2>&1; then
     # Missing SETUP is not a failed check — build it. A check that still cannot run after this
     # is a refusal to publish, handled at the call site.
     python3 -m venv "$PWD/.blackbox-venv" >/dev/null 2>&1 \

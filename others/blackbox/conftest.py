@@ -38,6 +38,38 @@ from x9client.events import EventReader
 REQUIRE_ALL = os.environ.get("X9_REQUIRE_ALL", "") not in ("", "0", "false")
 
 
+_CONTRACT = {"executed": 0, "known_gaps": 0, "skipped": 0, "failed": 0}
+
+
+def pytest_runtest_logreport(report):
+    """Counts the generated contract cases as they run (S3.3-AC3)."""
+    if "test_a_contract_constraint_is_refused" not in report.nodeid:
+        return
+    if report.when == "setup" and report.skipped:
+        _CONTRACT["skipped"] += 1
+    elif report.when == "call":
+        if report.skipped and hasattr(report, "wasxfail"):
+            _CONTRACT["executed"] += 1
+            _CONTRACT["known_gaps"] += 1
+        elif report.skipped:
+            _CONTRACT["skipped"] += 1
+        else:
+            _CONTRACT["executed"] += 1
+            _CONTRACT["failed"] += int(report.failed)
+
+
+def pytest_terminal_summary(terminalreporter):
+    """One line: how many contract cases were generated, executed and skipped (S3.3-AC3)."""
+    if not any(_CONTRACT.values()):
+        return
+    import contract
+    generated = len(contract.cases())
+    terminalreporter.write_line(
+        f"contract.py: {generated} cases generated, {_CONTRACT['executed']} executed "
+        f"({_CONTRACT['known_gaps']} known gaps, {_CONTRACT['failed']} failed), "
+        f"{_CONTRACT['skipped']} skipped")
+
+
 def unavailable(reason):
     """Skip, or fail when the run requires every capability (``X9_REQUIRE_ALL``)."""
     if REQUIRE_ALL:

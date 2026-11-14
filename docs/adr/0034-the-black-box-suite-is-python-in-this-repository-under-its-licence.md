@@ -90,6 +90,18 @@ and is optional where it can be:
 HTTP stays on the standard library. A PEP 723 header lets `uv run` resolve the dependencies with
 no virtualenv ceremony, and `make blackbox` keeps working.
 
+### Amendment, 2026-11-14: `pyyaml` joins the table
+
+`contract.py` (Story 3.3) reads `openapi.yaml` to generate the field refusal cases, and the
+standard library has no YAML parser.
+
+| Dependency | Needed for | Optional? |
+|---|---|---|
+| `pyyaml` | `contract.py` reading `openapi.yaml` | no; the generated cases cannot exist without it |
+
+It is pinned like the others, in `others/blackbox/requirements.txt` and in the PEP 723 header of
+`others/blackbox/run.py`.
+
 **Runs in CI** against the built image with PostgreSQL in compose, not only at publish. The publish
 gate stays.
 
