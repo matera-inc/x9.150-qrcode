@@ -8,11 +8,14 @@ package com.matera.x9qrcode.infrastructure.service;
 
 import com.matera.x9qrcode.app.dto.SignatureInputDataDTO;
 import com.matera.x9qrcode.app.dto.SignatureOutputDataDTO;
+import com.matera.x9qrcode.app.dto.enumerated.SignatureProblemEnumDTO;
 import com.matera.x9qrcode.app.dto.enumerated.SignatureTypeEnumDTO;
 import com.matera.x9qrcode.app.exception.ServiceException;
 import com.matera.x9qrcode.app.service.PEMService;
 import com.matera.x9qrcode.app.service.QRCodeSignatureService;
 import com.matera.x9qrcode.app.usecase.validatesignature.SignatureValidationInput;
+import com.matera.x9qrcode.app.usecase.validatesignature.SignatureValidationOutput;
+import com.matera.x9qrcode.domain.utils.BusinessClock;
 import com.matera.x9qrcode.infrastructure.AbstractIntegrationTest;
 import com.matera.x9qrcode.infrastructure.generated.api.PaymentRequestApi;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentRequestInputDTO;
@@ -231,7 +234,46 @@ class JwsQRCodeSignatureServiceTest extends AbstractIntegrationTest {
             new SignatureValidationInput(SignatureTypeEnumDTO.X9, correlationId, signResult.jwsToken(),
                 UUID.randomUUID().toString());
 
-        assertFalse(signatureService.validateSignature(validationInput).isValid());
+        SignatureValidationOutput result = signatureService.validateSignature(validationInput);
+        assertFalse(result.isValid());
+        assertEquals(SignatureProblemEnumDTO.CONTENT_MISMATCH, result.problem());
+    }
+
+    /**
+     * <b>X9-SIG-144</b> — the shared verifier refuses an {@code iat} more than the allowed skew ahead of
+     * its clock, and accepts one within it.
+     *
+     * <p><b>Source:</b> Ours (owner decision, Story 2.3 follow-up). ANSI X9.150-2026 §10.3.2 defines
+     * {@code iat} and {@code ttl}, not a skew.
+     *
+     * <p><b>Why:</b> One verifier checks questions and answers alike, so the rule is proved once here
+     * and on each path by X9-SIG-140 and X9-SIG-145. The default skew is 60 seconds.
+     */
+    @Test
+    void theVerifierRefusesAnIatAheadOfItsClockBeyondTheSkew() {
+        UUID correlationId = UUID.randomUUID();
+
+        BusinessClock.setOffsetMillis(90_000L);
+        String ahead;
+        String drifting;
+        try {
+            ahead = signatureService.signData(new SignatureInputDataDTO(SignatureTypeEnumDTO.X9,
+                Map.of("statusCode", 200), correlationId, TTL, 200)).jwsToken();
+            BusinessClock.setOffsetMillis(45_000L);
+            drifting = signatureService.signData(new SignatureInputDataDTO(SignatureTypeEnumDTO.X9,
+                Map.of("statusCode", 200), correlationId, TTL, 200)).jwsToken();
+        } finally {
+            BusinessClock.reset();
+        }
+
+        SignatureValidationOutput refused = signatureService.validateSignature(
+            new SignatureValidationInput(SignatureTypeEnumDTO.X9, correlationId, ahead, null));
+        assertFalse(refused.isValid());
+        assertEquals(SignatureProblemEnumDTO.FUTURE_IAT, refused.problem());
+        assertNotNull(refused.problemDetail());
+
+        assertTrue(signatureService.validateSignature(
+            new SignatureValidationInput(SignatureTypeEnumDTO.X9, correlationId, drifting, null)).isValid());
     }
 
     /**

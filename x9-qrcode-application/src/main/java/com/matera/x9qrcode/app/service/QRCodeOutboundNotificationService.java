@@ -8,6 +8,7 @@ package com.matera.x9qrcode.app.service;
 
 import com.matera.x9qrcode.app.dto.PaymentNotificationDataDTO;
 import com.matera.x9qrcode.app.dto.enumerated.AnswerSignatureEnumDTO;
+import com.matera.x9qrcode.app.dto.enumerated.SignatureProblemEnumDTO;
 
 import java.net.URI;
 import java.util.UUID;
@@ -46,12 +47,14 @@ public interface QRCodeOutboundNotificationService {
      * is the one the payee signed; otherwise it is the HTTP status, and a 200 is still an
      * accepted, unsigned yes.
      *
-     * @param signatureProblem why the answer is not {@code VERIFIED}, in words; null when it is
+     * @param signatureProblem why the answer is not {@code VERIFIED}, as a fixed code; null when it is
+     * @param signatureDetail  the same reason in words, for a person; null when it is
      */
     record OutboundNotificationResult(int statusCode,
                                       String body,
                                       AnswerSignatureEnumDTO signature,
-                                      String signatureProblem) {
+                                      SignatureProblemEnumDTO signatureProblem,
+                                      String signatureDetail) {
 
         public boolean accepted() {
             return statusCode >= 200 && statusCode < 300;

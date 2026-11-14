@@ -19,6 +19,8 @@ It fails (exit 1), naming the file and the changeset, when:
             triggers, procedures (functions and DO blocks included), LISTEN/NOTIFY, advisory locks,
             ON CONFLICT DO UPDATE, a database-side clock as a default, or a PASSWORD (role
             passwords come from the DBA, S6.2-AC5).
+  S6.4-AC4  a mapping in a changelog file repeats a key. YAML keeps the last one and Liquibase only
+            warns, so a repeated `constraints` or `defaultValue` silently drops what came first.
 
 A construct ADR-0023 forbids can still be used where it is truly needed, as ADR-0023's "recorded
 exception": the changeset's `comment` says `ADR-0023 exception: <construct>, <reason>`, using the
@@ -169,6 +171,46 @@ def load_base(changelog_dir, ref):
 
 # ------------------------------------------------------------------------------------------------
 # Rules
+
+def check_duplicate_keys(rel, text):
+    """S6.4-AC4: no mapping repeats a key. PyYAML, like the SnakeYAML inside Liquibase, keeps the last
+    value without complaint, so this walks the composed node tree, where both keys are still there.
+    Each repeat is named with the changeset it is in (when it is in one) and both line numbers."""
+    try:
+        root = yaml.compose(text, Loader=yaml.SafeLoader)
+    except yaml.YAMLError:
+        return []  # reported by check() as invalid YAML
+    found = []
+
+    def changeset_id(mapping):
+        for key, value in mapping.value:
+            if isinstance(key, yaml.ScalarNode) and key.value == "id" and isinstance(value, yaml.ScalarNode):
+                return value.value
+        return "?"
+
+    def walk(node, cs_id):
+        if isinstance(node, yaml.SequenceNode):
+            for item in node.value:
+                walk(item, cs_id)
+        elif isinstance(node, yaml.MappingNode):
+            seen = {}
+            for key, value in node.value:
+                if isinstance(key, yaml.ScalarNode):
+                    if key.value in seen:
+                        found.append(Violation(rel, cs_id or "", (
+                            f"duplicate YAML key '{key.value}' at line {key.start_mark.line + 1} (first at line "
+                            f"{seen[key.value] + 1}); YAML keeps only the last one and Liquibase only warns")))
+                    else:
+                        seen[key.value] = key.start_mark.line
+                inner = cs_id
+                if isinstance(key, yaml.ScalarNode) and key.value == "changeSet" and isinstance(value, yaml.MappingNode):
+                    inner = changeset_id(value)
+                walk(value, inner)
+
+    if root is not None:
+        walk(root, None)
+    return found
+
 
 def check_applied(head, base):
     """S6.4-AC1: every changeset present at the base is still present, unchanged."""
@@ -347,10 +389,13 @@ def check(changelog_dir, base=None):
         if path.suffix not in YAML_SUFFIXES:
             found.append(Violation(rel, "", "only YAML changelogs are accepted here (and .sql for sqlFile)"))
             continue
+        text = path.read_text()
         try:
-            head[rel] = load_yaml(path.read_text())
+            head[rel] = load_yaml(text)
         except yaml.YAMLError as e:
             found.append(Violation(rel, "", f"is not valid YAML: {e}"))
+            continue
+        found += check_duplicate_keys(rel, text)
     for rel, doc in head.items():
         for cs in changesets_of(doc):
             found += check_changeset(rel, cs, root)

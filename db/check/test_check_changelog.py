@@ -9,6 +9,7 @@
 """Each test writes a small changelog into a temporary directory and checks what the checker says."""
 
 import os
+import re
 import subprocess
 import tempfile
 import textwrap
@@ -268,6 +269,48 @@ class S64AC3ForbiddenConstructsAreNamedWithTheirFile(unittest.TestCase):
     def test_a_changelog_that_is_not_yaml_is_refused(self):
         out = run({"0009-x.xml": "<databaseChangeLog/>"})
         self.assertTrue(any("0009-x.xml" in o and "YAML" in o for o in out), out)
+
+
+class S64AC4DuplicateYamlKeysAreRefused(unittest.TestCase):
+    """S6.4-AC4: YAML keeps the last of two equal keys and Liquibase only warns. In 0001 a second
+    `constraints`/`defaultValue` under one column left the next column NULL-able; it must fail."""
+
+    # The 0001 incident: the lines meant for `deviations` landed one column up.
+    MISPLACED = GOOD_TABLE + textwrap.indent(
+        "- column:\n    name: received_in_status_code\n    type: VARCHAR(4)\n    remarks: Status.\n"
+        "    constraints:\n      nullable: false\n    constraints:\n      nullable: false\n"
+        "    defaultValue: ''\n    defaultValue: ''\n"
+        "- column:\n    name: deviations\n    type: VARCHAR(255)\n    remarks: Deviations.\n", " " * 8)
+
+    def test_a_duplicate_key_in_a_column_fails_naming_file_changeset_key_and_lines(self):
+        out = run({"0009-thing.yaml": self.MISPLACED})
+        dups = [o for o in out if "duplicate YAML key" in o]
+        self.assertEqual(2, len(dups), out)
+        self.assertTrue(all("changes/0009-thing.yaml" in o and "changeset 0009-01-thing" in o for o in dups), dups)
+        self.assertTrue(any("'constraints'" in o for o in dups), dups)
+        self.assertTrue(any("'defaultValue'" in o for o in dups), dups)
+        self.assertTrue(all(re.search(r"line \d+.*line \d+", o) for o in dups), dups)
+
+    def test_a_duplicate_changeset_key_fails(self):
+        text = GOOD_TABLE.replace("    author: x9-qrcode\n", "    author: x9-qrcode\n    author: someone\n")
+        out = run({"0009-thing.yaml": text})
+        self.assertTrue(any("duplicate YAML key 'author'" in o and "0009-01-thing" in o for o in out), out)
+
+    def test_a_duplicate_key_outside_any_changeset_fails_naming_the_file(self):
+        text = GOOD_TABLE + "databaseChangeLog: []\n"
+        out = run({"0009-thing.yaml": text})
+        self.assertTrue(any("changes/0009-thing.yaml" in o and "duplicate YAML key 'databaseChangeLog'" in o
+                            for o in out), out)
+
+    def test_equal_keys_in_sibling_mappings_pass(self):
+        two_columns = with_column("VARCHAR(8)")
+        self.assertEqual([], run({"0009-thing.yaml": two_columns}))
+
+    def test_a_duplicate_key_in_an_applied_changeset_is_reported_once_as_a_duplicate(self):
+        base = {"changes/0009-thing.yaml": self.MISPLACED}
+        out = run({"0009-thing.yaml": self.MISPLACED}, base)
+        self.assertEqual(2, len(out), out)
+        self.assertTrue(all("duplicate YAML key" in o for o in out), out)
 
 
 if __name__ == "__main__":

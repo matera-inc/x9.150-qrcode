@@ -52,7 +52,7 @@ class TestClockDisabledApiTest extends AbstractIntegrationTest {
         assertEquals(404, api("GET", null).statusCode());
         assertEquals(404, api("PUT", "{\"offsetSeconds\": 60}").statusCode());
         assertEquals(404, api("DELETE", null).statusCode());
-        assertEquals(0, BusinessClock.offsetSeconds());
+        assertEquals(0, BusinessClock.offsetMillis());
     }
 
 }

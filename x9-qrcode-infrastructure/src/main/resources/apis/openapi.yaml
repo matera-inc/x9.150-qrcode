@@ -702,6 +702,9 @@ paths:
             unknown network...). **Signed**, like every answer from this endpoint: a JWS whose body
             is `{"statusCode": 400}` plus the usual error fields (`type`, `title`, `status`,
             `detail`, `violations`), with the notification's `correlationId` echoed.
+
+            Also returned, signed under a fresh `correlationId`, for a request refused before it is
+            read: an empty body, or one that cannot be read.
           content:
             application/jose:
               schema:
@@ -711,6 +714,10 @@ paths:
             The JWS signature could not be verified, so the notification was **not processed** — the
             payload was never parsed and no QR Code was read or written. Distinct from `400`, which
             means the request was authentic but its content failed a rule.
+
+            This includes a JWS whose `iat + ttl` has passed, and one whose `iat` is ahead of this
+            payee's clock by more than the allowed skew (`x9.public-endpoints.jws-clock-skew-seconds`,
+            60 s by default).
 
             Still a signed answer, with body `{"statusCode": 401}` plus the error fields. Its
             `correlationId` is **fresh**: a question that cannot be verified has no correlationId
@@ -745,6 +752,15 @@ paths:
             application/jose:
               schema:
                 $ref: "#/components/schemas/SignedNotificationAnswer"
+        "415":
+          description: |-
+            The request's `Content-Type` is not `application/jose`. Refused before it is read, and
+            still a signed answer: body `{"statusCode": 415}` plus the error fields, under a fresh
+            `correlationId`.
+          content:
+            application/jose:
+              schema:
+                $ref: "#/components/schemas/SignedNotificationAnswer"
         "422":
           description: |-
             The notification could not be processed. A signed answer, body `{"statusCode": 422}`
@@ -754,7 +770,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/SignedNotificationAnswer"
         "500":
-          $ref: "#/components/responses/InternalServerErrorResponse"
+          description: |-
+            An unexpected failure on this payee's side. Still a signed answer: body
+            `{"statusCode": 500}` plus the error fields, which say nothing about the cause. The
+            `correlationId` echoes the notification's when its signature had verified, and is fresh
+            otherwise. Only a failure to sign itself leaves the answer unsigned.
+          content:
+            application/jose:
+              schema:
+                $ref: "#/components/schemas/SignedNotificationAnswer"
 
 components:
   schemas:
@@ -1858,10 +1882,57 @@ components:
         signatureProblem:
           type: string
           nullable: true
+          enum:
+            - ABSENT_BODY
+            - NOT_JWS
+            - ALG_NONE
+            - ENCRYPTED
+            - BAD_HEADER
+            - CERTIFICATE_UNAVAILABLE
+            - UNTRUSTED_CHAIN
+            - BAD_SIGNATURE
+            - EXPIRED
+            - FUTURE_IAT
+            - CORRELATION_ID_MISMATCH
+            - STATUS_MISSING
+            - STATUS_MISMATCH
+            - UNVERIFIABLE
           description: |-
-            Why the answer is `INVALID` or `ABSENT`, in words. Absent when `signature` is
-            `VERIFIED`. Meant for a person reading a log, not for parsing.
-          example: "correlationId mismatch: sent 8a652794-9e73-4fd7-a628-4d525b638cbc, answer carries 1b4e28ba-2fa1-11d2-883f-0016d3cca427"
+            Why the answer is not `VERIFIED`, as a fixed code from this closed list. Absent when
+            `signature` is `VERIFIED`. Act on the code; the words are in `signatureDetail`.
+
+            With `signature` `ABSENT`:
+            - `ABSENT_BODY`: the answer has no body.
+            - `NOT_JWS`: the body is not a JOSE object (plain JSON, plain text).
+
+            With `signature` `INVALID`:
+            - `ALG_NONE`: an unsecured JOSE object (`alg: none`), carrying no signature.
+            - `ENCRYPTED`: an encrypted JOSE object (JWE), not a signed one.
+            - `BAD_HEADER`: the protected header breaks the profile: `crit` missing, incomplete or
+              naming an unknown parameter; `correlationId`, `iat`, `ttl`, `statusCode` or
+              `x5t#S256` missing or malformed; no certificate reference; an unsupported `alg`.
+            - `CERTIFICATE_UNAVAILABLE`: the payee's certificate or key could not be fetched or
+              found (`x5u`, `jku`, `kid`).
+            - `UNTRUSTED_CHAIN`: the certificate does not chain to a trusted root, is expired, not
+              yet valid or revoked, lacks digitalSignature, or does not match the thumbprint.
+            - `BAD_SIGNATURE`: the signature does not verify (altered, or another key).
+            - `EXPIRED`: `iat + ttl` has passed.
+            - `FUTURE_IAT`: `iat` is ahead of this service's clock by more than the allowed skew
+              (`x9.public-endpoints.jws-clock-skew-seconds`, 60 s by default).
+            - `CORRELATION_ID_MISMATCH`: signed under a `correlationId` other than the one sent,
+              for example a yes replayed from another notification.
+            - `STATUS_MISSING`: the signed body has no integer `statusCode`.
+            - `STATUS_MISMATCH`: the signed `statusCode` differs from the HTTP status.
+            - `UNVERIFIABLE`: the check failed for a reason none of the codes above names; see
+              `signatureDetail`.
+          example: CORRELATION_ID_MISMATCH
+        signatureDetail:
+          type: string
+          nullable: true
+          description: |-
+            The same reason as `signatureProblem`, in words, for a person reading a log. Absent
+            when `signature` is `VERIFIED`. Free text: its wording may change, so do not parse it.
+          example: "correlationId mismatch: expected 8a652794-9e73-4fd7-a628-4d525b638cbc, found 1b4e28ba-2fa1-11d2-883f-0016d3cca427"
 
     PaymentNotificationData:
       type: object

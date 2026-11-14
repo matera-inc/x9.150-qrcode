@@ -24,7 +24,10 @@ public enum ErrorTypeEnum {
     // The status carried here is a placeholder: a refusal relays whatever status the payee's
     // service answered with, so that a payer can tell `already paid` from `not found`.
     PAYLOAD_REFUSED("Payload Refused", URI.create("https://x9.matera.com/api/payload-refused"), "The payee's service refused to release this payload. Its own reason is relayed in `violations`.", HttpStatus.BAD_REQUEST),
-    PAYLOAD_UNREACHABLE("Payload Unreachable", URI.create("https://x9.matera.com/api/payload-unreachable"), "The payee's service could not be reached, so this QR Code could not be decoded. Retry.", HttpStatus.BAD_GATEWAY);
+    PAYLOAD_UNREACHABLE("Payload Unreachable", URI.create("https://x9.matera.com/api/payload-unreachable"), "The payee's service could not be reached, so this QR Code could not be decoded. Retry.", HttpStatus.BAD_GATEWAY),
+    // The cause stays in the log: the caller may be unauthenticated, and an exception's message can
+    // describe internals.
+    INTERNAL_ERROR("Internal Server Error", URI.create("https://x9.matera.com/api/internal-error"), "An unexpected error occurred while processing the request.", HttpStatus.INTERNAL_SERVER_ERROR);
 
     private final String title;
     private final URI uriType;

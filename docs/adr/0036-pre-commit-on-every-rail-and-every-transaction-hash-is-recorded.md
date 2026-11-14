@@ -204,6 +204,9 @@ change. Only the payment system ends it:
   to `ACTIVE` and clears the reservation. This is the payment system's control over a reservation: it
   already exists, and is the only way back once a hash is registered.
 
+No payer message ends it either: after a hash, the holder's `NOT_SENT` and a refused retry change
+nothing (see the matrix).
+
 **`x9.reservation.ttl-seconds` sets the window before any hash, and `0` means no window.**
 
 | Setting | For | Behaviour |
@@ -211,6 +214,7 @@ change. Only the payment system ends it:
 | `90` (the default) | Beginners and simple installations | A pre-commit holds the QR Code for 90 s; a payer that vanishes cannot lock it longer |
 | `0` | A bank that wants full control | A reservation never expires. It ends only by a refused retry, `NOT_SENT`, or the payment system's `ACTIVE`, `PAID` or `CANCELLED` |
 | any other positive value | Tuning | As the default, with that window |
+| a negative value | — | Invalid: the service refuses to start |
 
 Today `0` makes every reservation expire at once, because the window is computed as "now + 0". That
 changes with this ADR; Go uses the same setting and environment variable
@@ -256,11 +260,12 @@ Messages from a payer:
 
 | Message | ACTIVE | Held by the sender | Held by someone else | PAID or CANCELLED |
 |---|---|---|---|---|
-| **Pre-commit** (no `transactionId`) | Judged at the payee's clock. Yes: → `PAYMENT_INITIATED` held by the sender, `payment.initiated`. No: 400, nothing changes | A retry, judged again. Yes: window refreshed, no event. No: → `ACTIVE`, reservation cleared (Solana: `payment.failed`) | 409, nothing changes | 400, nothing changes |
+| **Pre-commit** (no `transactionId`) | Judged at the payee's clock. Yes: → `PAYMENT_INITIATED` held by the sender, `payment.initiated`. No: 400, nothing changes | A retry, judged again. Yes: window refreshed, no event. No: → `ACTIVE`, reservation cleared (Solana: `payment.failed`). Once a hash is registered: 409, nothing changes § | 409, nothing changes | 400, nothing changes |
 | **Post-commit** (`transactionId` present) | Accepted, never judged: → `PAYMENT_INITIATED` held by the sender; `payment.initiated`, then `payment.sent` on a chain; flagged `RECEIVED_IN_WRONG_STATUS`; the window stops ‡ | Accepted, status unchanged; `payment.sent` on a chain; the window stops ‡ | Accepted, the holder keeps it; `payment.sent` on a chain, flagged `RECEIVED_IN_WRONG_STATUS`; the window stops ‡ | Accepted, status unchanged; `payment.sent` on a chain, flagged `RECEIVED_IN_WRONG_STATUS` |
 | **`PAYMENT_INITIATED` with a hash** (chain) | As a post-commit, also flagged `ACTION_CONTRADICTS_HASH` | same | same | same |
 | **`SENT` without a hash** (chain) | 400 | 400 | 400 | 400 |
-| **`NOT_SENT`** (chain: the payer gives it back) | 400; from the holder of a lapsed reservation: accepted, `payment.failed` | → `ACTIVE`, reservation cleared, `payment.failed` | 409 | 400 |
+| **`NOT_SENT`** (chain: the payer gives it back) | 400; from the holder of a lapsed reservation: accepted, `payment.failed` | → `ACTIVE`, reservation cleared, `payment.failed`. Once a hash is registered: accepted, nothing changes, flagged `ACTION_CONTRADICTS_HASH` § | 409 | 400 |
+| **`NOT_SENT` with a `transactionId`** (chain) | As a post-commit (the evidence decides), also flagged `ACTION_CONTRADICTS_HASH` | same | same | same |
 
 From the payment system (status-update API), and from time:
 
@@ -273,6 +278,10 @@ From the payment system (status-update API), and from time:
 | **The reservation's window passes** | — | reads `ACTIVE`, nothing written, no event; never once a hash is registered, nor when `ttl-seconds` is `0` | same | — |
 
 ‡ The reservation no longer expires; only the payment system ends it (see *The reservation's window*).
+
+§ **Once a hash is registered, no payer message changes the QR Code's status** (owner, 2026-11-14). Neither the holder's `NOT_SENT` nor a refused retry releases it: money has moved, so only the payment system ends the reservation.
+
+**Losing a concurrent write.** A transition that keeps losing the race after its re-runs answers 409 "busy" with the current status, never 500 (as ADR-0025 says for Go).
 
 **`validUntil` is not a status.** Past it, a pre-commit is refused by the payee's clock (400); a
 post-commit is still accepted and registered, because the money has moved.

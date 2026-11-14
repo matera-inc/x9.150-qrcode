@@ -22,46 +22,65 @@ import java.util.Objects;
  * {@link #clock()}, directly or through {@link DateTimeUtils#nowUTC()}. Request logging, lease timers
  * and long-poll waits measure real durations and keep the real clock.
  *
- * <p>The clock is the real UTC clock shifted by a whole number of seconds, so it keeps ticking. The
- * offset is zero unless a <b>test</b> deployment moves it over {@code /test/clock}, which exists only
- * when {@code X9_TESTING_CLOCKCONTROL=true} and the signing certificate is a bundled demo or test-CA
- * one. Nothing else in the code sets it.
+ * <p>The clock is the real UTC clock shifted by a whole number of <b>milliseconds</b>, so it keeps
+ * ticking, and an edge such as "accepted at E, refused at E + 1 ms" can be reached. The offset is zero
+ * unless a <b>test</b> deployment moves it over {@code /test/clock}, which exists only when
+ * {@code X9_TESTING_CLOCKCONTROL=true} and the signing certificate is one bundled with this repository.
+ * Nothing else in the code sets it.
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class BusinessClock {
 
     /** About a century. Large enough for any scenario; small enough that {@code Instant} arithmetic never overflows. */
-    static final long MAX_OFFSET_SECONDS = Duration.ofDays(36_525).toSeconds();
+    static final long MAX_OFFSET_MILLIS = Duration.ofDays(36_525).toMillis();
 
-    private static volatile long offsetSeconds;
+    private static volatile long offsetMillis;
 
     /** The business clock: real UTC time plus the current offset. */
     public static Clock clock() {
-        long offset = offsetSeconds;
-        return offset == 0 ? Clock.systemUTC() : Clock.offset(Clock.systemUTC(), Duration.ofSeconds(offset));
+        long offset = offsetMillis;
+        return offset == 0 ? Clock.systemUTC() : Clock.offset(Clock.systemUTC(), Duration.ofMillis(offset));
     }
 
-    public static long offsetSeconds() {
-        return offsetSeconds;
+    /** The current offset from real time, in milliseconds. */
+    public static long offsetMillis() {
+        return offsetMillis;
     }
 
-    public static void setOffsetSeconds(long seconds) {
-        if (Math.abs(seconds) > MAX_OFFSET_SECONDS) {
+    public static void setOffsetMillis(long millis) {
+        if (Math.abs(millis) > MAX_OFFSET_MILLIS) {
             throw new IllegalArgumentException(
-                "offsetSeconds must be within ±%d seconds".formatted(MAX_OFFSET_SECONDS));
+                "the offset must be within ±%d milliseconds".formatted(MAX_OFFSET_MILLIS));
         }
-        offsetSeconds = seconds;
+        offsetMillis = millis;
     }
 
-    /** Shifts the clock so it reads {@code at} now, to the nearest second, and keeps ticking from there. */
+    /**
+     * Shifts the clock so it reads {@code at} now, and keeps ticking from there.
+     *
+     * <p>The offset is {@code at} minus the real clock, both in whole milliseconds, so straight after
+     * this call the clock reads {@code at} plus less than one millisecond — never earlier than
+     * {@code at}. Setting {@code at} to E + 1 ms therefore guarantees every later read is after E.
+     *
+     * @throws IllegalArgumentException if {@code at} is finer than a millisecond, or too far away
+     */
     public static void setAt(Instant at) {
         Objects.requireNonNull(at, "at");
-        Duration shift = Duration.between(Instant.now(), at);
-        setOffsetSeconds(shift.getSeconds() + (shift.getNano() >= 500_000_000 ? 1 : 0));
+        if (at.getNano() % 1_000_000 != 0) {
+            throw new IllegalArgumentException("at must be given to the millisecond at most, e.g. 2031-12-31T23:59:59.999Z");
+        }
+        long shift;
+        try {
+            shift = Math.subtractExact(at.toEpochMilli(), Clock.systemUTC().millis());
+        } catch (ArithmeticException e) {
+            throw new IllegalArgumentException(
+                "the offset must be within ±%d milliseconds".formatted(MAX_OFFSET_MILLIS), e);
+        }
+        setOffsetMillis(shift);
     }
 
     public static void reset() {
-        offsetSeconds = 0;
+        offsetMillis = 0;
     }
 
 }

@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**418 tests documented** — every JUnit test in the repository and every case in the
+**428 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -456,6 +456,16 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-SIG-136` | an empty 200 is ABSENT and reported as an unsigned yes | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-137` | unsigned JSON and plain text are ABSENT | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-138` | a plain JSON refusal is ABSENT, not accepted, body passed through | `OutboundAnswerVerificationApiTest.java` |
+| `X9-SIG-140` | an answer whose iat is in the future beyond the skew is INVALID, `FUTURE_IAT`; within it, VERIFIED | `OutboundAnswerVerificationApiTest.java` |
+| `X9-SIG-141` | an answer whose `iat + ttl` has passed is INVALID, `EXPIRED` | `OutboundAnswerVerificationApiTest.java` |
+| `X9-SIG-142` | a signed body without an integer `statusCode` is INVALID, `STATUS_MISSING` | `OutboundAnswerVerificationApiTest.java` |
+| `X9-SIG-143` | a signed answer with an unknown `crit` or no `correlationId` header is INVALID, `BAD_HEADER` | `OutboundAnswerVerificationApiTest.java` |
+| `X9-SIG-144` | the shared verifier refuses an iat ahead of its clock beyond the skew, and accepts one within it | `JwsQRCodeSignatureServiceTest.java` |
+| `X9-SIG-145` | a question whose iat is in the future beyond the skew is refused, signed; within it, accepted | `SignedNotificationAnswerApiTest.java` |
+| `X9-SIG-146` | an empty body, refused before the controller, is answered with a signed 400 | `NotificationAnswerSignedEverywhereApiTest.java` |
+| `X9-SIG-147` | a wrong `Content-Type` is answered with a signed 415 | `NotificationAnswerSignedEverywhereApiTest.java` |
+| `X9-SIG-148` | a body Spring cannot read is answered with a signed 400 | `NotificationAnswerSignedEverywhereApiTest.java` |
+| `X9-SIG-149` | an exception nothing maps is answered with a signed 500 that says nothing about it | `NotificationAnswerSignedEverywhereApiTest.java` |
 
 ## Tips
 
