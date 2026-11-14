@@ -90,6 +90,60 @@ notification data ([0024](0024-a-qr-code-is-one-row-and-every-patch-is-audit-log
 - **Bodies always from the QR Code row.** It changes what consumers receive today.
 - **Emitting on a lapse or a reactivate.** Contrary to ADR-0019 and to today's stream.
 
+## Verification against Java (Story 4.1, 2026-11-14)
+
+This section records the tests; it does not change the decision above. Each row of the map has a
+key, and one black-box test per key in
+[`others/blackbox/tests/test_transition_map.py`](../../others/blackbox/tests/test_transition_map.py)
+(`test_map_NNN_...`). Each test asserts the resulting status, every event for the QR Code exactly
+and in order, what did not change, and that each event body comes from the last stored
+notification, else the first payment method. Where ADR-0036's matrix covers more cells than the row,
+the extra cells are cases of the same test. `test_every_map_row_has_a_test` fails if a key here has
+no test, or a test no key.
+
+| Key | Row | Tests | Java |
+|---|---|---|---|
+| X9-MAP-001 | create | `test_map_001_create` | agrees |
+| X9-MAP-002 | PATCH | `test_map_002_patch` (from ACTIVE, PAYMENT_INITIATED; refused from PAID, CANCELLED) | agrees |
+| X9-MAP-010 | status-update `PAYMENT_INITIATED` | `test_map_010_status_update_payment_initiated`, `..._on_a_lapsed_reservation` | **contradicts** in two cells, see below |
+| X9-MAP-011 | status-update `PAID` | `test_map_011_status_update_paid` | **contradicts** on `PAID` → `PAID`, see below |
+| X9-MAP-012 | status-update `CANCELLED` | `test_map_012_status_update_cancelled` | **contradicts** on `CANCELLED` → `CANCELLED`, see below |
+| X9-MAP-013 | status-update `ACTIVE` (reactivate) | `test_map_013_status_update_active_reactivates`, `..._on_a_lapsed_reservation_is_refused` | **contradicts** on `ACTIVE` → `ACTIVE`, see below |
+| X9-MAP-020 | pre-commit, new holder | `test_map_020_pre_commit_new_holder` (Solana, FedNow, RTP, ACH), `..._takes_over_a_lapsed_reservation` | agrees |
+| X9-MAP-021 | pre-commit, same holder (retry) | `test_map_021_pre_commit_retry_by_the_holder`, `test_map_021_a_retry_refreshes_the_window` | agrees |
+| X9-MAP-022 | pre-commit once a hash is registered | `test_map_022_pre_commit_once_a_hash_is_registered` | agrees |
+| X9-MAP-023 | pre-commit, same holder, refused by the gate | `test_map_023_pre_commit_retry_refused_by_the_gate` | agrees |
+| X9-MAP-024 | pre-commit, another payer | `test_map_024_pre_commit_from_another_payer` (other `payer.info`, other certificate, no `payer.info`, unattributed) | agrees |
+| X9-MAP-025 | pre-commit on `PAID` or `CANCELLED` | `test_map_025_pre_commit_on_a_closed_qr_code` | agrees |
+| X9-MAP-030 | post-commit, bank rail, on `ACTIVE` | `test_map_030_post_commit_bank_rail_on_active` (FedNow, RTP, ACH) | agrees |
+| X9-MAP-031 | post-commit, blockchain, on `ACTIVE` | `test_map_031_post_commit_blockchain_on_active`, `..._on_a_lapsed_reservation_counts_as_active` | agrees |
+| X9-MAP-032 | post-commit, held by the sender | `test_map_032_post_commit_by_the_holder` | agrees |
+| X9-MAP-033 | post-commit, held by someone else | `test_map_033_post_commit_while_someone_else_holds_it` | agrees |
+| X9-MAP-034 | post-commit on `PAID` or `CANCELLED` | `test_map_034_post_commit_on_a_closed_qr_code` | agrees |
+| X9-MAP-040 | blockchain `PAYMENT_INITIATED` with a hash | `test_map_040_payment_initiated_with_a_hash` | agrees |
+| X9-MAP-041 | blockchain `SENT` without a hash | `test_map_041_sent_without_a_hash` | agrees |
+| X9-MAP-042 | blockchain `NOT_SENT` (holder) | `test_map_042_not_sent_by_the_holder`, `..._of_a_lapsed_reservation` | agrees |
+| X9-MAP-043 | blockchain `NOT_SENT` (holder), once a hash is registered | `test_map_043_not_sent_once_a_hash_is_registered` | agrees |
+| X9-MAP-044 | blockchain `NOT_SENT` with a `transactionId` | `test_map_044_not_sent_with_a_transaction_id` | agrees |
+| X9-MAP-045 | blockchain `NOT_SENT`, refused | `test_map_045_not_sent_refused` | agrees |
+| X9-MAP-050 | location released by a rebind | `test_map_050_location_released_by_a_rebind` | agrees |
+| X9-MAP-051 | reservation lapse | `test_map_051_a_reservation_lapses_on_read_only`, `test_map_051_never_once_a_hash_is_registered` | agrees (`ttl-seconds: 0` is pinned by JUnit, not here) |
+
+**Where Java contradicts the map** (S4.1-AC2). Each is a strict expected failure carrying its key,
+so it turns red the day Java and this map agree. The decision above is not amended here; the owner
+decides each one.
+
+- **X9-MAP-010, -011, -012, -013: a status-update to the status already stored.** ADR-0036's
+  matrix answers 409 (`PAYMENT_INITIATED` on a held QR Code) or 400 (`PAID` on `PAID`, `CANCELLED`
+  on `CANCELLED`, `ACTIVE` on `ACTIVE`). Java answers 200 and changes nothing, no event, as
+  [ADR-0020](0020-the-payee-states-the-outcome-of-its-own-receivable.md) decided for retries
+  (X9-LIFE-127).
+- **X9-MAP-010: status-update `PAYMENT_INITIATED` on a lapsed reservation.** The row allows it from
+  `ACTIVE` (effective), so it should reserve the QR Code again, unattributed, with
+  `payment.initiated`. Java compares the *stored* status for its X-to-X no-op, answers 200, writes
+  nothing and emits nothing: the QR Code still reads `ACTIVE` and the next payer takes it
+  ([BUG-002](../../known-bugs.md)).
+
 ---
 
 <sub>Copyright © 2026 Matera Systems, Inc. Licensed under the Matera Source License v1.0 (source-available; not open source) — see LICENSE.md at the repository root. Creating a Derivative Work from this document — by AI/ML generation or by manual re-implementation based on it — is governed by that license (see the "Derivative Work" definition and Annex A).</sub>

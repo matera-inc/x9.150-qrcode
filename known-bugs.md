@@ -6,7 +6,48 @@ fixed ones stay under **Fixed**, for the record.
 
 ## Open
 
-None.
+---
+
+## BUG-002 — A status-update `PAYMENT_INITIATED` on a lapsed reservation reserves nothing
+
+- **Reported:** 2026-11-14 (Story 4.1, ADR-0035 row X9-MAP-010)
+- **Severity:** Medium — the payment system believes it has reserved a QR Code that any payer can
+  still take.
+- **Status:** Open. Pinned by the strict expected failure
+  `others/blackbox/tests/test_transition_map.py::test_map_010_status_update_payment_initiated_on_a_lapsed_reservation`.
+- **Area:** `UpdateQRCodeStatusUseCase` (application layer)
+
+### Steps to reproduce
+
+1. A payer pre-commits a QR Code: `PAYMENT_INITIATED`, held by that payer.
+2. Let the reservation lapse (`x9.reservation.ttl-seconds`, 90 s by default; or move the test
+   clock past it). `GET` now reports `ACTIVE`.
+3. `PUT /api/v1/payment-request/{id}/status-update` with `{"status": "PAYMENT_INITIATED"}`.
+
+### Expected
+
+ADR-0035's map allows a status-update `PAYMENT_INITIATED` from `ACTIVE` (effective), so a lapsed
+reservation counts: the QR Code is reserved again, held by nobody identifiable, and
+`payment.initiated` is published. Another payer's pre-commit is then refused with 409.
+
+### Actual
+
+200 with `"status": "ACTIVE"`. Nothing is written and no event is published; the QR Code still
+reads `ACTIVE`, and the next payer's pre-commit takes it.
+
+### Root cause
+
+The X-to-X no-op in `UpdateQRCodeStatusUseCase.execute` compares the requested status with the
+**stored** status. The stored status of a lapsed reservation is still `PAYMENT_INITIATED`, so the
+request is treated as a repeat and short-circuited before `QRCodeEntity.initiatePayment` (which
+reads the effective status and would accept it) is reached. The comment there chose the stored
+status for the `ACTIVE` case; for `PAYMENT_INITIATED` the same choice drops a real transition.
+
+### Suggested direction
+
+Compare the effective status for `PAYMENT_INITIATED` (or for every status: on a lapsed reservation
+an `ACTIVE` request is already refused by `reactivate`). Decide with the owner's answer on the X-to-X
+cells of ADR-0036's matrix (Story 4.1, "Questions for the owner").
 
 ## Fixed
 

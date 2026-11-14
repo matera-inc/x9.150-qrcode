@@ -1,5 +1,6 @@
 # The black-box suite, as a container (Story 3.6). Built by run-against-image.sh from a staged
-# context holding only the suite, the bundled test CA and openapi.yaml, at their repository paths.
+# context holding only the suite, the bundled test CA, openapi.yaml and ADR-0035, at their
+# repository paths.
 #
 # It joins the network namespace of the service under test (compose `network_mode`), so the
 # service reaches the suite's CRL server and test payee on 127.0.0.1, as when both run on one host.
