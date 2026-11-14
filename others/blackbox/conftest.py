@@ -225,3 +225,25 @@ def db():
     if inspector is None:
         unavailable(f"database checks skipped: {reason}")
     return inspector
+
+
+def build_under_test():
+    """``"java"`` or ``"go"``: ``X9_BUILD`` when set, else the kind of ``X9_DATABASE_URL``
+    (MongoDB is the Java build, PostgreSQL the Go build), else ``"java"``, the only build that
+    runs today."""
+    explicit = os.environ.get("X9_BUILD", "").strip().lower()
+    if explicit in ("java", "go"):
+        return explicit
+    scheme = os.environ.get("X9_DATABASE_URL", "").split(":", 1)[0].lower()
+    return "go" if scheme in ("postgres", "postgresql") else "java"
+
+
+def pytest_runtest_setup(item):
+    """``go_only`` skips on Java and ``java_only`` on Go, with the reason (S4.5-AC3). Not a
+    missing capability, so ``X9_REQUIRE_ALL`` does not turn it into a failure."""
+    build = build_under_test()
+    for marker, runs_on in (("go_only", "go"), ("java_only", "java")):
+        found = item.get_closest_marker(marker)
+        if found is not None and build != runs_on:
+            reason = found.kwargs.get("reason") or f"{marker}: pins the {runs_on} build"
+            pytest.skip(f"{reason} (this run is against the {build} build; X9_BUILD overrides)")
