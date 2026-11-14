@@ -46,7 +46,7 @@ type Config struct {
 // Server is the HTTP listener. Health is served on the same port, as the Java build does.
 type Server struct {
 	Port int `yaml:"port"`
-	// ShutdownDelaySeconds is how long readiness reports DOWN before the listener stops accepting,
+	// ShutdownDelaySeconds is how long readiness reports OUT_OF_SERVICE before the listener stops accepting,
 	// so that a load balancer sees the pod leave before its connections are refused.
 	ShutdownDelaySeconds int `yaml:"shutdown-delay-seconds"`
 }

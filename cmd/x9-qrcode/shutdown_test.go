@@ -141,8 +141,8 @@ func eventually(ctx context.Context, t *testing.T, port int, path string, want i
 	t.Fatalf("%s answered %d %s, want %d", path, code, body, want)
 }
 
-// S7.3-AC1: readiness is DOWN until the schema check passes and while the database is unreachable;
-// liveness is UP throughout.
+// S7.3-AC1: readiness is OUT_OF_SERVICE until the schema check passes and while the database is
+// unreachable; liveness is UP throughout.
 func TestReadinessFollowsTheDatabase(t *testing.T) {
 	db := dbtest.Start(t)
 	ctx, cancel := context.WithCancel(t.Context())
@@ -159,7 +159,7 @@ func TestReadinessFollowsTheDatabase(t *testing.T) {
 
 	// The database cannot be reached yet: alive, not ready.
 	eventually(ctx, t, port, "/actuator/health/liveness", http.StatusOK)
-	if code, body := probe(ctx, t, port, "/actuator/health/readiness"); code != http.StatusServiceUnavailable || body != `{"status":"DOWN"}` {
+	if code, body := probe(ctx, t, port, "/actuator/health/readiness"); code != http.StatusServiceUnavailable || body != `{"status":"OUT_OF_SERVICE"}` {
 		t.Fatalf("readiness before the schema check: %d %s", code, body)
 	}
 	if code, body := probe(ctx, t, port, "/actuator/health"); code != http.StatusServiceUnavailable ||
@@ -175,7 +175,7 @@ func TestReadinessFollowsTheDatabase(t *testing.T) {
 		t.Fatalf("health when ready: %d %s", code, body)
 	}
 
-	// The database goes away: readiness DOWN, liveness still UP; and back.
+	// The database goes away: readiness OUT_OF_SERVICE, liveness still UP; and back.
 	px.setUp(false)
 	eventually(ctx, t, port, "/actuator/health/readiness", http.StatusServiceUnavailable)
 	if code, _ := probe(ctx, t, port, "/actuator/health/liveness"); code != http.StatusOK {
@@ -190,7 +190,7 @@ func TestReadinessFollowsTheDatabase(t *testing.T) {
 	}
 }
 
-// S7.3-AC2: on shutdown, readiness goes DOWN, a request already in flight finishes, and the pools
+// S7.3-AC2: on shutdown, readiness goes OUT_OF_SERVICE, a request already in flight finishes, and the pools
 // close.
 func TestShutdownLetsInFlightRequestsFinish(t *testing.T) {
 	ctx := t.Context()
@@ -231,7 +231,7 @@ func TestShutdownLetsInFlightRequestsFinish(t *testing.T) {
 	go func() {
 		stopped <- shutdown(ctx, slog.New(slog.DiscardHandler), srv, served, probes, pools, 200*time.Millisecond)
 	}()
-	// During the delay readiness is DOWN, and the server still answers.
+	// During the delay readiness is OUT_OF_SERVICE, and the server still answers.
 	eventually(ctx, t, port, "/actuator/health/readiness", http.StatusServiceUnavailable)
 
 	if got := <-slow; got != "200 finished" {
@@ -249,7 +249,7 @@ type okPinger struct{}
 
 func (okPinger) Ping(context.Context) error { return nil }
 
-// S7.3-AC2: the real binary, sent SIGTERM: readiness DOWN during the delay, then exit 0.
+// S7.3-AC2: the real binary, sent SIGTERM: readiness OUT_OF_SERVICE during the delay, then exit 0.
 func TestSIGTERMExitsZero(t *testing.T) {
 	db := dbtest.Start(t)
 	ctx := t.Context()

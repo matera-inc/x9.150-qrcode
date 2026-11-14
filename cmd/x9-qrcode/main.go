@@ -77,7 +77,7 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	}
 	probes := health.New(pools)
 
-	// ── 3. HTTP server: liveness UP from now on, readiness DOWN until the schema check passes ──
+	// ── 3. HTTP server: liveness UP from now on, readiness OUT_OF_SERVICE until the schema check passes ──
 	mux := http.NewServeMux()
 	probes.Register(mux)
 	srv := newServer(cfg.Server.Port, httplog.Middleware(logger, mux))
@@ -136,14 +136,14 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	return nil
 }
 
-// shutdown follows ADR-0031: readiness turns DOWN; after delay, so that load balancers have seen
+// shutdown follows ADR-0031: readiness turns OUT_OF_SERVICE; after delay, so that load balancers have seen
 // it, the listener stops accepting; in-flight requests get up to drainTimeout to finish; then the
 // pools close. ctx must outlive the shutdown (context.WithoutCancel). served is the Serve goroutine's result, or nil if it already returned.
 func shutdown(ctx context.Context, logger *slog.Logger, srv *http.Server, served <-chan error, probes *health.Health,
 	pools *database.Pools, delay time.Duration,
 ) error {
 	probes.SetReady(false)
-	logger.Info("x9-qrcode shutting down", "readiness", "DOWN", "delayMs", delay.Milliseconds())
+	logger.Info("x9-qrcode shutting down", "readiness", "OUT_OF_SERVICE", "delayMs", delay.Milliseconds())
 	if delay > 0 {
 		_ = sleep(ctx, delay)
 	}
