@@ -39,9 +39,6 @@ image-amd64: ## Build an amd64/intel image locally (x9-qrcode:latest-amd64) — 
 		-Dbuild.image.name=x9-qrcode:latest-amd64 \
 		-Dspring-boot.build-image.imagePlatform=linux/amd64
 
-acceptance: ## Black-box acceptance tests against a RUNNING deployment (URL=http://host:port)
-	./others/acceptance/acceptance.py $(or $(URL),http://localhost:8080)
-
 dockerhub-overview: ## Push DOCKERHUB.md to the Docker Hub repository Overview
 	./others/scripts/push-dockerhub-overview.sh
 
