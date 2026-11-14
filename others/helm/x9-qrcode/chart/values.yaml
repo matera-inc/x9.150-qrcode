@@ -288,6 +288,7 @@ application:
       # `90` suits simple installations. `0` means no window: a reservation never expires and ends
       # only by a refused retry, NOT_SENT, or the status-update API (a bank that wants full control).
       # Once a transaction hash is registered the reservation stops expiring whatever this says (ADR-0036).
+      # A negative value is invalid: the service refuses to start.
       ttl-seconds: 90
 
 # -- Extra application configuration rendered as application-kubernetes.yaml

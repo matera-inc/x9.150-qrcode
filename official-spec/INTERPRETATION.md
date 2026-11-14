@@ -579,7 +579,8 @@ it is registered, flagged, and changes nothing, so the holder keeps the QR Code.
 - **A registered hash stops the window**, whoever sent it; only the payment system then ends the
   reservation.
 - **`x9.reservation.ttl-seconds: 0` means no window:** a reservation ends only by a refused retry,
-  `NOT_SENT`, or the status-update API. The default stays `90`.
+  `NOT_SENT`, or the status-update API. The default stays `90`; a negative value is invalid and the
+  service refuses to start.
 
 > ⚠️ **A `PAYMENT_INITIATED` carrying a transaction hash is bad behaviour by the payer:** it asks
 > permission for money that has already moved. Either the payer skipped the question or it labelled

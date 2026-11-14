@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**451 tests documented** — every JUnit test in the repository and every case in the
+**454 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -297,6 +297,7 @@ Only the party that announced a payment may re-announce it, report it, or give i
 | `X9-HOLD-305` | the same certificate with a different payer.info is a different payer | `HolderRetryAndIdentityApiTest.java` |
 | `X9-HOLD-306` | a holder without payer.info cannot retry, cannot release, and its post-commit changes nothing | `HolderRetryAndIdentityApiTest.java` |
 | `X9-HOLD-307` | once a hash is registered, only the status-update API ends the reservation | `HolderRetryAndIdentityApiTest.java` |
+| `X9-HOLD-308` | approved at 23:59:50 with the discount, retried at 00:00:02: refused, and the QR Code is freed | `HolderRetryAndIdentityApiTest.java` |
 | `X9-HOLD-311` | winning the pre-commit on a lapsed reservation emits payment.initiated for the new holder | `ReservationWindowApiTest.java` |
 | `X9-HOLD-312` | the holder's hash stops the window | `ReservationWindowApiTest.java` |
 | `X9-HOLD-313` | another payer's hash stops the window too, and the holder does not change | `ReservationWindowApiTest.java` |
@@ -305,6 +306,8 @@ Only the party that announced a payment may re-announce it, report it, or give i
 | `X9-HOLD-316` | the holder of a lapsed reservation may still give it back with NOT_SENT | `ReservationWindowApiTest.java` |
 | `X9-HOLD-321` | with ttl-seconds 0 a reservation never lapses, and still ends by NOT_SENT or the status-update API | `NoReservationWindowApiTest.java` |
 | `X9-HOLD-322` | with ttl-seconds 0 a refused retry still frees the QR Code | `NoReservationWindowApiTest.java` |
+| `X9-HOLD-323` | a negative x9.reservation.ttl-seconds refuses to start | `ReservationTtlConfigurationTest.java` |
+| `X9-HOLD-324` | 0 and positive values of x9.reservation.ttl-seconds are accepted as they are | `ReservationTtlConfigurationTest.java` |
 
 ## Locations and payload retrieval
 

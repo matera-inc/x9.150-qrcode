@@ -121,6 +121,7 @@ x9:
   #                 ends only by a refused retry, NOT_SENT, or the status-update API. (0 used to
   #                 mean "expire at once".)
   #   other > 0     tuning, the same as the default with that window.
+  #   negative      invalid: the service refuses to start.
   #
   # The same environment variable configures the Go build.
   reservation:

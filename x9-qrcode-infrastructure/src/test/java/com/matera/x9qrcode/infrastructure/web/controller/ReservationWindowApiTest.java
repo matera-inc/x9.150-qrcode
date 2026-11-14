@@ -89,9 +89,10 @@ class ReservationWindowApiTest extends NotificationMatrixApiSupport {
 
         Thread.sleep(PAST_THE_WINDOW_MILLIS);
 
-        assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
-        assertEquals(HttpStatus.OK.value(), solana(qrCodeId, "PAYMENT_INITIATED", null, PAYER_A).statusCode(),
-            "A is still the holder");
+        assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId), "long after the window would have passed");
+        // Once a hash is registered no pre-commit is accepted, the holder's included (ADR-0036);
+        // that the holder stays A is pinned on the entity by X9-HOLD-127.
+        assertEquals(HttpStatus.CONFLICT.value(), solana(qrCodeId, "PAYMENT_INITIATED", null, PAYER_A).statusCode());
         assertEquals(HttpStatus.CONFLICT.value(), solana(qrCodeId, "PAYMENT_INITIATED", null, PAYER_B).statusCode());
     }
 

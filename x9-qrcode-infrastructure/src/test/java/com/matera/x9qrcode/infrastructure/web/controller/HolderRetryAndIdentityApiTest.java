@@ -6,13 +6,17 @@
  */
 package com.matera.x9qrcode.infrastructure.web.controller;
 
+import com.matera.x9qrcode.domain.utils.BusinessClock;
+
 import io.restassured.module.mockmvc.response.MockMvcResponse;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 
@@ -57,6 +61,81 @@ class HolderRetryAndIdentityApiTest extends NotificationMatrixApiSupport {
                 .when().post(CREATE)
                 .then().statusCode(HttpStatus.CREATED.value())
                 .extract().path("id");
+    }
+
+    private static final long FACE = 10_000L;
+    private static final long DISCOUNT = 1_000L;
+
+    @AfterEach
+    void resetTheClock() {
+        BusinessClock.reset();
+    }
+
+    /** A FedNow QR Code whose discount ends at {@code dueDate - 10 days}, a whole midnight. */
+    private String createDiscountedQRCode(OffsetDateTime dueDate) {
+        String body = """
+            {
+              "validUntil": "2030-12-31T23:59:59Z",
+              "creditor": {
+                "name": "Discount Retry Test", "phone": "+14155550100", "email": "test@example.com",
+                "address": { "line1": "1 A St", "city": "Springfield", "state": "CA", "postalCode": "90001", "country": "US" },
+                "MCC": "5999"
+              },
+              "bill": {
+                "description": "discount retry",
+                "invoice": { "number": "INV-RETRY", "date": "%s", "dueDate": "%s" },
+                "amountDue": {
+                  "amount": %d, "currency": "USD",
+                  "adjustments": {
+                    "formula": "FixedDiscountLateFeeLinearInterest",
+                    "parameters": {
+                      "discounts": [ { "daysBefore": 10, "discount": %d, "explanation": "early payment" } ],
+                      "lateFees": { "fixed": 0, "perDay": 0, "explanation": "late" }
+                    }
+                  }
+                }
+              },
+              "paymentNotification": { "kind": "DEFAULT" },
+              "paymentMethods": [
+                { "currency": "USD", "validUntil": "2030-12-31T23:59:59Z", "amount": %d,
+                  "networks": { "fednow": { "routingNumber": "021000021", "accountNumber": "1234567890", "protectionType": "tokenized" } } }
+              ]
+            }
+            """.formatted(java.time.LocalDate.now(ZoneOffset.UTC), dueDate.toInstant(), FACE, DISCOUNT, FACE);
+
+        return given().contentType("application/json").body(body)
+                .when().post(CREATE)
+                .then().statusCode(HttpStatus.CREATED.value())
+                .extract().path("id");
+    }
+
+    /**
+     * <b>X9-HOLD-308</b> — approved at 23:59:50 with the discount, retried at 00:00:02: refused, and the QR Code is freed.
+     *
+     * <p><b>Source:</b> Ours. ADR-0036 (S2.5-AC1, S2.5-AC2), with Story 1.3's payee clock.
+     *
+     * <p><b>Why:</b> The retry must be judged at the payee's clock when it arrives, not on the
+     * strength of the first answer; otherwise a payer keeps a discount the payee stopped granting
+     * at midnight, and a refused holder keeps everyone else out until its window lapses.
+     */
+    @Test
+    void aRetryAfterTheDiscountEndedIsRefusedAndReleases() {
+        OffsetDateTime dueDate = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.DAYS).plusDays(40);
+        OffsetDateTime discountEnds = dueDate.minusDays(10);
+        String qrCodeId = createDiscountedQRCode(dueDate);
+
+        BusinessClock.setAt(discountEnds.minusSeconds(10).toInstant());
+        assertEquals(HttpStatus.OK.value(), bank(qrCodeId, "FedNow", null, PAYER_A, FACE - DISCOUNT).statusCode(),
+            "at 23:59:50 the discounted amount is accepted");
+
+        BusinessClock.setAt(discountEnds.plusSeconds(2).toInstant());
+        MockMvcResponse retry = bank(qrCodeId, "FedNow", null, PAYER_A, FACE - DISCOUNT);
+
+        assertEquals(HttpStatus.BAD_REQUEST.value(), retry.statusCode(),
+            "at 00:00:02 the discount has ended: " + retry.asString());
+        assertEquals("ACTIVE", statusOf(qrCodeId), "the refused retry released the reservation");
+        assertEquals(HttpStatus.OK.value(), bank(qrCodeId, "FedNow", null, PAYER_A, FACE).statusCode(),
+            "and the face amount is then accepted");
     }
 
     private static void sleepUntilAfter(String instant) throws InterruptedException {
