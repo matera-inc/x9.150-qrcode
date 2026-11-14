@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**573 tests documented** — every test that carries a key. Some black-box cases and a few JUnit
+**583 tests documented** — every test that carries a key. Some black-box cases and a few JUnit
 classes (the test clock, the formula service) have no key yet;
 [RULE-COVERAGE.md](RULE-COVERAGE.md) names those as `File::function`.
 
@@ -645,6 +645,25 @@ judged within the 2 s before it; "1 ms after" is exact.
 | `X9-TIME-014` | T11, Go only: an expired QR Code is kept and its location is releasable | `test_time_edges.py` |
 | `X9-TIME-015` | T12, Go only: retention purges events, then QR Codes, by the test clock, and nothing younger | `test_time_edges.py` |
 | `X9-TIME-016` | S4.5-AC2: with the payee's clock ahead of the payer's, the payee's clock decides `validUntil` | `test_time_edges.py` |
+
+## Golden sets (Story 4.7)
+
+The JWS and EMV fixtures exported from Java for the Go build
+([`others/blackbox/golden`](../others/blackbox/golden/README.md), ADR-0027), proved true offline
+and against the running Java build.
+
+| Key | What it proves | Where |
+|---|---|---|
+| `X9-SIG-470` | every golden file is there with the manifest's SHA-256, and nothing else is | `test_golden.py` |
+| `X9-SIG-471` | the golden JWS set covers what Story 4.7 names: valid, tampered, expired, `crit`, `typ`, revoked, untrusted, EC, Java's signed yes and refusals | `test_golden.py` |
+| `X9-SIG-472` | the golden set carries bundled test certificates only, and no private key | `test_golden.py` |
+| `X9-SIG-473` | the shipped trust anchor, chains and CRLs are valid at every case's `verifyAt`; the set is not due for regeneration | `test_golden.py` |
+| `X9-SIG-474` | a second implementation, offline, accepts every case Java accepts and refuses every bad signature | `test_golden.py` |
+| `X9-SIG-475` | with the clock at each case's `verifyAt`, Java gives every golden JWS the manifest's verdict and `signatureProblem` | `test_golden.py` |
+| `X9-LOC-470` | each golden EMV string decodes to the manifest's fields, CRC and tag 26 | `test_golden.py` |
+| `X9-LOC-471` | the golden EMV set has several hosts and locations, and a 37-character host whose tag 26 is exactly 99 | `test_golden.py` |
+| `X9-LOC-472` | Java reads the location out of every golden EMV string | `test_golden.py` |
+| `X9-LOC-473` | Java encodes each golden request of its own host again to the same characters | `test_golden.py` |
 
 ## Tips
 

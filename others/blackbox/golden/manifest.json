@@ -1,0 +1,5053 @@
+{
+  "about": "Golden JWS and EMV sets exported from the Java build (Story 4.7, ADR-0027). See README.md. Regenerate with export.sh; never edit by hand.",
+  "generatedAt": "2026-11-14T22:26:11Z",
+  "generatedFrom": {
+    "image": "x9-qrcode:ci-s47",
+    "revision": "ba9d8e9ad0f5d3d8f910a7ee77000a5c27a6d4df"
+  },
+  "epoch": "2026-10-01T00:00:00.000Z",
+  "regenerateBefore": "2046-09-22T18:45:50Z",
+  "verifier": {
+    "clockSkewMillis": 60000,
+    "issuerNameMustContain": "X9",
+    "rule": "FUTURE_IAT when iat > now + clockSkewMillis; EXPIRED when now >= iat + ttl; both judged after crit and correlationId, before the certificate and the signature",
+    "supportedCritical": [
+      "correlationId",
+      "iat",
+      "ttl",
+      "statusCode"
+    ]
+  },
+  "kinds": {
+    "payload-request": {
+      "standardTyp": "payreq+jws",
+      "javaTyp": "JOSE",
+      "what": "POST /pub/api/v1/loc/{id}: the payer asks for the payload"
+    },
+    "payload-response": {
+      "standardTyp": "payresp+jws",
+      "javaTyp": "JOSE",
+      "what": "the payee's signed payload; statusCode in the header and in crit"
+    },
+    "notification": {
+      "standardTyp": "paynote+jws",
+      "javaTyp": "JOSE",
+      "what": "POST /pub/api/v1/payment-notification: the payer's pre- or post-commit"
+    },
+    "notification-answer": {
+      "standardTyp": null,
+      "javaTyp": "JOSE",
+      "what": "the payee's signed answer to a notification (INTERPRETATION I-12); statusCode in the header, in crit and in the body; httpStatus is the HTTP status it came with"
+    },
+    "not-a-jws": {
+      "standardTyp": null,
+      "javaTyp": null,
+      "what": "not a JOSE object"
+    },
+    "note": "Java writes typ JOSE on everything it signs and reads nothing from typ; it signs no QR content, so qr+jws appears only as a re-typed notification."
+  },
+  "pki": {
+    "trustAnchors": [
+      {
+        "file": "pki/x9-test-ca.pem",
+        "sha256": "425d71d1ec170a39aa8b0b3d89a8324d33aefd8156512ecca83e2bef8aea5a79",
+        "subject": "CN=X9 QRCode Test Root CA,O=Matera Systems Test,C=US",
+        "notBefore": "2026-09-27T18:45:50Z",
+        "notAfter": "2046-09-22T18:45:50Z"
+      }
+    ],
+    "crls": [
+      {
+        "url": "http://127.0.0.1:18081/test-ca.crl",
+        "file": "pki/test-ca.crl",
+        "encoding": "DER",
+        "sha256": "74e53923c02d621d07b7a0eab238fbdf983fab67121111f7db1c7f952f6aa14f",
+        "issuer": "CN=X9 QRCode Test Root CA,O=Matera Systems Test,C=US",
+        "thisUpdate": "2026-09-27T18:45:57Z",
+        "nextUpdate": "2046-09-22T18:45:57Z",
+        "revokedSerials": []
+      },
+      {
+        "url": "http://127.0.0.1:18081/test-ca-revoked.crl",
+        "file": "pki/test-ca-revoked.crl",
+        "encoding": "DER",
+        "sha256": "62fe2b528ba585cb64dc6b400346b396586abf26ddb5e6656ae5017d4c2498ff",
+        "issuer": "CN=X9 QRCode Test Root CA,O=Matera Systems Test,C=US",
+        "thisUpdate": "2026-09-27T18:45:57Z",
+        "nextUpdate": "2046-09-22T18:45:57Z",
+        "revokedSerials": [
+          "5123AB028821752E"
+        ]
+      }
+    ],
+    "signers": {
+      "rsa": {
+        "keystore": "x9-test-payer.p12",
+        "file": "pki/signer-rsa.pem",
+        "sha256": "421df8adcadcc6c7424968a885c23190649857650288ae8ed25fcb0f7019d313",
+        "subject": "CN=Test Payer PSP,O=Example PSP,C=US",
+        "issuer": "CN=X9 QRCode Test Root CA,O=Matera Systems Test,C=US",
+        "serial": "431208130D60D79C",
+        "alg": "PS512",
+        "x5tS256": "4IsWTr2EoKA3AdIAcb_dTXzY8xhZWCAcV35gFdUeZxo",
+        "notBefore": "2026-09-27T18:45:52Z",
+        "notAfter": "2046-09-22T18:45:52Z",
+        "crlDistributionPoint": "http://127.0.0.1:18081/test-ca.crl",
+        "issuedByTheTrustAnchor": true,
+        "revoked": false,
+        "host": "x9-150.example.com"
+      },
+      "ec": {
+        "keystore": "x9-test-payer-ec.p12",
+        "file": "pki/signer-ec.pem",
+        "sha256": "0a26f63ad3141cca575655f1e47e1cb27f2d7e5f745151d654cbc58e7c8cf4a1",
+        "subject": "CN=Test Payer PSP EC,O=Example PSP,C=US",
+        "issuer": "CN=X9 QRCode Test Root CA,O=Matera Systems Test,C=US",
+        "serial": "F050487B9D9C2DEE",
+        "alg": "ES256",
+        "x5tS256": "GSQbEJtzdCFwXWXn1s_C_Ke8lCXw8mP-BGQ9qnC89Rg",
+        "notBefore": "2026-09-27T18:45:53Z",
+        "notAfter": "2046-09-22T18:45:53Z",
+        "crlDistributionPoint": "http://127.0.0.1:18081/test-ca.crl",
+        "issuedByTheTrustAnchor": true,
+        "revoked": false,
+        "host": "x9.thirty-seven-characters.example.io"
+      },
+      "revoked": {
+        "keystore": "x9-test-payer-revoked.p12",
+        "file": "pki/signer-revoked.pem",
+        "sha256": "4052a9026d19e5db5ead3b3098d405155d7a802377f41fcfe43fcfeafbb16528",
+        "subject": "CN=Test Payer PSP Revoked,O=Example PSP,C=US",
+        "issuer": "CN=X9 QRCode Test Root CA,O=Matera Systems Test,C=US",
+        "serial": "5123AB028821752E",
+        "alg": "PS512",
+        "x5tS256": "9El3TXaPMySsI7mc6FhmMHP-RVBBSUdUB1FR47Q3-HU",
+        "notBefore": "2026-09-27T18:45:54Z",
+        "notAfter": "2046-09-22T18:45:54Z",
+        "crlDistributionPoint": "http://127.0.0.1:18081/test-ca-revoked.crl",
+        "issuedByTheTrustAnchor": true,
+        "revoked": true,
+        "host": "x9.example"
+      },
+      "untrusted": {
+        "keystore": "x9-test-untrusted-payer.p12",
+        "file": "pki/signer-untrusted.pem",
+        "sha256": "694c039858cfee99c3a3bd86a1cda4549c06a6f45a8bf55f45c86001317f18fa",
+        "subject": "CN=Example Untrusted Payer,O=Example Org,C=US",
+        "issuer": "CN=Example Untrusted Test CA,O=Example Org,C=US",
+        "serial": "9F8CEADE646B78DC",
+        "alg": "PS512",
+        "x5tS256": "yeCYfSZCPRXrFz6p9A4G9kprhDSnDHgf6ndGA9g56oU",
+        "notBefore": "2026-09-27T18:45:56Z",
+        "notAfter": "2046-09-22T18:45:56Z",
+        "crlDistributionPoint": "http://127.0.0.1:18081/test-ca.crl",
+        "issuedByTheTrustAnchor": false,
+        "revoked": false,
+        "host": "qr.example.org:8443"
+      }
+    }
+  },
+  "jws": [
+    {
+      "id": "rsa-payload-request",
+      "file": "jws/rsa-payload-request.jws",
+      "sha256": "dd37fbcd67683013d6a6ac8f12837ffe7adb3e8c89d9ccaa8821d7c708d46435",
+      "kind": "payload-request",
+      "signer": "rsa",
+      "producedBy": "java",
+      "what": "the payer's request for a payload: {qrCodeContent}, signed by Java",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.357Z",
+          "verifyAtMillis": 1790812801357,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "64a7948e-6827-45db-8b20-d9162bcb0bc3",
+        "iat": 1790812800357,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-answer-401-not-a-jws",
+      "file": "jws/rsa-answer-401-not-a-jws.jws",
+      "sha256": "3ea05ccdfd16d204b3da89728893860bb748ba82f3727670f01a3c604dee9f55",
+      "kind": "notification-answer",
+      "signer": "rsa",
+      "producedBy": "java",
+      "what": "Java's signed refusal of a body that is not a JWS: 401, signatureProblem NOT_JWS in the body, a fresh correlationId",
+      "httpStatus": 401,
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.391Z",
+          "verifyAtMillis": 1790812801391,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "509a37e9-07ee-47ae-a3da-732aacf9cd0e",
+        "iat": 1790812800391,
+        "ttl": 300000,
+        "statusCode": 401
+      }
+    },
+    {
+      "id": "rsa-payload-response",
+      "file": "jws/rsa-payload-response.jws",
+      "sha256": "fcb4446fcfaf4fe374a151a12f3f21473a6fa8bc2d957f1caab5ba614e5e825a",
+      "kind": "payload-response",
+      "signer": "rsa",
+      "producedBy": "java",
+      "what": "Java's signed payload for that request (statusCode 200 in the header and in crit)",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.439Z",
+          "verifyAtMillis": 1790812801439,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "64a7948e-6827-45db-8b20-d9162bcb0bc3",
+        "iat": 1790812800439,
+        "ttl": 300000,
+        "statusCode": 200
+      }
+    },
+    {
+      "id": "rsa-notification-pre-commit",
+      "file": "jws/rsa-notification-pre-commit.jws",
+      "sha256": "dd3fe62861696a475e9959b7e5d6dc9b7e03dadd04345a7e6a50986b0fccc439",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java",
+      "what": "the pre-commit notification Java sends as a payer",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        },
+        {
+          "name": "30s-before-iat-plus-ttl",
+          "verifyAt": "2026-10-01T00:04:30.471Z",
+          "verifyAtMillis": 1790813070471,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        },
+        {
+          "name": "at-iat-plus-ttl",
+          "verifyAt": "2026-10-01T00:05:00.471Z",
+          "verifyAtMillis": 1790813100471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "EXPIRED"
+          }
+        },
+        {
+          "name": "a-day-later",
+          "verifyAt": "2026-10-02T00:00:00.471Z",
+          "verifyAtMillis": 1790899200471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "EXPIRED"
+          }
+        },
+        {
+          "name": "30s-before-iat-within-skew",
+          "verifyAt": "2026-09-30T23:59:30.471Z",
+          "verifyAtMillis": 1790812770471,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        },
+        {
+          "name": "5min-before-iat",
+          "verifyAt": "2026-09-30T23:55:00.471Z",
+          "verifyAtMillis": 1790812500471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "FUTURE_IAT"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-notification-post-commit",
+      "file": "jws/rsa-notification-post-commit.jws",
+      "sha256": "d0406f697eff90f1768968e1c059ec493cd703b24d34eec7d18524b46768d97e",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java",
+      "what": "the post-commit notification Java sends as a payer, with its transactionId",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.528Z",
+          "verifyAtMillis": 1790812801528,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "54079583-ab97-48a8-bccb-0cc537585c3f",
+        "iat": 1790812800528,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-answer-200-yes",
+      "file": "jws/rsa-answer-200-yes.jws",
+      "sha256": "00620ae53387f6c2433b0606c56b817408cfe71155a53fdfd37305b85be9b26b",
+      "kind": "notification-answer",
+      "signer": "rsa",
+      "producedBy": "java",
+      "what": "Java's signed yes to that pre-commit: the body is exactly {statusCode: 200}, the correlationId is the question's",
+      "httpStatus": 200,
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:02.072Z",
+          "verifyAtMillis": 1790812802072,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        },
+        {
+          "name": "at-iat-plus-ttl",
+          "verifyAt": "2026-10-01T00:05:01.072Z",
+          "verifyAtMillis": 1790813101072,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "EXPIRED"
+          }
+        },
+        {
+          "name": "5min-before-iat",
+          "verifyAt": "2026-09-30T23:55:01.072Z",
+          "verifyAtMillis": 1790812501072,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "FUTURE_IAT"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812801072,
+        "ttl": 300000,
+        "statusCode": 200
+      }
+    },
+    {
+      "id": "rsa-answer-200-yes-post-commit",
+      "file": "jws/rsa-answer-200-yes-post-commit.jws",
+      "sha256": "69bdb00082b4356fcf7b9d83a03c9700c0556a72483fe3316c76396e230dc9be",
+      "kind": "notification-answer",
+      "signer": "rsa",
+      "producedBy": "java",
+      "what": "Java's signed yes to that post-commit",
+      "httpStatus": 200,
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:02.087Z",
+          "verifyAtMillis": 1790812802087,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "54079583-ab97-48a8-bccb-0cc537585c3f",
+        "iat": 1790812801087,
+        "ttl": 300000,
+        "statusCode": 200
+      }
+    },
+    {
+      "id": "rsa-answer-400-wrong-amount",
+      "file": "jws/rsa-answer-400-wrong-amount.jws",
+      "sha256": "d8ac58a0b3ce45550d40f70a6ddaa1220d14956d8637672a9742616a85371b83",
+      "kind": "notification-answer",
+      "signer": "rsa",
+      "producedBy": "java",
+      "what": "Java's signed refusal of a wrong amount: 400, the error fields and violations in the signed body",
+      "httpStatus": 400,
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:02.109Z",
+          "verifyAtMillis": 1790812802109,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "12b47935-e129-4b29-8dd7-09873d592495",
+        "iat": 1790812801109,
+        "ttl": 300000,
+        "statusCode": 400
+      }
+    },
+    {
+      "id": "rsa-answer-404-unknown-qr",
+      "file": "jws/rsa-answer-404-unknown-qr.jws",
+      "sha256": "ea66447d056d9674eaeedb09b8046525d8470109d076b622e7dd00e322c86607",
+      "kind": "notification-answer",
+      "signer": "rsa",
+      "producedBy": "java",
+      "what": "Java's signed refusal of an unknown QR Code: 404",
+      "httpStatus": 404,
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:02.123Z",
+          "verifyAtMillis": 1790812802123,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "bb0e2961-ff65-4bd1-940e-3438a461efa8",
+        "iat": 1790812801123,
+        "ttl": 300000,
+        "statusCode": 404
+      }
+    },
+    {
+      "id": "rsa-answer-409-another-holder",
+      "file": "jws/rsa-answer-409-another-holder.jws",
+      "sha256": "5a38b3e836ad5f2bebf985c76f177ce502e4da28b85d10cffb9fe1f35e7cf840",
+      "kind": "notification-answer",
+      "signer": "rsa",
+      "producedBy": "java",
+      "what": "Java's signed refusal of a second payer on a reserved QR Code: 409",
+      "httpStatus": 409,
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:02.139Z",
+          "verifyAtMillis": 1790812802139,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "a4f2ea82-d538-43cb-a586-c9c2e59874b7",
+        "iat": 1790812801139,
+        "ttl": 300000,
+        "statusCode": 409
+      }
+    },
+    {
+      "id": "rsa-answer-401-bad-signature",
+      "file": "jws/rsa-answer-401-bad-signature.jws",
+      "sha256": "30359c9045e4f7c9514f8101ac474c18f03cfa713d2110c9535fe7f2e6711093",
+      "kind": "notification-answer",
+      "signer": "rsa",
+      "producedBy": "java",
+      "what": "Java's signed refusal of a question altered after signing: 401, signatureProblem BAD_SIGNATURE in the body, a fresh correlationId",
+      "httpStatus": 401,
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:02.147Z",
+          "verifyAtMillis": 1790812802147,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "a611086b-df42-46e5-bf05-9109e542049a",
+        "iat": 1790812801147,
+        "ttl": 300000,
+        "statusCode": 401
+      }
+    },
+    {
+      "id": "rsa-payload-request-ttl-30s",
+      "file": "jws/rsa-payload-request-ttl-30s.jws",
+      "sha256": "890572b6d2f5b4dc4d5e64bb78850edc6e316d9bff9c7740ee98c8f64c23c4d8",
+      "kind": "payload-request",
+      "signer": "rsa",
+      "producedBy": "java",
+      "what": "as payload-request, with a 30 s ttl",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:02.153Z",
+          "verifyAtMillis": 1790812802153,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        },
+        {
+          "name": "at-iat-plus-ttl",
+          "verifyAt": "2026-10-01T00:00:31.153Z",
+          "verifyAtMillis": 1790812831153,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "EXPIRED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "aa44f5cb-bef1-4a20-9aec-d33e9ba9a3c8",
+        "iat": 1790812801153,
+        "ttl": 30000
+      }
+    },
+    {
+      "id": "rsa-altered-payload",
+      "file": "jws/rsa-altered-payload.jws",
+      "sha256": "b8c87b0ef08858e86a1d458e8274c99a315bd50770c708c004bbb76ad99ad845",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+tamper",
+      "what": "one claim added to the payload after signing",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_SIGNATURE"
+          }
+        },
+        {
+          "name": "at-iat-plus-ttl",
+          "verifyAt": "2026-10-01T00:05:00.471Z",
+          "verifyAtMillis": 1790813100471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "EXPIRED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-altered-signature",
+      "file": "jws/rsa-altered-signature.jws",
+      "sha256": "ddedeba98f48bdf26ca21f931d40a01537ce24e886a11b1d4f92810a2b1301c8",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+tamper",
+      "what": "the last bit of the signature flipped",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_SIGNATURE"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-signature-of-another-token",
+      "file": "jws/rsa-signature-of-another-token.jws",
+      "sha256": "3e96faa2b73a80ebd63edf074f6bb71ebd87187301f46404ed0c2a19f3d0e1b8",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+tamper",
+      "what": "the signature replaced by the signature of Java's yes",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_SIGNATURE"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-empty-signature",
+      "file": "jws/rsa-empty-signature.jws",
+      "sha256": "0b31a773c5d097cfcddfb69b9686dbffc3fb191bba0cd648afe43ec9f65ca341",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+tamper",
+      "what": "the signature removed, its dot kept, the header still naming PS512",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "NOT_JWS"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-two-parts",
+      "file": "jws/rsa-two-parts.jws",
+      "sha256": "b34f6b6aad61c09f00341afb11d664ea24bd0d459a13c0c68c59df6cdf389b4b",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+tamper",
+      "what": "the signature and its dot removed",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "NOT_JWS"
+          }
+        }
+      ]
+    },
+    {
+      "id": "rsa-alg-none",
+      "file": "jws/rsa-alg-none.jws",
+      "sha256": "410c37b86054c7814108b096140aaaf0e1320e930b0c4a9a0eb40552ee10973b",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "constructed",
+      "what": "an unsecured JOSE object over Java's payload",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "ALG_NONE"
+          }
+        }
+      ],
+      "header": {
+        "alg": "none"
+      }
+    },
+    {
+      "id": "rsa-not-a-jws",
+      "file": "jws/rsa-not-a-jws.jws",
+      "sha256": "5df89d31ed8d9cef304316430f42abb991967111632e53ca0f4093cc9c2b92bc",
+      "kind": "not-a-jws",
+      "signer": "rsa",
+      "producedBy": "constructed",
+      "what": "plain text",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "NOT_JWS"
+          }
+        }
+      ]
+    },
+    {
+      "id": "rsa-resigned-control",
+      "file": "jws/rsa-resigned-control.jws",
+      "sha256": "67c86ab547761504fd28ebb09d821bb8e58810f745914610bf5150c411fa4216",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "nothing changed: proves a re-signed token is accepted",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-crit-missing",
+      "file": "jws/rsa-crit-missing.jws",
+      "sha256": "1f5dd51cf7e0c4e0f296726a95909c34f333ce394fb1253983a02189b9c5175a",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "no crit",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        },
+        {
+          "name": "at-iat-plus-ttl",
+          "verifyAt": "2026-10-01T00:05:00.471Z",
+          "verifyAtMillis": 1790813100471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-crit-empty",
+      "file": "jws/rsa-crit-empty.jws",
+      "sha256": "9cf7e0e4099233dc0afef04a656d3924f3f3d01677bb6d08250559b21ef4ae34",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "crit is an empty list",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-crit-without-ttl",
+      "file": "jws/rsa-crit-without-ttl.jws",
+      "sha256": "5fc2a9bd8fe69d46a9639444d3cbba4d28a7cc771dba1aa5de6f2250e27545f8",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "crit does not name ttl",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-crit-unknown",
+      "file": "jws/rsa-crit-unknown.jws",
+      "sha256": "0f03c33079079ff5ed5cd89a9fd36282cc1d2449069e92a532ac821ffe4faf2a",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "crit names a parameter nobody understands",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-crit-statuscode-without-the-header",
+      "file": "jws/rsa-crit-statuscode-without-the-header.jws",
+      "sha256": "3c787b5e6148e753a9af363f9c004a169b8b09a0eddfdb42662ed5eb885c872f",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "crit names statusCode, the header has none",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-crit-in-another-order",
+      "file": "jws/rsa-crit-in-another-order.jws",
+      "sha256": "4942dc678074d5475022c5200bd363e996beb3a51bb1bd3bf07c1f334e82e0d5",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "crit names the same three parameters in another order",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-typ-absent",
+      "file": "jws/rsa-typ-absent.jws",
+      "sha256": "fc40f687fbd1c30d8114b5c8df91319ba43e4aa4dd6e67d997fe887e2bde6b8a",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "no typ",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-typ-JWT",
+      "file": "jws/rsa-typ-JWT.jws",
+      "sha256": "d6c6f3ccb28c5c5e2f420e19135e5a5a37db95fe963770e8e9b34fce097a6672",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "typ is JWT instead of JOSE",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JWT",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-typ-payreq-jws",
+      "file": "jws/rsa-typ-payreq-jws.jws",
+      "sha256": "e73dcd14344d8a249cc8b85c4a2432f1c71e135b95a971fccbf91ed40336273b",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "typ is payreq+jws instead of JOSE",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "payreq+jws",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-typ-payresp-jws",
+      "file": "jws/rsa-typ-payresp-jws.jws",
+      "sha256": "28728b3449fea7b14ad7a8be211fa292bbc6e9a28c8af3dedd413c8a91f9e698",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "typ is payresp+jws instead of JOSE",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "payresp+jws",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-typ-paynote-jws",
+      "file": "jws/rsa-typ-paynote-jws.jws",
+      "sha256": "e68bdf685fbb70ce1dfe103d8f038708278b2d0d5584d4ad39c87575de291322",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "typ is paynote+jws instead of JOSE",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "paynote+jws",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-typ-qr-jws",
+      "file": "jws/rsa-typ-qr-jws.jws",
+      "sha256": "bdd1315d5bc9ad5daa6b744185db7348302a14e4cd93ab83e071ffec05062078",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "typ is qr+jws instead of JOSE",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "qr+jws",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-x5c-missing",
+      "file": "jws/rsa-x5c-missing.jws",
+      "sha256": "6b63e73a3ccdaa3df81a6d0d0472fd73cb158a85b61ba691fa0f637adafab95b",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "no x5c, x5u or jku: nothing to verify with",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-x5t-missing",
+      "file": "jws/rsa-x5t-missing.jws",
+      "sha256": "9997e308b5b0d476e201a6eaa094893280f7854b18a52cd0816779dba1b2b90b",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "no x5t#S256",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-x5t-of-another-certificate",
+      "file": "jws/rsa-x5t-of-another-certificate.jws",
+      "sha256": "d824a4795c2b539254003dcf6d9c9aa603793e249cd84614e543c599710021c5",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "x5t#S256 names no certificate in x5c",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "UNTRUSTED_CHAIN"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-x5c-leaf-only",
+      "file": "jws/rsa-x5c-leaf-only.jws",
+      "sha256": "712d0434e96afab83c732e110751efafcd35f2d27a3c7fbe320f2851e72eb724",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "x5c carries the leaf without its issuer, which the truststore holds",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-x5c-root-first",
+      "file": "jws/rsa-x5c-root-first.jws",
+      "sha256": "4a76aeada74e46a9c3027b63730aff5841a326b85bcb48f2d30d3efa3940833f",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "x5c in the wrong order: the root, then the leaf",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "UNTRUSTED_CHAIN"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-x5c-not-a-certificate",
+      "file": "jws/rsa-x5c-not-a-certificate.jws",
+      "sha256": "e4aaac41730fe516c33602fffefc922bcbff528b777461ec0c9c0b54a0fe9793",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "x5c holds base64 that is not a certificate",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-correlationid-missing",
+      "file": "jws/rsa-correlationid-missing.jws",
+      "sha256": "171a2a700d4a33b94025ad008238f76e0bb5146416220cd27f1d4c24829a3135",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "no correlationId (crit still names it)",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-correlationid-not-a-uuid",
+      "file": "jws/rsa-correlationid-not-a-uuid.jws",
+      "sha256": "794228069897442ad9578b313ca2f795a121fcfa6e052fa78a368afef8a6fa04",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "correlationId is not a UUID",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "not-a-uuid",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-iat-missing",
+      "file": "jws/rsa-iat-missing.jws",
+      "sha256": "480b1fdaaca43332cf59c089f227cf7e534cf58a52225205e27af92b15d2f870",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "no iat (crit still names it)",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-iat-a-string",
+      "file": "jws/rsa-iat-a-string.jws",
+      "sha256": "67c194be41022358c25d578c4f20e867035efa43cb9c92d75ed0c073c8658c75",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "iat is a JSON string",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": "1790812800471",
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-iat-a-decimal",
+      "file": "jws/rsa-iat-a-decimal.jws",
+      "sha256": "208f51342940814324c6e3d5c75ac729a5b53d6c578ebe3de0dbb45c144a04ad",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "iat is a JSON number with a fraction",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471.5,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-iat-zero",
+      "file": "jws/rsa-iat-zero.jws",
+      "sha256": "82de2b90f4950313f75800a155b670c379c55b8c94930b44092903995fe1a206",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "iat is 0",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 0,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-iat-in-seconds",
+      "file": "jws/rsa-iat-in-seconds.jws",
+      "sha256": "23462d8dcb5a65f1d9a41c9009f1b87b5596124c53c2d2e7c47e742dc368c205",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "iat in seconds, not milliseconds: it reads as January 1970",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "EXPIRED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-ttl-missing",
+      "file": "jws/rsa-ttl-missing.jws",
+      "sha256": "b69a050a0b34ebb0be0ef8a20c7272aa21461acec9bb37a487076d0758c731d9",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "no ttl (crit still names it)",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471
+      }
+    },
+    {
+      "id": "rsa-ttl-zero",
+      "file": "jws/rsa-ttl-zero.jws",
+      "sha256": "10098a947767928e5a3f777e8e9526006924f0f317ae4767ab96027069b45009",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "ttl is 0",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 0
+      }
+    },
+    {
+      "id": "rsa-ttl-negative",
+      "file": "jws/rsa-ttl-negative.jws",
+      "sha256": "2923139eafe9d915a377d3e4124b1a13de3fde682d91dcbd698df08a45a5a5f5",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "ttl is negative",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": -1
+      }
+    },
+    {
+      "id": "rsa-ttl-a-string",
+      "file": "jws/rsa-ttl-a-string.jws",
+      "sha256": "ca84d8c487b890a08993b4df2d9a0a5bec2863d651c1f00f8d222abde93fce15",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "ttl is a JSON string",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": "300000"
+      }
+    },
+    {
+      "id": "rsa-alg-RS256",
+      "file": "jws/rsa-alg-RS256.jws",
+      "sha256": "c78a2eaaf6a8ba53776916c267919812e1219439cead69907e506cfa514b4a48",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "signed RS256 with the same RSA key",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "RS256",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-alg-RS384",
+      "file": "jws/rsa-alg-RS384.jws",
+      "sha256": "1265c5014c4f0a377855f1eda3d5ba7da81afd389b49f4bd0ac243dbb26c5a78",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "signed RS384 with the same RSA key",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "RS384",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-alg-RS512",
+      "file": "jws/rsa-alg-RS512.jws",
+      "sha256": "d5f32614a4221923a81f40ddaa41f8fe3921958656cc5b627760d8da03cfe758",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "signed RS512 with the same RSA key",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "RS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-alg-PS256",
+      "file": "jws/rsa-alg-PS256.jws",
+      "sha256": "8cd274cacf79a6dc8dbfa7d8630bb61ab8cae8a464b4cfce1ac3c4b891fbdca0",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "signed PS256 with the same RSA key",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS256",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-alg-PS384",
+      "file": "jws/rsa-alg-PS384.jws",
+      "sha256": "6bbd23a180510bd0cec9117528e2661c08b899c42e78777545bf390338bbadf9",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "signed PS384 with the same RSA key",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS384",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-alg-says-PS256-signed-PS512",
+      "file": "jws/rsa-alg-says-PS256-signed-PS512.jws",
+      "sha256": "80fefca4f117df7cc53bafdfa200a1f78c551f87b586a094dcd7cecc8e64ca03",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "the header says PS256, the signature is PS512",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_SIGNATURE"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS256",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-alg-ES256-on-an-rsa-certificate",
+      "file": "jws/rsa-alg-ES256-on-an-rsa-certificate.jws",
+      "sha256": "539f8f4b8c7e1e0171e109f979a65a215ec4f457323ae09fbc16e97c6dd9ff25",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "the header says ES256, the certificate holds an RSA key",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "UNVERIFIABLE"
+          }
+        }
+      ],
+      "header": {
+        "alg": "ES256",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-alg-HS256",
+      "file": "jws/rsa-alg-HS256.jws",
+      "sha256": "f0eeab4aa9e0f7a97ca0efc22bb270537bfb828388c25b9ad50e52aebd31430b",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "the header says HS256 (a MAC, not a signature)",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "HS256",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-signed-by-another-key",
+      "file": "jws/rsa-signed-by-another-key.jws",
+      "sha256": "e8ae248ae0781d5f33a81263bcdbdab954778614c2c8642f276e5f30e2987811",
+      "kind": "notification",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "the certificate is the signer's, the signature another RSA key's",
+      "derivedFrom": "rsa-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.471Z",
+          "verifyAtMillis": 1790812801471,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_SIGNATURE"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812800471,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-answer-altered-payload",
+      "file": "jws/rsa-answer-altered-payload.jws",
+      "sha256": "060c6c45374b78281f92676f9d999468b0eca3b7d30e3766454afd10c36df72a",
+      "kind": "notification-answer",
+      "signer": "rsa",
+      "producedBy": "java+tamper",
+      "what": "Java's yes with the signed statusCode changed after signing",
+      "derivedFrom": "rsa-answer-200-yes",
+      "httpStatus": 200,
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:02.072Z",
+          "verifyAtMillis": 1790812802072,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_SIGNATURE"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812801072,
+        "ttl": 300000,
+        "statusCode": 200
+      }
+    },
+    {
+      "id": "rsa-answer-resigned-control",
+      "file": "jws/rsa-answer-resigned-control.jws",
+      "sha256": "e03de0c189b1142f1c4a3444de91f7acf2146da2f9a4c84a02ab84ad11b1c2b4",
+      "kind": "notification-answer",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "Java's yes, nothing changed, signed again",
+      "derivedFrom": "rsa-answer-200-yes",
+      "httpStatus": 200,
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:02.072Z",
+          "verifyAtMillis": 1790812802072,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812801072,
+        "ttl": 300000,
+        "statusCode": 200
+      }
+    },
+    {
+      "id": "rsa-answer-statuscode-header-missing",
+      "file": "jws/rsa-answer-statuscode-header-missing.jws",
+      "sha256": "91bcca9dc0b5f8b983dfbc7afa6e5958c757621faf888e6f11c7e483a5541f47",
+      "kind": "notification-answer",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "Java's yes without the statusCode header its crit names",
+      "derivedFrom": "rsa-answer-200-yes",
+      "httpStatus": 200,
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:02.072Z",
+          "verifyAtMillis": 1790812802072,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812801072,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "rsa-answer-statuscode-not-an-http-status",
+      "file": "jws/rsa-answer-statuscode-not-an-http-status.jws",
+      "sha256": "f9841918d3ba3202ae5d3b6e64f068d67d0fad1c10c121da3e11d47acf844bbf",
+      "kind": "notification-answer",
+      "signer": "rsa",
+      "producedBy": "java+resign",
+      "what": "Java's yes with statusCode 99 in the header",
+      "derivedFrom": "rsa-answer-200-yes",
+      "httpStatus": 200,
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:02.072Z",
+          "verifyAtMillis": 1790812802072,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_HEADER"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "5e9188da-d7da-4e4e-b0e8-1897386ba738",
+        "iat": 1790812801072,
+        "ttl": 300000,
+        "statusCode": 99
+      }
+    },
+    {
+      "id": "ec-payload-request",
+      "file": "jws/ec-payload-request.jws",
+      "sha256": "b945120fb3c593ca2e3fe49512bbb12b155b1687b14447b500cc4df4d8e83b63",
+      "kind": "payload-request",
+      "signer": "ec",
+      "producedBy": "java",
+      "what": "the payer's request for a payload: {qrCodeContent}, signed by Java",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.264Z",
+          "verifyAtMillis": 1790812801264,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "ES256",
+        "typ": "JOSE",
+        "correlationId": "999ce1ca-dfc1-488c-963e-f7b5ff202b5b",
+        "iat": 1790812800264,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "ec-answer-401-not-a-jws",
+      "file": "jws/ec-answer-401-not-a-jws.jws",
+      "sha256": "dec31508e642b2193e191efa5bf65bd842ed0a2d7559696716af9e5a9568b70b",
+      "kind": "notification-answer",
+      "signer": "ec",
+      "producedBy": "java",
+      "what": "Java's signed refusal of a body that is not a JWS: 401, signatureProblem NOT_JWS in the body, a fresh correlationId",
+      "httpStatus": 401,
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.315Z",
+          "verifyAtMillis": 1790812801315,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "ES256",
+        "typ": "JOSE",
+        "correlationId": "410f6958-91e0-438b-8dfe-ef97241f1bcb",
+        "iat": 1790812800315,
+        "ttl": 300000,
+        "statusCode": 401
+      }
+    },
+    {
+      "id": "ec-payload-response",
+      "file": "jws/ec-payload-response.jws",
+      "sha256": "4d1161d39e6c77c66ee5ee2b98139d8f84f6c7c1f211e0a317f52a57658260f4",
+      "kind": "payload-response",
+      "signer": "ec",
+      "producedBy": "java",
+      "what": "Java's signed payload for that request (statusCode 200 in the header and in crit)",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.352Z",
+          "verifyAtMillis": 1790812801352,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "ES256",
+        "typ": "JOSE",
+        "correlationId": "999ce1ca-dfc1-488c-963e-f7b5ff202b5b",
+        "iat": 1790812800352,
+        "ttl": 300000,
+        "statusCode": 200
+      }
+    },
+    {
+      "id": "ec-notification-pre-commit",
+      "file": "jws/ec-notification-pre-commit.jws",
+      "sha256": "91383957b43e9b549674752b35e57889c79f973538d753ab71cb805d6f2ffd17",
+      "kind": "notification",
+      "signer": "ec",
+      "producedBy": "java",
+      "what": "the pre-commit notification Java sends as a payer",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.374Z",
+          "verifyAtMillis": 1790812801374,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "ES256",
+        "typ": "JOSE",
+        "correlationId": "688ef7b6-080b-45fb-adb9-83be994c3207",
+        "iat": 1790812800374,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "ec-notification-post-commit",
+      "file": "jws/ec-notification-post-commit.jws",
+      "sha256": "b3b882fbeb6ef6ec7206870faf3559f23cd5604bd67a09c6985bcf7bf705cc17",
+      "kind": "notification",
+      "signer": "ec",
+      "producedBy": "java",
+      "what": "the post-commit notification Java sends as a payer, with its transactionId",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.414Z",
+          "verifyAtMillis": 1790812801414,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "ES256",
+        "typ": "JOSE",
+        "correlationId": "7b9125fa-fb1d-4ce8-a13c-9a2c994787f3",
+        "iat": 1790812800414,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "ec-answer-200-yes",
+      "file": "jws/ec-answer-200-yes.jws",
+      "sha256": "b3a7e93f403fa98e1d29c21742e1f6642562c5328c6c2966f313de913183b5fc",
+      "kind": "notification-answer",
+      "signer": "ec",
+      "producedBy": "java",
+      "what": "Java's signed yes to that pre-commit: the body is exactly {statusCode: 200}, the correlationId is the question's",
+      "httpStatus": 200,
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.949Z",
+          "verifyAtMillis": 1790812801949,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "ES256",
+        "typ": "JOSE",
+        "correlationId": "688ef7b6-080b-45fb-adb9-83be994c3207",
+        "iat": 1790812800949,
+        "ttl": 300000,
+        "statusCode": 200
+      }
+    },
+    {
+      "id": "ec-answer-200-yes-post-commit",
+      "file": "jws/ec-answer-200-yes-post-commit.jws",
+      "sha256": "1af551f4502af6f74e906567ba9c550af0bcac4197c5e545ed705dd5721412c3",
+      "kind": "notification-answer",
+      "signer": "ec",
+      "producedBy": "java",
+      "what": "Java's signed yes to that post-commit",
+      "httpStatus": 200,
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.964Z",
+          "verifyAtMillis": 1790812801964,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "ES256",
+        "typ": "JOSE",
+        "correlationId": "7b9125fa-fb1d-4ce8-a13c-9a2c994787f3",
+        "iat": 1790812800964,
+        "ttl": 300000,
+        "statusCode": 200
+      }
+    },
+    {
+      "id": "ec-answer-400-wrong-amount",
+      "file": "jws/ec-answer-400-wrong-amount.jws",
+      "sha256": "2104634329bc63f4fe262fc837375715b5a79f45ce6968d1fc93a450a72c0462",
+      "kind": "notification-answer",
+      "signer": "ec",
+      "producedBy": "java",
+      "what": "Java's signed refusal of a wrong amount: 400, the error fields and violations in the signed body",
+      "httpStatus": 400,
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.980Z",
+          "verifyAtMillis": 1790812801980,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "ES256",
+        "typ": "JOSE",
+        "correlationId": "11a8cb65-6452-4159-985d-ff18d5412fc2",
+        "iat": 1790812800980,
+        "ttl": 300000,
+        "statusCode": 400
+      }
+    },
+    {
+      "id": "ec-altered-payload",
+      "file": "jws/ec-altered-payload.jws",
+      "sha256": "834e4c1d9938b44d9bded2092bca228875928189c48a2016b07df205319c45cf",
+      "kind": "notification",
+      "signer": "ec",
+      "producedBy": "java+tamper",
+      "what": "one claim added to the payload after signing",
+      "derivedFrom": "ec-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.374Z",
+          "verifyAtMillis": 1790812801374,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_SIGNATURE"
+          }
+        }
+      ],
+      "header": {
+        "alg": "ES256",
+        "typ": "JOSE",
+        "correlationId": "688ef7b6-080b-45fb-adb9-83be994c3207",
+        "iat": 1790812800374,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "ec-resigned-control",
+      "file": "jws/ec-resigned-control.jws",
+      "sha256": "1e67cee4a16cf2d26108cd51ac1e004d507f5c71f152d46473f5917dd3e89d35",
+      "kind": "notification",
+      "signer": "ec",
+      "producedBy": "java+resign",
+      "what": "nothing changed: proves a re-signed ES256 token is accepted",
+      "derivedFrom": "ec-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.374Z",
+          "verifyAtMillis": 1790812801374,
+          "expected": {
+            "verdict": "VERIFIED"
+          }
+        }
+      ],
+      "header": {
+        "alg": "ES256",
+        "typ": "JOSE",
+        "correlationId": "688ef7b6-080b-45fb-adb9-83be994c3207",
+        "iat": 1790812800374,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "ec-signature-in-der",
+      "file": "jws/ec-signature-in-der.jws",
+      "sha256": "a2abf231972644ff41cc318896127750b75b64feac1fa85b34ae46d90c0f8929",
+      "kind": "notification",
+      "signer": "ec",
+      "producedBy": "java+resign",
+      "what": "the ECDSA signature in ASN.1 DER instead of the 64-byte R||S that JWS requires",
+      "derivedFrom": "ec-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.374Z",
+          "verifyAtMillis": 1790812801374,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_SIGNATURE"
+          }
+        }
+      ],
+      "header": {
+        "alg": "ES256",
+        "typ": "JOSE",
+        "correlationId": "688ef7b6-080b-45fb-adb9-83be994c3207",
+        "iat": 1790812800374,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "ec-alg-ES384-on-a-p256-key",
+      "file": "jws/ec-alg-ES384-on-a-p256-key.jws",
+      "sha256": "ef16b07d11117bad95baddbb1c17868197d761e26f7d23470392d1b6ccc6020d",
+      "kind": "notification",
+      "signer": "ec",
+      "producedBy": "java+resign",
+      "what": "ES384 with a P-256 key: the ECDSA mathematics verify, and it is refused all the same, because RFC 7518 binds ES384 to P-384",
+      "derivedFrom": "ec-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.374Z",
+          "verifyAtMillis": 1790812801374,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_SIGNATURE"
+          }
+        }
+      ],
+      "header": {
+        "alg": "ES384",
+        "typ": "JOSE",
+        "correlationId": "688ef7b6-080b-45fb-adb9-83be994c3207",
+        "iat": 1790812800374,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "ec-signed-by-another-key",
+      "file": "jws/ec-signed-by-another-key.jws",
+      "sha256": "52ec156d97b327f770f9c8bd16202c3dc99477da634e238e6902243bcfd62f82",
+      "kind": "notification",
+      "signer": "ec",
+      "producedBy": "java+resign",
+      "what": "the certificate is the signer's, the signature another P-256 key's",
+      "derivedFrom": "ec-notification-pre-commit",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.374Z",
+          "verifyAtMillis": 1790812801374,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "BAD_SIGNATURE"
+          }
+        }
+      ],
+      "header": {
+        "alg": "ES256",
+        "typ": "JOSE",
+        "correlationId": "688ef7b6-080b-45fb-adb9-83be994c3207",
+        "iat": 1790812800374,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "revoked-payload-request",
+      "file": "jws/revoked-payload-request.jws",
+      "sha256": "d83f1eb224f76a91b52357629bdbcc3467912f35388b183407c99f50b069fd6e",
+      "kind": "payload-request",
+      "signer": "revoked",
+      "producedBy": "java",
+      "what": "the payer's request for a payload: {qrCodeContent}, signed by Java",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.315Z",
+          "verifyAtMillis": 1790812801315,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "UNTRUSTED_CHAIN"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "0659e0fe-851f-46d4-97c6-3f304b4139f6",
+        "iat": 1790812800315,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "revoked-answer-401-not-a-jws",
+      "file": "jws/revoked-answer-401-not-a-jws.jws",
+      "sha256": "2f8ebbc938cca66a5769bdb7a8e4f98e8b5d1c2c0faa005bd449b34df479d604",
+      "kind": "notification-answer",
+      "signer": "revoked",
+      "producedBy": "java",
+      "what": "Java's signed refusal of a body that is not a JWS: 401, signatureProblem NOT_JWS in the body, a fresh correlationId",
+      "httpStatus": 401,
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.348Z",
+          "verifyAtMillis": 1790812801348,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "UNTRUSTED_CHAIN"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "491d4969-b2ba-47c0-bb58-a7c6594922e3",
+        "iat": 1790812800348,
+        "ttl": 300000,
+        "statusCode": 401
+      }
+    },
+    {
+      "id": "untrusted-payload-request",
+      "file": "jws/untrusted-payload-request.jws",
+      "sha256": "8bd8c3b36036a4020041d8f603aeeeac4e6a758a9949bca82bc028b5b3e99664",
+      "kind": "payload-request",
+      "signer": "untrusted",
+      "producedBy": "java",
+      "what": "the payer's request for a payload: {qrCodeContent}, signed by Java",
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.321Z",
+          "verifyAtMillis": 1790812801321,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "UNTRUSTED_CHAIN"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "e0b79f67-bb5b-452e-a83d-a7d8f68167b1",
+        "iat": 1790812800321,
+        "ttl": 300000
+      }
+    },
+    {
+      "id": "untrusted-answer-401-not-a-jws",
+      "file": "jws/untrusted-answer-401-not-a-jws.jws",
+      "sha256": "57f6f8097c879491f9b7b01a29a1c4108e5690ac140e95c104508dfcd57eea9f",
+      "kind": "notification-answer",
+      "signer": "untrusted",
+      "producedBy": "java",
+      "what": "Java's signed refusal of a body that is not a JWS: 401, signatureProblem NOT_JWS in the body, a fresh correlationId",
+      "httpStatus": 401,
+      "cases": [
+        {
+          "name": "fresh",
+          "verifyAt": "2026-10-01T00:00:01.356Z",
+          "verifyAtMillis": 1790812801356,
+          "expected": {
+            "verdict": "REFUSED",
+            "signatureProblem": "UNTRUSTED_CHAIN"
+          }
+        }
+      ],
+      "header": {
+        "alg": "PS512",
+        "typ": "JOSE",
+        "correlationId": "1a28d5b4-a9b1-4651-9b43-44c9aee462f8",
+        "iat": 1790812800356,
+        "ttl": 300000,
+        "statusCode": 401
+      }
+    }
+  ],
+  "emv": [
+    {
+      "id": "rsa-default",
+      "host": "x9-150.example.com",
+      "locationId": "01A1DC2A6A37D73D6313076E9BFE04F5",
+      "locationEndpoint": "https://x9-150.example.com/pub/api/v1/loc/01A1DC2A6A37D73D6313076E9BFE04F5",
+      "qrCode": "00020101021226800006org.x90166x9-150.example.com/pub/api/v1/loc/01A1DC2A6A37D73D6313076E9BFE04F5520449005303840540105802US5911Blackbox Co6011Los Angeles6304AA0B",
+      "length": 160,
+      "crc": "AA0B",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 80,
+          "value": "0006org.x90166x9-150.example.com/pub/api/v1/loc/01A1DC2A6A37D73D6313076E9BFE04F5"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 11,
+          "value": "Blackbox Co"
+        },
+        {
+          "tag": "60",
+          "length": 11,
+          "value": "Los Angeles"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "AA0B"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 66,
+          "value": "x9-150.example.com/pub/api/v1/loc/01A1DC2A6A37D73D6313076E9BFE04F5"
+        }
+      ],
+      "url": "x9-150.example.com/pub/api/v1/loc/01A1DC2A6A37D73D6313076E9BFE04F5",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "Blackbox Co",
+          "address": {
+            "line1": "1 A St",
+            "city": "Los Angeles",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 1000,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 1000,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "rsa-long-name-and-city",
+      "host": "x9-150.example.com",
+      "locationId": "01A1DC2A6A6A1081B8867D533BD3EE8E",
+      "locationEndpoint": "https://x9-150.example.com/pub/api/v1/loc/01A1DC2A6A6A1081B8867D533BD3EE8E",
+      "qrCode": "00020101021226800006org.x90166x9-150.example.com/pub/api/v1/loc/01A1DC2A6A6A1081B8867D533BD3EE8E520449005303840540105802US5925California Electric Compa6015San Francisco B63043E8C",
+      "length": 178,
+      "crc": "3E8C",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 80,
+          "value": "0006org.x90166x9-150.example.com/pub/api/v1/loc/01A1DC2A6A6A1081B8867D533BD3EE8E"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 25,
+          "value": "California Electric Compa"
+        },
+        {
+          "tag": "60",
+          "length": 15,
+          "value": "San Francisco B"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "3E8C"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 66,
+          "value": "x9-150.example.com/pub/api/v1/loc/01A1DC2A6A6A1081B8867D533BD3EE8E"
+        }
+      ],
+      "url": "x9-150.example.com/pub/api/v1/loc/01A1DC2A6A6A1081B8867D533BD3EE8E",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "California Electric Company of the West Coast",
+          "address": {
+            "line1": "500 Energy Ave",
+            "city": "San Francisco Bay Area",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 1000,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 1000,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "rsa-usd-fednow",
+      "host": "x9-150.example.com",
+      "locationId": "01A1DC2A6A79993C849378AAA6A35667",
+      "locationEndpoint": "https://x9-150.example.com/pub/api/v1/loc/01A1DC2A6A79993C849378AAA6A35667",
+      "qrCode": "00020101021226800006org.x90166x9-150.example.com/pub/api/v1/loc/01A1DC2A6A79993C849378AAA6A35667520449005303840540105802US5911Blackbox Co6011Los Angeles6304064A",
+      "length": 160,
+      "crc": "064A",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 80,
+          "value": "0006org.x90166x9-150.example.com/pub/api/v1/loc/01A1DC2A6A79993C849378AAA6A35667"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 11,
+          "value": "Blackbox Co"
+        },
+        {
+          "tag": "60",
+          "length": 11,
+          "value": "Los Angeles"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "064A"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 66,
+          "value": "x9-150.example.com/pub/api/v1/loc/01A1DC2A6A79993C849378AAA6A35667"
+        }
+      ],
+      "url": "x9-150.example.com/pub/api/v1/loc/01A1DC2A6A79993C849378AAA6A35667",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "Blackbox Co",
+          "address": {
+            "line1": "1 A St",
+            "city": "Los Angeles",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 22599,
+            "currency": "USD"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USD",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 22599,
+            "networks": {
+              "fednow": {
+                "routingNumber": "021000021",
+                "accountNumber": "1234567890",
+                "protectionType": "plaintext"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "rsa-editable-amount",
+      "host": "x9-150.example.com",
+      "locationId": "01A1DC2A6A846CCD78FE546C2D6B78D1",
+      "locationEndpoint": "https://x9-150.example.com/pub/api/v1/loc/01A1DC2A6A846CCD78FE546C2D6B78D1",
+      "qrCode": "00020101021226800006org.x90166x9-150.example.com/pub/api/v1/loc/01A1DC2A6A846CCD78FE546C2D6B78D1520449005303840540105802US5911Blackbox Co6011Los Angeles630453A6",
+      "length": 160,
+      "crc": "53A6",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 80,
+          "value": "0006org.x90166x9-150.example.com/pub/api/v1/loc/01A1DC2A6A846CCD78FE546C2D6B78D1"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 11,
+          "value": "Blackbox Co"
+        },
+        {
+          "tag": "60",
+          "length": 11,
+          "value": "Los Angeles"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "53A6"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 66,
+          "value": "x9-150.example.com/pub/api/v1/loc/01A1DC2A6A846CCD78FE546C2D6B78D1"
+        }
+      ],
+      "url": "x9-150.example.com/pub/api/v1/loc/01A1DC2A6A846CCD78FE546C2D6B78D1",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "Blackbox Co",
+          "address": {
+            "line1": "1 A St",
+            "city": "Los Angeles",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 1000,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 1000,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            },
+            "editable": {
+              "range": {
+                "min": 500,
+                "max": 2000
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "rsa-twelve-digit-amount",
+      "host": "x9-150.example.com",
+      "locationId": "01A1DC2A6A8DA46F6D6FC9C33DEFF61B",
+      "locationEndpoint": "https://x9-150.example.com/pub/api/v1/loc/01A1DC2A6A8DA46F6D6FC9C33DEFF61B",
+      "qrCode": "00020101021226800006org.x90166x9-150.example.com/pub/api/v1/loc/01A1DC2A6A8DA46F6D6FC9C33DEFF61B520449005303840540105802US5911Blackbox Co6011Los Angeles6304CF50",
+      "length": 160,
+      "crc": "CF50",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 80,
+          "value": "0006org.x90166x9-150.example.com/pub/api/v1/loc/01A1DC2A6A8DA46F6D6FC9C33DEFF61B"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 11,
+          "value": "Blackbox Co"
+        },
+        {
+          "tag": "60",
+          "length": 11,
+          "value": "Los Angeles"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "CF50"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 66,
+          "value": "x9-150.example.com/pub/api/v1/loc/01A1DC2A6A8DA46F6D6FC9C33DEFF61B"
+        }
+      ],
+      "url": "x9-150.example.com/pub/api/v1/loc/01A1DC2A6A8DA46F6D6FC9C33DEFF61B",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "Blackbox Co",
+          "address": {
+            "line1": "1 A St",
+            "city": "Los Angeles",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 123456789012,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 123456789012,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "rsa-punctuation-and-another-country",
+      "host": "x9-150.example.com",
+      "locationId": "01A1DC2A6A94C90CBC0B8C6B4FE1DB56",
+      "locationEndpoint": "https://x9-150.example.com/pub/api/v1/loc/01A1DC2A6A94C90CBC0B8C6B4FE1DB56",
+      "qrCode": "00020101021226800006org.x90166x9-150.example.com/pub/api/v1/loc/01A1DC2A6A94C90CBC0B8C6B4FE1DB56520458125303840540105802CA5923O'Brien & Sons, Inc. #16010St. John's6304BDEF",
+      "length": 171,
+      "crc": "BDEF",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 80,
+          "value": "0006org.x90166x9-150.example.com/pub/api/v1/loc/01A1DC2A6A94C90CBC0B8C6B4FE1DB56"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "5812"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "CA"
+        },
+        {
+          "tag": "59",
+          "length": 23,
+          "value": "O'Brien & Sons, Inc. #1"
+        },
+        {
+          "tag": "60",
+          "length": 10,
+          "value": "St. John's"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "BDEF"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 66,
+          "value": "x9-150.example.com/pub/api/v1/loc/01A1DC2A6A94C90CBC0B8C6B4FE1DB56"
+        }
+      ],
+      "url": "x9-150.example.com/pub/api/v1/loc/01A1DC2A6A94C90CBC0B8C6B4FE1DB56",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "O'Brien & Sons, Inc. #1",
+          "address": {
+            "line1": "1 Rue A",
+            "city": "St. John's",
+            "country": "CA"
+          },
+          "MCC": "5812"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 1000,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 1000,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ec-default",
+      "host": "x9.thirty-seven-characters.example.io",
+      "locationId": "01A1DC2AA41F2DB704DCBF6AA725C716",
+      "locationEndpoint": "https://x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA41F2DB704DCBF6AA725C716",
+      "qrCode": "00020101021226990006org.x90185x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA41F2DB704DCBF6AA725C716520449005303840540105802US5911Blackbox Co6011Los Angeles6304337B",
+      "length": 179,
+      "crc": "337B",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 99,
+          "value": "0006org.x90185x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA41F2DB704DCBF6AA725C716"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 11,
+          "value": "Blackbox Co"
+        },
+        {
+          "tag": "60",
+          "length": 11,
+          "value": "Los Angeles"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "337B"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 85,
+          "value": "x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA41F2DB704DCBF6AA725C716"
+        }
+      ],
+      "url": "x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA41F2DB704DCBF6AA725C716",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "Blackbox Co",
+          "address": {
+            "line1": "1 A St",
+            "city": "Los Angeles",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 1000,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 1000,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ec-long-name-and-city",
+      "host": "x9.thirty-seven-characters.example.io",
+      "locationId": "01A1DC2AA4445B86D39E181B7FC82378",
+      "locationEndpoint": "https://x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA4445B86D39E181B7FC82378",
+      "qrCode": "00020101021226990006org.x90185x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA4445B86D39E181B7FC82378520449005303840540105802US5925California Electric Compa6015San Francisco B630483AD",
+      "length": 197,
+      "crc": "83AD",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 99,
+          "value": "0006org.x90185x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA4445B86D39E181B7FC82378"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 25,
+          "value": "California Electric Compa"
+        },
+        {
+          "tag": "60",
+          "length": 15,
+          "value": "San Francisco B"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "83AD"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 85,
+          "value": "x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA4445B86D39E181B7FC82378"
+        }
+      ],
+      "url": "x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA4445B86D39E181B7FC82378",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "California Electric Company of the West Coast",
+          "address": {
+            "line1": "500 Energy Ave",
+            "city": "San Francisco Bay Area",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 1000,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 1000,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ec-usd-fednow",
+      "host": "x9.thirty-seven-characters.example.io",
+      "locationId": "01A1DC2AA44E635E2249F43870FF5774",
+      "locationEndpoint": "https://x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA44E635E2249F43870FF5774",
+      "qrCode": "00020101021226990006org.x90185x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA44E635E2249F43870FF5774520449005303840540105802US5911Blackbox Co6011Los Angeles63046BFC",
+      "length": 179,
+      "crc": "6BFC",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 99,
+          "value": "0006org.x90185x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA44E635E2249F43870FF5774"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 11,
+          "value": "Blackbox Co"
+        },
+        {
+          "tag": "60",
+          "length": 11,
+          "value": "Los Angeles"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "6BFC"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 85,
+          "value": "x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA44E635E2249F43870FF5774"
+        }
+      ],
+      "url": "x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA44E635E2249F43870FF5774",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "Blackbox Co",
+          "address": {
+            "line1": "1 A St",
+            "city": "Los Angeles",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 22599,
+            "currency": "USD"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USD",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 22599,
+            "networks": {
+              "fednow": {
+                "routingNumber": "021000021",
+                "accountNumber": "1234567890",
+                "protectionType": "plaintext"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ec-editable-amount",
+      "host": "x9.thirty-seven-characters.example.io",
+      "locationId": "01A1DC2AA45761FF61B2D1858627811F",
+      "locationEndpoint": "https://x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA45761FF61B2D1858627811F",
+      "qrCode": "00020101021226990006org.x90185x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA45761FF61B2D1858627811F520449005303840540105802US5911Blackbox Co6011Los Angeles6304D635",
+      "length": 179,
+      "crc": "D635",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 99,
+          "value": "0006org.x90185x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA45761FF61B2D1858627811F"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 11,
+          "value": "Blackbox Co"
+        },
+        {
+          "tag": "60",
+          "length": 11,
+          "value": "Los Angeles"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "D635"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 85,
+          "value": "x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA45761FF61B2D1858627811F"
+        }
+      ],
+      "url": "x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA45761FF61B2D1858627811F",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "Blackbox Co",
+          "address": {
+            "line1": "1 A St",
+            "city": "Los Angeles",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 1000,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 1000,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            },
+            "editable": {
+              "range": {
+                "min": 500,
+                "max": 2000
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ec-twelve-digit-amount",
+      "host": "x9.thirty-seven-characters.example.io",
+      "locationId": "01A1DC2AA45F141DAE2FD5BDC963B8A5",
+      "locationEndpoint": "https://x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA45F141DAE2FD5BDC963B8A5",
+      "qrCode": "00020101021226990006org.x90185x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA45F141DAE2FD5BDC963B8A5520449005303840540105802US5911Blackbox Co6011Los Angeles6304D7DA",
+      "length": 179,
+      "crc": "D7DA",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 99,
+          "value": "0006org.x90185x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA45F141DAE2FD5BDC963B8A5"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 11,
+          "value": "Blackbox Co"
+        },
+        {
+          "tag": "60",
+          "length": 11,
+          "value": "Los Angeles"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "D7DA"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 85,
+          "value": "x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA45F141DAE2FD5BDC963B8A5"
+        }
+      ],
+      "url": "x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA45F141DAE2FD5BDC963B8A5",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "Blackbox Co",
+          "address": {
+            "line1": "1 A St",
+            "city": "Los Angeles",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 123456789012,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 123456789012,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ec-punctuation-and-another-country",
+      "host": "x9.thirty-seven-characters.example.io",
+      "locationId": "01A1DC2AA465CD216CC8DDB6A0C1EBFA",
+      "locationEndpoint": "https://x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA465CD216CC8DDB6A0C1EBFA",
+      "qrCode": "00020101021226990006org.x90185x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA465CD216CC8DDB6A0C1EBFA520458125303840540105802CA5923O'Brien & Sons, Inc. #16010St. John's6304204E",
+      "length": 190,
+      "crc": "204E",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 99,
+          "value": "0006org.x90185x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA465CD216CC8DDB6A0C1EBFA"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "5812"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "CA"
+        },
+        {
+          "tag": "59",
+          "length": 23,
+          "value": "O'Brien & Sons, Inc. #1"
+        },
+        {
+          "tag": "60",
+          "length": 10,
+          "value": "St. John's"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "204E"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 85,
+          "value": "x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA465CD216CC8DDB6A0C1EBFA"
+        }
+      ],
+      "url": "x9.thirty-seven-characters.example.io/pub/api/v1/loc/01A1DC2AA465CD216CC8DDB6A0C1EBFA",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "O'Brien & Sons, Inc. #1",
+          "address": {
+            "line1": "1 Rue A",
+            "city": "St. John's",
+            "country": "CA"
+          },
+          "MCC": "5812"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 1000,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 1000,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "revoked-default",
+      "host": "x9.example",
+      "locationId": "01A1DC2ADDC0BC7ABB53AAEBB19C0D05",
+      "locationEndpoint": "https://x9.example/pub/api/v1/loc/01A1DC2ADDC0BC7ABB53AAEBB19C0D05",
+      "qrCode": "00020101021226720006org.x90158x9.example/pub/api/v1/loc/01A1DC2ADDC0BC7ABB53AAEBB19C0D05520449005303840540105802US5911Blackbox Co6011Los Angeles63047EFC",
+      "length": 152,
+      "crc": "7EFC",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 72,
+          "value": "0006org.x90158x9.example/pub/api/v1/loc/01A1DC2ADDC0BC7ABB53AAEBB19C0D05"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 11,
+          "value": "Blackbox Co"
+        },
+        {
+          "tag": "60",
+          "length": 11,
+          "value": "Los Angeles"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "7EFC"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 58,
+          "value": "x9.example/pub/api/v1/loc/01A1DC2ADDC0BC7ABB53AAEBB19C0D05"
+        }
+      ],
+      "url": "x9.example/pub/api/v1/loc/01A1DC2ADDC0BC7ABB53AAEBB19C0D05",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "Blackbox Co",
+          "address": {
+            "line1": "1 A St",
+            "city": "Los Angeles",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 1000,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 1000,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "revoked-long-name-and-city",
+      "host": "x9.example",
+      "locationId": "01A1DC2ADDE3CEEE5BAD9E1C1FCB67FD",
+      "locationEndpoint": "https://x9.example/pub/api/v1/loc/01A1DC2ADDE3CEEE5BAD9E1C1FCB67FD",
+      "qrCode": "00020101021226720006org.x90158x9.example/pub/api/v1/loc/01A1DC2ADDE3CEEE5BAD9E1C1FCB67FD520449005303840540105802US5925California Electric Compa6015San Francisco B63047D76",
+      "length": 170,
+      "crc": "7D76",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 72,
+          "value": "0006org.x90158x9.example/pub/api/v1/loc/01A1DC2ADDE3CEEE5BAD9E1C1FCB67FD"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 25,
+          "value": "California Electric Compa"
+        },
+        {
+          "tag": "60",
+          "length": 15,
+          "value": "San Francisco B"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "7D76"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 58,
+          "value": "x9.example/pub/api/v1/loc/01A1DC2ADDE3CEEE5BAD9E1C1FCB67FD"
+        }
+      ],
+      "url": "x9.example/pub/api/v1/loc/01A1DC2ADDE3CEEE5BAD9E1C1FCB67FD",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "California Electric Company of the West Coast",
+          "address": {
+            "line1": "500 Energy Ave",
+            "city": "San Francisco Bay Area",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 1000,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 1000,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "revoked-usd-fednow",
+      "host": "x9.example",
+      "locationId": "01A1DC2ADDEE07580112F7471AE698FE",
+      "locationEndpoint": "https://x9.example/pub/api/v1/loc/01A1DC2ADDEE07580112F7471AE698FE",
+      "qrCode": "00020101021226720006org.x90158x9.example/pub/api/v1/loc/01A1DC2ADDEE07580112F7471AE698FE520449005303840540105802US5911Blackbox Co6011Los Angeles63045DD5",
+      "length": 152,
+      "crc": "5DD5",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 72,
+          "value": "0006org.x90158x9.example/pub/api/v1/loc/01A1DC2ADDEE07580112F7471AE698FE"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 11,
+          "value": "Blackbox Co"
+        },
+        {
+          "tag": "60",
+          "length": 11,
+          "value": "Los Angeles"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "5DD5"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 58,
+          "value": "x9.example/pub/api/v1/loc/01A1DC2ADDEE07580112F7471AE698FE"
+        }
+      ],
+      "url": "x9.example/pub/api/v1/loc/01A1DC2ADDEE07580112F7471AE698FE",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "Blackbox Co",
+          "address": {
+            "line1": "1 A St",
+            "city": "Los Angeles",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 22599,
+            "currency": "USD"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USD",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 22599,
+            "networks": {
+              "fednow": {
+                "routingNumber": "021000021",
+                "accountNumber": "1234567890",
+                "protectionType": "plaintext"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "revoked-editable-amount",
+      "host": "x9.example",
+      "locationId": "01A1DC2ADDF84FC58622E44EAB6B2E1F",
+      "locationEndpoint": "https://x9.example/pub/api/v1/loc/01A1DC2ADDF84FC58622E44EAB6B2E1F",
+      "qrCode": "00020101021226720006org.x90158x9.example/pub/api/v1/loc/01A1DC2ADDF84FC58622E44EAB6B2E1F520449005303840540105802US5911Blackbox Co6011Los Angeles63044E78",
+      "length": 152,
+      "crc": "4E78",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 72,
+          "value": "0006org.x90158x9.example/pub/api/v1/loc/01A1DC2ADDF84FC58622E44EAB6B2E1F"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 11,
+          "value": "Blackbox Co"
+        },
+        {
+          "tag": "60",
+          "length": 11,
+          "value": "Los Angeles"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "4E78"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 58,
+          "value": "x9.example/pub/api/v1/loc/01A1DC2ADDF84FC58622E44EAB6B2E1F"
+        }
+      ],
+      "url": "x9.example/pub/api/v1/loc/01A1DC2ADDF84FC58622E44EAB6B2E1F",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "Blackbox Co",
+          "address": {
+            "line1": "1 A St",
+            "city": "Los Angeles",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 1000,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 1000,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            },
+            "editable": {
+              "range": {
+                "min": 500,
+                "max": 2000
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "revoked-twelve-digit-amount",
+      "host": "x9.example",
+      "locationId": "01A1DC2ADE00371255CD71D1F903472A",
+      "locationEndpoint": "https://x9.example/pub/api/v1/loc/01A1DC2ADE00371255CD71D1F903472A",
+      "qrCode": "00020101021226720006org.x90158x9.example/pub/api/v1/loc/01A1DC2ADE00371255CD71D1F903472A520449005303840540105802US5911Blackbox Co6011Los Angeles63044159",
+      "length": 152,
+      "crc": "4159",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 72,
+          "value": "0006org.x90158x9.example/pub/api/v1/loc/01A1DC2ADE00371255CD71D1F903472A"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 11,
+          "value": "Blackbox Co"
+        },
+        {
+          "tag": "60",
+          "length": 11,
+          "value": "Los Angeles"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "4159"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 58,
+          "value": "x9.example/pub/api/v1/loc/01A1DC2ADE00371255CD71D1F903472A"
+        }
+      ],
+      "url": "x9.example/pub/api/v1/loc/01A1DC2ADE00371255CD71D1F903472A",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "Blackbox Co",
+          "address": {
+            "line1": "1 A St",
+            "city": "Los Angeles",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 123456789012,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 123456789012,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "revoked-punctuation-and-another-country",
+      "host": "x9.example",
+      "locationId": "01A1DC2ADE06D4A41F9698FEEE362E35",
+      "locationEndpoint": "https://x9.example/pub/api/v1/loc/01A1DC2ADE06D4A41F9698FEEE362E35",
+      "qrCode": "00020101021226720006org.x90158x9.example/pub/api/v1/loc/01A1DC2ADE06D4A41F9698FEEE362E35520458125303840540105802CA5923O'Brien & Sons, Inc. #16010St. John's63046288",
+      "length": 163,
+      "crc": "6288",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 72,
+          "value": "0006org.x90158x9.example/pub/api/v1/loc/01A1DC2ADE06D4A41F9698FEEE362E35"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "5812"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "CA"
+        },
+        {
+          "tag": "59",
+          "length": 23,
+          "value": "O'Brien & Sons, Inc. #1"
+        },
+        {
+          "tag": "60",
+          "length": 10,
+          "value": "St. John's"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "6288"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 58,
+          "value": "x9.example/pub/api/v1/loc/01A1DC2ADE06D4A41F9698FEEE362E35"
+        }
+      ],
+      "url": "x9.example/pub/api/v1/loc/01A1DC2ADE06D4A41F9698FEEE362E35",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "O'Brien & Sons, Inc. #1",
+          "address": {
+            "line1": "1 Rue A",
+            "city": "St. John's",
+            "country": "CA"
+          },
+          "MCC": "5812"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 1000,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 1000,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "untrusted-default",
+      "host": "qr.example.org:8443",
+      "locationId": "01A1DC2B0BAE5D3D298A9499651BA2C0",
+      "locationEndpoint": "https://qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BAE5D3D298A9499651BA2C0",
+      "qrCode": "00020101021226810006org.x90167qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BAE5D3D298A9499651BA2C0520449005303840540105802US5911Blackbox Co6011Los Angeles6304803C",
+      "length": 161,
+      "crc": "803C",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 81,
+          "value": "0006org.x90167qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BAE5D3D298A9499651BA2C0"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 11,
+          "value": "Blackbox Co"
+        },
+        {
+          "tag": "60",
+          "length": 11,
+          "value": "Los Angeles"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "803C"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 67,
+          "value": "qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BAE5D3D298A9499651BA2C0"
+        }
+      ],
+      "url": "qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BAE5D3D298A9499651BA2C0",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "Blackbox Co",
+          "address": {
+            "line1": "1 A St",
+            "city": "Los Angeles",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 1000,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 1000,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "untrusted-long-name-and-city",
+      "host": "qr.example.org:8443",
+      "locationId": "01A1DC2B0BD214C29A00CCC3D71FB025",
+      "locationEndpoint": "https://qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BD214C29A00CCC3D71FB025",
+      "qrCode": "00020101021226810006org.x90167qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BD214C29A00CCC3D71FB025520449005303840540105802US5925California Electric Compa6015San Francisco B63043801",
+      "length": 179,
+      "crc": "3801",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 81,
+          "value": "0006org.x90167qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BD214C29A00CCC3D71FB025"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 25,
+          "value": "California Electric Compa"
+        },
+        {
+          "tag": "60",
+          "length": 15,
+          "value": "San Francisco B"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "3801"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 67,
+          "value": "qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BD214C29A00CCC3D71FB025"
+        }
+      ],
+      "url": "qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BD214C29A00CCC3D71FB025",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "California Electric Company of the West Coast",
+          "address": {
+            "line1": "500 Energy Ave",
+            "city": "San Francisco Bay Area",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 1000,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 1000,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "untrusted-usd-fednow",
+      "host": "qr.example.org:8443",
+      "locationId": "01A1DC2B0BDB01F85AB8B7A3042FAEC1",
+      "locationEndpoint": "https://qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BDB01F85AB8B7A3042FAEC1",
+      "qrCode": "00020101021226810006org.x90167qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BDB01F85AB8B7A3042FAEC1520449005303840540105802US5911Blackbox Co6011Los Angeles6304D55A",
+      "length": 161,
+      "crc": "D55A",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 81,
+          "value": "0006org.x90167qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BDB01F85AB8B7A3042FAEC1"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 11,
+          "value": "Blackbox Co"
+        },
+        {
+          "tag": "60",
+          "length": 11,
+          "value": "Los Angeles"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "D55A"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 67,
+          "value": "qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BDB01F85AB8B7A3042FAEC1"
+        }
+      ],
+      "url": "qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BDB01F85AB8B7A3042FAEC1",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "Blackbox Co",
+          "address": {
+            "line1": "1 A St",
+            "city": "Los Angeles",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 22599,
+            "currency": "USD"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USD",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 22599,
+            "networks": {
+              "fednow": {
+                "routingNumber": "021000021",
+                "accountNumber": "1234567890",
+                "protectionType": "plaintext"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "untrusted-editable-amount",
+      "host": "qr.example.org:8443",
+      "locationId": "01A1DC2B0BE4923B0E2A31FC06132D84",
+      "locationEndpoint": "https://qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BE4923B0E2A31FC06132D84",
+      "qrCode": "00020101021226810006org.x90167qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BE4923B0E2A31FC06132D84520449005303840540105802US5911Blackbox Co6011Los Angeles630432E3",
+      "length": 161,
+      "crc": "32E3",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 81,
+          "value": "0006org.x90167qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BE4923B0E2A31FC06132D84"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 11,
+          "value": "Blackbox Co"
+        },
+        {
+          "tag": "60",
+          "length": 11,
+          "value": "Los Angeles"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "32E3"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 67,
+          "value": "qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BE4923B0E2A31FC06132D84"
+        }
+      ],
+      "url": "qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BE4923B0E2A31FC06132D84",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "Blackbox Co",
+          "address": {
+            "line1": "1 A St",
+            "city": "Los Angeles",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 1000,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 1000,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            },
+            "editable": {
+              "range": {
+                "min": 500,
+                "max": 2000
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "untrusted-twelve-digit-amount",
+      "host": "qr.example.org:8443",
+      "locationId": "01A1DC2B0BEBD3369838497E7151D33C",
+      "locationEndpoint": "https://qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BEBD3369838497E7151D33C",
+      "qrCode": "00020101021226810006org.x90167qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BEBD3369838497E7151D33C520449005303840540105802US5911Blackbox Co6011Los Angeles6304460E",
+      "length": 161,
+      "crc": "460E",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 81,
+          "value": "0006org.x90167qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BEBD3369838497E7151D33C"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "4900"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "US"
+        },
+        {
+          "tag": "59",
+          "length": 11,
+          "value": "Blackbox Co"
+        },
+        {
+          "tag": "60",
+          "length": 11,
+          "value": "Los Angeles"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "460E"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 67,
+          "value": "qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BEBD3369838497E7151D33C"
+        }
+      ],
+      "url": "qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BEBD3369838497E7151D33C",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "Blackbox Co",
+          "address": {
+            "line1": "1 A St",
+            "city": "Los Angeles",
+            "country": "US"
+          },
+          "MCC": "4900"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 123456789012,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 123456789012,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "untrusted-punctuation-and-another-country",
+      "host": "qr.example.org:8443",
+      "locationId": "01A1DC2B0BF19C6921C239041A12AE87",
+      "locationEndpoint": "https://qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BF19C6921C239041A12AE87",
+      "qrCode": "00020101021226810006org.x90167qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BF19C6921C239041A12AE87520458125303840540105802CA5923O'Brien & Sons, Inc. #16010St. John's63041AB1",
+      "length": 172,
+      "crc": "1AB1",
+      "crcInput": "everything before the last four characters",
+      "fields": [
+        {
+          "tag": "00",
+          "length": 2,
+          "value": "01"
+        },
+        {
+          "tag": "01",
+          "length": 2,
+          "value": "12"
+        },
+        {
+          "tag": "26",
+          "length": 81,
+          "value": "0006org.x90167qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BF19C6921C239041A12AE87"
+        },
+        {
+          "tag": "52",
+          "length": 4,
+          "value": "5812"
+        },
+        {
+          "tag": "53",
+          "length": 3,
+          "value": "840"
+        },
+        {
+          "tag": "54",
+          "length": 1,
+          "value": "0"
+        },
+        {
+          "tag": "58",
+          "length": 2,
+          "value": "CA"
+        },
+        {
+          "tag": "59",
+          "length": 23,
+          "value": "O'Brien & Sons, Inc. #1"
+        },
+        {
+          "tag": "60",
+          "length": 10,
+          "value": "St. John's"
+        },
+        {
+          "tag": "63",
+          "length": 4,
+          "value": "1AB1"
+        }
+      ],
+      "template26": [
+        {
+          "tag": "00",
+          "length": 6,
+          "value": "org.x9"
+        },
+        {
+          "tag": "01",
+          "length": 67,
+          "value": "qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BF19C6921C239041A12AE87"
+        }
+      ],
+      "url": "qr.example.org:8443/pub/api/v1/loc/01A1DC2B0BF19C6921C239041A12AE87",
+      "request": {
+        "validUntil": "2030-12-31T23:59:59Z",
+        "creditor": {
+          "name": "O'Brien & Sons, Inc. #1",
+          "address": {
+            "line1": "1 Rue A",
+            "city": "St. John's",
+            "country": "CA"
+          },
+          "MCC": "5812"
+        },
+        "bill": {
+          "description": "blackbox",
+          "amountDue": {
+            "amount": 1000,
+            "currency": "USDC"
+          }
+        },
+        "paymentNotification": {
+          "kind": "DEFAULT"
+        },
+        "paymentMethods": [
+          {
+            "currency": "USDC",
+            "validUntil": "2030-12-31T23:59:59Z",
+            "amount": 1000,
+            "networks": {
+              "solana": {
+                "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

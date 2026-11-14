@@ -336,13 +336,20 @@ def test_the_same_signed_question_twice_is_answered_twice(api, payer_a, payee_ce
 # ------------------------------------------------------------------ S3.2-AC5
 
 def test_no_test_signs_through_the_service_under_test():
-    """S3.2-AC5 — nothing in the suite calls /api/v1/signature/generate to sign as a payer."""
+    """S3.2-AC5 — nothing in the suite calls /api/v1/signature/generate to sign as a payer.
+
+    ``golden/export.py`` is not a test and is the one exception: it exports what Java signs
+    (Story 4.7), so there Java signing is the point.
+    """
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    exporter = os.path.join(here, "golden", "export.py")
     offenders = []
     for folder, _, files in os.walk(here):
         if ".venv" in folder or "__pycache__" in folder:
             continue
         for name in files:
+            if os.path.join(folder, name) == exporter:
+                continue
             if name.endswith(".py") and name != os.path.basename(__file__):
                 with open(os.path.join(folder, name)) as f:
                     if re.search(r"/api/v1/signature/generate", f.read()):
