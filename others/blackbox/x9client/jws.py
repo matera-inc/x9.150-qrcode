@@ -94,12 +94,17 @@ def raw_sign(key, alg, data):
 
 
 _HASHES = {"256": hashes.SHA256, "384": hashes.SHA384, "512": hashes.SHA512}
+_EC_CURVE_BITS = {"256": 256, "384": 384, "512": 521}
 
 
 def raw_verify(public_key, alg, data, signature):
     """Raises InvalidSignature when the signature does not verify."""
     digest = _HASHES[alg[2:]]()
     if alg.startswith("ES"):
+        # RFC 7518 §3.4 binds each ES algorithm to one curve. ECDSA itself does not: SHA-384 over
+        # P-256 verifies, and Java refuses it (golden ``ec-alg-ES384-on-a-p256-key``).
+        if public_key.curve.key_size != _EC_CURVE_BITS[alg[2:]]:
+            raise InvalidSignature(f"{alg} on a {public_key.curve.name} key")
         half = len(signature) // 2
         public_key.verify(encode_dss_signature(int.from_bytes(signature[:half], "big"),
                                                int.from_bytes(signature[half:], "big")),

@@ -52,6 +52,9 @@ blackbox: ## Run the black-box suite (X9_BASE_URL, default http://localhost:8080
 blackbox-image: ## Run the black-box suite against an image, all in containers, as CI does (X9_IMAGE, default x9-qrcode:latest)
 	./others/blackbox/deployment/run-against-image.sh
 
+golden-export: ## Re-export the golden JWS and EMV sets from an image (X9_IMAGE; see others/blackbox/golden/README.md), then run blackbox-image
+	./others/blackbox/golden/export.sh
+
 blackbox-venv: ## Create .blackbox-venv with the suite's pinned dependencies (pytest, cryptography, pyyaml)
 	python3 -m venv .blackbox-venv
 	.blackbox-venv/bin/pip install -q -r others/blackbox/requirements.txt

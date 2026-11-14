@@ -1,0 +1,70 @@
+# One signing identity of the golden-set export (Story 4.7). Run by export.sh, once per identity:
+# it sets the GOLDEN_* variables and builds the two images this file names.
+#
+#   mongo       MongoDB 7.0.45 as a single-node replica set
+#   x9-qrcode   the Java build, signing with one bundled TEST keystore (GOLDEN_KEYSTORE), the
+#               chain in x5c, its public host GOLDEN_HOST, the clock on
+#   exporter    export.py, in the service's network namespace: the service fetches the bundled
+#               CRLs from it on 127.0.0.1:18081 and delivers its notifications to it
+#
+# NON-PRODUCTION. The service signs with, and trusts, keys anybody can download.
+name: x9-golden
+
+services:
+  mongo:
+    image: mongo:7.0.45
+    command: ["mongod", "--replSet", "x9-qrcode", "--bind_ip_all"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval",
+             "try { rs.status().ok } catch (e) { rs.initiate({_id: 'x9-qrcode', members: [{_id: 0, host: 'mongo:27017'}]}).ok }; db.hello().isWritablePrimary ? 0 : quit(1)"]
+      interval: 2s
+      timeout: 10s
+      retries: 60
+      start_period: 5s
+    tmpfs:
+      - /data/db
+      - /data/configdb
+
+  x9-qrcode:
+    image: x9-qrcode-golden-signer:local
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      SPRING_DATA_MONGODB_URI: "mongodb://mongo:27017/x9-qrcode?replicaSet=x9-qrcode"
+      X9_PUBLICENDPOINTS_HOST: "${GOLDEN_HOST}"
+      X9_TESTING_CLOCKCONTROL: "true"
+      X9_TESTING_CLOCKLISTEN: "127.0.0.1:8099"
+      X9_CERTIFICATE_ENDPOINTTYPE: "NONE"
+      X9_CERTIFICATE_JWKALGORITHM: "${GOLDEN_ALG}"
+      X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION: "file:/x9-golden/${GOLDEN_KEYSTORE}.p12"
+      X9_CERTIFICATE_PRIVATEKEYSTORE_ALIAS: "${GOLDEN_KEYSTORE}"
+      X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD: "x9test123"
+      X9_CERTIFICATE_PRIVATEKEYSTORE_PRIVATEKEYPASSWORD: "x9test123"
+      X9_CERTIFICATE_TRUSTSTORE_LOCATION: "file:/x9-golden/x9-blackbox-truststore.jks"
+      X9_CERTIFICATE_TRUSTSTORE_PASSWORD: "x9test123"
+      X9_CERTIFICATE_TRUSTSTORE_ALIAS: "x9-test-ca"
+
+  exporter:
+    image: x9-golden-exporter:local
+    network_mode: "service:x9-qrcode"
+    depends_on:
+      - x9-qrcode
+    entrypoint: ["python", "others/blackbox/golden/export.py"]
+    command: ["capture"]
+    environment:
+      X9_BASE_URL: "http://127.0.0.1:8080"
+      X9_CLOCK_URL: "http://127.0.0.1:8099"
+      X9_SUITE_HOST: "127.0.0.1"
+      X9_WAIT_SECONDS: "${X9_WAIT_SECONDS:-240}"
+      GOLDEN_IDENTITY: "${GOLDEN_IDENTITY}"
+      GOLDEN_KEYSTORE: "${GOLDEN_KEYSTORE}"
+      GOLDEN_HOST: "${GOLDEN_HOST}"
+      GOLDEN_IMAGE: "${GOLDEN_IMAGE}"
+      GOLDEN_REVISION: "${GOLDEN_REVISION}"
+      GOLDEN_OUT: "/out"
+    volumes:
+      - golden-out:/out
+
+volumes:
+  golden-out:
