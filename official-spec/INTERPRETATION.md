@@ -534,8 +534,7 @@ End-to-End ID); ACH judges a notification carrying a Trace Number as a pre-commi
 the phase from `blockchain.action`, so a `PAYMENT_INITIATED` carrying a hash is judged as a
 pre-commit. All three are closed by Story 2.4 of the rewrite breakdown
 ([docs/rewrite/EPICS-AND-STORIES.md](../docs/rewrite/EPICS-AND-STORIES.md)), under
-[ADR-0036](../docs/adr/0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md)
-(proposed).
+[ADR-0036](../docs/adr/0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md).
 
 > ⚠️ **A `PAYMENT_INITIATED` carrying a transaction hash is bad behaviour by the payer:** it asks
 > permission for money that has already moved. Its hash is still recorded, as a post-commit, with a
