@@ -9,6 +9,10 @@ An **ANSI X9.150-2026 Payment QR Code** backend. It plays the **Payee-PSP** role
 codes, serves the signed Payment Payload a payer's app fetches, and receives payment notifications.
 
 - **Stack:** Java 25, Spring Boot 3.5.x, MongoDB (replica set), Maven (wrapper `./mvnw`).
+- **Planned rewrite:** a Go + PostgreSQL build is designed but not yet started. See
+  [PLAN-GO-POSTGRES-REWRITE.md](PLAN-GO-POSTGRES-REWRITE.md) and
+  [ADR-0022](docs/adr/0022-rewrite-in-go-as-a-standalone-product.md); until it ships, everything in
+  this file describes the Java build.
 - **Architecture:** Clean / Hexagonal, three modules — `x9-qrcode-domain` (pure Java, no Spring),
   `x9-qrcode-application` (use cases, depends only on domain), `x9-qrcode-infrastructure` (Spring,
   web, persistence, config). Dependency direction is inward-only.
@@ -90,9 +94,13 @@ These describe how our software behaves; they're enforced in `openapi.yaml` + th
   spelling only — a wrong amount, an unoffered currency or an uninterpreted rail still refuses, and
   still leaves the QR Code untouched. See
   [official-spec/INTERPRETATION.md](official-spec/INTERPRETATION.md) I-1.
+- **A currency is never implied.** Every payment method, and every payment notification, states its
+  currency; a missing one is refused (`PaymentMethodVO`, and `required` in `openapi.yaml`). There is
+  no default currency.
 - **Currencies are gated by what the rails settle.** The payload format is currency-agnostic and
-  carries any code verbatim, but this deployment accepts only what `supported-currencies.json` lists
-  (`USD` by default, in exactly that spelling); an empty list disables the check. Separate from the peg-mixing rule, which asks
+  carries any code verbatim, but this deployment accepts only what `supported-currencies.json` lists.
+  That file is an **allow-list, not a default**: it ships `USD`, `USDC` and `FRNT`, each in exactly
+  that spelling, and an empty list disables the check. Separate from the peg-mixing rule, which asks
   whether currencies may appear *together*.
 
 - **JWS works with both RSA and EC, in both directions.** Verification reads `alg` from the header
@@ -213,11 +221,17 @@ Full walkthrough: the `x9-qrcode` skill and `playground/README.md`.
 `main` is protected. Every change goes through a pull request that must pass **CI (`build`)** and the
 **DCO** check — sign commits with `git commit -s`. Squash-merge. See `CONTRIBUTING.md`.
 
-## Guided onboarding skill
+## Skills
 
-A Claude Code skill named **`x9-qrcode`** (at `.claude/skills/x9-qrcode/`) walks a newcomer through
-running the app, generating QR codes, answering API/spec questions (from the sources above),
-configuring MongoDB, and deploying via Docker/Kubernetes. Use it when helping someone get started.
+Skills live in **two** places:
+
+| Location | Skill | Use it for |
+|---|---|---|
+| `.claude/skills/x9-qrcode/` | `x9-qrcode` | onboarding: running the app, generating QR codes, API/spec questions (from the sources above), configuring MongoDB, deploying via Docker/Kubernetes |
+| `.agents/skills/senior-developer/` | `senior-developer` | working on the code to this repository's conventions |
+| `.agents/skills/x9150-integration/` | `x9150-integration` | integrating with an X9.150 deployment from the outside |
+
+Use `x9-qrcode` when helping someone get started.
 
 ## Where to look
 

@@ -1,7 +1,14 @@
 # Known Bugs
 
-Tracked, reproducible defects that are not yet fixed. Each entry lists how to reproduce, expected
-vs. actual behavior, and the root cause as currently understood.
+Tracked, reproducible defects. Each entry lists how to reproduce, expected vs. actual behavior, and
+the root cause as currently understood. Defects that are not yet fixed are listed under **Open**;
+fixed ones stay under **Fixed**, for the record.
+
+## Open
+
+None.
+
+## Fixed
 
 ---
 
