@@ -200,7 +200,8 @@ FR34: Pre-commit is available, and the rule is the same, on every rail. A notifi
 `transactionId` is a pre-commit: it goes through the acceptance gate at the payee's clock and takes the
 reservation, so two payers cannot pay one QR Code at the same time. A notification with a
 `transactionId` is a post-commit: accepted only from the payer that won the pre-commit, recorded, never judged
-again; post-commit without a pre-commit is refused (to be confirmed). The evidence decides the phase on every
+again. A post-commit on an `ACTIVE` QR Code (a payer who skipped the pre-commit) moves it to
+`PAYMENT_INITIATED` for that payer and registers its hash; it is not refused. The evidence decides the phase on every
 rail, Solana included (ADR-0004): a `PAYMENT_INITIATED` carrying a hash is payer misbehaviour, and is
 still a post-commit, recorded and logged as a warning. Every hash is recorded, a second one included,
 so the payment system can detect a duplicate payment. Today Solana keys on `blockchain.action`,
@@ -669,8 +670,7 @@ X9 key
 **And** its `correlationId` equals the notification's, and its `iat` is the payee's clock at the
 decision.
 
-**S2.3-AC2.** **Given** a refused notification (wrong amount, expired, another holder, post-commit without
-pre-commit)
+**S2.3-AC2.** **Given** a refused notification (wrong amount, expired, another holder)
 **Then** the response keeps its HTTP status (400 / 409) and is a JWS whose body is
 `{"statusCode": <status>}` plus today's error fields (`type`, `title`, `detail`, `violations`),
 `Content-Type: application/jose`, `correlationId` echoing the question's
@@ -722,9 +722,8 @@ ACH gates every notification as a pre-commit, even with a Trace Number.
 **When** payer B sends a pre-commit
 **Then** B gets 409 and nothing changes
 **And** a concurrency test fires A and B together N times: exactly one wins each time
-**And** a post-commit from B while A holds is refused with 409 too. B never received a signed yes, so B
-paid without authorization and that payment is B's to resolve; refusing it is intended, not a
-contradiction of "money that moved is never refused" (which protects the holder only)
+**And** what happens to a post-commit from B while A holds is **open** (ADR-0036): Java refuses it
+with 409 today, which loses B's hash
 **And** INTERPRETATION states this: the only payment X9.150 authorizes is the one that won the pre-commit.
 
 **S2.4-AC3. Post-commit on the bank rails.**
@@ -732,15 +731,16 @@ contradiction of "money that moved is never refused" (which protects the holder 
 **Then** it is recorded, status unchanged, with no amount or time check, and answered with a signed
 yes; no `payment.sent` (bank rails never emit it).
 
-**S2.4-AC4. No post-commit without a pre-commit (to be confirmed with the owner).**
-**Given** an `ACTIVE` QR Code nobody reserved
+**S2.4-AC4. A post-commit on an `ACTIVE` QR Code reserves it.**
+**Given** an `ACTIVE` QR Code (effective status, so a lapsed reservation counts)
 **When** any rail's post-commit arrives (a payer who skipped the pre-commit)
-**Then** it is refused, and nothing changes: pre-commit is what blocks duplication, and a payer who
-skipped it holds no signed yes
-**And** a holder whose reservation lapsed may still send a post-commit (ADR-0021), unless another payer has
-since won the pre-commit
-**And** the change is noted for integrators: FedNow/RTP payers who send only the after-payment
-notification today now get 400 (the payee still reconciles from `QRCD` in the pacs.008).
+**Then** it is accepted, never judged on amount or time, and answered with a signed yes
+**And** in one transaction the QR Code moves to `PAYMENT_INITIATED`, held by that payer, and
+`payment.initiated` is published; on Solana `payment.sent` follows, registering the hash ("if this
+hash arrives, it is for this QR Code"); bank rails publish no `payment.sent`
+**And** another payer's pre-commit is then refused with 409
+**And** whether this reservation may lapse is **open** (ADR-0036 proposes that, once a post-commit is
+recorded, it lasts until the payee marks the QR Code `PAID`, `CANCELLED` or `ACTIVE`).
 
 **S2.4-AC5. Solana follows the evidence, and a contradiction is recorded loudly.**
 **Given** a Solana notification
@@ -755,8 +755,8 @@ payment system to mark the QR Code paid
 **S2.4-AC6. Every transaction hash is recorded.**
 **Given** the holder has already reported a hash
 **When** it reports another one
-**Then** the second is recorded beside the first, never overwriting it, and published as its own
-`payment.sent`
+**Then** the second is stored beside the first, never overwriting it, and registered with the
+payment system as its own `payment.sent` (on Solana; the outbox event is the registration)
 **And** X9.150 never marks the QR Code paid itself: the payment system matches each hash against the
 funds and calls the status-update API, and two hashes for one QR Code are its signal of a duplicate
 payment.
@@ -1114,8 +1114,8 @@ untrusted CA, unreachable revocation source (soft-fail); expired QR Code; an exp
 while others stay; `PAID` and `CANCELLED` codes.
 
 **S4.3-AC2. Notifications (group E), under the pre-commit / post-commit rule.**
-**Then** per rail: pre-commit reserves (FedNow, RTP, ACH, Solana); post-commit only from the holder; post-commit
-without pre-commit refused; wrong amount; tip outside its range; tip on top of the bill (ADR-0017);
+**Then** per rail: pre-commit reserves (FedNow, RTP, ACH, Solana); post-commit from the holder recorded; post-commit
+on `ACTIVE` reserves and registers the hash; wrong amount; tip outside its range; tip on top of the bill (ADR-0017);
 unoffered currency; destination not on the QR Code; rail and currency in another case (accepted,
 echoed); second payer → 409; holder re-announces (refresh, no event); `NOT_SENT` releases; `SENT`
 never marks `PAID`; no `paymentNotification` or `kind: EXTERNAL`; every answer signed (Story 2.3)
