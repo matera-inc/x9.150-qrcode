@@ -81,7 +81,7 @@ all reject a QR Code that is not ACTIVE or PAYMENT_INITIATED.
 |---------|--------------|---------------|-----------------|
 | **FedNow / RTP** (instant) | QR = ACTIVE (or reserved by the same party); `transactionId` required | records (status unchanged) | ISO 20022 End-to-End ID, **required** |
 | **ACH** | QR = ACTIVE (or reserved by the same party); payer info + expectedDate present | ACTIVE → **PAYMENT_INITIATED** (goes through the acceptance gate) | Trace Number, optional |
-| **Solana** | `blockchain` object present; the action decides | see the `blockchain.action` table [below](#leg-1-and-leg-2) | transaction hash, required on `SENT` |
+| **Solana** | `blockchain` object present; the action decides | see the `blockchain.action` table [below](#pre-commit-and-post-commit) | transaction hash, required on `SENT` |
 | Anything else | — | **refused at creation**, so no notification can name it ([ADR-0012](docs/adr/0012-refuse-what-this-deployment-cannot-honour.md)) | — |
 
 > FedNow / RTP note: the payment notification is **not required for reconciliation**
@@ -103,23 +103,23 @@ all reject a QR Code that is not ACTIVE or PAYMENT_INITIATED.
 > paid by asserting a transaction — the QR's own defence against double payment
 > would then rest on the word of the party it is defending against.
 
-## Leg 1 and leg 2
+## Pre-commit and post-commit
 
 A payment notification can arrive at two moments, and each has its own purpose.
 
-- **Leg 1 — before the money moves: "may I pay this amount?"** It is a **request for
+- **Pre-commit — before the money moves: "may I pay this amount?"** It is a **request for
   permission**. It goes through the acceptance gate, judged by the payee's clock at
-  receipt, and an accepted leg 1 **reserves** the QR Code. Leg 1 is always used: the
+  receipt, and an accepted pre-commit **reserves** the QR Code. Pre-commit is always used: the
   reservation is what stops two payers from paying the same QR Code at the same time.
-- **Leg 2 — after the money moved: "I paid, here is the reference."** It carries the
+- **Post-commit — after the money moved: "I paid, here is the reference."** It carries the
   `transactionId` (End-to-End ID, Trace Number, txId / txHash). It is **recorded, never
   judged again** on amount or time: refusing it would not un-move the money.
 
 The evidence that tells them apart is the transaction reference
 ([ADR-0004](docs/adr/0004-phase-inferred-from-transaction-id.md)):
 
-> **Leg 1** ⇔ `$.payment.transactionId` is absent.
-> **Leg 2** ⇔ `$.payment.transactionId` is present.
+> **Pre-commit** ⇔ `$.payment.transactionId` is absent.
+> **Post-commit** ⇔ `$.payment.transactionId` is present.
 
 The committee rejected an explicit phase marker, so this inference is the only
 mechanism the standard leaves.
@@ -127,26 +127,26 @@ mechanism the standard leaves.
 ### What links a payment to its QR Code, per rail
 
 The payee can only mark a QR Code paid if something links the incoming funds to it.
-Where the payment itself carries the QR Code id, leg 2 is a courtesy; where it cannot,
-leg 2 is the link.
+Where the payment itself carries the QR Code id, the post-commit is a courtesy; where it cannot,
+the post-commit is the link.
 
-| Rail | Does the payment carry the QR Code id? | Role of leg 2 |
+| Rail | Does the payment carry the QR Code id? | Role of the post-commit |
 |---|---|---|
 | **FedNow / RTP** | Yes: the pacs.008 `CdtrRefInf` reference typed `QRCD` (ANSI X9.150-2026 A.6) | courtesy, plus the principal / tip split |
 | **ACH** | Yes: the addenda record `QRCD:[32-digit-id]` (A.7; NACHA confirmation pending) | courtesy |
 | **Solana** | Only if the optional memo `{QRCD:"id"}` is set and survives ([SOLANA-FIELDS.md](official-spec/SOLANA-FIELDS.md)). Some custody providers' webhooks do not expose the memo | **the link, in practice** |
-| **Any other blockchain**, once interpreted | Most chains carry no memo at all | **the link** — leg 1 / leg 2 is the mechanism for every chain |
+| **Any other blockchain**, once interpreted | Most chains carry no memo at all | **the link** — pre-commit / post-commit is the mechanism for every chain |
 
 ### What the code does today, and where it departs from this
 
-| Rail | Leg 1 (no `transactionId`) | Leg 2 (with `transactionId`) |
+| Rail | Pre-commit (no `transactionId`) | Post-commit (with `transactionId`) |
 |---|---|---|
 | **FedNow / RTP** | **Not available**: every notification must carry an End-to-End ID (`QRCodeEntityValidator.validatePaymentNotificationFromInstantPayments`), so no reservation is ever taken on these rails | recorded, status unchanged, no event |
-| **ACH** | gated, reserves the QR Code | **gated as leg 1 too**: `PaymentNotificationQRCodeUseCase.resolveIntent` treats every ACH notification as a request for permission, Trace Number or not |
+| **ACH** | gated, reserves the QR Code | **gated as a pre-commit too**: `PaymentNotificationQRCodeUseCase.resolveIntent` treats every ACH notification as a request for permission, Trace Number or not |
 | **Solana** | `blockchain.action = PAYMENT_INITIATED` | `SENT` (hash required) / `NOT_SENT`, from the reservation holder only |
 
 On Solana the code reads the phase from `blockchain.action`. On the bank rails the two
-departures above — **no leg 1 on FedNow / RTP**, and **ACH leg 2 judged as leg 1** — are
+departures above — **no pre-commit on FedNow / RTP**, and **ACH post-commit judged as a pre-commit** — are
 **known deviations**, closed by Story 2.4 of the
 [rewrite breakdown](docs/rewrite/EPICS-AND-STORIES.md).
 
@@ -162,7 +162,7 @@ anyone can verify. So they fire on `solana` and never on `fednow`, `rtp` or `ach
 | `SENT` | paid, here is the hash | status unchanged, `payment.sent` |
 | `NOT_SENT` | not paying after all | `PAYMENT_INITIATED` → `ACTIVE`, `payment.failed` |
 
-`NOT_SENT` is the exception to the "leg 2 carries a transaction reference"
+`NOT_SENT` is the exception to the "post-commit carries a transaction reference"
 rule above, and the exception is the point: its whole meaning is that no transaction
 exists and none will. It is the only message by which a payer can give a reserved
 bill back, so it is keyed on the **action** rather than on the presence of a
