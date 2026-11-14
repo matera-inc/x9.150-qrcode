@@ -36,7 +36,12 @@ public record RetrieveQRCodeOutput(
     PaymentNotificationDTO paymentNotification,
     List<PaymentMethodDTO> paymentMethods,
     PaymentDetailsDTO paymentDetails,
-    String qrCodeContent
+    String qrCodeContent,
+    /**
+     * The entity tag for the {@code ETag} header, built by {@code QRCodeEntity.entityTag} from the
+     * same instant as {@link #status()}, so the two can never disagree.
+     */
+    String entityTag
 ) {
 
 }

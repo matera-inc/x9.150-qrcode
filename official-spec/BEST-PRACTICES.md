@@ -108,6 +108,10 @@ revision, which is deliberate: a precondition keyed on the revision alone would 
 payer starting to pay, which is the exact race conditional requests exist to close. A tag you built
 yourself will look correct and protect nothing.
 
+The status in the tag is the one `GET` reports, the *effective* status: once a reservation lapses
+the tag says `ACTIVE`, and the server compares `If-Match` against that same tag. So a tag you were
+just given is accepted even though the stored status still reads `PAYMENT_INITIATED`.
+
 ## 4. Assert what was applied, not what was answered
 
 When you edit a payment request, check the resulting values — not the status code.

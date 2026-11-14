@@ -356,9 +356,8 @@ public final class PatchQRCodeRequestMapper {
                                        String ifMatch) {
         PatchQRCodeInput base = map(id, request);
 
-        String tag = (isNull(ifMatch) || ifMatch.isBlank() || "*".equals(ifMatch.trim()))
-            ? null
-            : ifMatch.trim().replaceFirst("^W/", "").replaceAll("^\"|\"$", "");
+        // The same parser as the status update: both If-Match headers must be read alike.
+        String tag = UpdateQRCodeStatusRequestMapper.parseIfMatch(ifMatch);
 
         return new PatchQRCodeInput(
             base.id(),
