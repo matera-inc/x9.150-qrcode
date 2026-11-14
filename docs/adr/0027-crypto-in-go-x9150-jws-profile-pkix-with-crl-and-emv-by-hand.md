@@ -56,13 +56,21 @@ properties.
      (go-jose does not export them). Decode the header with integer fields or `UseNumber`, so a
      millisecond `iat` never passes through `float64`;
   3. check `crit` is exactly the supported set, `correlationId` is a UUID, `iat + ttl` is in the
-     future and `typ` is acceptable;
+     future. **`typ` is not checked**, as Java does not check it (owner, 2026-11-14): a token with
+     no `typ`, `JWT`, or any of the X9.150 types is accepted until the `typ` values are reviewed;
   4. resolve the certificate (`x5c`, or a fetch of `jku`/`x5u`) and check `x5t#S256`;
   5. run PKIX and revocation (below);
   6. verify the signature over the signing input with the standard library (`rsa.VerifyPSS`,
-     `rsa.VerifyPKCS1v15`, `ecdsa.Verify`).
+     `rsa.VerifyPKCS1v15`, `ecdsa.Verify`). **Each `ES` algorithm is bound to its curve** (RFC 7518
+     §3.4: `ES256`/P-256, `ES384`/P-384, `ES512`/P-521): `ES384` over a P-256 key is refused with
+     `BAD_SIGNATURE` even though the ECDSA maths verify, as Java refuses it (owner, 2026-11-14).
+     `ecdsa.Verify` alone would accept it.
 - **Fuzzing and corpus:** header parsing and `crit` handling are fuzzed, and a **golden corpus**
-  produced by the Java build must give identical accept/reject results.
+  produced by the Java build must give identical accept/reject results, **and the same
+  `signatureProblem` code** (`others/blackbox/golden/`, Story 4.7). That includes two codes that
+  are what Java happens to answer rather than a design, kept for parity (owner, 2026-11-14): an
+  `ES256` header over an RSA certificate is `UNVERIFIABLE`; a token with its signature removed but
+  its last dot kept is `NOT_JWS`.
 
 **Certificate fetching** (unauthenticated input):
 

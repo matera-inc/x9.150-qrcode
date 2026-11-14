@@ -23,7 +23,10 @@ maps the pacs.008 to one call.
   could race.
 - **No biller vote.** The caller here *is* the payee's platform; asking it to approve its own call
   would be circular. ADR-0003 governs notifications from the payer's side only.
-- **Idempotent** on an optional caller-supplied `paymentId`, so a pacs.008 retry is safe.
+- ~~**Idempotent** on an optional caller-supplied `paymentId`, so a pacs.008 retry is safe.~~
+  **Retired 2026-11-14 (owner); never built, and the contract has no `paymentId`.** A pacs.008
+  retry is safe because a status-update to the status a QR Code already has is a 200 no-op
+  ([ADR-0020](0020-the-payee-states-the-outcome-of-its-own-receivable.md)).
 
 ## This closes a conformance gap, it is not a new feature
 
@@ -72,10 +75,13 @@ A caller following the published contract gets a `400`. `PAID`, `CANCELLED` and 
 - The gap between contract and implementation closes; no OpenAPI change is needed, only code.
 - The adopter gets a rail-agnostic entry point usable **before** any notification work lands, which is
   why it is sequenced early and independently.
-- `pacs.002 → PAID` needs nothing new — the existing `pay()` path covers it. **Open question:** that
+- `pacs.002 → PAID` needs nothing new — the existing `pay()` path covers it. ~~**Open question:** that
   path is not conditional on `paymentId` unless one is supplied, so a late pacs.002 could settle a QR
   that a different payment had since locked. Accepting an optional `paymentId` on `PAID` too would let
-  an ISO 20022 caller close exactly the initiation it opened.
+  an ISO 20022 caller close exactly the initiation it opened.~~ **Closed 2026-11-14 (owner):** only the
+  payment system marks a QR Code `PAID`, after matching the funds and hashes itself
+  ([ADR-0036](0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md)); it already
+  knows which payment it settles, so X9.150 needs no `paymentId` to guard it.
 
 ## Alternatives rejected
 
