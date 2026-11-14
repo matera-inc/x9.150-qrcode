@@ -43,7 +43,7 @@ the history of why we changed our minds — the part that is usually lost.
 | [0018](0018-a-patch-names-every-currency-or-none.md) | **A patch names every currency, or none** — no currency may be added by a patch, and none may be left out; refused with 400, nothing written | Accepted |
 | [0019](0019-a-reservation-expires-and-nothing-sweeps.md) | **A reservation expires, and nothing sweeps** — `PAYMENT_INITIATED` carries the instant it stops counting; the lapse is applied on read, never by a background job | Accepted |
 | [0020](0020-the-payee-states-the-outcome-of-its-own-receivable.md) | **The payee states the outcome of its own receivable** — marking a bill paid is an order, not a claim; payers stay strict, `CANCELLED` stays final | Accepted |
-| [0021](0021-a-reservation-knows-who-holds-it.md) | **A reservation knows who holds it** — `payer.info` plus the signing certificate's subject; one payer may re-announce or release, a second is refused 409 | Accepted — its no-`payer.info` fallback superseded by [0036](0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md) (when accepted) |
+| [0021](0021-a-reservation-knows-who-holds-it.md) | **A reservation knows who holds it** — `payer.info` plus the signing certificate's subject; one payer may re-announce or release, a second is refused 409 | Accepted — its no-`payer.info` fallback superseded by [0036](0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md) |
 | [0022](0022-rewrite-in-go-as-a-standalone-product.md) | **Rewrite in Go, as a standalone product** — same repo, image and contract; X9.150 standard > published contract > Matera's internal standards; ratifies 0001–0021 | Accepted |
 | [0023](0023-postgresql-one-schema-portable-sql.md) | **PostgreSQL ≥ 16, one schema, portable SQL** — explicit READ COMMITTED; retry only on 40001/40P01 | Accepted — supersedes 0013 |
 | [0024](0024-a-qr-code-is-one-row-and-every-patch-is-audit-logged.md) | **A QR Code is one row, and every PATCH is audit-logged** — one owner per column; UPDATE then audit insert; location rule | Accepted |
@@ -58,7 +58,7 @@ the history of why we changed our minds — the part that is usually lost.
 | [0033](0033-the-clock-can-be-moved-in-test-deployments-only.md) | **The clock can be moved in test deployments, and only there** — loopback listener, compiled-in fingerprint guard | Accepted |
 | [0034](0034-the-black-box-suite-is-python-in-this-repository-under-its-licence.md) | **The black-box suite is Python, in this repo, under its licence** | Accepted |
 | [0035](0035-one-event-builder-and-a-written-transition-map.md) | **One event builder, and a written transition map** | Accepted |
-| [0036](0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md) | **Pre-commit on every rail, and every transaction hash is recorded** — the evidence decides the phase (keeps 0004); a contradictory message is the payer's fault but its hash is kept; a second hash signals a duplicate payment | Proposed — supersedes the no-`payer.info` fallback of 0021 |
+| [0036](0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md) | **Pre-commit on every rail, and every transaction hash is recorded** — the evidence decides the phase (keeps 0004); a contradictory message is the payer's fault but its hash is kept; a second hash signals a duplicate payment | Accepted — supersedes the no-`payer.info` fallback of 0021 |
 
 ## Writing a new one
 
