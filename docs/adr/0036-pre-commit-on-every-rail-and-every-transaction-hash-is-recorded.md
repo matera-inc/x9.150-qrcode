@@ -186,6 +186,30 @@ these fields only describe how it arrived.
   call site.
 - The same codes are logged with the warning.
 
+### The reservation's window
+
+**Once any hash is registered, the reservation stops expiring.** It does not matter who sent the
+post-commit (the holder, another payer, a payer without `payer.info`): money has moved for this QR Code,
+so it stays out of circulation. `reserved_until` takes the "no lapse" sentinel, and the holder does not
+change. Only the payment system ends it:
+
+- `PAID` or `CANCELLED` through the status-update API, which closes the QR Code;
+- `ACTIVE` through the same API (`PUT /api/v1/payment-request/{id}/status-update`), which reverts it
+  to `ACTIVE` and clears the reservation. This is the payment system's control over a reservation: it
+  already exists, and is the only way back once a hash is registered.
+
+**`x9.reservation.ttl-seconds` sets the window before any hash, and `0` means no window.**
+
+| Setting | For | Behaviour |
+|---|---|---|
+| `90` (the default) | Beginners and simple installations | A pre-commit holds the QR Code for 90 s; a payer that vanishes cannot lock it longer |
+| `0` | A bank that wants full control | A reservation never expires. It ends only by a refused retry, `NOT_SENT`, or the payment system's `ACTIVE`, `PAID` or `CANCELLED` |
+| any other positive value | Tuning | As the default, with that window |
+
+Today `0` makes every reservation expire at once, because the window is computed as "now + 0". That
+changes with this ADR; Go uses the same setting and environment variable
+([ADR-0031](0031-same-image-lighter-and-3-0-is-a-configuration-migration.md)).
+
 ### Every case, by message and status
 
 **The happy path.** Everything else is in the matrix below.
@@ -227,7 +251,7 @@ Messages from a payer:
 | Message | ACTIVE | Held by the sender | Held by someone else | PAID or CANCELLED |
 |---|---|---|---|---|
 | **Pre-commit** (no `transactionId`) | Judged at the payee's clock. Yes: → `PAYMENT_INITIATED` held by the sender, `payment.initiated`. No: 400, nothing changes | A retry, judged again. Yes: window refreshed, no event. No: → `ACTIVE`, reservation cleared (Solana: `payment.failed`) | 409, nothing changes | 400, nothing changes |
-| **Post-commit** (`transactionId` present) | Accepted, never judged: → `PAYMENT_INITIATED` held by the sender; `payment.initiated`, then `payment.sent` on a chain; flagged `RECEIVED_IN_WRONG_STATUS` † | Accepted, status unchanged; `payment.sent` on a chain † | Accepted, the holder keeps it; `payment.sent` on a chain, flagged `RECEIVED_IN_WRONG_STATUS` † | Accepted, status unchanged; `payment.sent` on a chain, flagged `RECEIVED_IN_WRONG_STATUS` |
+| **Post-commit** (`transactionId` present) | Accepted, never judged: → `PAYMENT_INITIATED` held by the sender; `payment.initiated`, then `payment.sent` on a chain; flagged `RECEIVED_IN_WRONG_STATUS`; the window stops ‡ | Accepted, status unchanged; `payment.sent` on a chain; the window stops ‡ | Accepted, the holder keeps it; `payment.sent` on a chain, flagged `RECEIVED_IN_WRONG_STATUS`; the window stops ‡ | Accepted, status unchanged; `payment.sent` on a chain, flagged `RECEIVED_IN_WRONG_STATUS` |
 | **`PAYMENT_INITIATED` with a hash** (chain) | As a post-commit, also flagged `ACTION_CONTRADICTS_HASH` | same | same | same |
 | **`SENT` without a hash** (chain) | 400 | 400 | 400 | 400 |
 | **`NOT_SENT`** (chain: the payer gives it back) | 400; from the holder of a lapsed reservation: accepted, `payment.failed` | → `ACTIVE`, reservation cleared, `payment.failed` | 409 | 400 |
@@ -240,9 +264,9 @@ From the payment system (status-update API), and from time:
 | **→ `PAID`** | → `PAID`, `payment.cleared` | same | same | 400 |
 | **→ `CANCELLED`** | → `CANCELLED`, `payment.cancelled` | same | same | 400 |
 | **→ `ACTIVE`** (reactivate) | 400 | → `ACTIVE`, no event | → `ACTIVE`, no event | 400 |
-| **The reservation's window passes** | — | reads `ACTIVE`, nothing written, no event † | same † | — |
+| **The reservation's window passes** | — | reads `ACTIVE`, nothing written, no event; never once a hash is registered, nor when `ttl-seconds` is `0` | same | — |
 
-† **Open point** (below): once a hash is registered, the window would no longer pass.
+‡ The reservation no longer expires; only the payment system ends it (see *The reservation's window*).
 
 **`validUntil` is not a status.** Past it, a pre-commit is refused by the payee's clock (400); a
 post-commit is still accepted and registered, because the money has moved.
@@ -257,7 +281,7 @@ stateDiagram-v2
     ACTIVE --> PAYMENT_INITIATED : post-commit, flagged (no pre-commit)
     ACTIVE --> PAYMENT_INITIATED : status-update, held by nobody
     PAYMENT_INITIATED --> PAYMENT_INITIATED : retry accepted, or a post-commit (flagged if not the holder's)
-    PAYMENT_INITIATED --> ACTIVE : refused retry, NOT_SENT, reactivate, or the window passes †
+    PAYMENT_INITIATED --> ACTIVE : refused retry, NOT_SENT, reactivate, or the window passes (never once a hash is registered)
     ACTIVE --> PAID : status-update
     PAYMENT_INITIATED --> PAID : status-update
     ACTIVE --> CANCELLED : status-update
@@ -267,22 +291,6 @@ stateDiagram-v2
     PAID --> [*]
     CANCELLED --> [*]
 ```
-
-### Open point
-
-**Does a reservation lapse after a post-commit?** Today it keeps the pre-commit's window (90 s by
-default; Java's `SENT` does not restamp it). Once the window passes the QR Code reads `ACTIVE`, and a
-second payer can be approved although money has already moved.
-
-The rule above on `payer.info` makes this sharper: a holder that sent no `payer.info` cannot be
-recognised when it reports its own payment, so its post-commit changes nothing, and its reservation
-lapses after 90 s with the money already sent.
-
-Proposal: once **any** hash is registered for a QR Code that is `ACTIVE` or `PAYMENT_INITIATED`,
-whoever sent it, the reservation no longer lapses (`reserved_until` takes the "no lapse" sentinel).
-The holder does not change. It ends only when the payment system marks the QR Code `PAID`,
-`CANCELLED` or `ACTIVE`.
-
 
 ## Consequences
 
@@ -297,6 +305,8 @@ The holder does not change. It ends only when the payment system marks the QR Co
   courtesy notification now takes the QR Code out of circulation.
 - The payment system can treat a deviating registration differently (hold it for review, for
   example) without X9.150 refusing anything.
+- A bank can take full control of reservations with `x9.reservation.ttl-seconds: 0`; simple
+  installations keep the 90 s default.
 - ADR-0035's transition map gains rows: post-commit on `ACTIVE` (bank rail: `payment.initiated`;
   blockchain: `payment.initiated` then `payment.sent`), and the contradictory `PAYMENT_INITIATED`.
 - The change ships in Java before the freeze (Stories 2.4 and 2.5), and Go ports it through the
@@ -306,6 +316,10 @@ The holder does not change. It ends only when the payment system marks the QR Co
 
 - **Let `blockchain.action` decide the phase on blockchains** (an earlier draft of this ADR). It
   refuses a contradictory message, so the payee loses the hash of money that has already moved.
+- **Let a reservation expire after a hash is registered.** Once the window passed, a second payer
+  could be approved for a QR Code already paid.
+- **Make `0` mean "expire at once".** Useless as a setting, and it leaves no way to hand the window
+  over to the bank.
 - **Keep ADR-0021's certificate-only fallback.** Two customers of one PSP could retry, release or
   report for each other's reservation: the collision the reservation exists to prevent.
 - **Refuse a post-commit on a closed or held QR Code** (what Java does, with 400 or 409). The money has moved
