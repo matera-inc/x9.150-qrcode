@@ -1294,7 +1294,7 @@ design: the DBA's review of one complete schema, its roles and its grants is thi
 same reasoning covers the retention purge's grant in 6.2. The schema conventions bind from the first
 changeset: `TIMESTAMP` in UTC,
 sentinels instead of NULL, `BIGINT` minor units, holder encoding `''`. Order: 6.1 → 6.2 → 6.3, with
-6.4 alongside 6.1.
+6.4 alongside 6.1, and 6.5 (the integrators' document) once 6.2 exists.
 
 ### Story 6.1: The changelog creates the schema of ADR-0024, documented in the database itself
 
@@ -1302,7 +1302,7 @@ As a **bank's DBA**,
 I want every table and column created by a reviewable changelog and described by a `COMMENT`,
 So that I can understand what X9.150 stores without reading Go code.
 
-**Implements:** FR15; ADR-0024, ADR-0025, ADR-0026
+**Implements:** FR15; ADR-0024, ADR-0025, ADR-0026, ADR-0037 (proposed)
 
 **Acceptance Criteria:**
 
@@ -1312,9 +1312,9 @@ So that I can understand what X9.150 stores without reading Go code.
 ADR-0024/0025/0026 (including the reservation holder `reserved_by_payer_info` and
 `reserved_by_signer_subject`, and the raw compact JWS on `qr_code_notification`).
 
-**S6.1-AC2.** **Given** the lookups `qr_code_status` and `event_type`
-**Then** they are seeded with every status and event type, and referenced by FK from `qr_code` and
-`payment_event`.
+**S6.1-AC2.** **Given** the lookups `qr_code_status`, `event_type` and `event_read_status`
+**Then** they are seeded with every status, event type and read status (`PEND`, `DONE`), and
+referenced by FK from `qr_code` and `payment_event`.
 
 **S6.1-AC3.** **Given** the indexes
 **Then** `location_id` is unique across all rows, every FK has an index, and
@@ -1328,7 +1328,15 @@ column.
 **S6.1-AC5.** **Given** the schema name as a changelog parameter (default `x9_qrcode`)
 **Then** the changelog writes nothing outside that schema, and nothing in `public`.
 
-### Story 6.2: Three roles with the least privilege each needs
+**S6.1-AC6. `payment_event` is the outbox (ADR-0037).**
+**Given** `payment_event`
+**Then** it has `read_status_code` (default `PEND`) and `read_at` (sentinel `9999-12-31 00:00:00`),
+an index on `(read_status_code, seq)`, and `deviations` (ADR-0036, `''` when none)
+**And** `event_id` is documented as a UUIDv7 minted in `seq` order
+**And** a pending row can be claimed with `FOR UPDATE SKIP LOCKED` and marked `DONE`, on a real
+PostgreSQL.
+
+### Story 6.2: Four roles with the least privilege each needs
 
 As a **bank's DBA**,
 I want X9.150's roles to be able to do only their own job,
@@ -1340,7 +1348,8 @@ So that the application can never alter the schema and the test suite can never 
 
 **S6.2-AC1.** **Given** the changelog
 **Then** it creates (or uses, when the DBA pre-created them) an owner role (migrations only), an
-application role (DML on its own tables) and a read-only role (`SELECT` only), with explicit grants
+application role (DML on its own tables), a read-only role (`SELECT` only) and an event-reader role
+(S6.2-AC4), with explicit grants
 and `ALTER DEFAULT PRIVILEGES`.
 
 **S6.2-AC2.** **Given** the application role
@@ -1351,7 +1360,12 @@ through the retention purge's grant.
 **S6.2-AC3.** **Given** the read-only role
 **Then** every write fails with a permission error; the black-box suite's database checks use it.
 
-**S6.2-AC4.** **Given** a role name or password
+**S6.2-AC4. The event reader (ADR-0037).**
+**Given** the event-reader role
+**Then** it has `SELECT` on `payment_event` and `UPDATE` on `read_status_code` and `read_at` only
+**And** an attempt to update any other column, or to insert or delete, fails with a permission error.
+
+**S6.2-AC5.** **Given** a role name or password
 **Then** none is hard-coded; names are changelog parameters and passwords come from the DBA.
 
 ### Story 6.3: Anyone can apply the schema locally and in CI, and a DBA can review the SQL first
@@ -1398,6 +1412,41 @@ So that the schema stays portable without anyone policing it by hand.
 **S6.4-AC3.** **Given** `JSONB`, `ENUM`, arrays, `TIMESTAMPTZ`, unbounded `TEXT`, `SERIAL`, triggers
 or procedures
 **Then** the check fails, naming the construct and the file.
+
+### Story 6.5: A payment system can read the event table without asking us
+
+As a **payment system's integrator**,
+I want the event table documented as the outbox I read,
+So that I can stream it with Debezium or pull it with plain SQL, and know what will never change.
+
+**Implements:** ADR-0037 (proposed), ADR-0036 (proposed), ADR-0029
+
+**Acceptance Criteria:**
+
+**S6.5-AC1.** **Given** `docs/EVENTS-TABLE.md`
+**Then** it states that X9.150 communicates only by inserting rows into `payment_event`, in the
+transition's transaction, and never pushes
+**And** it lists every column with its type, meaning and sentinel, matching the database comments.
+
+**S6.5-AC2. The three readers.**
+**Then** it shows a Debezium connector configuration that streams inserts only (filtering the
+readers' updates and the purge's deletes), the plain SQL claim-and-mark pattern with the
+event-reader role, and the HTTP API as the third way
+**And** it says the read status serves one logical consumer; another uses its own `seq` cursor.
+
+**S6.5-AC3. Order and identity.**
+**Then** it says `seq` is the exact order, `event_id` (UUIDv7) sorts the same way and is the dedupe
+key, and migrated events keep their original ids.
+
+**S6.5-AC4. What can change.**
+**Then** it states the contract: within a major `schemaVersion`, columns and codes are only added;
+readers ignore what they do not know
+**And** it lists the `deviations` codes and what each means
+**And** it warns that events are purged after `events.retention` (default `P30D`), read or not.
+
+**S6.5-AC5.** **Given** the black-box suite
+**Then** a test reads the table with the event-reader role, claims the pending rows of a fresh
+transition, marks them `DONE`, and sees them in `seq` order with matching `event_id` order.
 
 ## Epic 7: An operator can run the Go service and see it healthy
 
