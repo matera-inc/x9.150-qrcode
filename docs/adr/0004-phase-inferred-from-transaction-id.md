@@ -13,6 +13,37 @@ which phase a notification represents.
 phases was proposed during the standard's definition and **rejected by the committee**. Conformant
 implementations must therefore infer the phase.
 
+### Amendment, 2026-11-14: what each leg is for, per rail, and where the code departs
+
+**Open until now:** this ADR said how to tell the two phases apart, but not why both exist on every
+rail, nor what links a payment to its QR Code when the rail cannot.
+
+**Closed:**
+
+- **Leg 1 (no `transactionId`) is always used, on every rail.** Its reservation is what stops two
+  payers from paying the same QR Code at the same time. **Leg 2 (with a `transactionId`)** carries
+  the reference that links the payment to the QR Code, and is recorded, never judged again. This
+  is the rule below — *vetoable ⇔ no `transactionId`* — with its purpose stated.
+- **What carries the link, per rail.** FedNow / RTP and ACH carry the QR Code id in the payment
+  itself (`QRCD` in the pacs.008 and in the ACH addenda, ANSI X9.150-2026 A.6 and A.7), so their
+  leg 2 is a courtesy. Solana carries it only in an optional memo that some custody providers do
+  not expose, and most chains have no memo at all, so on blockchains **leg 2 is the link**, and the
+  leg 1 / leg 2 protocol is the reconciliation mechanism for every chain, memo or not.
+
+**Where the code departs from this ADR today** (recorded, not changed here):
+
+- **FedNow / RTP have no leg 1:** every notification must carry an End-to-End ID, so the table's
+  "courtesy, after the fact" is the only path, and no reservation is ever taken on these rails.
+- **ACH leg 2 is judged as leg 1:** every ACH notification goes through the acceptance gate, Trace
+  Number or not.
+- **Solana is keyed on `blockchain.action`,** not on the transaction id: a `PAYMENT_INITIATED`
+  carrying a transaction id is still treated as leg 1, contrary to the disagreement rule below.
+
+The first two are closed by Story 2.4 of the rewrite breakdown
+([docs/rewrite/EPICS-AND-STORIES.md](../rewrite/EPICS-AND-STORIES.md)). Whether
+`blockchain.action` becomes the authority on blockchains — which would reverse the "corroborating
+signal" rule below — is decided with that story, under a new ADR if it does.
+
 ## Decision
 
 Infer it from `$.payment.transactionId`:

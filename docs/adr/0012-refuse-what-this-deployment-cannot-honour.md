@@ -29,6 +29,26 @@ settle is decided by its rails, and the rails interpreted here — FedNow, RTP, 
 Code denominated in EUR or USDC advertises an amount no supported rail can pay. Same promise, same
 breach, same person left discovering it last.
 
+### Amendment, 2026-11-14: Solana is interpreted, and no currency is ever implied
+
+**Open until now:** the decision below lists `fednow`, `rtp` and `ach` and says "`USD` by default",
+written when those were the only rails. Two things it did not foreclose have since happened, and
+one phrase reads as something it never meant.
+
+**Closed:**
+
+- **`solana` is accepted too,** on the strength of the Solana Foundation's published embedding
+  (`recipient` and an optional `memo`, [SOLANA-FIELDS.md](../../official-spec/SOLANA-FIELDS.md)),
+  which is exactly the bar [ADR-0010](0010-networks-are-interpreted-only-once-their-authority-publishes.md)
+  sets. The rule of this ADR is unchanged: any network outside the configured set is refused at
+  creation, by name.
+- **No currency is ever implied.** Every payment method, and every notification, states its
+  currency; the code refuses one that is missing. `supported-currencies.json` is an **allow list**,
+  not a default: as shipped it lists `USD` (the bank rails) and `USDC` and `FRNT` (Solana). "`USD`
+  by default" below means only that `USD` was the shipped allow list at the time.
+- **`payment.sent` and `payment.failed` have a trigger again:** an interpreted chain did return,
+  and Solana emits both (see [STATE-MACHINE.md](../../STATE-MACHINE.md)).
+
 ## Decision
 
 **Refuse, at creation, anything this deployment cannot honour — by name.**
