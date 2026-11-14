@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**456 tests documented** — every JUnit test in the repository and every case in the
+**462 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -206,6 +206,8 @@ single most important thing this index exists for.
 | `X9-LIFE-128` | the entity tag of a lapsed reservation carries the effective status | `QRCodeEntityEntityTagTest.java` |
 | `X9-LIFE-129` | If-Match accepts the tag GET gave for a lapsed reservation | `QRCodeEntityEntityTagTest.java` |
 | `X9-LIFE-130` | a tag naming another revision or the stored status is still refused | `QRCodeEntityEntityTagTest.java` |
+| `X9-LIFE-140` | an absent bill.paymentTiming on create defaults to immediate | `DefaultedBillFieldsApiTest.java` |
+| `X9-LIFE-141` | an explicit null bill.paymentTiming on create is refused | `DefaultedBillFieldsApiTest.java` |
 
 ### Who holds a reservation
 
@@ -530,3 +532,7 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-TIP-120` | a malformed tip is refused at creation | `QRCodesApisFlowTest.java` |
 | `X9-TIP-121` | a bill can be created with no tip block | `QRCodesApisFlowTest.java` |
 | `X9-TIP-122` | a bill created without a tip reports tips as not allowed | `QRCodesApisFlowTest.java` |
+| `X9-TIP-130` | a tip without allowed on create allows tips | `DefaultedBillFieldsApiTest.java` |
+| `X9-TIP-131` | an explicit null tip.allowed on create is refused | `DefaultedBillFieldsApiTest.java` |
+| `X9-TIP-132` | a PATCH tip without allowed allows tips | `DefaultedBillFieldsApiTest.java` |
+| `X9-TIP-133` | an explicit null tip.allowed on PATCH is refused | `DefaultedBillFieldsApiTest.java` |

@@ -4,17 +4,4 @@
 # refusing it, the run turns red and the entry has to come out. A case is never dropped silently.
 #
 # `case` is the id contract.py prints: <operation>:<field>:<constraint>.
-gaps:
-  - case: "create:bill.paymentTiming:required"
-    reason: >-
-      The contract marks paymentTiming required AND gives it a default (immediate). On create,
-      an absent paymentTiming takes the default and the QR Code is created (201). PATCH does
-      refuse it (patch:bill.paymentTiming:required passes). Which half of the contract is right
-      is a question for the owner, not for this suite.
-  - case: "create:bill.tip.allowed:required"
-    reason: >-
-      The contract marks tip.allowed required AND gives it a default (true). An absent `allowed`
-      takes the default and the QR Code is created (201).
-  - case: "patch:bill.tip.allowed:required"
-    reason: >-
-      As on create: an absent tip.allowed takes its default (true) and the PATCH is applied (200).
+gaps: []

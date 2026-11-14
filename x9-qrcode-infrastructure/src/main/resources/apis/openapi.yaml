@@ -1250,7 +1250,6 @@ components:
       type: object
       required:
         - description
-        - paymentTiming
       properties:
         paymentTiming:
           type: string
@@ -1258,6 +1257,13 @@ components:
             - deferred
             - immediate
           default: immediate
+          # Optional, but not nullable: an explicit null is refused (400), as it was when the
+          # field was marked required. The generator drops @NotNull with `required`; this keeps it.
+          x-field-extra-annotation: "@NotNull"
+          description: |-
+            Optional on create; **defaults to `immediate`** when absent. An explicit `null` is
+            refused. Always present in a payload response. (On PATCH, where the whole bill is
+            replaced, it is required.)
         description:
           type: string
           pattern: ^[\x20-\x7E]*$
@@ -1307,14 +1313,16 @@ components:
             created without one is stored as "tips not allowed" and the payload reports
             `"tip": {"allowed": false}`, so a payer never has to distinguish "no tip offered" from
             "tips refused" — there is no such distinction to draw.
-          required:
-            - allowed
           properties:
             allowed:
               type: boolean
-              description: "Determines whether the receiver allows the payer to make a tip payment."
+              description: |-
+                Determines whether the receiver allows the payer to make a tip payment. Optional:
+                **defaults to `true`** when `tip` is sent without it (`{}` or `{"range": ...}` both
+                allow tips). An explicit `null` is refused. Always present in a payload response.
               example: true
               default: true
+              x-field-extra-annotation: "@NotNull"
             range:
               $ref: "#/components/schemas/TipRange"
             presets:
@@ -1347,6 +1355,7 @@ components:
         - $ref: "#/components/schemas/BillBase"
       required:
         - amountDue
+        - paymentTiming
       properties:
         amountDue:
           $ref: "#/components/schemas/AmountDuePayloadResponse"
@@ -2396,14 +2405,15 @@ components:
     PatchTip:
       type: object
       description: "Amount in creditor's currency that was selected by the payer, if so. Otherwise, if should be sent 'null'"
-      required:
-        - allowed
       properties:
         allowed:
           type: boolean
-          description: "Determines whether the receiver allows the payer to make a tip payment."
+          description: |-
+            Determines whether the receiver allows the payer to make a tip payment. Optional:
+            **defaults to `true`** when `tip` is sent without it. An explicit `null` is refused.
           example: true
           default: true
+          x-field-extra-annotation: "@NotNull"
         range:
           $ref: "#/components/schemas/TipRange"
         presets:
