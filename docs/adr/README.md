@@ -26,7 +26,7 @@ the history of why we changed our minds — the part that is usually lost.
 | [0001](0001-events-leave-by-pull-not-push.md) | Events leave X9.150 by **pull, not push** — embedded outbox → event log → long-polling API. No broker client in the service | Accepted — drain mechanics superseded by [0025](0025-a-transition-is-one-transaction-and-its-event-is-in-it.md) |
 | [0002](0002-atomic-transitions-with-embedded-outbox.md) | **Atomic single-document transitions** with an embedded outbox — exactly-once initiation, state and event in one update | Superseded by [0025](0025-a-transition-is-one-transaction-and-its-event-is-in-it.md) |
 | [0003](0003-two-phase-payment-notification-approval.md) | **Two-phase approval** — the biller may refuse a pre-funds notification; X9.150 coordinates; fail closed | Accepted |
-| [0004](0004-phase-inferred-from-transaction-id.md) | Payment phase is **inferred from the absence of a transaction id**, because the standard has no phase marker | Accepted — superseded on blockchains by [0036](0036-the-leg-is-explicit-on-blockchains-and-only-the-leg-1-winner-may-report.md) (when accepted) |
+| [0004](0004-phase-inferred-from-transaction-id.md) | Payment phase is **inferred from the absence of a transaction id**, because the standard has no phase marker | Accepted |
 | [0005](0005-amounts-stay-int64.md) | Monetary amounts stay **`int64` minor units** — mandated by the standard, not our choice | Accepted |
 | [0006](0006-notification-opt-in-is-additive.md) | Notification opt-in is an **additive optional field**, not a new API version | Accepted |
 | [0007](0007-configurable-ca-allowlist.md) | **Configurable CA allowlist** for notification signatures, with a self-signed escape for dev | Accepted |
@@ -58,7 +58,7 @@ the history of why we changed our minds — the part that is usually lost.
 | [0033](0033-the-clock-can-be-moved-in-test-deployments-only.md) | **The clock can be moved in test deployments, and only there** — loopback listener, compiled-in fingerprint guard | Accepted |
 | [0034](0034-the-black-box-suite-is-python-in-this-repository-under-its-licence.md) | **The black-box suite is Python, in this repo, under its licence** | Accepted |
 | [0035](0035-one-event-builder-and-a-written-transition-map.md) | **One event builder, and a written transition map** | Accepted |
-| [0036](0036-the-leg-is-explicit-on-blockchains-and-only-the-leg-1-winner-may-report.md) | **The leg is explicit on blockchains, and only the leg-1 winner may report** — `blockchain.action` decides on chains, `transactionId` on bank rails; leg 1 on every rail; contradictions refused | Proposed — supersedes 0004 in part |
+| [0036](0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md) | **Pre-commit on every rail, and every transaction hash is recorded** — the evidence decides the phase (keeps 0004); a contradictory message is the payer's fault but its hash is kept; a second hash signals a duplicate payment | Proposed |
 
 ## Writing a new one
 

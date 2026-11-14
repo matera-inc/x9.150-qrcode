@@ -1,6 +1,6 @@
 # ADR-0004 — Payment phase is inferred from the absence of a transaction id
 
-- **Status:** Accepted. On blockchains, superseded by [ADR-0036](0036-the-leg-is-explicit-on-blockchains-and-only-the-leg-1-winner-may-report.md) once it is accepted.
+- **Status:** Accepted
 - **Date:** 2026-09-26
 - **Context:** `supporting-payment-notifications`
 
