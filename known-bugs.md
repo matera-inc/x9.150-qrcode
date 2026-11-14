@@ -6,7 +6,52 @@ fixed ones stay under **Fixed**, for the record.
 
 ## Open
 
-_None._
+---
+
+## BUG-003 — An unreachable CRL is not soft-failed when the certificate names no OCSP responder
+
+- **Reported:** 2026-11-14 (Story 4.3, `X9-LOC-307`)
+- **Severity:** Medium — when a CA's CRL server is down, every PSP it issued without an OCSP
+  responder is refused: payload fetches and payment notifications alike.
+- **Pinned by:** `others/blackbox/tests/test_payers.py::TestPayload::test_an_unreachable_revocation_source_soft_fails`
+  (the `crl-unreachable-no-ocsp` cases are strict expected failures).
+- **Area:** `JwsQRCodeSignatureService.validateCertificateChain` (infrastructure layer)
+
+### Steps to reproduce
+
+1. Issue a payer certificate from a trusted CA with a CRL distribution point on a host and port
+   where nothing listens, and no Authority Information Access (no OCSP responder).
+2. Sign a payment notification (or a payload request) with it and send it.
+
+### Expected
+
+ADR-0027, "Revocation, parity with Java", step 4: **soft-fail when neither the CRL nor OCSP
+answers.** The payer is accepted, as it is when the certificate names both sources and both are
+unreachable, or only an unreachable OCSP responder.
+
+### Actual
+
+401 `UNTRUSTED_CHAIN` on the notification endpoint, 400 on `/pub/api/v1/loc/{id}`.
+
+| Sources the certificate names | Java today |
+|---|---|
+| CRL and OCSP, both unreachable | accepted (soft-fail) |
+| OCSP only, unreachable | accepted (soft-fail) |
+| **CRL only, unreachable** | **refused** |
+| neither | refused (no source to consult; `X9-LOC-308`) |
+
+### Root cause
+
+`PKIXRevocationChecker` runs with `PREFER_CRLS` and `SOFT_FAIL` but without `NO_FALLBACK`. The
+unreachable CRL raises `UNDETERMINED_REVOCATION_STATUS`, which `SOFT_FAIL` would forgive; the JDK
+then falls back to OCSP, finds no responder in the certificate, and raises a failure with an
+unspecified reason, which `SOFT_FAIL` does not forgive. The checker rethrows the CRL failure.
+
+### Suggested direction
+
+Either add `NO_FALLBACK` when the end entity has no AIA OCSP entry, or catch the fallback's
+"no responder" case and let the CRL's soft failure stand. Decide together with ADR-0027's Go
+implementation, which must give the same four answers.
 
 ## Fixed
 

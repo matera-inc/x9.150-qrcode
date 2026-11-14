@@ -92,6 +92,7 @@ others/blackbox/
 │   ├── events.py      cursor reader of the event stream, deduplicating by eventId
 │   ├── jws.py         independent payers on the test CA, the tamperer, and the answer verifier
 │   ├── peer.py        a test payee that answers this service's outbound notifications right and wrong
+│   ├── ocsp.py        an OCSP responder for the test CA, and payers with any mix of revocation sources
 │   ├── db/            optional read-only inspectors: mongo.py (Java), postgres.py (Go)
 │   ├── samples.py     request bodies a scenario starts from
 │   └── checks.py      assert_refused: refused, and for the right reason
@@ -140,6 +141,7 @@ marks.
 | **A payee's answers** (`test_payee_answers.py`) | the service notifies the test payee (`x9client.peer`), which captures the exact JWS and answers in each of the 17 ways of Story 3.5 (signed yes, wrong or missing `correlationId`, a replayed yes, empty, unsigned, not a JWS, altered, untrusted, revoked, expired or future `iat`, `alg: none`, unknown `crit`, a signed status that differs from the HTTP one, a plain or signed 400, no answer); each is reported as `signature` VERIFIED / ABSENT / INVALID with its fixed `signatureProblem`, and changes nothing here. Every tamperer defect is named by its code |
 | **The transition map** (`test_transition_map.py`) | one test per row of ADR-0035's map, keyed `X9-MAP-NNN` (the row-to-test table is in [the ADR](../../docs/adr/0035-one-event-builder-and-a-written-transition-map.md#verification-against-java-story-41-2026-11-14)): the resulting status, every event for the QR Code exactly and in order, what did not change, and each event body from the last stored notification, else the first payment method. Cells Java contradicts are strict expected failures carrying the row key. `test_every_map_row_has_a_test` checks the ADR's keys against the tests |
 | **Signatures** (`test_signatures.py`) | payers A and B on their own keys; wrong key, untrusted CA, revoked certificate, expired `iat + ttl`, `iat` in the future, missing or unknown `crit`, missing `x5c`, altered payload, `alg: none`, each a signed 401 naming its fixed `signatureProblem` code; B cannot take or release A's reservation; every answer verified against the payee's certificate, echoing the question's `correlationId` (fresh when the question could not be verified); the same signed question twice |
+| **Payers** (`test_payers.py`, Story 4.3) | the payload: unknown location, content not byte-equal, every signature defect, revoked by CRL and by OCSP (`x9client/ocsp.py`), unreachable revocation sources soft-failing, no source at all, an expired method dropped, PAID and CANCELLED. Notifications: rail and currency in another case echoed, no post-commit marks PAID, no `paymentNotification` or `kind: EXTERNAL`, every answer signed, 32 concurrent pre-commits reserving once. The payer-side endpoints: a payee's no reported as 200, an unreachable payee 502, a `transactionId` refused before sending. The module docstring maps the rest of plan groups C, E and H to the tests that already pinned them |
 
 ## One suite: `acceptance.py` was folded in
 
