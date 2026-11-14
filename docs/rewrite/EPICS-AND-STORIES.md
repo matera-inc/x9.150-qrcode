@@ -706,7 +706,7 @@ Today: FedNow/RTP require an End-to-End ID on every notification
 (`QRCodeEntityValidator.validatePaymentNotificationFromInstantPayments`), so they have no pre-commit;
 ACH gates every notification as a pre-commit, even with a Trace Number.
 
-**Implements:** FR34; ADR-0036 (proposed), ADR-0021
+**Implements:** FR34; ADR-0036, ADR-0021
 
 **Acceptance Criteria:**
 
@@ -799,7 +799,7 @@ Today Java accepts the holder's retry (`validateAnnouncement`, `ReservationHolde
 and judges it again at the payee's clock (correct). Two gaps: a refused retry leaves the reservation
 in place until it lapses, and a takeover of a lapsed reservation emits no event.
 
-**Implements:** FR35; ADR-0036 (proposed), ADR-0019, ADR-0021
+**Implements:** FR35; ADR-0036, ADR-0019, ADR-0021
 
 **Acceptance Criteria:**
 
@@ -1343,7 +1343,7 @@ As a **bank's DBA**,
 I want every table and column created by a reviewable changelog and described by a `COMMENT`,
 So that I can understand what X9.150 stores without reading Go code.
 
-**Implements:** FR15; ADR-0024, ADR-0025, ADR-0026, ADR-0037 (proposed)
+**Implements:** FR15; ADR-0024, ADR-0025, ADR-0026, ADR-0037
 
 **Acceptance Criteria:**
 
@@ -1460,7 +1460,7 @@ As a **payment system's integrator**,
 I want the event table documented as the outbox I read,
 So that I can stream it with Debezium or pull it with plain SQL, and know what will never change.
 
-**Implements:** ADR-0037 (proposed), ADR-0036 (proposed), ADR-0029
+**Implements:** ADR-0037, ADR-0036, ADR-0029
 
 **Acceptance Criteria:**
 
