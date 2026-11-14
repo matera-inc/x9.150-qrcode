@@ -261,11 +261,7 @@ class TestPayload:
     @pytest.mark.parametrize("sources", [
         "crl-and-ocsp-unreachable",
         "ocsp-unreachable-no-crl",
-        pytest.param("crl-unreachable-no-ocsp", marks=pytest.mark.xfail(strict=True, reason=(
-            "ADR-0027 step 4 and S4.3-AC1: soft-fail when no revocation source answers. Java "
-            "refuses (UNTRUSTED_CHAIN) when the only source is a CRL it cannot fetch: the OCSP "
-            "fallback finds no responder, which the JDK does not count as a soft failure. "
-            "BUG-003; see 'Questions for the owner'."))),
+        "crl-unreachable-no-ocsp",
     ])
     def test_an_unreachable_revocation_source_soft_fails(self, api, issued, pki, business_now,
                                                          payee_certificate, endpoint, sources):

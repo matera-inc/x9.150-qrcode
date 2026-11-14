@@ -16,6 +16,10 @@ using only `keytool` (plus `bc` for one hex→decimal conversion) if you ever ne
 | `x9-test-payer.p12` | RSA payer leaf issued by that CA; signs `PS512` |
 | `x9-test-payer-ec.p12` | EC (P-256) payer leaf issued by that CA; signs `ES256` |
 | `x9-test-payer-revoked.p12` | Leaf issued by that CA, then revoked |
+| `x9-test-payer-crl-unreachable.p12` | Names only a CRL, on `127.0.0.1:1` where nothing listens |
+| `x9-test-payer-ocsp-unreachable.p12` | Names only an OCSP responder, on `127.0.0.1:1` |
+| `x9-test-payer-both-unreachable.p12` | Names a CRL and an OCSP responder, both on `127.0.0.1:1` |
+| `x9-test-payer-no-revocation.p12` | Names no revocation source at all — refused, as it should be |
 | `x9-test-untrusted-ca.p12` | A CA in **no** truststore |
 | `x9-test-untrusted-payer.p12` | Leaf from that unknown issuer |
 | `x9-test-truststore.jks` | Holds **only** the Test Root CA |
@@ -50,7 +54,8 @@ the other silently stops matching.
 **Leaves must carry a CRL distribution point.** Without one, PKIX rejects a CA-issued certificate
 outright with `UNDETERMINED_REVOCATION_STATUS`: `SOFT_FAIL` tolerates a revocation source being
 *unreachable*, not one being *absent*. A leaf without a CDP would make the tests fail for a reason
-that has nothing to do with what they check.
+that has nothing to do with what they check. (`x9-test-payer-no-revocation.p12` exists to pin
+exactly that refusal; the three `*-unreachable` leaves pin the soft-fail, BUG-003.)
 
 The revoked leaf uses its **own** distribution point rather than sharing one and swapping the file,
 because the JDK caches a fetched CRL — sharing a URL would make the revocation test depend on

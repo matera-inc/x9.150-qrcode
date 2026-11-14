@@ -88,6 +88,7 @@ import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -432,11 +433,22 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
                     externalCertificates.getFirst().getSubjectX500Principal().getName());
             } else {
                 PKIXRevocationChecker pkixRevocationChecker = (PKIXRevocationChecker) certPathValidator.getRevocationChecker();
-                pkixRevocationChecker.setOptions(EnumSet.of(
+                EnumSet<PKIXRevocationChecker.Option> revocationOptions = EnumSet.of(
                     PKIXRevocationChecker.Option.PREFER_CRLS,
                     PKIXRevocationChecker.Option.ONLY_END_ENTITY,
                     PKIXRevocationChecker.Option.SOFT_FAIL
-                ));
+                );
+                // BUG-003 (ADR-0027 step 4): a source the certificate names but that cannot be
+                // reached soft-fails. When the end entity names a CRL but no OCSP responder, the
+                // JDK would still fall back to OCSP, find no responder, and raise a failure that
+                // SOFT_FAIL does not forgive. With no responder to fall back to, the CRL is the
+                // only source, so its own (soft) failure must stand. A certificate naming neither
+                // keeps the fallback, and stays refused: nothing at all could ever revoke it.
+                X509Certificate endEntity = externalCertificates.getFirst();
+                if (namesCrlDistributionPoint(endEntity) && !namesOcspResponder(endEntity)) {
+                    revocationOptions.add(PKIXRevocationChecker.Option.NO_FALLBACK);
+                }
+                pkixRevocationChecker.setOptions(revocationOptions);
 
                 pkixParameters.setRevocationEnabled(true);
                 pkixParameters.addCertPathChecker(pkixRevocationChecker);
@@ -456,6 +468,99 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
                 "X9 Certificate chain validation failed: %s.".formatted(e.getMessage()), e);
         } catch (NoSuchAlgorithmException | InvalidAlgorithmParameterException e) {
             throw new ServiceException("Unexpected error during external certificate chain validation: %s".formatted(e.getMessage()), e);
+        }
+    }
+
+    private static final String CRL_DISTRIBUTION_POINTS_OID = "2.5.29.31";
+    private static final String AUTHORITY_INFO_ACCESS_OID = "1.3.6.1.5.5.7.1.1";
+    /** DER content of id-ad-ocsp, 1.3.6.1.5.5.7.48.1. */
+    private static final byte[] ID_AD_OCSP = {0x2B, 0x06, 0x01, 0x05, 0x05, 0x07, 0x30, 0x01};
+    private static final int DER_SEQUENCE = 0x30;
+    private static final int DER_OCTET_STRING = 0x04;
+    private static final int DER_OID = 0x06;
+    /** GeneralName uniformResourceIdentifier, [6] IMPLICIT IA5String. */
+    private static final int GENERAL_NAME_URI = 0x86;
+
+    private static boolean namesCrlDistributionPoint(X509Certificate certificate) {
+        return Objects.nonNull(certificate.getExtensionValue(CRL_DISTRIBUTION_POINTS_OID));
+    }
+
+    /**
+     * Whether the certificate's Authority Information Access names an OCSP responder by URI, which
+     * is the only form the JDK's OCSP checker will consult. A malformed extension names none.
+     */
+    private static boolean namesOcspResponder(X509Certificate certificate) {
+        byte[] extension = certificate.getExtensionValue(AUTHORITY_INFO_ACCESS_OID);
+        if (Objects.isNull(extension)) {
+            return false;
+        }
+        try {
+            // OCTET STRING { SEQUENCE OF AccessDescription { OID accessMethod, GeneralName } }
+            DerReader octets = new DerReader(extension, 0, extension.length);
+            DerReader accessDescriptions = octets.enter(DER_OCTET_STRING).enter(DER_SEQUENCE);
+            while (accessDescriptions.hasMore()) {
+                DerReader description = accessDescriptions.enter(DER_SEQUENCE);
+                byte[] accessMethod = description.content(DER_OID);
+                if (Arrays.equals(accessMethod, ID_AD_OCSP) && description.hasMore()
+                        && description.peekTag() == GENERAL_NAME_URI) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (IllegalArgumentException | ArrayIndexOutOfBoundsException e) {
+            return false;
+        }
+    }
+
+    /** Just enough DER (definite lengths only) to walk an Authority Information Access value. */
+    private static final class DerReader {
+        private final byte[] bytes;
+        private final int end;
+        private int position;
+
+        private DerReader(byte[] bytes, int start, int end) {
+            this.bytes = bytes;
+            this.position = start;
+            this.end = end;
+        }
+
+        boolean hasMore() {
+            return position < end;
+        }
+
+        int peekTag() {
+            return bytes[position] & 0xFF;
+        }
+
+        /** Reads the next element, which must carry {@code tag}, and returns a reader over its content. */
+        DerReader enter(int tag) {
+            if (peekTag() != tag) {
+                throw new IllegalArgumentException("unexpected DER tag");
+            }
+            position++;
+            int first = bytes[position++] & 0xFF;
+            int length = first;
+            if (first > 0x7F) {
+                int count = first & 0x7F;
+                if (count == 0 || count > 3) {
+                    throw new IllegalArgumentException("unsupported DER length");
+                }
+                length = 0;
+                for (int i = 0; i < count; i++) {
+                    length = (length << 8) | (bytes[position++] & 0xFF);
+                }
+            }
+            if (position + length > end) {
+                throw new IllegalArgumentException("DER length overruns its container");
+            }
+            DerReader content = new DerReader(bytes, position, position + length);
+            position += length;
+            return content;
+        }
+
+        byte[] content(int tag) {
+            DerReader content = enter(tag);
+            return Arrays.copyOfRange(bytes, content.position, content.end);
         }
     }
 

@@ -24,8 +24,10 @@ Accepted 2026-11-13. Part of [0022](0022-rewrite-in-go-as-a-standalone-product.m
 - enforces `crit`, `iat + ttl` and the UUID format of `correlationId`;
 - fetches the certificate (`x5c`, `jku` or `x5u`);
 - runs PKIX against the truststore, with revocation options `PREFER_CRLS`, `ONLY_END_ENTITY` and
-  `SOFT_FAIL`. Because `NO_FALLBACK` is absent, **Java falls back to OCSP when no CRL is
-  available.** Self-signed end entities skip revocation;
+  `SOFT_FAIL`. **Java falls back to OCSP when no CRL is available**, except when the end entity
+  names a CRL distribution point and no OCSP responder: then `NO_FALLBACK` is added, so an
+  unreachable CRL soft-fails instead of failing on the missing responder (BUG-003, fixed
+  2026-11-14). Self-signed end entities skip revocation;
 - checks the issuer name;
 - returns the signer subject, which is the reservation holder's identity (ADR-0021).
 
@@ -79,6 +81,18 @@ properties.
 3. **If no CRL is obtainable, fall back to OCSP** from the certificate's AIA.
 4. **Soft-fail** when neither answers. A listed or revoked serial refuses.
 5. Self-signed end entities skip revocation.
+
+The one rule steps 2 to 4 give, and the four answers both builds must agree on: a revocation source
+the certificate **names but that cannot be reached** soft-fails; a certificate a source reports as
+**revoked** is refused; a CA-issued certificate that **names no source at all** is refused, since
+nothing could ever revoke it.
+
+| Sources the end entity names, none reachable | Answer | Pinned by |
+|---|---|---|
+| CRL and OCSP | accepted (soft-fail) | `X9-SIG-058`, `X9-LOC-307` |
+| OCSP only | accepted (soft-fail) | `X9-SIG-057`, `X9-LOC-307` |
+| CRL only | accepted (soft-fail) | `X9-SIG-055`, `X9-SIG-056`, `X9-LOC-307` |
+| neither | refused | `X9-SIG-059`, `X9-LOC-308` |
 
 The test CA covers each branch: valid, revoked by CRL, revoked by OCSP, no responder, untrusted, EC.
 
