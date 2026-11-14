@@ -722,15 +722,15 @@ databaseChangeLog:
             type: VARCHAR(255)
             remarks: 'How the payer broke the protocol (ADR-0036), comma-separated codes in a closed list:
               RECEIVED_IN_WRONG_STATUS, ACTION_CONTRADICTS_HASH. Empty string = the payer followed the rules.'
+            constraints:
+              nullable: false
+            defaultValue: ''
         - column:
             name: received_in_status_code
             type: VARCHAR(4)
             remarks: 'receivedInStatus on the wire: the QR Code''s status when the notification behind this event
               arrived (qr_code_status.code). Empty string = the event was not caused by a notification. No
               foreign key, because of that sentinel; events are a transport.'
-            constraints:
-              nullable: false
-            defaultValue: ''
             constraints:
               nullable: false
             defaultValue: ''
