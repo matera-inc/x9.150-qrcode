@@ -82,7 +82,6 @@ that is here must still be marked `GAP`.
 | `R-ADR0005-03` | Java does not enforce 18 digits: `X9-AMT-421` pins that a 19-digit amount up to 2^63−1 is accepted. The ADR and the behaviour disagree. | The owner decides: enforce 18 digits (a contract change), or correct the ADR. |
 | `R-ADR0006-04` | `paymentNotification.mode` is not in the contract and `APPROVE` is not built. | The owner says whether it is still planned; if not, mark the rule obsolete in ADR-0006. |
 | `R-ADR0007-02` | `x9.certificate.trust.allowed-issuers` and `allow-self-signed` are not built: no code reads them. | The owner says whether the Go build implements them; until then the rule is not testable. |
-| `R-ADR0008-03` | The status-update contract has no `paymentId`; the idempotent retry is not built in this form. A same-status update is a retry (`R-ADR0020-03`). | Mark the rule obsolete in ADR-0008, replaced by ADR-0020's retry. |
 | `R-ADR0011-01` | The quote store applies when FX lands. It is not built. | Nothing to test until FX is built. |
 | `R-ADR0015-07` | No test has a payee answer with a redirect. | Write the test (black-box: the test payee answers 302). |
 | `R-ADR0016-03` | No test asserts that `lockVersion` is absent from every answer. | Write the test (one assertion on a GET). |
@@ -272,7 +271,6 @@ the ADR that changed it.
 | `R-ADR0007-03` | Every payer holding a certificate from a trusted CA is accepted: there is no list of payers. | `X9-SIG-050`, `X9-SIG-054`, `test_signatures.py::test_each_payer_is_accepted_on_its_own_key` | `S3.2-AC1`, `S3.2-AC2` |
 | `R-ADR0008-01` | A status-update `PAYMENT_INITIATED` reserves the QR Code, with no biller vote. | `X9-LIFE-050`, `X9-LIFE-051`, `X9-MAP-010` | `S4.1-AC1`, `S4.1-AC3` |
 | `R-ADR0008-02` | On a `PAID` or `CANCELLED` QR Code it is refused with 409 (on a held one it is a retry, ADR-0020). | `X9-MAP-010`, `X9-LIFE-053`, `X9-LIFE-054` | `S4.1-AC1`, `S4.1-AC3` |
-| `R-ADR0008-03` | It is idempotent on a caller-supplied `paymentId`. | GAP | — |
 | `R-ADR0009-01` | There is no tenant: the events API returns everything the deployment holds. | `X9-EVT-050` | `S4.4-AC2` |
 | `R-ADR0009-02` | Every event carries the keys the consumer routes by: the QR Code id and the biller's invoice number. | `X9-EVT-001` | — |
 | `R-ADR0010-01` | Only rails with a published embedding are interpreted: FedNow, RTP, ACH and Solana. | `X9-RAIL-010`, `X9-RAIL-011`, `X9-RAIL-012`, `X9-RAIL-016` | — |
