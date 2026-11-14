@@ -26,6 +26,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
@@ -57,10 +58,22 @@ class OutboundPaymentNotificationApiTest extends AbstractIntegrationTest {
     private static final AtomicInteger payeeStatus = new AtomicInteger(200);
     private static final AtomicInteger payeeBodyMode = new AtomicInteger(0);
 
+    /** How the stub payee paces its answer. */
+    private static final int PROMPT = 0;
+    private static final int HEADERS_LATE = 1;
+    private static final int BODY_TRICKLED = 2;
+
+    /** Past the 15 s the payer is promised: 15 s plus a margin no scheduler jitter reaches. */
+    private static final long BEYOND_THE_TIMEOUT_MS = 20_000;
+
+    private static final AtomicInteger payeeTiming = new AtomicInteger(PROMPT);
+
     @BeforeAll
     static void startPayee() throws Exception {
         payee = HttpServer.create(new InetSocketAddress("127.0.0.1", PAYEE_PORT), 0);
         payee.createContext("/", OutboundPaymentNotificationApiTest::handle);
+        // A thread per exchange: a slow answer must not hold up the next test's payee.
+        payee.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         payee.start();
     }
 
@@ -77,11 +90,21 @@ class OutboundPaymentNotificationApiTest extends AbstractIntegrationTest {
         receivedContentTypes.clear();
         payeeStatus.set(200);
         payeeBodyMode.set(0);
+        payeeTiming.set(PROMPT);
     }
 
     private static void handle(HttpExchange exchange) throws java.io.IOException {
         received.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
         receivedContentTypes.add(String.valueOf(exchange.getRequestHeaders().getFirst("Content-Type")));
+
+        if (payeeTiming.get() == HEADERS_LATE) {
+            pause(BEYOND_THE_TIMEOUT_MS);
+        }
+
+        if (payeeTiming.get() == BODY_TRICKLED) {
+            trickle(exchange);
+            return;
+        }
 
         byte[] body = payeeBodyMode.get() == 0
             ? new byte[0]
@@ -93,6 +116,32 @@ class OutboundPaymentNotificationApiTest extends AbstractIntegrationTest {
             try (OutputStream out = exchange.getResponseBody()) {
                 out.write(body);
             }
+        }
+    }
+
+    /**
+     * Headers at once, then the body a byte a second for longer than the timeout: every read
+     * makes progress, so only a deadline on the whole answer can stop the wait.
+     */
+    private static void trickle(HttpExchange exchange) throws java.io.IOException {
+        exchange.sendResponseHeaders(200, 0);
+        try (OutputStream out = exchange.getResponseBody()) {
+            for (long waited = 0; waited < BEYOND_THE_TIMEOUT_MS; waited += 1_000) {
+                out.write(' ');
+                out.flush();
+                pause(1_000);
+            }
+            out.write("{}".getBytes(StandardCharsets.UTF_8));
+        } catch (java.io.IOException hungUp) {
+            // The service gave up on us, which is what the test wants.
+        }
+    }
+
+    private static void pause(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -263,6 +312,51 @@ class OutboundPaymentNotificationApiTest extends AbstractIntegrationTest {
         assertEquals(HttpStatus.BAD_GATEWAY.value(), response.statusCode(),
                 "a payee outage is not the caller's fault and not a refusal: " + response.asString());
         assertTrue(received.isEmpty());
+    }
+
+    /**
+     * <b>X9-LIFE-076</b> — a payee that answers after the timeout is a gateway failure.
+     *
+     * <p><b>Source:</b> Mechanism. The outbound client's 15 s read timeout
+     * ({@code ServiceConfiguration.notificationRestClient}); the black-box suite's case 17
+     * (Story 3.5) found it was not holding.
+     *
+     * <p><b>Why:</b> A payer is waiting on this call before deciding whether to move money. A late
+     * answer is no answer: it gets the same 502 as an unreachable payee, not a 200 twenty seconds on.
+     */
+    @Test
+    void aPayeeWhoseHeadersArriveAfterTheTimeoutIsAGatewayFailure() {
+        payeeTiming.set(HEADERS_LATE);
+
+        long started = System.nanoTime();
+        MockMvcResponse response = post("/api/v1/payment-notification/pre-payment", prePayment(PAYEE));
+        long tookMs = (System.nanoTime() - started) / 1_000_000;
+
+        assertEquals(HttpStatus.BAD_GATEWAY.value(), response.statusCode(),
+                "a late answer is no answer: " + response.asString());
+        assertTrue(tookMs < BEYOND_THE_TIMEOUT_MS, "gave up at the timeout, not when the payee finished: " + tookMs);
+    }
+
+    /**
+     * <b>X9-LIFE-077</b> — a payee that sends its headers in time and its body after the timeout is
+     * a gateway failure too.
+     *
+     * <p><b>Source:</b> Mechanism. As LIFE-076: the 15 s bound the whole answer, headers and body.
+     *
+     * <p><b>Why:</b> A deadline that stops at the headers lets a payee hold a payer for as long as it
+     * keeps trickling bytes. The answer is the signed body, so the body is what must be on time.
+     */
+    @Test
+    void aPayeeWhoseBodyTricklesPastTheTimeoutIsAGatewayFailure() {
+        payeeTiming.set(BODY_TRICKLED);
+
+        long started = System.nanoTime();
+        MockMvcResponse response = post("/api/v1/payment-notification/pre-payment", prePayment(PAYEE));
+        long tookMs = (System.nanoTime() - started) / 1_000_000;
+
+        assertEquals(HttpStatus.BAD_GATEWAY.value(), response.statusCode(),
+                "an answer that is not complete in time is no answer: " + response.asString());
+        assertTrue(tookMs < BEYOND_THE_TIMEOUT_MS, "gave up at the timeout, not when the payee finished: " + tookMs);
     }
 
     // ------------------------------------------------------------------------- phase discipline

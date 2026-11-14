@@ -51,6 +51,7 @@ import java.util.Map;
 public class ServiceConfiguration {
 
     public static final String FIXED_DISCOUNT_FORMULA_SERVICE = "fixedDiscountLateFeeLinearInterestFormulaService";
+    public static final String NOTIFICATION_REST_CLIENT = "notificationRestClient";
 
     @Bean
     public PEMService pemService(X9Properties x9Properties) {
@@ -96,22 +97,32 @@ public class ServiceConfiguration {
      * and a list of permitted URLs would refuse payees we can perfectly well pay — the
      * interoperability failure the standard exists to prevent, arrived at from the other direction.
      */
-    @Bean
+    @Bean(NOTIFICATION_REST_CLIENT)
     public RestClient notificationRestClient() {
         HttpClient httpClient = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NEVER)
             .connectTimeout(Duration.ofSeconds(5))
             .build();
 
+        // The JDK factory's read timeout is a deadline on the whole answer, not on each read: it is
+        // counted from the moment the request is sent and closes the body when it passes, so a payee
+        // that sends its headers in time and trickles the body is cut off at 15 s as well.
         JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
         requestFactory.setReadTimeout(Duration.ofSeconds(15));
 
         return RestClient.builder().requestFactory(requestFactory).build();
     }
 
+    /**
+     * Named by qualifier, not by parameter name: the shared {@code restClient} is {@code @Primary},
+     * and a primary bean wins over a parameter-name match. Without the qualifier this gateway was
+     * handed the shared client, with no timeouts at all, and a payee answering after a minute was
+     * waited for and reported as an ordinary answer.
+     */
     @Bean
     public QRCodeOutboundNotificationService outboundNotificationGateway(
-        RestClient notificationRestClient, QRCodeSignatureService qrCodeSignatureService) {
+        @Qualifier(NOTIFICATION_REST_CLIENT) RestClient notificationRestClient,
+        QRCodeSignatureService qrCodeSignatureService) {
 
         return new RestClientOutboundNotificationService(notificationRestClient, qrCodeSignatureService);
     }

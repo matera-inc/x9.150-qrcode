@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**454 tests documented** — every JUnit test in the repository and every case in the
+**456 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -171,6 +171,8 @@ single most important thing this index exists for.
 | `X9-LIFE-073` | a pre-payment carrying a transaction id is refused before it is sent | `OutboundPaymentNotificationApiTest.java` |
 | `X9-LIFE-074` | a post-payment without a transaction id is refused before it is sent | `OutboundPaymentNotificationApiTest.java` |
 | `X9-LIFE-075` | a post-payment carrying its reference is delivered | `OutboundPaymentNotificationApiTest.java` |
+| `X9-LIFE-076` | a payee whose headers arrive after the 15 s timeout is a gateway failure | `OutboundPaymentNotificationApiTest.java` |
+| `X9-LIFE-077` | a payee whose body trickles past the 15 s timeout is a gateway failure | `OutboundPaymentNotificationApiTest.java` |
 | `X9-LIFE-080` | a transient write conflict is retried until it succeeds | `TransientTransactionRetryTest.java` |
 | `X9-LIFE-081` | the transient label is found through the cause chain | `TransientTransactionRetryTest.java` |
 | `X9-LIFE-082` | a duplicate key is not retried | `TransientTransactionRetryTest.java` |

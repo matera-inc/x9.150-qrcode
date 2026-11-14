@@ -319,7 +319,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/BaseError"
         "502":
-          description: "The payee could not be reached at all. Nothing was delivered; retry."
+          description: |-
+            No answer came back from the payee: it could not be reached, it closed the connection
+            without answering, or its whole answer (headers and body) did not arrive within 15
+            seconds. Treat it as undelivered and retry; a payee that answers too late may have
+            received the notification, so it must tolerate seeing it again.
           content:
             application/problem+json:
               schema:
@@ -366,7 +370,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/BaseError"
         "502":
-          description: "The payee could not be reached at all. Nothing was delivered; retry."
+          description: |-
+            No answer came back from the payee: it could not be reached, it closed the connection
+            without answering, or its whole answer (headers and body) did not arrive within 15
+            seconds. Treat it as undelivered and retry; a payee that answers too late may have
+            received the notification, so it must tolerate seeing it again.
           content:
             application/problem+json:
               schema:

@@ -207,12 +207,10 @@ def test_a_payee_that_hangs_up_without_answering_is_502(api, peer, events):
     assert_untouched(api, events, qr)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "Java does not apply its configured 15 s read timeout to outbound notifications "
-    "(ServiceConfiguration.notificationRestClient): a payee answering after 20 s, or 61 s, is "
-    "waited for and its answer reported. Question for the owner."))
 def test_a_payee_answering_after_the_timeout_is_502(api, peer, events):
-    """S3.5-AC2 case 17 — an answer that arrives after the 15 s timeout: 502."""
+    """S3.5-AC2 case 17 — an answer that arrives after the 15 s timeout: 502. (Java once handed
+    this call its shared, @Primary client, which has no timeout, and reported a 20 s answer as an
+    ordinary 200.)"""
     peer.answer = lambda question: peer_module.Answer(200, peer.yes(question).body, delay=20)
 
     response, qr = notify_through(api, peer)
