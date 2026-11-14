@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -115,8 +116,8 @@ func newServer(port int, h http.Handler) *http.Server {
 }
 
 func lookup(env []string, name string) string {
-	for i := len(env) - 1; i >= 0; i-- {
-		if k, v, ok := strings.Cut(env[i], "="); ok && k == name {
+	for _, kv := range slices.Backward(env) {
+		if k, v, ok := strings.Cut(kv, "="); ok && k == name {
 			return v
 		}
 	}

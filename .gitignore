@@ -99,3 +99,6 @@ _bmad-output/
 
 # db/ci/apply-and-check.sh output (update-sql, logs)
 db-out/
+
+# Go CI outputs (others/scripts/ci-go.sh)
+go-ci-out/
