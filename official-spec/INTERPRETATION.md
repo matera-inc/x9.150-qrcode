@@ -71,6 +71,12 @@ it? Ours, and the contract binds it. Someone else's, and we meet them where they
 
 **Where:** §2.4, §14.5
 
+> **Update, 2026-11-14.** The set is now four: `fednow`, `rtp`, `ach` and **`solana`**, the last on
+> the Solana Foundation's published embedding ([SOLANA-FIELDS.md](SOLANA-FIELDS.md), I-8), which is
+> the bar [ADR-0010](../docs/adr/0010-networks-are-interpreted-only-once-their-authority-publishes.md)
+> sets. The reading below is unchanged: anything else is refused at creation, by name
+> ([ADR-0012](../docs/adr/0012-refuse-what-this-deployment-cannot-honour.md), amendment of 2026-11-14).
+
 **What the standard says.** §2.4 closes the set — the value "**SHALL** contain only one of the
 following exact […] values" — and then, two lines later, opens it again: the notification structure
 "is network-agnostic and **MAY** also carry a network not listed above for early adopters." A field
@@ -101,6 +107,11 @@ mentions — the way in is configuration, not another branch in a switch: see
 ## I-3 — USD only, because that is what these three rails settle
 
 **Where:** §2.3 (`$.payment.currency`), §13.5.2 (`$.bill.amountDue.currency`), §14.1 (`$.paymentMethods[].currency`)
+
+> **Update, 2026-11-14.** With Solana interpreted, the shipped allow list is `USD`, `USDC` and
+> `FRNT`, all in one dollar peg group. And **no currency is ever implied**: every payment method and
+> every notification must state its currency, and `supported-currencies.json` is an allow list, never
+> a default. The reasoning below is unchanged.
 
 **What the standard says.** The payload is currency-agnostic: it carries any ISO 4217 code, and
 explicitly "**MAY** also carry non-ISO 4217 digital asset currencies (e.g., USDC, BTC) for early
@@ -492,6 +503,56 @@ and Bean Validation then reads "at least one if you send it" as "you must always
 made `{"allowed": false}`, `{"allowed": true}` and the entire `range` form impossible to create. The
 constraint was unreachable in the only direction that mattered and the reachable behaviour was
 wrong, so the declaration went rather than the semantics.
+
+## I-11 — Leg 1 is always used; leg 2 carries the reference, and on blockchains it is the link
+
+**Where:** Figure 1 step 10a ("Payment Notification"), §2.5 (`$.payment.transactionId`), A.6, A.7
+
+**What the standard says.** The Payer's PSP sends a payment notification "IF requested by the
+Payee's PSP"; the notification carries a "Payment Transaction ID". The standard has no phase marker
+(the committee rejected one), and A.6 and A.7 show how the QR Code id travels inside the payment
+itself on the bank rails: a `QRCD` creditor reference in the pacs.008, and `QRCD:[32-digit-id]` in
+the ACH addenda record ("NACHA review and confirmation are pending").
+
+**What we do.** We read the notification as **two legs**, told apart by the transaction reference
+([ADR-0004](../docs/adr/0004-phase-inferred-from-transaction-id.md)):
+
+- **Leg 1** (no `transactionId`) asks *may I pay this amount?* It is judged by the payee's clock at
+  receipt and, if accepted, reserves the QR Code. It is always used, on every rail: the reservation
+  is what stops two payers from paying the same QR Code at the same time.
+- **Leg 2** (with a `transactionId`) reports *I paid, here is the reference*. It is recorded and never
+  judged again.
+
+What links a payment to its QR Code depends on the rail. On FedNow / RTP and ACH the payment itself
+carries `QRCD`, so leg 2 is a courtesy (and conveys the principal / tip split). On Solana the QR Code
+id travels only in an optional memo that some custody providers' webhooks do not expose, and most
+other chains have no memo at all, so **on blockchains leg 2 is the link**, and leg 1 / leg 2 is the
+mechanism for every chain. See [STATE-MACHINE.md](../STATE-MACHINE.md#leg-1-and-leg-2).
+
+**Known deviations, today.** FedNow / RTP have no leg 1 (every notification must carry an
+End-to-End ID), and ACH judges a notification carrying a Trace Number as leg 1. Both are closed by
+Story 2.4 of the rewrite breakdown ([docs/rewrite/EPICS-AND-STORIES.md](../docs/rewrite/EPICS-AND-STORIES.md)).
+
+## I-12 — The answer to a payment notification is not signed yet (known deviation)
+
+**Where:** A.4.5, the note under the Payment Notification example
+
+**What the standard says.** "For Payment Notification responses, the JWS Body should contain
+`{ "statusCode": integer }` in order for the payer to have the signed response."
+
+**What we do today.** `POST /pub/api/v1/payment-notification` answers an accepted notification with
+an **empty, unsigned 200** (`PublicEndpointsController.processPaymentNotification`), and refusals
+with a plain JSON error. When this service sends a notification on a payer's behalf, it passes the
+payee's answer back without verifying any signature.
+
+**Why it matters.** The signed question (the payer's notification) plus the payee's signed answer,
+linked by `correlationId`, is the evidence of what was authorized and when. Without the signed
+answer, the payer holds nothing that proves the payee said yes.
+
+**Closed by** Story 2.3 of the rewrite breakdown
+([docs/rewrite/EPICS-AND-STORIES.md](../docs/rewrite/EPICS-AND-STORIES.md)): every answer signed,
+refusals included, and the answers this service receives verified. Until then this is a deviation
+from the A.4.5 note, recorded here so nobody mistakes it for a reading.
 
 ---
 
