@@ -1,0 +1,35 @@
+name: Rule coverage
+
+# Story 4.6: every documented rule points to a test, and that is checked, not remembered.
+# Fails a pull request when a test cites an acceptance-criterion ID that EPICS-AND-STORIES.md does
+# not define, when a rule row of docs/RULE-COVERAGE.md has no test (unless it is listed there as a
+# gap, with a reason), or when a row names a test that does not exist (S4.6-AC2). It also fails when
+# a source loses its rows: STATE-MACHINE, ENDPOINTS, an entry of INTERPRETATION, an ADR from 0004 to
+# 0021, ADR-0036, or a row of ADR-0035's map (S4.6-AC1). See docs/check/check_rule_coverage.py.
+#
+# No path filter: a test anywhere can cite a criterion, and a renamed test breaks a row.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  rule-coverage:
+    name: rule coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Test the check itself
+        run: python -m unittest discover -s docs/check -v
+
+      - name: Check that every rule points to a test
+        run: python docs/check/check_rule_coverage.py
