@@ -504,7 +504,7 @@ made `{"allowed": false}`, `{"allowed": true}` and the entire `range` form impos
 constraint was unreachable in the only direction that mattered and the reachable behaviour was
 wrong, so the declaration went rather than the semantics.
 
-## I-11 — Leg 1 is always used; leg 2 carries the reference, and on blockchains it is the link
+## I-11 — Pre-commit is always used; post-commit carries the reference, and on blockchains it is the link
 
 **Where:** Figure 1 step 10a ("Payment Notification"), §2.5 (`$.payment.transactionId`), A.6, A.7
 
@@ -514,24 +514,34 @@ Payee's PSP"; the notification carries a "Payment Transaction ID". The standard 
 itself on the bank rails: a `QRCD` creditor reference in the pacs.008, and `QRCD:[32-digit-id]` in
 the ACH addenda record ("NACHA review and confirmation are pending").
 
-**What we do.** We read the notification as **two legs**, told apart by the transaction reference
+**What we do.** We read the notification as **two phases**, told apart by the transaction reference
 ([ADR-0004](../docs/adr/0004-phase-inferred-from-transaction-id.md)):
 
-- **Leg 1** (no `transactionId`) asks *may I pay this amount?* It is judged by the payee's clock at
+- **Pre-commit** (no `transactionId`) asks *may I pay this amount?* It is judged by the payee's clock at
   receipt and, if accepted, reserves the QR Code. It is always used, on every rail: the reservation
   is what stops two payers from paying the same QR Code at the same time.
-- **Leg 2** (with a `transactionId`) reports *I paid, here is the reference*. It is recorded and never
+- **Post-commit** (with a `transactionId`) reports *I paid, here is the reference*. It is recorded and never
   judged again.
 
 What links a payment to its QR Code depends on the rail. On FedNow / RTP and ACH the payment itself
-carries `QRCD`, so leg 2 is a courtesy (and conveys the principal / tip split). On Solana the QR Code
+carries `QRCD`, so the post-commit is a courtesy (and conveys the principal / tip split). On Solana the QR Code
 id travels only in an optional memo that some custody providers' webhooks do not expose, and most
-other chains have no memo at all, so **on blockchains leg 2 is the link**, and leg 1 / leg 2 is the
-mechanism for every chain. See [STATE-MACHINE.md](../STATE-MACHINE.md#leg-1-and-leg-2).
+other chains have no memo at all, so **on blockchains the post-commit is the link**, and pre-commit / post-commit is the
+mechanism for every chain. See [STATE-MACHINE.md](../STATE-MACHINE.md#pre-commit-and-post-commit).
 
-**Known deviations, today.** FedNow / RTP have no leg 1 (every notification must carry an
-End-to-End ID), and ACH judges a notification carrying a Trace Number as leg 1. Both are closed by
-Story 2.4 of the rewrite breakdown ([docs/rewrite/EPICS-AND-STORIES.md](../docs/rewrite/EPICS-AND-STORIES.md)).
+**Known deviations, today.** FedNow / RTP have no pre-commit (every notification must carry an
+End-to-End ID); ACH judges a notification carrying a Trace Number as a pre-commit; and Solana decides
+the phase from `blockchain.action`, so a `PAYMENT_INITIATED` carrying a hash is judged as a
+pre-commit. All three are closed by Story 2.4 of the rewrite breakdown
+([docs/rewrite/EPICS-AND-STORIES.md](../docs/rewrite/EPICS-AND-STORIES.md)), under
+[ADR-0036](../docs/adr/0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md)
+(proposed).
+
+> ⚠️ **A `PAYMENT_INITIATED` carrying a transaction hash is bad behaviour by the payer:** it asks
+> permission for money that has already moved. Its hash is still recorded, as a post-commit, with a
+> warning. Funds that arrive in the right amount with a matching hash are enough for the payment
+> system to mark the QR Code paid. Every hash is recorded, a second one included, so the payment
+> system can detect a duplicate payment.
 
 ## I-12 — The answer to a payment notification is not signed yet (known deviation)
 
