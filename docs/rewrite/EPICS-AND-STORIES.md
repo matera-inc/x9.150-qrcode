@@ -1643,7 +1643,7 @@ takeover event, exact `validUntil`), which Epics 9–10 port and Epic 11 proves 
 | 10 | 6 | Payers fetch, notify and are evented on Go, under the pre-commit / post-commit rule (FR25) |
 | 11 | 7 | Proven equivalent to Java: differential run and interop (FR26) |
 | 12 | 8 | Retention without surprises: housekeeping (FR27) |
-| 13 | 9 | Operators can migrate data and configuration, reservation holders included (FR28) |
+| 13 | 9 | Operators can migrate data and configuration, reservation holders included; the legacy `SPRING_*`, `MONGO*` and `JASYPT_*` variables are housekept out of the Helm chart, the compose files and the docs, since the Go service refuses them (owner, 2026-11-14) (FR28) |
 | 14 | 10 | The lighter image ships (FR29) |
 | 15 | 10b | `BENCHMARK.md` published (FR30) |
 | 16 | 11 | Cutover; `make` targets renamed (FR31) |
