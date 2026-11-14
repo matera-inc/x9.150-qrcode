@@ -1,0 +1,202 @@
+# Copyright © 2026 Matera Systems, Inc.
+# Licensed under the Matera Source License v1.0 (source-available; not open source). See LICENSE.md.
+# Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
+# based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
+#
+# 0002 — four roles, each with the least privilege its job needs (ADR-0032, ADR-0037, Story 6.2).
+# Applied changesets are never edited; changes go in a new numbered file.
+#
+#   owner         ${x9.role.owner}         owns every object; runs Liquibase, and nothing else
+#   application   ${x9.role.app}           DML on its own tables, no DDL; DELETE only where the
+#                                          retention purge needs it (ADR-0029)
+#   read-only     ${x9.role.readonly}      SELECT only (auditors, the black-box suite's SQL checks)
+#   event reader  ${x9.role.event_reader}  SELECT on payment_event, UPDATE of read_status_code and
+#                                          read_at only (ADR-0037)
+#
+# Role names are changelog properties (db.changelog-master.yaml); write them as lowercase SQL
+# identifiers. No password appears here, ever: the DBA sets them with ALTER ROLE … PASSWORD, or
+# pre-creates the roles. Roles are cluster-wide, so two deployments sharing one cluster use
+# different names.
+#
+# The changelog runs AS the owner role (0002-01 halts otherwise), so every object it creates is owned
+# by that role and ALTER DEFAULT PRIVILEGES FOR ROLE owner reaches every table a later changeset adds.
+# A runtime role is created only when it does not exist yet: either the owner has CREATEROLE, or the
+# DBA pre-creates the role (and then also sets its search_path, or gives the owner ADMIN OPTION on it).
+
+databaseChangeLog:
+- changeSet:
+    id: 0002-01-runs-as-owner
+    author: x9-qrcode
+    comment: Refuses to run unless connected as the owner role, and unless every role and schema name is a plain
+      lowercase identifier (they are written into SQL unquoted).
+    preConditions:
+    - onFail: HALT
+    - onError: HALT
+    - onSqlOutput: TEST
+    - onFailMessage: 'Run Liquibase connected as the owner role named by x9.role.owner, and give x9.schema and
+        every x9.role.* property a lowercase identifier ([a-z_][a-z0-9_]*). See db.changelog-master.yaml.'
+    - sqlCheck:
+        expectedResult: 1
+        sql: >-
+          SELECT CASE WHEN current_user = '${x9.role.owner}'
+            AND '${x9.schema}' ~ '^[a-z_][a-z0-9_]*$'
+            AND '${x9.role.owner}' ~ '^[a-z_][a-z0-9_]*$'
+            AND '${x9.role.app}' ~ '^[a-z_][a-z0-9_]*$'
+            AND '${x9.role.readonly}' ~ '^[a-z_][a-z0-9_]*$'
+            AND '${x9.role.event_reader}' ~ '^[a-z_][a-z0-9_]*$'
+            THEN 1 ELSE 0 END
+    changes:
+    - empty: {}
+- changeSet:
+    id: 0002-02-application-role
+    author: x9-qrcode
+    comment: Creates the application role, unless the DBA pre-created it. LOGIN without a password.
+    preConditions:
+    - onFail: MARK_RAN
+    - onSqlOutput: TEST
+    - sqlCheck:
+        expectedResult: 0
+        sql: SELECT COUNT(*) FROM pg_roles WHERE rolname = '${x9.role.app}'
+    changes:
+    - sql:
+        sql: CREATE ROLE ${x9.role.app} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+- changeSet:
+    id: 0002-03-read-only-role
+    author: x9-qrcode
+    comment: Creates the read-only role, unless the DBA pre-created it. LOGIN without a password.
+    preConditions:
+    - onFail: MARK_RAN
+    - onSqlOutput: TEST
+    - sqlCheck:
+        expectedResult: 0
+        sql: SELECT COUNT(*) FROM pg_roles WHERE rolname = '${x9.role.readonly}'
+    changes:
+    - sql:
+        sql: CREATE ROLE ${x9.role.readonly} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+- changeSet:
+    id: 0002-04-event-reader-role
+    author: x9-qrcode
+    comment: Creates the event-reader role (ADR-0037), unless the DBA pre-created it. LOGIN without a password.
+    preConditions:
+    - onFail: MARK_RAN
+    - onSqlOutput: TEST
+    - sqlCheck:
+        expectedResult: 0
+        sql: SELECT COUNT(*) FROM pg_roles WHERE rolname = '${x9.role.event_reader}'
+    changes:
+    - sql:
+        sql: CREATE ROLE ${x9.role.event_reader} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+- changeSet:
+    id: 0002-05-application-search-path
+    author: x9-qrcode
+    comment: The application role's own default selects the schema (ADR-0032), so SQL stays unqualified and no
+      connection parameter is needed. Skipped when the DBA already set it.
+    preConditions:
+    - onFail: MARK_RAN
+    - onSqlOutput: TEST
+    - sqlCheck:
+        expectedResult: 0
+        sql: >-
+          SELECT COUNT(*) FROM pg_db_role_setting s JOIN pg_roles r ON r.oid = s.setrole
+           WHERE r.rolname = '${x9.role.app}' AND s.setdatabase = 0
+             AND 'search_path=${x9.schema}' = ANY (s.setconfig)
+    changes:
+    - sql:
+        sql: ALTER ROLE ${x9.role.app} SET search_path = ${x9.schema}
+- changeSet:
+    id: 0002-06-read-only-search-path
+    author: x9-qrcode
+    comment: The read-only role's own default selects the schema. Skipped when the DBA already set it.
+    preConditions:
+    - onFail: MARK_RAN
+    - onSqlOutput: TEST
+    - sqlCheck:
+        expectedResult: 0
+        sql: >-
+          SELECT COUNT(*) FROM pg_db_role_setting s JOIN pg_roles r ON r.oid = s.setrole
+           WHERE r.rolname = '${x9.role.readonly}' AND s.setdatabase = 0
+             AND 'search_path=${x9.schema}' = ANY (s.setconfig)
+    changes:
+    - sql:
+        sql: ALTER ROLE ${x9.role.readonly} SET search_path = ${x9.schema}
+- changeSet:
+    id: 0002-07-event-reader-search-path
+    author: x9-qrcode
+    comment: The event-reader role's own default selects the schema. Skipped when the DBA already set it.
+    preConditions:
+    - onFail: MARK_RAN
+    - onSqlOutput: TEST
+    - sqlCheck:
+        expectedResult: 0
+        sql: >-
+          SELECT COUNT(*) FROM pg_db_role_setting s JOIN pg_roles r ON r.oid = s.setrole
+           WHERE r.rolname = '${x9.role.event_reader}' AND s.setdatabase = 0
+             AND 'search_path=${x9.schema}' = ANY (s.setconfig)
+    changes:
+    - sql:
+        sql: ALTER ROLE ${x9.role.event_reader} SET search_path = ${x9.schema}
+- changeSet:
+    id: 0002-08-application-grants
+    author: x9-qrcode
+    comment: 'The application role: USAGE on the schema (never CREATE), and per table only the DML its
+      transitions use. Append-only tables get no UPDATE; payment_event gets no UPDATE because X9.150 never
+      changes an event after inserting it (ADR-0037). Lookups are read-only. It reads databasechangelog to
+      check, at startup, that the schema is the one the binary expects (ADR-0032).'
+    changes:
+    - sql:
+        sql: |-
+          GRANT USAGE ON SCHEMA ${x9.schema} TO ${x9.role.app};
+          GRANT SELECT ON ${x9.schema}.qr_code_status, ${x9.schema}.event_type, ${x9.schema}.event_read_status TO ${x9.role.app};
+          GRANT SELECT, INSERT, UPDATE ON ${x9.schema}.qr_code TO ${x9.role.app};
+          GRANT SELECT, INSERT ON ${x9.schema}.qr_code_audit_log, ${x9.schema}.qr_code_notification TO ${x9.role.app};
+          GRANT SELECT, UPDATE ON ${x9.schema}.event_sequence TO ${x9.role.app};
+          GRANT SELECT, INSERT ON ${x9.schema}.payment_event, ${x9.schema}.payment_event_legacy_cursor TO ${x9.role.app};
+          GRANT SELECT ON ${x9.schema}.databasechangelog TO ${x9.role.app}
+- changeSet:
+    id: 0002-09-retention-purge-grant
+    author: x9-qrcode
+    comment: 'The retention purge''s grant (ADR-0029), kept apart so it is reviewed as one decision: the
+      application may DELETE only from the tables the purge empties. Nothing else it does deletes a row.
+      Lookups and event_sequence are never deleted from.'
+    changes:
+    - sql:
+        sql: |-
+          GRANT DELETE ON ${x9.schema}.qr_code, ${x9.schema}.qr_code_audit_log, ${x9.schema}.qr_code_notification TO ${x9.role.app};
+          GRANT DELETE ON ${x9.schema}.payment_event, ${x9.schema}.payment_event_legacy_cursor TO ${x9.role.app}
+- changeSet:
+    id: 0002-10-read-only-grants
+    author: x9-qrcode
+    comment: 'The read-only role: USAGE on the schema and SELECT on every table, the changelog history
+      included. No other privilege.'
+    changes:
+    - sql:
+        sql: |-
+          GRANT USAGE ON SCHEMA ${x9.schema} TO ${x9.role.readonly};
+          GRANT SELECT ON ${x9.schema}.qr_code_status, ${x9.schema}.event_type, ${x9.schema}.event_read_status TO ${x9.role.readonly};
+          GRANT SELECT ON ${x9.schema}.qr_code, ${x9.schema}.qr_code_audit_log, ${x9.schema}.qr_code_notification TO ${x9.role.readonly};
+          GRANT SELECT ON ${x9.schema}.event_sequence, ${x9.schema}.payment_event, ${x9.schema}.payment_event_legacy_cursor TO ${x9.role.readonly};
+          GRANT SELECT ON ${x9.schema}.databasechangelog TO ${x9.role.readonly}
+- changeSet:
+    id: 0002-11-event-reader-grants
+    author: x9-qrcode
+    comment: 'The event reader (ADR-0037): SELECT on payment_event and a column-level UPDATE of
+      read_status_code and read_at, so it can claim and mark rows but never change what an event says.
+      SELECT on the three lookups only to turn codes into names. No INSERT, no DELETE, no other table.'
+    changes:
+    - sql:
+        sql: |-
+          GRANT USAGE ON SCHEMA ${x9.schema} TO ${x9.role.event_reader};
+          GRANT SELECT ON ${x9.schema}.payment_event TO ${x9.role.event_reader};
+          GRANT UPDATE (read_status_code, read_at) ON ${x9.schema}.payment_event TO ${x9.role.event_reader};
+          GRANT SELECT ON ${x9.schema}.event_type, ${x9.schema}.event_read_status, ${x9.schema}.qr_code_status TO ${x9.role.event_reader}
+- changeSet:
+    id: 0002-12-default-privileges
+    author: x9-qrcode
+    comment: 'Tables a later changeset creates reach the runtime roles without a grant being forgotten: the
+      application gets SELECT and INSERT, the read-only role SELECT. Anything more (UPDATE, the purge''s
+      DELETE, the event reader) stays an explicit grant in that changeset.'
+    changes:
+    - sql:
+        sql: |-
+          ALTER DEFAULT PRIVILEGES FOR ROLE ${x9.role.owner} IN SCHEMA ${x9.schema} GRANT SELECT, INSERT ON TABLES TO ${x9.role.app};
+          ALTER DEFAULT PRIVILEGES FOR ROLE ${x9.role.owner} IN SCHEMA ${x9.schema} GRANT SELECT ON TABLES TO ${x9.role.readonly}
