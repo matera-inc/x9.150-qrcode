@@ -3,7 +3,7 @@
 # Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
 # based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
 #
-# 0001 — the initial schema (ADR-0024, ADR-0025, ADR-0026, ADR-0029). Applied changesets are never
+# 0001 — the initial schema (ADR-0024, ADR-0025, ADR-0026, ADR-0029, ADR-0036, ADR-0037). Applied changesets are never
 # edited; changes go in a new numbered file.
 #
 # Conventions:
@@ -72,7 +72,7 @@ databaseChangeLog:
             value: PAYMENT_INITIATED
         - column:
             name: description
-            value: A payer won leg 1 and holds the reservation until reserved_until.
+            value: A payer's pre-commit or post-commit was accepted, and it holds the reservation until reserved_until.
     - insert:
         schemaName: ${x9.schema}
         tableName: qr_code_status
@@ -141,7 +141,7 @@ databaseChangeLog:
             value: payment.initiated
         - column:
             name: description
-            value: A payer took the reservation (leg 1 accepted, or PAYMENT_INITIATED through status-update).
+            value: A payer took the reservation (a pre-commit, a post-commit on an ACTIVE QR Code, or PAYMENT_INITIATED through status-update).
     - insert:
         schemaName: ${x9.schema}
         tableName: event_type
@@ -154,7 +154,7 @@ databaseChangeLog:
             value: payment.sent
         - column:
             name: description
-            value: The reservation holder reported a committed on-chain transaction (Solana leg 2).
+            value: A committed on-chain transaction hash was registered for this QR Code (Solana post-commit).
     - insert:
         schemaName: ${x9.schema}
         tableName: event_type
@@ -433,8 +433,9 @@ databaseChangeLog:
         - column:
             name: phase
             type: VARCHAR(16)
-            remarks: 'What the notification was taken as: LEG1 (request for permission, takes the reservation),
-              LEG2 (report carrying a transactionId), RELEASE (the holder gives the reservation back).'
+            remarks: 'What the notification was taken as (ADR-0004, ADR-0036): PRE_COMMIT (no transactionId; a request
+              for permission that takes the reservation), POST_COMMIT (carries a transactionId; recorded, never
+              judged again), RELEASE (NOT_SENT: the holder gives the reservation back).'
             constraints:
               nullable: false
         - column:
@@ -561,8 +562,11 @@ databaseChangeLog:
     - createTable:
         schemaName: ${x9.schema}
         tableName: payment_event
-        remarks: 'Append-only payment event log, read by consumers through GET /pub/api/v1/events by seq.
-          Deliberately no foreign key to qr_code: events outlive the QR Codes they describe (ADR-0029).'
+        remarks: 'The outbox (ADR-0037): X9.150 tells the payment system what happened only by inserting a row
+          here, in the transition''s transaction. Read by CDC (inserts only), by plain SQL through read_status_code,
+          or through GET /pub/api/v1/events. Columns are a public contract: added, never renamed or removed, within
+          a major schema_version. Deliberately no foreign key to qr_code: events outlive the QR Codes they describe
+          (ADR-0029).'
         columns:
         - column:
             name: seq
@@ -575,8 +579,8 @@ databaseChangeLog:
         - column:
             name: event_id
             type: UUID
-            remarks: 'eventId on the wire: UUIDv7 for new events, the original id for migrated ones. The
-              consumer''s dedupe key.'
+            remarks: 'eventId on the wire: UUIDv7 for new events, minted in seq order (ADR-0037); the original id
+              for migrated ones. The consumer''s dedupe key.'
             constraints:
               nullable: false
               unique: true
@@ -676,9 +680,33 @@ databaseChangeLog:
         - column:
             name: schema_version
             type: VARCHAR(8)
-            remarks: Version of the event body schema, e.g. 1.0.
+            remarks: Version of the event body schema, e.g. 1.1. Within a major version, fields are only added.
             constraints:
               nullable: false
+        - column:
+            name: deviations
+            type: VARCHAR(255)
+            remarks: 'How the payer broke the protocol (ADR-0036), comma-separated codes in a closed list:
+              NO_PRE_COMMIT, ACTION_CONTRADICTS_HASH. Empty string = the payer followed the rules.'
+            constraints:
+              nullable: false
+            defaultValue: ''
+        - column:
+            name: read_status_code
+            type: VARCHAR(4)
+            remarks: 'For plain SQL readers (ADR-0037), event_read_status.code: PEND when inserted, DONE once
+              the reader processed it. Written only by the reader, never by X9.150 after the insert. CDC
+              readers ignore it.'
+            constraints:
+              nullable: false
+            defaultValue: PEND
+        - column:
+            name: read_at
+            type: TIMESTAMP
+            remarks: UTC instant the reader marked the row DONE. Sentinel 9999-12-31 00:00:00 = not read yet.
+            constraints:
+              nullable: false
+            defaultValue: '9999-12-31 00:00:00'
     - addForeignKeyConstraint:
         constraintName: fk_payment_event_type
         baseTableSchemaName: ${x9.schema}
@@ -738,5 +766,66 @@ databaseChangeLog:
         tableName: payment_event_legacy_cursor
         indexName: ix_payment_event_legacy_cursor_seq
         columns:
+        - column:
+            name: seq
+- changeSet:
+    id: 0001-09-event-read-status
+    author: x9-qrcode
+    comment: Lookup of event read statuses, seeded, and the index plain SQL readers claim pending rows with (ADR-0037).
+    changes:
+    - createTable:
+        schemaName: ${x9.schema}
+        tableName: event_read_status
+        remarks: 'Lookup: whether a plain SQL reader has processed a payment_event row (ADR-0037). Rows are
+          fixed by this changelog.'
+        columns:
+        - column:
+            name: code
+            type: VARCHAR(4)
+            remarks: Short code stored in payment_event.read_status_code.
+            constraints:
+              primaryKey: true
+              nullable: false
+        - column:
+            name: description
+            type: VARCHAR(255)
+            remarks: What the status means, for a human reading the database.
+            constraints:
+              nullable: false
+    - insert:
+        schemaName: ${x9.schema}
+        tableName: event_read_status
+        columns:
+        - column:
+            name: code
+            value: PEND
+        - column:
+            name: description
+            value: Inserted by X9.150 and not yet processed by the SQL reader.
+    - insert:
+        schemaName: ${x9.schema}
+        tableName: event_read_status
+        columns:
+        - column:
+            name: code
+            value: DONE
+        - column:
+            name: description
+            value: Processed by the SQL reader, which set read_at.
+    - addForeignKeyConstraint:
+        constraintName: fk_payment_event_read_status
+        baseTableSchemaName: ${x9.schema}
+        baseTableName: payment_event
+        baseColumnNames: read_status_code
+        referencedTableSchemaName: ${x9.schema}
+        referencedTableName: event_read_status
+        referencedColumnNames: code
+    - createIndex:
+        schemaName: ${x9.schema}
+        tableName: payment_event
+        indexName: ix_payment_event_read_status_seq
+        columns:
+        - column:
+            name: read_status_code
         - column:
             name: seq
