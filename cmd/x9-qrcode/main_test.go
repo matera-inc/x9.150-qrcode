@@ -85,7 +85,7 @@ func TestRunLogsJSONWithTraceIDs(t *testing.T) {
 	port := freePort(t.Context(), t)
 	env := []string{
 		"DATABASE_HOST=127.0.0.1", "DATABASE_PORT=1", "DATABASE_NAME=bank", "DATABASE_USER=app", "DATABASE_PASSWORD=pw",
-		"DATABASE_SSLMODE=disable", "X9_SERVER_PORT=" + strconv.Itoa(port),
+		"DATABASE_SSLMODE=disable", "X9_SERVER_PORT=" + strconv.Itoa(port), "X9_SERVER_SHUTDOWNDELAYSECONDS=0",
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	var out syncBuffer
@@ -141,7 +141,7 @@ func dbEnv(db *dbtest.DB, port int) []string {
 	return []string{
 		"DATABASE_HOST=" + db.Host, "DATABASE_PORT=" + strconv.Itoa(db.Port), "DATABASE_NAME=postgres",
 		"DATABASE_USER=" + dbtest.AppRole, "DATABASE_PASSWORD=unused", "DATABASE_SSLMODE=disable",
-		"X9_SERVER_PORT=" + strconv.Itoa(port),
+		"X9_SERVER_PORT=" + strconv.Itoa(port), "X9_SERVER_SHUTDOWNDELAYSECONDS=0",
 	}
 }
 
@@ -167,7 +167,7 @@ func TestRunAgainstPostgres(t *testing.T) {
 		done := make(chan error, 1)
 		env := dbEnv(db, freePort(ctx, t))
 		go func() { done <- run(ctx, nil, env, &out) }()
-		waitForLog(t, &out, "x9-qrcode schema checked")
+		waitForLog(t, &out, "x9-qrcode ready")
 		cancel()
 		if err := <-done; err != nil {
 			t.Fatalf("run returned %v", err)
