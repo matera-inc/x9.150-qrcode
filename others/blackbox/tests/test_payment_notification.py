@@ -15,8 +15,8 @@ import json
 
 import pytest
 
-from conftest import (BILL, FAR_FUTURE, FEDNOW, PAYER_WALLET, RECIPIENT, TX_HASH, assert_refused,
-                      events_for)
+from x9client.checks import assert_refused
+from x9client.samples import BILL, FAR_FUTURE, FEDNOW, PAYER_WALLET, RECIPIENT, TX_HASH
 
 TIP_10_TO_25 = {"allowed": True, "range": {"min": 10, "max": 25}, "presets": [10, 15, 20]}
 TIP_PRESETS_ONLY = {"allowed": True, "presets": [10, 15, 20]}
@@ -536,7 +536,7 @@ class TestPayerInfo:
 
 class TestEventStream:
 
-    def test_the_event_carries_the_tip_the_payer_reported(self, api):
+    def test_the_event_carries_the_tip_the_payer_reported(self, api, events):
         """X9-EVT-030 — the payment event carries the tip the payer reported.
 
         Source: Ours. ADR-0014 — we transport and sequence, the consuming system reconciles. X9.150
@@ -556,7 +556,7 @@ class TestEventStream:
         status, body = api.notify(qr, amount=BILL + tip, tip=tip)
         assert status == 200, f"{status} {body}"
 
-        mine = events_for(api, qr)
+        mine = events.for_qr(qr)
         assert mine, f"no event for {qr}"
 
         event = mine[-1]
@@ -565,7 +565,7 @@ class TestEventStream:
         assert event["amount"] - event["tipAmount"] == BILL, (
             f"the consumer must be able to derive what settled the bill: {event}")
 
-    def test_an_event_for_a_payment_with_no_tip_reports_no_tip(self, api):
+    def test_an_event_for_a_payment_with_no_tip_reports_no_tip(self, api, events):
         """X9-EVT-031 — an event for a payment with no tip reports no tip.
 
         Source: Ours. ADR-0014.
@@ -578,7 +578,7 @@ class TestEventStream:
         status, body = api.notify(qr, amount=BILL)
         assert status == 200, f"{status} {body}"
 
-        mine = events_for(api, qr)
+        mine = events.for_qr(qr)
         assert mine, f"no event for {qr}"
         assert mine[-1].get("tipAmount") in (None, ), f"expected no tip reported: {mine[-1]}"
 
@@ -611,9 +611,7 @@ class TestCurrencyAndRail:
                           "payer": {"info": "blackbox@example.com"},
                           "blockchain": {"action": "PAYMENT_INITIATED", "from": PAYER_WALLET,
                                          "to": "11111111111111111111111111111111"}})
-        assert_refused(api.call("POST", "/pub/api/v1/payment-notification", raw=token,
-                                headers={"Content-Type": "application/jose"}),
-                       naming="destination address")
+        assert_refused(api.send_notification(token), naming="destination address")
 
     def test_blockchain_data_is_refused_on_a_bank_rail(self, api):
         """X9-RAIL-002 — blockchain data is refused on a bank rail.
@@ -668,19 +666,33 @@ class TestLifecycle:
         api.call("PUT", f"/api/v1/payment-request/{qr}/status-update",
                  body={"status": "CANCELLED"})
         assert api.status_of(qr) == "CANCELLED"
-        assert_refused(api.notify(qr), naming="blockchain.action")
+        assert_refused(api.notify(qr), naming="CANCELLED")
+        assert api.status_of(qr) == "CANCELLED", "and a closed QR Code stays closed"
 
-    def test_a_post_payment_before_any_pre_payment_is_refused(self, api):
-        """X9-LIFE-004 — a post-payment with no pre-payment is refused.
+    def test_a_post_payment_before_any_pre_payment_reserves_and_is_flagged(self, api, events):
+        """X9-LIFE-004 — a post-payment with no pre-payment is accepted, reserves, and is flagged.
 
-        Source: Ours — the two-phase sequence is this implementation's. ADR-0002.
+        Source: Ours. ADR-0036 ("A post-commit on an ACTIVE QR Code reserves it"), which replaced the
+    refusal ADR-0002 used to give.
 
-        Why: The phases exist so the payee can reserve before money moves. A report of completion for a
-    payment never announced means the sequence was skipped, and the reservation never happened.
+        Why: A payer that skipped the pre-commit has still paid. Refusing its report would throw away
+    the one piece of evidence linking those funds to this QR Code. So it is accepted, never judged,
+    takes the reservation so no other payer can start paying, and both events say the payer broke
+    the sequence (RECEIVED_IN_WRONG_STATUS, received in ACTIVE). Never PAID: only the payment
+    system marks a QR Code paid.
         """
         qr = api.create_qr()
-        assert_refused(api.notify(qr, action="SENT", transaction_id=TX_HASH),
-                       naming="blockchain.action")
+
+        status, body = api.notify(qr, action="SENT", transaction_id=TX_HASH)
+
+        assert status == 200, f"the report of a payment already made is accepted: {status} {body}"
+        assert api.status_of(qr) == "PAYMENT_INITIATED", "it reserves; it never marks PAID"
+        mine = events.for_qr(qr, until=lambda es: {"payment.initiated", "payment.sent"}
+                             <= {e.get("type") for e in es})
+        assert [e.get("type") for e in mine] == ["payment.initiated", "payment.sent"], mine
+        for event in mine:
+            assert "RECEIVED_IN_WRONG_STATUS" in (event.get("deviations") or []), event
+            assert event.get("receivedInStatus") == "ACTIVE", event
 
     def test_a_refused_notification_leaves_the_qr_code_active(self, api):
         """X9-LIFE-005 — a refused notification leaves the QR Code ACTIVE.
@@ -805,7 +817,7 @@ class TestReservationOwnership:
         assert status == 409, f"a second payer must be refused with a conflict: {status} {body}"
         assert "another payer" in json.dumps(body).lower(), f"and told why: {body}"
 
-    def test_a_repeated_announcement_emits_no_second_event(self, api):
+    def test_a_repeated_announcement_emits_no_second_event(self, api, events):
         """X9-HOLD-012 — a repeat does not appear on the event stream.
 
         Source: Ours. ADR-0021, with ADR-0001 — the stream is the public contract.
@@ -818,11 +830,11 @@ class TestReservationOwnership:
         api.notify(qr, action="PAYMENT_INITIATED", payer_info=self.PAYER)
         api.notify(qr, action="PAYMENT_INITIATED", payer_info=self.PAYER)
 
-        initiated = [e for e in events_for(api, qr) if e.get("type") == "payment.initiated"]
+        initiated = [e for e in events.for_qr(qr) if e.get("type") == "payment.initiated"]
 
         assert len(initiated) == 1, f"one announcement, one event: {initiated}"
 
-    def test_the_payment_event_carries_the_payer(self, api):
+    def test_the_payment_event_carries_the_payer(self, api, events):
         """X9-HOLD-013 — payment events say who paid.
 
         Source: Ours. ADR-0001 — the stream is the public contract.
@@ -835,13 +847,13 @@ class TestReservationOwnership:
         qr = api.create_qr()
         api.notify(qr, action="PAYMENT_INITIATED", payer_info=self.PAYER)
 
-        mine = events_for(api, qr)
+        mine = events.for_qr(qr)
 
         assert mine, "the announcement must have produced an event"
         assert all(e.get("payerInfo") == self.PAYER for e in mine), \
             f"every event must carry the payer that caused it: {mine}"
 
-    def test_a_payer_who_sent_no_info_reports_null_not_empty(self, api):
+    def test_a_payer_who_sent_no_info_reports_null_not_empty(self, api, events):
         """X9-HOLD-014 — an event for a payer who sent no info carries null, never "".
 
         Source: Ours.
@@ -856,7 +868,7 @@ class TestReservationOwnership:
         qr = api.create_qr()
         api.notify(qr, action="PAYMENT_INITIATED", payer_info=None)
 
-        mine = events_for(api, qr)
+        mine = events.for_qr(qr)
 
         assert mine, "the announcement must have produced an event"
         assert all(e.get("payerInfo", "sentinel") is None for e in mine), \
@@ -908,7 +920,7 @@ class TestNotSentReleases:
         assert status == 200, f"the next payer must be able to take it: {status} {body}"
         assert api.status_of(qr) == "PAYMENT_INITIATED"
 
-    def test_not_sent_emits_payment_failed(self, api):
+    def test_not_sent_emits_payment_failed(self, api, events):
         """X9-HOLD-022 — the release is reported, not silent.
 
         Source: Ours. ADR-0001.
@@ -920,7 +932,7 @@ class TestNotSentReleases:
         api.notify(qr, action="PAYMENT_INITIATED", payer_info=self.PAYER)
         api.notify(qr, action="NOT_SENT", payer_info=self.PAYER)
 
-        mine = [e.get("type") for e in events_for(api, qr)]
+        mine = [e.get("type") for e in events.for_qr(qr)]
 
         assert "payment.failed" in mine, f"the release must be published: {mine}"
 
@@ -940,17 +952,30 @@ class TestNotSentReleases:
         assert status == 409, f"a stranger must not be able to release it: {status} {body}"
         assert api.status_of(qr) == "PAYMENT_INITIATED", "and the holder must keep their reservation"
 
-    def test_a_stranger_cannot_report_somebody_elses_payment(self, api):
-        """X9-HOLD-024 — only the holder may report a payment as sent.
+    def test_a_strangers_report_is_registered_and_the_holder_keeps_the_reservation(self, api,
+                                                                                    events):
+        """X9-HOLD-024 — a stranger's report is registered, flagged, and changes nothing.
 
-        Source: Ours. ADR-0021.
+        Source: Ours. ADR-0036 ("A post-commit on a closed or held QR Code is registered, and
+    changes nothing"), which replaced ADR-0021's 409 for this case.
 
-        Why: A SENT from a party that never announced is reporting on somebody else's payment. It
-    would attach a transaction hash of the stranger's choosing to a bill they have no part in, and
-    the payee reconciles against exactly that.
+        Why: Money has moved, whoever moved it. Refusing the report would throw away the only link
+    between those funds and this QR Code. So the hash is registered under the payer who sent it,
+    flagged RECEIVED_IN_WRONG_STATUS, and the holder keeps its reservation: the stranger gains
+    nothing over the bill, and the payment system can see exactly who broke the rules.
         """
         qr = api.create_qr()
         api.notify(qr, action="PAYMENT_INITIATED", payer_info=self.PAYER)
 
         status, body = api.notify(qr, action="SENT", transaction_id=TX_HASH, payer_info=self.OTHER)
-        assert status == 409, f"a stranger must not report this payment: {status} {body}"
+        assert status == 200, f"the stranger's hash is registered, not refused: {status} {body}"
+        assert api.status_of(qr) == "PAYMENT_INITIATED", "the holder keeps the reservation"
+
+        sent = [e for e in events.for_qr(
+            qr, until=lambda es: any(e.get("type") == "payment.sent" for e in es))
+            if e.get("type") == "payment.sent"]
+        assert len(sent) == 1, f"one hash, one registration: {sent}"
+        assert sent[0].get("transactionId") == TX_HASH
+        assert sent[0].get("payerInfo") == self.OTHER, "registered under the payer who sent it"
+        assert "RECEIVED_IN_WRONG_STATUS" in (sent[0].get("deviations") or []), sent[0]
+        assert sent[0].get("receivedInStatus") == "PAYMENT_INITIATED", sent[0]

@@ -22,6 +22,33 @@ rather not install pytest globally.
 If nothing answers at `X9_BASE_URL`, the suite **skips with a reason** rather than failing —
 but the publish gate treats a suite that could not run as a refusal to publish.
 
+| Variable | Default | Meaning |
+|---|---|---|
+| `X9_BASE_URL` | `http://localhost:8080` | The deployment's API. |
+| `X9_CLOCK_URL` | `http://127.0.0.1:8099` | Its test-clock listener ([RUNNING.md](../../RUNNING.md), "Moving the clock"). Time tests skip with "test clock not enabled" when nothing answers there. |
+| `X9_DATABASE_URL` | unset | Optional read-only database connection (`mongodb://…` for Java, `postgresql://…` for Go). Database checks skip, with the reason, when it is unset or the driver (`pymongo` / `psycopg`) is not installed. |
+| `X9_REQUIRE_ALL` | unset | `1` turns every "capability missing" skip into a failure. CI sets it. |
+
+## Layout
+
+```
+others/blackbox/
+├── x9client/          the only code that knows the protocol (ADR-0034)
+│   ├── api.py         HTTP on the standard library; ETag / If-Match; problem+json
+│   ├── emv.py         TLV decoding and the CRC16 check
+│   ├── clock.py       the movable test clock: move_to(), now(), reset()
+│   ├── events.py      cursor reader of the event stream, deduplicating by eventId
+│   ├── db/            optional read-only inspectors: mongo.py (Java), postgres.py (Go)
+│   ├── samples.py     request bodies a scenario starts from
+│   └── checks.py      assert_refused: refused, and for the right reason
+├── tests/             the scenarios
+├── conftest.py        fixtures: api, events, clock, db
+└── pytest.ini         markers: serial, java_only, go_only
+```
+
+Tests read like scenarios: `api.notify(qr, amount=BILL + 1)`, `events.for_qr(qr)`,
+`clock.move_to(valid_until + 1 s)`. Anything about bytes on the wire belongs in `x9client`.
+
 ## The house rule: refused for the *right* reason
 
 ```python
