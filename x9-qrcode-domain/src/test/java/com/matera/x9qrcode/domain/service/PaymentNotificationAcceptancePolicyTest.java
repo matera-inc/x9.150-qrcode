@@ -78,6 +78,11 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
 
     /** Earns a {@value #DISCOUNT} discount up to 60 days before the due date, then a late fee after it. */
     private QRCodeEntity qrCode() {
+        return qrCode(DUE_DATE.plusDays(1), new LateFeesVO(LATE_FEE, 0L, "late"));
+    }
+
+    /** The same bill, valid (QR Code and payment method) until {@code validUntil}, with these late fees. */
+    private QRCodeEntity qrCode(OffsetDateTime validUntil, LateFeesVO lateFees) {
         BillVO bill = new BillVO(
             new DescriptionVO("late fee and discount"),
             null,
@@ -89,20 +94,20 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
                     FormulaEnum.FIXED_DISCOUNT_LATE_FEE_LINEAR_INTEREST,
                     new AdjustmentParametersVO(
                         List.of(new DiscountVO(60, DISCOUNT, "early payment")),
-                        new LateFeesVO(LATE_FEE, 0L, "late")))),
+                        lateFees))),
             PaymentTimingEnum.DEFERRED);
 
         return QRCodeEntity.create(
             UUID::randomUUID,
             null,
-            DUE_DATE.plusDays(1),
+            validUntil,
             CREDITOR_FIXTURE.creditor(),
             bill,
             new UnstructuredVO("late fee test"),
             List.of(),
             new PaymentNotificationVO(NotificationKindEnum.DEFAULT, null, null),
             List.of(new PaymentMethodVO(
-                "USDC", DUE_DATE.plusDays(1), new AmountVO(FACE), null,
+                "USDC", validUntil, new AmountVO(FACE), null,
                 new NetworksVO(null, null, null, new SolanaPaymentAddressVO(WALLET, MEMO), Map.of()))));
     }
 
@@ -333,6 +338,46 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
             () -> policy.accept(qrCode(), notificationOf(FACE + LATE_FEE), DUE_DATE));
 
         assertEquals("paymentNotification.data.payment.amount", exception.field());
+    }
+
+    // ---------------------------- the payee honours what it signed (Story 2.6)
+
+    /**
+     * S2.6-AC1 — a pre-commit with the discounted amount is accepted at exactly E, the instant the
+     * discount was advertised until, and refused 1 ms later, when the face amount is still accepted.
+     */
+    @Test
+    void theDiscountedAmountIsAcceptedAtItsAdvertisedEdgeAndRefusedOneMillisecondAfter() {
+        OffsetDateTime eligibilityEnds = DUE_DATE.minusDays(60);
+        OffsetDateTime oneMsAfter = eligibilityEnds.plusNanos(1_000_000);
+
+        assertDoesNotThrow(() -> policy.accept(qrCode(), notificationOf(FACE - DISCOUNT), eligibilityEnds));
+
+        BusinessRuleException exception = assertThrows(BusinessRuleException.class,
+            () -> policy.accept(qrCode(), notificationOf(FACE - DISCOUNT), oneMsAfter));
+        assertEquals("paymentNotification.data.payment.amount", exception.field());
+
+        assertDoesNotThrow(() -> policy.accept(qrCode(), notificationOf(FACE), oneMsAfter));
+    }
+
+    /**
+     * S2.6-AC2 — k days late, a pre-commit with the fee advertised until dueDate + k × 24 h is
+     * accepted at that instant and refused 1 ms later, when one more day is owed.
+     */
+    @Test
+    void theLateFeeAmountIsAcceptedAtItsAdvertisedBoundaryAndRefusedOneMillisecondAfter() {
+        // A per-day fee and no fixed one, so each 24 h boundary changes the amount owed.
+        QRCodeEntity perDay = qrCode(DUE_DATE.plusDays(10), new LateFeesVO(0L, LATE_FEE, "late"));
+        OffsetDateTime secondBoundary = DUE_DATE.plusDays(2);
+        OffsetDateTime oneMsAfter = secondBoundary.plusNanos(1_000_000);
+
+        assertDoesNotThrow(() -> policy.accept(perDay, notificationOf(FACE + 2 * LATE_FEE), secondBoundary));
+
+        BusinessRuleException exception = assertThrows(BusinessRuleException.class,
+            () -> policy.accept(perDay, notificationOf(FACE + 2 * LATE_FEE), oneMsAfter));
+        assertEquals("paymentNotification.data.payment.amount", exception.field());
+
+        assertDoesNotThrow(() -> policy.accept(perDay, notificationOf(FACE + 3 * LATE_FEE), oneMsAfter));
     }
 
     // ------------------------------------------------------- what a third-party payer may send

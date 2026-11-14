@@ -31,9 +31,12 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
+import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
 @RequiredArgsConstructor
@@ -95,6 +98,13 @@ public class RetrieveQRCodePayloadUseCase extends UseCase<RetrieveQRCodePayloadI
             );
         }
 
+        List<PaymentMethodVO> validPaymentMethods =
+            getValidPaymentMethods(qrCodeEntity, input.getZonedDateForPayment());
+
+        if (nonNull(formulaResult)) {
+            formulaResult = formulaResult.cappedAt(adjustmentCap(qrCodeEntity, validPaymentMethods));
+        }
+
         String qrCodeContent = Base64.getUrlEncoder().withoutPadding().encodeToString(
             qrCodeEntity.getQrcodeContent().value().getBytes(StandardCharsets.UTF_8)
         );
@@ -116,8 +126,7 @@ public class RetrieveQRCodePayloadUseCase extends UseCase<RetrieveQRCodePayloadI
             qrCodeEntity.getUnstructured().value(),
             qrCodeEntity.getAdditionalInformation(),
             getPaymentNotificationUri(qrCodeEntity),
-            RetrieveQRCodePayloadPaymentMethodMapper.map(
-                getValidPaymentMethods(qrCodeEntity, input.getZonedDateForPayment()), formulaResult),
+            RetrieveQRCodePayloadPaymentMethodMapper.map(validPaymentMethods, formulaResult),
             RetrieveQRCodePayloadFormulaResultMapper.map(formulaResult)
         );
     }
@@ -161,6 +170,27 @@ public class RetrieveQRCodePayloadUseCase extends UseCase<RetrieveQRCodePayloadI
         } catch (BusinessRuleException e) {
             throw new BusinessRuleException(EXPIRED_PAYLOAD_ERROR_MESSAGE.formatted(locationId.valueAsString()));
         }
+    }
+
+    /**
+     * The latest instant an adjusted amount can be advertised until: no later than the QR Code's
+     * own validUntil, nor than the last of the payment methods it is quoted for. Each method still
+     * carries its own validUntil beside its amount, so a method that lapses sooner says so itself.
+     */
+    private static OffsetDateTime adjustmentCap(QRCodeEntity qrCodeEntity, List<PaymentMethodVO> paymentMethods) {
+        OffsetDateTime cap = qrCodeEntity.getValidUntil();
+
+        if (isNull(paymentMethods)) {
+            return cap;
+        }
+
+        OffsetDateTime lastMethodEnds = paymentMethods.stream()
+            .map(PaymentMethodVO::validUntil)
+            .filter(Objects::nonNull)
+            .max(Comparator.naturalOrder())
+            .orElse(cap);
+
+        return isNull(cap) || lastMethodEnds.isBefore(cap) ? lastMethodEnds : cap;
     }
 
     private List<PaymentMethodVO> getValidPaymentMethods(QRCodeEntity qrCodeEntity, OffsetDateTime dateForPayment) {

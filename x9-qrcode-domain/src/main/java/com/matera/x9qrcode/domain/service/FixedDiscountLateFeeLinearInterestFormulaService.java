@@ -46,7 +46,9 @@ public class FixedDiscountLateFeeLinearInterestFormulaService implements Formula
                 fee,
                 parameters.lateFees().explanation(),
                 currency,
-                calculateValidUntil(currentDate)
+                // The fee for k days applies up to and including dueDate + k × 24 h; one
+                // millisecond later it is k + 1 days. That boundary is what the payee signs.
+                dueDate.plus(Duration.ofMillis(daysLate * DAY_MILLIS))
             );
         }
 
@@ -66,7 +68,9 @@ public class FixedDiscountLateFeeLinearInterestFormulaService implements Formula
                 originalAmount - discount.discount(),
                 Math.negateExact(discount.discount()),
                 discount.explanation(), currency,
-                calculateValidUntil(dueDate, discount.daysBefore()))
+                // E itself: the instant eligibility ends (inclusive), so the advertised edge and
+                // the accepted edge are the same instant.
+                dueDate.minusDays(discount.daysBefore()))
         ).orElse(null);
     }
 
@@ -84,14 +88,6 @@ public class FixedDiscountLateFeeLinearInterestFormulaService implements Formula
         long late = Duration.between(dueDate, currentDate).toMillis();
 
         return (late + DAY_MILLIS - 1) / DAY_MILLIS;
-    }
-
-    private static OffsetDateTime calculateValidUntil(OffsetDateTime date, Integer daysBefore) {
-        return date.minusDays(daysBefore).withHour(23).withMinute(59).withSecond(59);
-    }
-
-    private OffsetDateTime calculateValidUntil(OffsetDateTime date) {
-        return date.withHour(23).withMinute(59).withSecond(59);
     }
 
 }
