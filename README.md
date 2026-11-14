@@ -29,8 +29,7 @@ funds and integrates with this service, never the other way round:
 
 - **This service only records events.** Each status change writes an event in the same transaction:
   a MongoDB collection today, the `payment_event` table in the Go build, where that table is the
-  outbox ([ADR-0037](docs/adr/0037-the-event-table-is-the-outbox-read-by-cdc-or-plain-sql.md),
-  proposed).
+  outbox ([ADR-0037](docs/adr/0037-the-event-table-is-the-outbox-read-by-cdc-or-plain-sql.md)).
 - **The payment system reads them** through the HTTP event API, or in the Go build straight from the
   table, by change data capture (Debezium, for example) or by plain SQL.
 - **The payment system closes the QR Code** through the status-update API: `PAID` once it has
