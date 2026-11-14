@@ -1,0 +1,742 @@
+# Copyright © 2026 Matera Systems, Inc.
+# Licensed under the Matera Source License v1.0 (source-available; not open source). See LICENSE.md.
+# Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
+# based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
+#
+# 0001 — the initial schema (ADR-0024, ADR-0025, ADR-0026, ADR-0029). Applied changesets are never
+# edited; changes go in a new numbered file.
+#
+# Conventions:
+#   - ids are UUID columns minted by the application (QR Code v7, location v4, event v7);
+#   - times are TIMESTAMP holding UTC, computed by the application, never by the database;
+#   - money is BIGINT in minor units;
+#   - no NULLs: "none" is a sentinel, stated in each column's comment
+#     ('' for text, -1 for an absent amount, 9999-12-31 00:00:00 for "no instant");
+#   - JSON that is stored and read whole is JSON (ADR-0023); nothing queries inside it.
+
+databaseChangeLog:
+- changeSet:
+    id: 0001-01-qr-code-status
+    author: x9-qrcode
+    comment: Lookup of QR Code statuses, seeded.
+    changes:
+    - createTable:
+        schemaName: ${x9.schema}
+        tableName: qr_code_status
+        remarks: 'Lookup: the status of a QR Code. Rows are fixed by this changelog; the application reads
+          them only to map codes to wire names.'
+        columns:
+        - column:
+            name: code
+            type: VARCHAR(4)
+            remarks: Short code stored in qr_code.status_code.
+            constraints:
+              primaryKey: true
+              nullable: false
+        - column:
+            name: name
+            type: VARCHAR(32)
+            remarks: The status as it appears on the wire (QRCodeStatus in openapi.yaml).
+            constraints:
+              nullable: false
+              unique: true
+        - column:
+            name: description
+            type: VARCHAR(255)
+            remarks: What the status means, for a human reading the database.
+            constraints:
+              nullable: false
+    - insert:
+        schemaName: ${x9.schema}
+        tableName: qr_code_status
+        columns:
+        - column:
+            name: code
+            value: ACTV
+        - column:
+            name: name
+            value: ACTIVE
+        - column:
+            name: description
+            value: Created and available for payment. Also what a lapsed reservation reads as (applied
+              on read, ADR-0019).
+    - insert:
+        schemaName: ${x9.schema}
+        tableName: qr_code_status
+        columns:
+        - column:
+            name: code
+            value: INIT
+        - column:
+            name: name
+            value: PAYMENT_INITIATED
+        - column:
+            name: description
+            value: A payer won leg 1 and holds the reservation until reserved_until.
+    - insert:
+        schemaName: ${x9.schema}
+        tableName: qr_code_status
+        columns:
+        - column:
+            name: code
+            value: PAID
+        - column:
+            name: name
+            value: PAID
+        - column:
+            name: description
+            value: Terminal. Set only through the status-update API, by the system that received the funds.
+    - insert:
+        schemaName: ${x9.schema}
+        tableName: qr_code_status
+        columns:
+        - column:
+            name: code
+            value: CANC
+        - column:
+            name: name
+            value: CANCELLED
+        - column:
+            name: description
+            value: Terminal. Cancelled by the biller.
+- changeSet:
+    id: 0001-02-event-type
+    author: x9-qrcode
+    comment: Lookup of payment event types, seeded.
+    changes:
+    - createTable:
+        schemaName: ${x9.schema}
+        tableName: event_type
+        remarks: 'Lookup: the type of a payment event. Rows are fixed by this changelog.'
+        columns:
+        - column:
+            name: code
+            type: VARCHAR(4)
+            remarks: Short code stored in payment_event.type_code.
+            constraints:
+              primaryKey: true
+              nullable: false
+        - column:
+            name: name
+            type: VARCHAR(32)
+            remarks: The type as it appears on the wire (PaymentEvent.type in openapi.yaml).
+            constraints:
+              nullable: false
+              unique: true
+        - column:
+            name: description
+            type: VARCHAR(255)
+            remarks: What the event reports, for a human reading the database.
+            constraints:
+              nullable: false
+    - insert:
+        schemaName: ${x9.schema}
+        tableName: event_type
+        columns:
+        - column:
+            name: code
+            value: INIT
+        - column:
+            name: name
+            value: payment.initiated
+        - column:
+            name: description
+            value: A payer took the reservation (leg 1 accepted, or PAYMENT_INITIATED through status-update).
+    - insert:
+        schemaName: ${x9.schema}
+        tableName: event_type
+        columns:
+        - column:
+            name: code
+            value: SENT
+        - column:
+            name: name
+            value: payment.sent
+        - column:
+            name: description
+            value: The reservation holder reported a committed on-chain transaction (Solana leg 2).
+    - insert:
+        schemaName: ${x9.schema}
+        tableName: event_type
+        columns:
+        - column:
+            name: code
+            value: FAIL
+        - column:
+            name: name
+            value: payment.failed
+        - column:
+            name: description
+            value: The reservation was given back (NOT_SENT, or a release on that rail).
+    - insert:
+        schemaName: ${x9.schema}
+        tableName: event_type
+        columns:
+        - column:
+            name: code
+            value: CLRD
+        - column:
+            name: name
+            value: payment.cleared
+        - column:
+            name: description
+            value: The QR Code was marked PAID through the status-update API.
+    - insert:
+        schemaName: ${x9.schema}
+        tableName: event_type
+        columns:
+        - column:
+            name: code
+            value: CANC
+        - column:
+            name: name
+            value: payment.cancelled
+        - column:
+            name: description
+            value: The QR Code was cancelled.
+- changeSet:
+    id: 0001-03-qr-code
+    author: x9-qrcode
+    comment: The QR Code table, its unique location, and the purge index.
+    changes:
+    - createTable:
+        schemaName: ${x9.schema}
+        tableName: qr_code
+        remarks: One row per QR Code (payment request), holding its current state. Read by id or by location
+          in one row (ADR-0024). Mutated only by conditional UPDATEs guarded by lock_version.
+        columns:
+        - column:
+            name: id
+            type: UUID
+            remarks: QR Code id, UUIDv7 minted by the application; 32 upper-case hex on the wire.
+            constraints:
+              primaryKey: true
+              nullable: false
+        - column:
+            name: location_id
+            type: UUID
+            remarks: Location id, UUIDv4, printed inside the EMV string and resolved by /loc/{id}. Unique
+              across ALL rows, live or not (ADR-0024).
+            constraints:
+              nullable: false
+        - column:
+            name: emv_content
+            type: VARCHAR(512)
+            remarks: The EMV QR string issued for location_id. Written only together with location_id;
+              byte-compared on payload retrieval.
+            constraints:
+              nullable: false
+        - column:
+            name: valid_until
+            type: TIMESTAMP
+            remarks: UTC instant after which payers may no longer fetch or pay it. Computed from request_json
+              by create and PATCH.
+            constraints:
+              nullable: false
+        - column:
+            name: status_code
+            type: VARCHAR(4)
+            remarks: 'Stored status (qr_code_status.code). The effective status is applied on read: INIT
+              past reserved_until reads as ACTV (ADR-0019).'
+            constraints:
+              nullable: false
+        - column:
+            name: revision
+            type: INT
+            remarks: Revision of the request content. Moves only on PATCH (ADR-0016).
+            constraints:
+              nullable: false
+        - column:
+            name: lock_version
+            type: INT
+            remarks: Optimistic lock. Every write is UPDATE ... WHERE lock_version = v, and sets v + 1.
+            constraints:
+              nullable: false
+        - column:
+            name: reserved_until
+            type: TIMESTAMP
+            remarks: UTC instant the reservation lapses. Sentinel 9999-12-31 00:00:00 = no lapse instant
+              (no reservation, or one taken without a window).
+            constraints:
+              nullable: false
+            defaultValue: '9999-12-31 00:00:00'
+        - column:
+            name: reserved_by_payer_info
+            type: VARCHAR(254)
+            remarks: payer.info of the reservation holder, as sent. Empty string = no holder; INIT with
+              both holder columns empty = an unattributed reservation taken through status-update.
+            constraints:
+              nullable: false
+            defaultValue: ''
+        - column:
+            name: reserved_by_signer_subject
+            type: VARCHAR(1024)
+            remarks: Subject of the certificate that signed the holder's notification. Empty string =
+              no holder.
+            constraints:
+              nullable: false
+            defaultValue: ''
+        - column:
+            name: end_to_end_id
+            type: VARCHAR(255)
+            remarks: Payment reference given with status-update PAID (paymentDetails.endToEndId). Empty
+              string = none.
+            constraints:
+              nullable: false
+            defaultValue: ''
+        - column:
+            name: payment_network
+            type: VARCHAR(64)
+            remarks: Network given with status-update PAID (paymentDetails.network). Empty string = none.
+            constraints:
+              nullable: false
+            defaultValue: ''
+        - column:
+            name: request_json
+            type: JSON
+            remarks: The bill content of the create and PATCH bodies, stored and read whole. Never holds
+              the location or lifecycle data (status, reservation, payment details, notifications).
+            constraints:
+              nullable: false
+        - column:
+            name: created_at
+            type: TIMESTAMP
+            remarks: UTC instant the QR Code was created.
+            constraints:
+              nullable: false
+        - column:
+            name: revised_at
+            type: TIMESTAMP
+            remarks: UTC instant of the last write of any kind (every transition sets it).
+            constraints:
+              nullable: false
+    - addForeignKeyConstraint:
+        constraintName: fk_qr_code_status
+        baseTableSchemaName: ${x9.schema}
+        baseTableName: qr_code
+        baseColumnNames: status_code
+        referencedTableSchemaName: ${x9.schema}
+        referencedTableName: qr_code_status
+        referencedColumnNames: code
+    - createIndex:
+        schemaName: ${x9.schema}
+        tableName: qr_code
+        indexName: ux_qr_code_location_id
+        columns:
+        - column:
+            name: location_id
+        unique: true
+    - createIndex:
+        schemaName: ${x9.schema}
+        tableName: qr_code
+        indexName: ix_qr_code_status_code
+        columns:
+        - column:
+            name: status_code
+    - createIndex:
+        schemaName: ${x9.schema}
+        tableName: qr_code
+        indexName: ix_qr_code_purge
+        columns:
+        - column:
+            name: valid_until
+        - column:
+            name: revised_at
+- changeSet:
+    id: 0001-04-qr-code-audit-log
+    author: x9-qrcode
+    comment: The PATCH audit log. Its primary key leads with qr_code_id, so it also indexes the foreign
+      key.
+    changes:
+    - createTable:
+        schemaName: ${x9.schema}
+        tableName: qr_code_audit_log
+        remarks: 'Append-only audit log of PATCHes (ADR-0024): one row per PATCH, holding only the top-level
+          tags it changed, with their previous values. Never read by the API. Purged with its QR Code.'
+        columns:
+        - column:
+            name: qr_code_id
+            type: UUID
+            remarks: The patched QR Code (qr_code.id).
+            constraints:
+              nullable: false
+        - column:
+            name: revision
+            type: INT
+            remarks: The revision BEFORE the PATCH incremented it. Row (id, n) holds the values that revision
+              n had.
+            constraints:
+              nullable: false
+        - column:
+            name: changed_at
+            type: TIMESTAMP
+            remarks: UTC instant of the PATCH.
+            constraints:
+              nullable: false
+        - column:
+            name: changed_fields
+            type: VARCHAR(128)
+            remarks: Comma-separated top-level tags the PATCH changed (of locationId, validUntil, unstructured,
+              additionalInformation, bill, paymentMethods).
+            constraints:
+              nullable: false
+        - column:
+            name: previous_values
+            type: JSON
+            remarks: JSON object holding only the changed tags, with their previous values; a JSON null
+              means the tag had no value.
+            constraints:
+              nullable: false
+    - addPrimaryKey:
+        schemaName: ${x9.schema}
+        tableName: qr_code_audit_log
+        columnNames: qr_code_id, revision
+        constraintName: pk_qr_code_audit_log
+    - addForeignKeyConstraint:
+        constraintName: fk_qr_code_audit_log_qr_code
+        baseTableSchemaName: ${x9.schema}
+        baseTableName: qr_code_audit_log
+        baseColumnNames: qr_code_id
+        referencedTableSchemaName: ${x9.schema}
+        referencedTableName: qr_code
+        referencedColumnNames: id
+- changeSet:
+    id: 0001-05-qr-code-notification
+    author: x9-qrcode
+    comment: Accepted payment notifications, with the raw JWS.
+    changes:
+    - createTable:
+        schemaName: ${x9.schema}
+        tableName: qr_code_notification
+        remarks: Every accepted inbound payment notification, append-only. The newest row per QR Code
+          is the "last stored notification" that event bodies are built from (ADR-0035).
+        columns:
+        - column:
+            name: id
+            type: UUID
+            remarks: Notification id, UUIDv7; its order is the arrival order.
+            constraints:
+              primaryKey: true
+              nullable: false
+        - column:
+            name: qr_code_id
+            type: UUID
+            remarks: The QR Code notified about (qr_code.id).
+            constraints:
+              nullable: false
+        - column:
+            name: received_at
+            type: TIMESTAMP
+            remarks: UTC instant the payee accepted it (the payee's clock decides).
+            constraints:
+              nullable: false
+        - column:
+            name: phase
+            type: VARCHAR(16)
+            remarks: 'What the notification was taken as: LEG1 (request for permission, takes the reservation),
+              LEG2 (report carrying a transactionId), RELEASE (the holder gives the reservation back).'
+            constraints:
+              nullable: false
+        - column:
+            name: network
+            type: VARCHAR(64)
+            remarks: $.payment.network exactly as received (echoed verbatim on the wire).
+            constraints:
+              nullable: false
+        - column:
+            name: currency
+            type: VARCHAR(32)
+            remarks: $.payment.currency as received.
+            constraints:
+              nullable: false
+        - column:
+            name: amount
+            type: BIGINT
+            remarks: $.payment.amount in minor units, tip included.
+            constraints:
+              nullable: false
+        - column:
+            name: tip_amount
+            type: BIGINT
+            remarks: $.payment.tipAmount in minor units. -1 = absent from the notification.
+            constraints:
+              nullable: false
+            defaultValueNumeric: -1
+        - column:
+            name: transaction_id
+            type: VARCHAR(255)
+            remarks: $.payment.transactionId (End-to-End ID, Trace Number or transaction hash). Empty
+              string = absent.
+            constraints:
+              nullable: false
+            defaultValue: ''
+        - column:
+            name: payer_info
+            type: VARCHAR(254)
+            remarks: $.payer.info as received. Empty string = absent.
+            constraints:
+              nullable: false
+            defaultValue: ''
+        - column:
+            name: signer_subject
+            type: VARCHAR(1024)
+            remarks: Subject of the certificate that signed the notification. Empty string for rows migrated
+              without their JWS.
+            constraints:
+              nullable: false
+            defaultValue: ''
+        - column:
+            name: notification_json
+            type: JSON
+            remarks: The parsed notification exactly as accepted, so optional fields stay absent rather
+              than becoming 0.
+            constraints:
+              nullable: false
+        - column:
+            name: jws_compact
+            type: VARCHAR(65535)
+            remarks: The compact JWS as received, kept as evidence. Empty string for rows migrated from
+              the Java build, which did not keep it.
+            constraints:
+              nullable: false
+            defaultValue: ''
+    - addForeignKeyConstraint:
+        constraintName: fk_qr_code_notification_qr_code
+        baseTableSchemaName: ${x9.schema}
+        baseTableName: qr_code_notification
+        baseColumnNames: qr_code_id
+        referencedTableSchemaName: ${x9.schema}
+        referencedTableName: qr_code
+        referencedColumnNames: id
+    - createIndex:
+        schemaName: ${x9.schema}
+        tableName: qr_code_notification
+        indexName: ix_qr_code_notification_qr_code_id
+        columns:
+        - column:
+            name: qr_code_id
+- changeSet:
+    id: 0001-06-event-sequence
+    author: x9-qrcode
+    comment: The event sequence row, seeded with last_seq = 0.
+    changes:
+    - createTable:
+        schemaName: ${x9.schema}
+        tableName: event_sequence
+        remarks: One row holding the last event sequence number handed out. A transition increments it
+          and inserts its event with INSERT ... SELECT last_seq in the same batch, so the cursor order
+          is the visibility order (ADR-0025).
+        columns:
+        - column:
+            name: id
+            type: SMALLINT
+            remarks: 'Always 1: there is exactly one row.'
+            constraints:
+              primaryKey: true
+              nullable: false
+        - column:
+            name: last_seq
+            type: BIGINT
+            remarks: The highest payment_event.seq handed out; 0 before the first event.
+            constraints:
+              nullable: false
+    - sql:
+        sql: ALTER TABLE ${x9.schema}.event_sequence ADD CONSTRAINT ck_event_sequence_single_row CHECK
+          (id = 1)
+    - insert:
+        schemaName: ${x9.schema}
+        tableName: event_sequence
+        columns:
+        - column:
+            name: id
+            valueNumeric: 1
+        - column:
+            name: last_seq
+            valueNumeric: 0
+- changeSet:
+    id: 0001-07-payment-event
+    author: x9-qrcode
+    comment: The event log, with the purge index on occurred_at.
+    changes:
+    - createTable:
+        schemaName: ${x9.schema}
+        tableName: payment_event
+        remarks: 'Append-only payment event log, read by consumers through GET /pub/api/v1/events by seq.
+          Deliberately no foreign key to qr_code: events outlive the QR Codes they describe (ADR-0029).'
+        columns:
+        - column:
+            name: seq
+            type: BIGINT
+            remarks: Event sequence number from event_sequence; the cursor, as a decimal string on the
+              wire.
+            constraints:
+              primaryKey: true
+              nullable: false
+        - column:
+            name: event_id
+            type: UUID
+            remarks: 'eventId on the wire: UUIDv7 for new events, the original id for migrated ones. The
+              consumer''s dedupe key.'
+            constraints:
+              nullable: false
+              unique: true
+        - column:
+            name: type_code
+            type: VARCHAR(4)
+            remarks: Event type (event_type.code).
+            constraints:
+              nullable: false
+        - column:
+            name: occurred_at
+            type: TIMESTAMP
+            remarks: UTC instant of the transition that emitted the event.
+            constraints:
+              nullable: false
+        - column:
+            name: qr_code_id
+            type: UUID
+            remarks: 'The QR Code the event is about. Not a foreign key: the QR Code may be purged first.'
+            constraints:
+              nullable: false
+        - column:
+            name: qr_code_revision
+            type: INT
+            remarks: The QR Code revision at the time of the event.
+            constraints:
+              nullable: false
+        - column:
+            name: location_id
+            type: UUID
+            remarks: The QR Code location at the time of the event.
+            constraints:
+              nullable: false
+        - column:
+            name: amount
+            type: BIGINT
+            remarks: Amount in minor units. -1 = absent from the event body.
+            constraints:
+              nullable: false
+            defaultValueNumeric: -1
+        - column:
+            name: tip_amount
+            type: BIGINT
+            remarks: Tip amount in minor units. -1 = absent from the event body.
+            constraints:
+              nullable: false
+            defaultValueNumeric: -1
+        - column:
+            name: payer_info
+            type: VARCHAR(254)
+            remarks: Payer info. Empty string = absent.
+            constraints:
+              nullable: false
+            defaultValue: ''
+        - column:
+            name: currency
+            type: VARCHAR(32)
+            remarks: Currency code. Empty string = absent.
+            constraints:
+              nullable: false
+            defaultValue: ''
+        - column:
+            name: network
+            type: VARCHAR(64)
+            remarks: Network, as received. Empty string = absent.
+            constraints:
+              nullable: false
+            defaultValue: ''
+        - column:
+            name: transaction_id
+            type: VARCHAR(255)
+            remarks: The rail's reference. Empty string = absent.
+            constraints:
+              nullable: false
+            defaultValue: ''
+        - column:
+            name: invoice_number
+            type: VARCHAR(20)
+            remarks: The biller's invoice number, for correlation. Empty string = absent.
+            constraints:
+              nullable: false
+            defaultValue: ''
+        - column:
+            name: order_number
+            type: VARCHAR(20)
+            remarks: The biller's order number, for correlation. Empty string = absent.
+            constraints:
+              nullable: false
+            defaultValue: ''
+        - column:
+            name: reason
+            type: VARCHAR(255)
+            remarks: Why, for payment.failed. Empty string = absent.
+            constraints:
+              nullable: false
+            defaultValue: ''
+        - column:
+            name: schema_version
+            type: VARCHAR(8)
+            remarks: Version of the event body schema, e.g. 1.0.
+            constraints:
+              nullable: false
+    - addForeignKeyConstraint:
+        constraintName: fk_payment_event_type
+        baseTableSchemaName: ${x9.schema}
+        baseTableName: payment_event
+        baseColumnNames: type_code
+        referencedTableSchemaName: ${x9.schema}
+        referencedTableName: event_type
+        referencedColumnNames: code
+    - createIndex:
+        schemaName: ${x9.schema}
+        tableName: payment_event
+        indexName: ix_payment_event_type_code
+        columns:
+        - column:
+            name: type_code
+    - createIndex:
+        schemaName: ${x9.schema}
+        tableName: payment_event
+        indexName: ix_payment_event_occurred_at
+        columns:
+        - column:
+            name: occurred_at
+- changeSet:
+    id: 0001-08-payment-event-legacy-cursor
+    author: x9-qrcode
+    comment: Translation of legacy ULID cursors.
+    changes:
+    - createTable:
+        schemaName: ${x9.schema}
+        tableName: payment_event_legacy_cursor
+        remarks: ULID cursors of events migrated from the Java build, so a consumer's stored cursor keeps
+          working (ADR-0026). Rows exist for migrated events only; purged with their events.
+        columns:
+        - column:
+            name: legacy_cursor
+            type: VARCHAR(26)
+            remarks: The ULID cursor the Java build handed out.
+            constraints:
+              primaryKey: true
+              nullable: false
+        - column:
+            name: seq
+            type: BIGINT
+            remarks: The payment_event.seq the cursor translates to.
+            constraints:
+              nullable: false
+    - addForeignKeyConstraint:
+        constraintName: fk_payment_event_legacy_cursor_event
+        baseTableSchemaName: ${x9.schema}
+        baseTableName: payment_event_legacy_cursor
+        baseColumnNames: seq
+        referencedTableSchemaName: ${x9.schema}
+        referencedTableName: payment_event
+        referencedColumnNames: seq
+    - createIndex:
+        schemaName: ${x9.schema}
+        tableName: payment_event_legacy_cursor
+        indexName: ix_payment_event_legacy_cursor_seq
+        columns:
+        - column:
+            name: seq
