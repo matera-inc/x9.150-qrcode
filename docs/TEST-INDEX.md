@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**462 tests documented** — every JUnit test in the repository and every case in the
+**487 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -312,6 +312,38 @@ Only the party that announced a payment may re-announce it, report it, or give i
 | `X9-HOLD-322` | with ttl-seconds 0 a refused retry still frees the QR Code | `NoReservationWindowApiTest.java` |
 | `X9-HOLD-323` | a negative x9.reservation.ttl-seconds refuses to start | `ReservationTtlConfigurationTest.java` |
 | `X9-HOLD-324` | 0 and positive values of x9.reservation.ttl-seconds are accepted as they are | `ReservationTtlConfigurationTest.java` |
+
+## The transition map (ADR-0035)
+
+One black-box test per row of ADR-0035's map (Story 4.1); the row-to-test table is in the ADR.
+
+| Key | What it proves | Where |
+|---|---|---|
+| `X9-MAP-001` | create: ACTIVE, no event | `test_transition_map.py` |
+| `X9-MAP-002` | PATCH: allowed from ACTIVE and PAYMENT_INITIATED, status unchanged, revision moves, no event; refused from PAID and CANCELLED | `test_transition_map.py` |
+| `X9-MAP-010` | status-update PAYMENT_INITIATED: from ACTIVE, unattributed reservation, `payment.initiated`; 409 otherwise (two cells contradict Java, strict xfail) | `test_transition_map.py` |
+| `X9-MAP-011` | status-update PAID: from ACTIVE or PAYMENT_INITIATED, `payment.cleared` with the last notification's body; 400 from CANCELLED (PAID → PAID contradicts Java, strict xfail) | `test_transition_map.py` |
+| `X9-MAP-012` | status-update CANCELLED: from ACTIVE or PAYMENT_INITIATED, `payment.cancelled`; 400 from PAID (CANCELLED → CANCELLED contradicts Java, strict xfail) | `test_transition_map.py` |
+| `X9-MAP-013` | status-update ACTIVE: from PAYMENT_INITIATED, no event, the reservation is gone; 400 from PAID, CANCELLED and a lapsed reservation (ACTIVE → ACTIVE contradicts Java, strict xfail) | `test_transition_map.py` |
+| `X9-MAP-020` | a pre-commit on ACTIVE, every rail, takes the reservation with `payment.initiated`, a lapsed one's takeover included | `test_transition_map.py` |
+| `X9-MAP-021` | the holder's retry changes nothing, emits nothing, and refreshes the window | `test_transition_map.py` |
+| `X9-MAP-022` | a pre-commit once a hash is registered is 409, the holder's included | `test_transition_map.py` |
+| `X9-MAP-023` | the holder's retry refused by the gate releases the reservation; `payment.failed` on a chain with the stored notification's body | `test_transition_map.py` |
+| `X9-MAP-024` | a pre-commit while another payer holds the QR Code is 409, a payer without `payer.info` included | `test_transition_map.py` |
+| `X9-MAP-025` | a pre-commit on PAID or CANCELLED is 400 | `test_transition_map.py` |
+| `X9-MAP-030` | a bank-rail post-commit on ACTIVE reserves, stops the window, `payment.initiated` flagged | `test_transition_map.py` |
+| `X9-MAP-031` | a blockchain post-commit on ACTIVE reserves, stops the window, `payment.initiated` then `payment.sent`, both flagged | `test_transition_map.py` |
+| `X9-MAP-032` | the holder's post-commit: unchanged, window stopped, clean `payment.sent` on a chain | `test_transition_map.py` |
+| `X9-MAP-033` | a post-commit while someone else holds it is registered, flagged, and the holder keeps it | `test_transition_map.py` |
+| `X9-MAP-034` | a post-commit on PAID or CANCELLED is registered, flagged, and never reopens it | `test_transition_map.py` |
+| `X9-MAP-040` | PAYMENT_INITIATED carrying a hash is a post-commit, flagged ACTION_CONTRADICTS_HASH | `test_transition_map.py` |
+| `X9-MAP-041` | SENT without a hash is 400 in every status | `test_transition_map.py` |
+| `X9-MAP-042` | the holder's NOT_SENT releases with `payment.failed`, a lapsed reservation's included | `test_transition_map.py` |
+| `X9-MAP-043` | the holder's NOT_SENT once a hash is registered changes nothing and emits nothing | `test_transition_map.py` |
+| `X9-MAP-044` | NOT_SENT carrying a transactionId is a post-commit, flagged ACTION_CONTRADICTS_HASH | `test_transition_map.py` |
+| `X9-MAP-045` | NOT_SENT not from the holder: 409 while held, 400 on ACTIVE, PAID, CANCELLED | `test_transition_map.py` |
+| `X9-MAP-050` | a location released by a rebind: the donor keeps its status, gets a new location, no event | `test_transition_map.py` |
+| `X9-MAP-051` | a lapse reads ACTIVE, writes nothing, emits nothing; never once a hash is registered | `test_transition_map.py` |
 
 ## Locations and payload retrieval
 

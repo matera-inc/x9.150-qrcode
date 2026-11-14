@@ -9,7 +9,7 @@
 # so it works on Colima, which cannot mount paths under /Volumes):
 #
 #   x9-qrcode-under-test:local   $X9_IMAGE plus the black-box truststore
-#   x9-blackbox-runner:local     the suite, the bundled test CA, openapi.yaml
+#   x9-blackbox-runner:local     the suite, the bundled test CA, openapi.yaml, ADR-0035
 #
 # then starts docker-compose.yml and exits with the suite's own exit code. A suite that could not
 # run fails: the service never healthy, zero tests collected (pytest exit 5), or any capability
@@ -37,6 +37,9 @@ cp -R "$ROOT/x9-qrcode-infrastructure/src/test/resources/certificate" \
       "$STAGE/runner/x9-qrcode-infrastructure/src/test/resources/"
 cp "$ROOT/x9-qrcode-infrastructure/src/main/resources/apis/openapi.yaml" \
    "$STAGE/runner/x9-qrcode-infrastructure/src/main/resources/apis/"
+# ADR-0035, so test_transition_map.py can check every row of its map has a test (Story 4.1).
+mkdir -p "$STAGE/runner/docs/adr"
+cp "$ROOT"/docs/adr/0035-*.md "$STAGE/runner/docs/adr/"
 cp "$HERE/x9-blackbox-truststore.jks" "$STAGE/under-test/"
 
 echo "== building x9-qrcode-under-test:local from $X9_IMAGE"

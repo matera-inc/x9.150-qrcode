@@ -95,8 +95,10 @@ def full_patch(created):
 
 def notification(qr_id, *, amount=BILL, tip=None, currency="USDC", network="Solana",
                  action="PAYMENT_INITIATED", transaction_id=None, blockchain=True,
-                 payer_info="blackbox@example.com", sender=PAYER_WALLET, recipient=RECIPIENT):
-    """A payment notification body. ``payer_info=None`` sends a payer object with no info."""
+                 payer_info="blackbox@example.com", sender=PAYER_WALLET, recipient=RECIPIENT,
+                 expected_date=None):
+    """A payment notification body. ``payer_info=None`` sends a payer object with no info.
+    ``expected_date`` (RFC 3339) is the settlement date ACH requires."""
     payment = {"qrcodeId": qr_id, "amount": amount, "currency": currency, "network": network}
     if tip is not None:
         payment["tipAmount"] = tip
@@ -104,6 +106,8 @@ def notification(qr_id, *, amount=BILL, tip=None, currency="USDC", network="Sola
         payment["transactionId"] = transaction_id
 
     body = {"payment": payment, "payer": {"info": payer_info}}
+    if expected_date:
+        body["expectedDate"] = expected_date
     if blockchain:
         body["blockchain"] = {"action": action, "from": sender, "to": recipient}
     return body
