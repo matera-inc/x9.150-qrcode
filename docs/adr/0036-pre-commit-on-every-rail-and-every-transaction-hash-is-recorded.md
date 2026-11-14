@@ -71,10 +71,16 @@ So, on a blockchain:
 
 ### Every transaction hash is recorded
 
-- **A hash is never overwritten or dropped.** A second or later post-commit is recorded beside the
-  first. In Java each one is published as its own `payment.sent` event (the QR Code document keeps
-  only the latest notification); in Go each one is its own row in `qr_code_notification`
-  ([ADR-0024](0024-a-qr-code-is-one-row-and-every-patch-is-audit-logged.md)).
+**"Recorded" means registered with the payment system.** On a blockchain, each hash is published as
+a `payment.sent` event through the outbox ([ADR-0001](0001-events-leave-by-pull-not-push.md)). The
+event tells the payment system: *if this hash arrives, it is for this QR Code.* The hash is also
+stored with the notification, but storage alone is not registration: the event is what reaches the
+payment system.
+
+- **A hash is never overwritten or dropped.** A second or later post-commit publishes its own
+  `payment.sent`, beside the first. In Go each one is also its own row in `qr_code_notification`
+  ([ADR-0024](0024-a-qr-code-is-one-row-and-every-patch-is-audit-logged.md)); the Java QR Code
+  document keeps only the latest notification, but every event survives in the event log.
 - **X9.150 never marks a QR Code paid on a payer's report.** The payment system that receives the
   funds matches each hash against what arrived, and calls the status-update API. Which party does
   the matching changes; the mechanics do not.
@@ -91,12 +97,32 @@ So, on a blockchain:
   same transaction.
 - Winning a pre-commit on a lapsed reservation emits `payment.initiated` for the new holder.
 
-### Post-commit from the payer that won the pre-commit
+### A post-commit on an `ACTIVE` QR Code reserves it
 
-**To be confirmed next (open).** As proposed: a post-commit is accepted from the payer that holds, or
-last held, the reservation (ADR-0021), and is recorded and never judged again. What happens to a
-post-commit from anyone else, including a payer that never sent a pre-commit, is the next decision.
-It must be squared with the rule above that every hash is recorded.
+A payer that skipped the pre-commit has still paid. When its post-commit reaches a QR Code that is
+`ACTIVE` (effective status, so a lapsed reservation counts), it is accepted, never judged on amount
+or time, and in one transaction:
+
+- the QR Code moves to `PAYMENT_INITIATED`, held by that payer (`payer.info` and certificate
+  subject, ADR-0021), so no other payer can now start paying it;
+- `payment.initiated` is published, then, on a blockchain, `payment.sent` registers the hash;
+- on a bank rail only `payment.initiated` is published: the payment itself carries the QR Code id
+  (`QRCD`), and bank rails never emit `payment.sent`.
+
+A contradictory `PAYMENT_INITIATED` carrying a hash takes this same path.
+
+**To be confirmed (open):** whether a reservation taken or held through a post-commit may lapse.
+Today it keeps the window of the pre-commit (Java's `SENT` does not restamp it), so once the window
+passes the QR Code reads `ACTIVE` and a second payer can be authorized, although money has already
+moved. The proposal: once a post-commit is recorded, the reservation no longer lapses; it ends only
+when the payee marks the QR Code `PAID`, `CANCELLED` or `ACTIVE` again.
+
+### Post-commit while another payer holds, or after the QR Code is closed
+
+**To be confirmed next (open).** A post-commit from the holder is accepted, recorded and never judged
+again. What happens to one from a different payer while the reservation is held, or to any
+post-commit after the QR Code is `PAID` or `CANCELLED`, is the next decision. Java refuses both
+today (409 and 400), which loses the hash that would reveal a duplicate payment.
 
 ## Consequences
 
@@ -106,8 +132,11 @@ It must be squared with the rule above that every hash is recorded.
 - A misbehaving payer is named in the log and in the stored record, and its money is still
   traceable.
 - The two-payer race is closed on every rail, FedNow and RTP included.
-- FedNow/RTP payers that send only a post-commit today must send a pre-commit first. Those rails
-  carry the QR Code id in the pacs.008 (`QRCD`), so the payee can still reconcile without it.
+- A payer that skips the pre-commit is not refused: its post-commit reserves the QR Code and
+  registers its hash. FedNow/RTP payers that send only a post-commit today keep working, and their
+  courtesy notification now takes the QR Code out of circulation.
+- ADR-0035's transition map gains rows: post-commit on `ACTIVE` (bank rail: `payment.initiated`;
+  blockchain: `payment.initiated` then `payment.sent`), and the contradictory `PAYMENT_INITIATED`.
 - The change ships in Java before the freeze (Stories 2.4 and 2.5), and Go ports it through the
   ADR-0035 transition map.
 
@@ -117,6 +146,8 @@ It must be squared with the rule above that every hash is recorded.
   refuses a contradictory message, so the payee loses the hash of money that has already moved.
 - **Refuse a second or later hash.** It hides the one signal that a QR Code was paid twice.
 - **Keep only the latest hash.** Same loss, more quietly.
+- **Refuse a post-commit on an `ACTIVE` QR Code** (an earlier draft of this ADR). The money has
+  moved; refusing leaves the QR Code open to a second payer and the payment system without the hash.
 - **Mark the QR Code paid on a post-commit.** X9.150 cannot see funds arrive; only the payment
   system that receives them can.
 
