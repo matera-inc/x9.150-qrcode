@@ -358,38 +358,44 @@ class Tamperer:
         self.signer = signer
         self.untrusted = untrusted_identity
 
-    def token(self, case, payload):
-        return getattr(self, case)(payload)
+    def token(self, case, payload, **header_args):
+        """The ``case`` token for ``payload``. ``header_args`` (``correlation_id``, ``crit``,
+        ``extra``...) shape the rest of the header, so a payee's answer can be tampered with too:
+        the one defect stays the only thing wrong with it."""
+        return getattr(self, case)(payload, **header_args)
 
-    def wrong_key(self, payload):
-        """The certificate is the payer's; the signature is another key's."""
+    def wrong_key(self, payload, **h):
+        """The certificate is the signer's; the signature is another key's."""
         is_ec = isinstance(self.signer.identity.key, ec.EllipticCurvePrivateKey)
-        return self.signer.sign(payload, key=new_key("ec" if is_ec else "rsa"))
+        return self.signer.sign(payload, key=new_key("ec" if is_ec else "rsa"), **h)
 
-    def untrusted_ca(self, payload):
-        return Signer(self.untrusted, self.signer.now_ms).sign(payload)
+    def untrusted_ca(self, payload, **h):
+        return Signer(self.untrusted, self.signer.now_ms).sign(payload, **h)
 
-    def expired(self, payload):
+    def expired(self, payload, **h):
         """Dated ten minutes ago with a one-minute ttl: iat + ttl passed nine minutes ago."""
-        return self.signer.sign(payload, iat=self.signer.now_ms() - 600_000, ttl=60_000)
+        return self.signer.sign(payload, **{**h, "iat": self.signer.now_ms() - 600_000,
+                                            "ttl": 60_000})
 
-    def future_iat(self, payload):
+    def future_iat(self, payload, **h):
         """Dated five minutes ahead: beyond the 60 s skew the service forgives."""
-        return self.signer.sign(payload, iat=self.signer.now_ms() + 300_000)
+        return self.signer.sign(payload, **{**h, "iat": self.signer.now_ms() + 300_000})
 
-    def missing_crit(self, payload):
-        return self.signer.sign(payload, drop=("crit",))
+    def missing_crit(self, payload, **h):
+        return self.signer.sign(payload, **{**h, "drop": ("crit",)})
 
-    def unknown_crit(self, payload):
-        return self.signer.sign(payload, crit=CRIT + ["x9blackbox"], extra={"x9blackbox": True})
+    def unknown_crit(self, payload, **h):
+        crit = list(h.get("crit") or CRIT) + ["x9blackbox"]
+        extra = {**(h.get("extra") or {}), "x9blackbox": True}
+        return self.signer.sign(payload, **{**h, "crit": crit, "extra": extra})
 
-    def missing_x5c(self, payload):
+    def missing_x5c(self, payload, **h):
         """No x5c, no x5u, no jku: nothing to verify with."""
-        return self.signer.sign(payload, x5c=False)
+        return self.signer.sign(payload, **{**h, "x5c": False})
 
-    def altered_payload(self, payload):
+    def altered_payload(self, payload, **h):
         """Signed, then one claim changed: the amount, the field an attacker would change."""
-        header, _, signature = self.signer.sign(payload).split(".")
+        header, _, signature = self.signer.sign(payload, **h).split(".")
         altered = json.loads(json.dumps(payload))
         if "payment" in altered and "amount" in altered["payment"]:
             altered["payment"]["amount"] = altered["payment"]["amount"] + 1
@@ -398,7 +404,7 @@ class Tamperer:
         return f"{header}.{b64u_json(altered)}.{signature}"
 
     @staticmethod
-    def alg_none(payload):
+    def alg_none(payload, **_):
         """An unsecured JOSE object: ``alg: none`` and no signature at all."""
         return f"{b64u_json({'alg': 'none'})}.{b64u_json(payload)}."
 
