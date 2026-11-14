@@ -31,6 +31,7 @@ import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 /**
  * {@code GET/PUT/DELETE /test/clock} on a listener of its own (ADR-0033).
@@ -40,15 +41,24 @@ import java.util.function.Supplier;
  * {@code X9_TESTING_CLOCKCONTROL=true}; see {@link TestClockConfiguration}.
  *
  * <ul>
- *   <li>{@code PUT {"offsetSeconds": n}} or {@code PUT {"at": "2031-12-31T23:59:50Z"}} shifts the clock;</li>
+ *   <li>{@code PUT {"at": "2031-12-31T23:59:59.999Z"}}, {@code PUT {"offsetMillis": n}} or
+ *       {@code PUT {"offsetSeconds": n}} shifts the clock — exactly one of the three;</li>
  *   <li>{@code DELETE} restores real time;</li>
- *   <li>all three answer {@code {"now": "…Z", "offsetSeconds": n}}.</li>
+ *   <li>all three answer {@code {"now": "…Z", "offsetMillis": n}}.</li>
  * </ul>
+ *
+ * <p>The offset is held in milliseconds, so {@code at} keeps its milliseconds and an edge test can
+ * put the clock at E + 1 ms.
  */
 @Slf4j
 public class TestClockServer implements SmartLifecycle {
 
     static final String PATH = "/test/clock";
+
+    private static final String AT = "at";
+    private static final String OFFSET_MILLIS = "offsetMillis";
+    private static final String OFFSET_SECONDS = "offsetSeconds";
+    private static final String ONE_OF = "{\"at\": \"…\"}, {\"offsetMillis\": n} or {\"offsetSeconds\": n}";
 
     private final String listen;
     private final ObjectMapper objectMapper;
@@ -141,42 +151,52 @@ public class TestClockServer implements SmartLifecycle {
         try (InputStream in = exchange.getRequestBody()) {
             body = objectMapper.readTree(in);
         } catch (IOException e) {
-            respond(exchange, 400, Map.of("error", "body must be JSON: {\"at\": \"…\"} or {\"offsetSeconds\": n}"));
+            respond(exchange, 400, Map.of("error", "body must be JSON: " + ONE_OF));
             return;
         }
 
-        boolean hasAt = Objects.nonNull(body) && body.hasNonNull("at");
-        boolean hasOffset = Objects.nonNull(body) && body.hasNonNull("offsetSeconds");
-        if (hasAt == hasOffset) {
-            respond(exchange, 400, Map.of("error", "send exactly one of \"at\" or \"offsetSeconds\""));
+        long given = Objects.isNull(body) ? 0
+            : Stream.of(AT, OFFSET_MILLIS, OFFSET_SECONDS).filter(body::hasNonNull).count();
+        if (given != 1) {
+            respond(exchange, 400, Map.of("error", "send exactly one of " + ONE_OF));
             return;
         }
 
         try {
-            if (hasAt) {
-                BusinessClock.setAt(Instant.parse(body.get("at").asText()));
-            } else if (body.get("offsetSeconds").canConvertToLong() && body.get("offsetSeconds").isIntegralNumber()) {
-                BusinessClock.setOffsetSeconds(body.get("offsetSeconds").asLong());
+            if (body.hasNonNull(AT)) {
+                BusinessClock.setAt(Instant.parse(body.get(AT).asText()));
+            } else if (body.hasNonNull(OFFSET_MILLIS)) {
+                BusinessClock.setOffsetMillis(integer(body, OFFSET_MILLIS));
             } else {
-                respond(exchange, 400, Map.of("error", "offsetSeconds must be an integer"));
-                return;
+                BusinessClock.setOffsetMillis(Math.multiplyExact(integer(body, OFFSET_SECONDS), 1_000L));
             }
         } catch (DateTimeParseException e) {
-            respond(exchange, 400, Map.of("error", "at must be an RFC 3339 instant, e.g. 2031-12-31T23:59:50Z"));
+            respond(exchange, 400, Map.of("error", "at must be an RFC 3339 instant, e.g. 2031-12-31T23:59:59.999Z"));
+            return;
+        } catch (ArithmeticException e) {
+            respond(exchange, 400, Map.of("error", OFFSET_SECONDS + " is too large"));
             return;
         } catch (IllegalArgumentException e) {
             respond(exchange, 400, Map.of("error", e.getMessage()));
             return;
         }
 
-        log.warn("Test clock moved: offsetSeconds={}", BusinessClock.offsetSeconds());
+        log.warn("Test clock moved: offsetMillis={}", BusinessClock.offsetMillis());
         respond(exchange, 200, state());
+    }
+
+    private static long integer(JsonNode body, String field) {
+        JsonNode value = body.get(field);
+        if (!value.isIntegralNumber() || !value.canConvertToLong()) {
+            throw new IllegalArgumentException(field + " must be an integer");
+        }
+        return value.asLong();
     }
 
     private static Map<String, Object> state() {
         Map<String, Object> state = new LinkedHashMap<>();
         state.put("now", BusinessClock.clock().instant().truncatedTo(ChronoUnit.MILLIS).toString());
-        state.put("offsetSeconds", BusinessClock.offsetSeconds());
+        state.put(OFFSET_MILLIS, BusinessClock.offsetMillis());
         return state;
     }
 
