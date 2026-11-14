@@ -738,6 +738,7 @@ yes; no `payment.sent` (bank rails never emit it).
 **And** in one transaction the QR Code moves to `PAYMENT_INITIATED`, held by that payer, and
 `payment.initiated` is published; on Solana `payment.sent` follows, registering the hash ("if this
 hash arrives, it is for this QR Code"); bank rails publish no `payment.sent`
+**And** both events carry `deviations: ["NO_PRE_COMMIT"]`, and `schemaVersion` is `1.1` (ADR-0036)
 **And** another payer's pre-commit is then refused with 409
 **And** whether this reservation may lapse is **open** (ADR-0036 proposes that, once a post-commit is
 recorded, it lasts until the payee marks the QR Code `PAID`, `CANCELLED` or `ACTIVE`).
@@ -750,6 +751,8 @@ amount or time, answered with a signed yes, and logged as a warning naming the p
 **And** a code comment and INTERPRETATION say plainly that this is bad payer behaviour, and that the
 hash is kept because funds that arrive in the right amount with a matching hash are enough for the
 payment system to mark the QR Code paid
+**And** its events carry `ACTION_CONTRADICTS_HASH` in `deviations` (with `NO_PRE_COMMIT` too when the
+payer held no reservation)
 **And** `SENT` without a hash is still refused with 400, and `NOT_SENT` still releases.
 
 **S2.4-AC6. Every transaction hash is recorded.**
