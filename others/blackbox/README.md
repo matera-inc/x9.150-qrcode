@@ -11,16 +11,46 @@ to a unit test that was passing at the time.
 ## Running it
 
 ```bash
-make blackbox                      # against http://localhost:8080
-X9_BASE_URL=http://localhost:8070 pytest others/blackbox
+make blackbox                                  # against http://localhost:8080
+uv run others/blackbox/run.py                  # the same, with no virtualenv (PEP 723 header)
+X9_BASE_URL=http://localhost:8070 uv run others/blackbox/run.py -k signatures
 ```
 
-Zero dependencies beyond pytest itself, deliberately: a suite that fails to install is a suite
-that silently does not run. `make blackbox-venv` builds `.blackbox-venv` if you would
-rather not install pytest globally.
+Two pinned dependencies (`requirements.txt`, and the same pins in `run.py`'s header): pytest,
+and `cryptography`, because the suite signs as independent payers and the standard library cannot
+make an RSA or EC signature (ADR-0034). HTTP stays on the standard library. `make blackbox-venv`
+builds `.blackbox-venv`; `requirements-db-mongo.txt` and `requirements-db-postgres.txt` add the
+optional database inspectors.
 
 If nothing answers at `X9_BASE_URL`, the suite **skips with a reason** rather than failing —
 but the publish gate treats a suite that could not run as a refusal to publish.
+
+### The deployment under test
+
+The suite never asks the service to sign for it (no call to `/api/v1/signature/generate`). Its
+payers, A (RSA, `PS512`) and B (EC, `ES256`), are issued at run time by the repository's bundled
+**test CA** (`x9-test-ca.p12`, non-production, its key is public), along with a revoked payer and
+one from a CA nobody trusts. So the deployment must:
+
+- **trust the test CA.** Start it with `others/blackbox/deployment/x9-blackbox-truststore.jks`,
+  which holds the test CA and the shipped demo certificate (so the deployment, still signing with
+  the demo key, can verify itself when its decoder fetches its own payloads):
+
+  ```bash
+  X9_CERTIFICATE_TRUSTSTORE_LOCATION=file:$PWD/others/blackbox/deployment/x9-blackbox-truststore.jks
+  X9_CERTIFICATE_TRUSTSTORE_PASSWORD=x9test123
+  X9_CERTIFICATE_TRUSTSTORE_ALIAS=x9-test-ca
+  ```
+
+- **reach the suite's CRL.** The service checks revocation of every CA-issued certificate, and a
+  CRL it cannot fetch is not forgiven: the payer is refused as undeterminable. The suite serves the
+  CRL itself; `X9_SUITE_HOST` is this machine's address *as the service sees it*: `127.0.0.1`
+  (the default) when both run on one host or share a network namespace, `host.docker.internal`
+  for a container started with `--add-host host.docker.internal:host-gateway`.
+
+If either is missing, the first payer is refused with 401 and the suite stops there with that
+diagnosis, instead of failing every test for one reason. **Never** give a production deployment
+this truststore: it trusts keys anybody can download.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -38,11 +68,14 @@ others/blackbox/
 │   ├── emv.py         TLV decoding and the CRC16 check
 │   ├── clock.py       the movable test clock: move_to(), now(), reset()
 │   ├── events.py      cursor reader of the event stream, deduplicating by eventId
+│   ├── jws.py         independent payers on the test CA, the tamperer, and the answer verifier
 │   ├── db/            optional read-only inspectors: mongo.py (Java), postgres.py (Go)
 │   ├── samples.py     request bodies a scenario starts from
 │   └── checks.py      assert_refused: refused, and for the right reason
 ├── tests/             the scenarios
-├── conftest.py        fixtures: api, events, clock, db
+├── deployment/        the truststore a deployment under test runs with, and how it is built
+├── conftest.py        fixtures: api, events, clock, db, pki, payer_a, payer_b, tamperer
+├── run.py             `uv run` entry point (PEP 723)
 └── pytest.ini         markers: serial, java_only, go_only
 ```
 
@@ -78,7 +111,8 @@ marks.
 | Editable amount | below the range, above it, and three amounts inside it |
 | **Tip** | bill + tip accepted; tip taken out of the merchant's share refused; tip on a bill refusing tips; below / above the published range; absurd; zero; negative; whole transfer is tip; tip larger than the transfer; presets do not bind without a range; percentage taken against the merchant's share; percentage basis on an editable amount |
 | Currency & rail | a currency not offered, a destination address never published, blockchain data on a bank rail |
-| Lifecycle | second pre-payment, payment on a CANCELLED code, post-payment with no pre-payment, and a refused notification leaving the QR Code ACTIVE |
+| Lifecycle | second pre-payment, payment on a CANCELLED code, post-payment with no pre-payment (reserves, flagged), and a refused notification leaving the QR Code ACTIVE |
+| **Signatures** (`test_signatures.py`) | payers A and B on their own keys; wrong key, untrusted CA, revoked certificate, expired `iat + ttl`, `iat` in the future, missing or unknown `crit`, missing `x5c`, altered payload, `alg: none`; B cannot take or release A's reservation; every answer verified against the payee's certificate, echoing the question's `correlationId` (fresh when the question could not be verified); the same signed question twice |
 
 ## One test pins behaviour rather than endorsing it
 

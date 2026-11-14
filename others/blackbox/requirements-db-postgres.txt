@@ -1,0 +1,3 @@
+# Extra db-postgres: the optional read-only PostgreSQL inspector (Go build). ADR-0034.
+-r requirements.txt
+psycopg[binary]==3.3.6
