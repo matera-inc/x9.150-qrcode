@@ -114,24 +114,39 @@ notify after midnight" runs in seconds
 
 ```bash
 X9_TESTING_CLOCKCONTROL=true make run-local    # or any other way of starting the app
-curl -s localhost:8099/test/clock                                    # {"now":"…Z","offsetSeconds":0}
-curl -s -X PUT localhost:8099/test/clock -d '{"at":"2031-12-31T23:59:50Z"}'
-curl -s -X PUT localhost:8099/test/clock -d '{"offsetSeconds":86400}'
+curl -s localhost:8099/test/clock                                    # {"now":"…Z","offsetMillis":0}
+curl -s -X PUT localhost:8099/test/clock -d '{"at":"2031-12-31T23:59:59.999Z"}'
+curl -s -X PUT localhost:8099/test/clock -d '{"offsetMillis":86400000}'
+curl -s -X PUT localhost:8099/test/clock -d '{"offsetSeconds":86400}'  # the same offset, in seconds
 curl -s -X DELETE localhost:8099/test/clock                          # back to real time
 ```
 
-- **The clock keeps ticking.** It is the real clock plus a whole number of seconds; `at` is rounded
-  to the nearest second.
+- **The offset is in milliseconds.** `PUT` takes exactly one of `at` (an RFC 3339 instant, kept to
+  the millisecond; finer than that is a 400), `offsetMillis` or `offsetSeconds`. Every answer is
+  `{"now", "offsetMillis"}`.
+- **The clock keeps ticking.** It is the real clock plus the offset; it is never frozen. Straight
+  after `PUT {"at": T}` it reads T plus less than a millisecond, never earlier than T.
+- **Edges to the millisecond.** For a rule that ends at an instant E, `PUT {"at": E + 1 ms}` and
+  every request after it is judged after E, so "refused at E + 1 ms" is exact. "Accepted at E" can be
+  driven only as "accepted shortly before E": the clock goes on ticking while the request travels, so
+  no request is judged at exactly E. Unit tests pin E itself.
 - **`/test/clock` is never on the API port.** It is a separate listener and is not in `openapi.yaml`.
   With the flag off, nothing listens on the clock address and `/test/clock` on the API port is 404.
 - **Real keys refuse it.** With the flag on, the app refuses to start unless its signing certificate
-  is the bundled demo certificate or one from the committed test CA — checked by SHA-256 fingerprint
-  compiled into the code, so no configuration value can satisfy it.
+  is one this repository ships with its private key: the demo certificate, or any certificate under
+  `x9-qrcode-infrastructure/src/test/resources/certificate` — the revoked and untrusted test fixtures
+  included, since their keys are just as public. It is checked by SHA-256 fingerprint compiled into
+  the code, so no configuration value can satisfy it. Any other certificate, real or self-made, is
+  refused.
 - **It is visible.** A `WARN` is logged at startup, and while the offset is non-zero every API
-  response carries `X-Test-Clock-Offset: <seconds>`.
+  response carries `X-Test-Clock-Offset: <milliseconds>` (signed; `86400000` is one day ahead,
+  `-3600000` one hour behind).
 - **MongoDB's TTL monitor runs on the real clock.** A moved clock never deletes an expired document.
-- **Certificate validity is judged on the real clock.** The JDK's PKIX chain validation does not see
-  the offset; only JWS `iat` and `iat + ttl` do.
+- **Certificate validity stays on the real clock, on purpose.** Whether a certificate is within its
+  `notBefore`/`notAfter` is a security check, not a business rule, so the JDK's PKIX chain validation
+  never sees the offset: a clock moved past a certificate's `notAfter` does not make it expire, and a
+  clock moved back does not revive an expired one. Only the JWS `iat` and `iat + ttl` follow the
+  business clock.
 - Request logging, the event-drain lease and long-poll waits measure real durations and keep the
   real clock.
 

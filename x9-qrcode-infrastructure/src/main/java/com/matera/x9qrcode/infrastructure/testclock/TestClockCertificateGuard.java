@@ -26,8 +26,10 @@ import java.util.Set;
 public final class TestClockCertificateGuard {
 
     /**
-     * SHA-256 of the DER encoding of each certificate whose private key is public, because it is
-     * committed to this repository. Compare with {@code keytool -list -v}.
+     * SHA-256 of the DER encoding of every certificate whose private key is public, because it is
+     * committed to this repository — all of them, the revoked and untrusted fixtures included: a key
+     * anyone can read is a test key, whatever the certificate says about it. Compare with
+     * {@code keytool -list -v}. A certificate generated anywhere else, real or not, is refused.
      */
     static final Set<String> BUNDLED_FINGERPRINTS = Set.of(
         // src/main/resources/certificate/x9-demo.jks — the self-signed demo identity (CN=x9.matera.com, OU=Demo NonProduction)
@@ -37,11 +39,17 @@ public final class TestClockCertificateGuard {
         // src/test/resources/certificate/x9-test-payer.p12 — RSA leaf of the test CA
         "e08b164ebd84a0a03701d20071bfdd4d7cd8f3185958201c577e6015d51e671a",
         // src/test/resources/certificate/x9-test-payer-ec.p12 — EC leaf of the test CA
-        "19241b109b737421705d65e7d6cfc2fca7bc9425f0f263fe04643daa70bcf518"
+        "19241b109b737421705d65e7d6cfc2fca7bc9425f0f263fe04643daa70bcf518",
+        // src/test/resources/certificate/x9-test-payer-revoked.p12 — leaf of the test CA, listed in its CRL
+        "f449774d768f3324ac23b99ce858663073fe455041494754075151e3b437f875",
+        // src/test/resources/certificate/x9-test-untrusted-ca.p12 — a second root, outside the test truststore
+        "e95c47df5b6489ebfd1507e8b569369d92771a07d905a1865c0e653966fc676d",
+        // src/test/resources/certificate/x9-test-untrusted-payer.p12 — leaf of the untrusted root
+        "c9e0987d26423d15eb173ea9f40e06f64a6b8434a70c781fea774603d839ea85"
     );
 
     /**
-     * @throws IllegalStateException unless {@code signingCertificate} is a bundled demo or test-CA certificate.
+     * @throws IllegalStateException unless {@code signingCertificate} is one bundled with this repository.
      */
     public static void requireBundled(X509Certificate signingCertificate) {
         if (Objects.isNull(signingCertificate)) {
@@ -53,7 +61,8 @@ public final class TestClockCertificateGuard {
         if (!BUNDLED_FINGERPRINTS.contains(fingerprint)) {
             throw new IllegalStateException((
                 "X9_TESTING_CLOCKCONTROL is on, but the signing certificate (%s, SHA-256 %s) is not a bundled "
-                    + "demo or test-CA certificate. A deployment with real keys cannot move its clock: turn "
+                    + "certificate (one whose private key ships with this repository). A deployment with real keys "
+                    + "cannot move its clock: turn "
                     + "X9_TESTING_CLOCKCONTROL off.")
                 .formatted(signingCertificate.getSubjectX500Principal().getName(), fingerprint));
         }

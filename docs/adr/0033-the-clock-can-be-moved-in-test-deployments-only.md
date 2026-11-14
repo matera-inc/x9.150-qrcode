@@ -95,6 +95,24 @@ real time, or marked Java-only. They are not driven by the test clock.
 - **A frozen clock.** Long-polls and lapses stop working.
 - **Unit tests only.** They prove a formula, not the behaviour across two HTTP calls.
 
+## Note, 2026-11-14: three decisions after the Java build
+
+The owner settled the three questions the Java build (Story 2.1) left open.
+
+1. **Every bundled certificate satisfies the guard.** That means every certificate whose private key
+   is committed to this repository: the demo certificate, the test CA and its leaves, and also the
+   revoked and untrusted test fixtures. A key anyone can read is a test key, whatever its
+   certificate says. The refusal is tested with a certificate generated inside the test, never with
+   a bundled one.
+2. **The offset has millisecond precision.** `PUT {"at": …}` keeps milliseconds, and
+   `{"offsetMillis": n}` is accepted beside `{"offsetSeconds": n}`. `GET` returns
+   `{"now", "offsetMillis"}`, and `X-Test-Clock-Offset` carries the offset in milliseconds. This is
+   what lets the edge tests of Story 2.6 ("accepted at E, refused at E + 1 ms") put the clock at
+   E + 1 ms over HTTP. The clock still keeps ticking: it is never frozen.
+3. **Certificate validity stays on the real clock.** `notBefore`/`notAfter` is a security check,
+   not a business rule, so PKIX chain validation never sees the offset. Only JWS `iat` and
+   `iat + ttl` follow the business clock.
+
 ---
 
 <sub>Copyright © 2026 Matera Systems, Inc. Licensed under the Matera Source License v1.0 (source-available; not open source) — see LICENSE.md at the repository root. Creating a Derivative Work from this document — by AI/ML generation or by manual re-implementation based on it — is governed by that license (see the "Derivative Work" definition and Annex A).</sub>

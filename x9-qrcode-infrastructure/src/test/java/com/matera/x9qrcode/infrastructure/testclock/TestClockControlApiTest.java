@@ -92,9 +92,9 @@ class TestClockControlApiTest extends AbstractIntegrationTest {
 
         assertEquals(200, clock("GET", null).statusCode());
         assertEquals(200, clock("PUT", "{\"offsetSeconds\": 60}").statusCode());
-        assertEquals(60, BusinessClock.offsetSeconds());
+        assertEquals(60_000, BusinessClock.offsetMillis());
         assertEquals(200, clock("DELETE", null).statusCode());
-        assertEquals(0, BusinessClock.offsetSeconds());
+        assertEquals(0, BusinessClock.offsetMillis());
     }
 
     /** S2.1-AC1: never on the API port — even with the flag on. */
@@ -103,7 +103,7 @@ class TestClockControlApiTest extends AbstractIntegrationTest {
         assertEquals(404, api("GET", "/test/clock", null).statusCode());
         assertEquals(404, api("PUT", "/test/clock", "{\"offsetSeconds\": 60}").statusCode());
         assertEquals(404, api("DELETE", "/test/clock", null).statusCode());
-        assertEquals(0, BusinessClock.offsetSeconds(), "a request on the API port must not move the clock");
+        assertEquals(0, BusinessClock.offsetMillis(), "a request on the API port must not move the clock");
     }
 
     /** S2.1-AC4: a JWS signed under the offset carries an iat that includes it. */
@@ -134,7 +134,7 @@ class TestClockControlApiTest extends AbstractIntegrationTest {
         assertEquals(200, api("POST", "/api/v1/signature/validate", validate).statusCode());
     }
 
-    /** S2.1-AC5: with a non-zero offset every API response carries X-Test-Clock-Offset; DELETE removes it. */
+    /** S2.1-AC5: with a non-zero offset every API response carries X-Test-Clock-Offset, in milliseconds; DELETE removes it. */
     @Test
     void everyApiResponseCarriesTheOffsetUntilDeleted() throws Exception {
         assertTrue(api("GET", "/pub/.well-known/jwks", null).headers().firstValue(TestClockOffsetHeaderFilter.HEADER).isEmpty());
@@ -143,19 +143,104 @@ class TestClockControlApiTest extends AbstractIntegrationTest {
 
         HttpResponse<String> ok = api("GET", "/pub/.well-known/jwks", null);
         assertEquals(200, ok.statusCode());
-        assertEquals("-3600", ok.headers().firstValue(TestClockOffsetHeaderFilter.HEADER).orElse(null));
+        assertEquals("-3600000", ok.headers().firstValue(TestClockOffsetHeaderFilter.HEADER).orElse(null));
 
         HttpResponse<String> notFound = api("GET", "/api/v1/payment-request/" + UUID.randomUUID(), null);
-        assertEquals("-3600", notFound.headers().firstValue(TestClockOffsetHeaderFilter.HEADER).orElse(null),
+        assertEquals("-3600000", notFound.headers().firstValue(TestClockOffsetHeaderFilter.HEADER).orElse(null),
             "error responses carry the header too");
 
         HttpResponse<String> deleted = clock("DELETE", null);
         JsonNode state = objectMapper.readTree(deleted.body());
-        assertEquals(0, state.get("offsetSeconds").asLong());
+        assertEquals(0, state.get("offsetMillis").asLong());
         assertThat(Duration.between(Instant.now(), Instant.parse(state.get("now").asText())).abs())
             .isLessThan(Duration.ofSeconds(2));
 
         assertTrue(api("GET", "/pub/.well-known/jwks", null).headers().firstValue(TestClockOffsetHeaderFilter.HEADER).isEmpty());
+    }
+
+    // ------------------------------------------------------------- edges, driven over HTTP
+
+    private static final String EDGE = "2030-06-30T12:00:00Z";
+    private static final String RECIPIENT = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
+    private static final String PAYER_WALLET = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
+    private static final long AMOUNT = 25_000_000L;
+
+    /** A Solana QR Code whose one payment method stops being payable at {@link #EDGE}. */
+    private String createQRCodeWhoseMethodEndsAtTheEdge() throws Exception {
+        String body = """
+            {
+              "validUntil": "2030-12-31T23:59:59Z",
+              "creditor": {
+                "name": "Edge Payee", "phone": "+14155550100", "email": "test@example.com",
+                "address": { "line1": "1 A St", "city": "Springfield", "state": "CA", "postalCode": "90001", "country": "US" },
+                "MCC": "5999"
+              },
+              "bill": {
+                "description": "edge",
+                "invoice": { "number": "INV-EDGE-1", "date": "2030-01-10", "dueDate": "%s" },
+                "amountDue": { "amount": %d, "currency": "USDC" }
+              },
+              "paymentNotification": { "kind": "DEFAULT" },
+              "paymentMethods": [
+                { "currency": "USDC", "validUntil": "%s", "amount": %d,
+                  "networks": { "solana": { "recipient": "%s" } } }
+              ]
+            }
+            """.formatted(EDGE, AMOUNT, EDGE, AMOUNT, RECIPIENT);
+
+        HttpResponse<String> created = api("POST", "/api/v1/payment-request", body);
+        assertEquals(201, created.statusCode(), created.body());
+        return objectMapper.readTree(created.body()).get("id").asText();
+    }
+
+    /** A pre-commit for the whole amount, signed (iat in business time) and sent. */
+    private HttpResponse<String> preCommit(String qrCodeId) throws Exception {
+        String notification = """
+            {
+              "payment": { "qrcodeId": "%s", "amount": %d, "currency": "USDC", "network": "solana" },
+              "blockchain": { "action": "PAYMENT_INITIATED", "to": "%s", "from": "%s" }
+            }
+            """.formatted(qrCodeId, AMOUNT, RECIPIENT, PAYER_WALLET);
+
+        HttpResponse<String> signed = api("POST", "/api/v1/signature/generate", notification,
+            "Correlation-Id", UUID.randomUUID().toString(), "TTL-Seconds", "300");
+        assertEquals(200, signed.statusCode(), signed.body());
+
+        return send(apiPort, "POST", "/pub/api/v1/payment-notification", "application/jose", signed.body());
+    }
+
+    /**
+     * Story 2.1 follow-up (for Story 2.6's edge tests, S2.6-AC1/AC2 and plan T1/T3/T6): an edge E is
+     * reachable over {@code /test/clock} to the millisecond. A payment method valid until E takes a
+     * pre-commit just before E and refuses one at E + 1 ms.
+     *
+     * <p>The refused side is exact: the clock is put at E + 1 ms and only moves forward, so the
+     * notification is judged after E. The accepted side cannot be judged at exactly E over HTTP,
+     * because the clock keeps ticking (ADR-0033) while the request travels; it is judged one second
+     * before E, which leaves room for that latency. The exact instant E itself is pinned by unit tests.
+     */
+    @Test
+    void aPreCommitIsAcceptedBeforeTheEdgeAndRefusedOneMillisecondAfter() throws Exception {
+        Instant edge = Instant.parse(EDGE);
+        String before = createQRCodeWhoseMethodEndsAtTheEdge();
+        String after = createQRCodeWhoseMethodEndsAtTheEdge();
+
+        HttpResponse<String> moved = clock("PUT", "{\"at\": \"" + edge.minusSeconds(1) + "\"}");
+        assertEquals(200, moved.statusCode(), moved.body());
+        HttpResponse<String> accepted = preCommit(before);
+        assertEquals(200, accepted.statusCode(), accepted.body());
+        assertTrue(accepted.headers().firstValue(TestClockOffsetHeaderFilter.HEADER).isPresent());
+
+        moved = clock("PUT", "{\"at\": \"" + edge.plusMillis(1) + "\"}");
+        assertEquals(200, moved.statusCode(), moved.body());
+        assertEquals("2030-06-30T12:00:00.001Z", edge.plusMillis(1).toString(), "sanity: one millisecond past E");
+        assertThat(Instant.parse(objectMapper.readTree(moved.body()).get("now").asText())).isAfter(edge);
+
+        HttpResponse<String> refused = preCommit(after);
+        assertEquals(400, refused.statusCode(), refused.body());
+        // The answer is a signed JWS; its payload names the rule.
+        assertThat(JWSObject.parse(refused.body()).getPayload().toString())
+            .contains("paymentMethods.validUntil").contains("expired at 2030-06-30T12:00Z");
     }
 
 }

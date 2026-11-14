@@ -20,9 +20,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 
 /**
- * While the business clock is shifted, every API response says so in {@code X-Test-Clock-Offset}
- * (seconds), so nobody mistakes a moved clock for a real one (ADR-0033). With no offset — always, in
- * a deployment where the test clock is off — the header is absent.
+ * While the business clock is shifted, every API response says so in {@code X-Test-Clock-Offset},
+ * so nobody mistakes a moved clock for a real one (ADR-0033). The value is the offset in
+ * <b>milliseconds</b>, signed: {@code X-Test-Clock-Offset: 86400000} is one day ahead. With no offset —
+ * always, in a deployment where the test clock is off — the header is absent.
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -33,9 +34,9 @@ public class TestClockOffsetHeaderFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
         throws ServletException, IOException {
-        long offsetSeconds = BusinessClock.offsetSeconds();
-        if (offsetSeconds != 0) {
-            response.setHeader(HEADER, Long.toString(offsetSeconds));
+        long offsetMillis = BusinessClock.offsetMillis();
+        if (offsetMillis != 0) {
+            response.setHeader(HEADER, Long.toString(offsetMillis));
         }
         chain.doFilter(request, response);
     }

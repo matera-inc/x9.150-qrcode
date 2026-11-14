@@ -67,8 +67,8 @@ class TestClockServerTest {
     /** S2.1-AC2: the server itself refuses to start with a certificate that is not bundled. */
     @Test
     void theServerRefusesToStartWithARealCertificate() throws Exception {
-        X509Certificate untrusted = TestClockCertificateGuardTest.untrustedCertificate();
-        server = new TestClockServer("127.0.0.1:0", objectMapper, () -> untrusted);
+        X509Certificate fresh = TestClockCertificateGuardTest.freshCertificate();
+        server = new TestClockServer("127.0.0.1:0", objectMapper, () -> fresh);
 
         assertThrows(IllegalStateException.class, server::start);
         assertEquals(false, server.isRunning());
@@ -80,19 +80,19 @@ class TestClockServerTest {
 
         HttpResponse<String> put = send("PUT", "/test/clock", "{\"offsetSeconds\": 86400}");
         assertEquals(200, put.statusCode());
-        assertEquals(86400, objectMapper.readTree(put.body()).get("offsetSeconds").asLong());
-        assertEquals(86400, BusinessClock.offsetSeconds());
+        assertEquals(86_400_000, objectMapper.readTree(put.body()).get("offsetMillis").asLong());
+        assertEquals(86_400_000, BusinessClock.offsetMillis());
 
         JsonNode got = objectMapper.readTree(send("GET", "/test/clock", null).body());
-        assertEquals(86400, got.get("offsetSeconds").asLong());
+        assertEquals(86_400_000, got.get("offsetMillis").asLong());
         Instant now = Instant.parse(got.get("now").asText());
         assertThat(Duration.between(Instant.now().plusSeconds(86400), now).abs()).isLessThan(Duration.ofSeconds(2));
         assertThat(got.get("now").asText()).endsWith("Z");
 
         HttpResponse<String> deleted = send("DELETE", "/test/clock", null);
         assertEquals(200, deleted.statusCode());
-        assertEquals(0, objectMapper.readTree(deleted.body()).get("offsetSeconds").asLong());
-        assertEquals(0, BusinessClock.offsetSeconds());
+        assertEquals(0, objectMapper.readTree(deleted.body()).get("offsetMillis").asLong());
+        assertEquals(0, BusinessClock.offsetMillis());
     }
 
     @Test
@@ -106,6 +106,32 @@ class TestClockServerTest {
         assertThat(Duration.between(Instant.parse("2031-12-31T23:59:50Z"), now).abs()).isLessThan(Duration.ofSeconds(2));
     }
 
+    /** Story 2.1 follow-up: the offset is in milliseconds, and can be set in milliseconds. */
+    @Test
+    void putOffsetMillis() throws Exception {
+        start(TestClockCertificateGuardTest.demoCertificate());
+
+        HttpResponse<String> put = send("PUT", "/test/clock", "{\"offsetMillis\": -1001}");
+
+        assertEquals(200, put.statusCode());
+        assertEquals(-1001, objectMapper.readTree(put.body()).get("offsetMillis").asLong());
+        assertEquals(-1001, BusinessClock.offsetMillis());
+    }
+
+    /** Story 2.1 follow-up: {@code at} keeps its milliseconds; the clock never reads earlier than it. */
+    @Test
+    void putAtKeepsMilliseconds() throws Exception {
+        start(TestClockCertificateGuardTest.demoCertificate());
+        Instant at = Instant.parse("2031-12-31T23:59:59.999Z");
+
+        HttpResponse<String> put = send("PUT", "/test/clock", "{\"at\": \"2031-12-31T23:59:59.999Z\"}");
+
+        assertEquals(200, put.statusCode());
+        Instant now = Instant.parse(objectMapper.readTree(put.body()).get("now").asText());
+        assertThat(now).isAfterOrEqualTo(at);
+        assertThat(Duration.between(at, now)).isLessThan(Duration.ofMillis(500));
+    }
+
     @Test
     void aBadPutIsRefusedAndLeavesTheClockAlone() throws Exception {
         start(TestClockCertificateGuardTest.demoCertificate());
@@ -116,8 +142,13 @@ class TestClockServerTest {
         assertEquals(400, send("PUT", "/test/clock", "{\"offsetSeconds\": 1.5}").statusCode());
         assertEquals(400, send("PUT", "/test/clock", "{\"offsetSeconds\": 999999999999}").statusCode());
         assertEquals(400, send("PUT", "/test/clock", "not json").statusCode());
+        assertEquals(400, send("PUT", "/test/clock", "{\"offsetMillis\": 1, \"offsetSeconds\": 1}").statusCode());
+        assertEquals(400, send("PUT", "/test/clock", "{\"offsetMillis\": 1.5}").statusCode());
+        assertEquals(400, send("PUT", "/test/clock", "{\"offsetMillis\": 999999999999999}").statusCode());
+        assertEquals(400, send("PUT", "/test/clock", "{\"offsetSeconds\": 9223372036854775807}").statusCode());
+        assertEquals(400, send("PUT", "/test/clock", "{\"at\": \"2031-12-31T23:59:50.0005Z\"}").statusCode());
 
-        assertEquals(0, BusinessClock.offsetSeconds());
+        assertEquals(0, BusinessClock.offsetMillis());
     }
 
     @Test
@@ -135,10 +166,10 @@ class TestClockServerTest {
         server = new TestClockServer("127.0.0.1:0", objectMapper, current::get);
         server.start();
 
-        current.set(TestClockCertificateGuardTest.untrustedCertificate());
+        current.set(TestClockCertificateGuardTest.freshCertificate());
 
         assertEquals(403, send("PUT", "/test/clock", "{\"offsetSeconds\": 60}").statusCode());
-        assertEquals(0, BusinessClock.offsetSeconds());
+        assertEquals(0, BusinessClock.offsetMillis());
     }
 
     @Test
@@ -149,7 +180,7 @@ class TestClockServerTest {
         server.stop();
         server = null;
 
-        assertEquals(0, BusinessClock.offsetSeconds());
+        assertEquals(0, BusinessClock.offsetMillis());
     }
 
     @Test

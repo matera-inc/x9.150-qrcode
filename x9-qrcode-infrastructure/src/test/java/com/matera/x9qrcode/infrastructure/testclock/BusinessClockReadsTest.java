@@ -35,7 +35,7 @@ class BusinessClockReadsTest {
     /** S2.1-AC4: RetrieveQRCodePayloadInput reads the shifted clock when no date is given. */
     @Test
     void theDefaultDateForPaymentIsBusinessTime() {
-        BusinessClock.setOffsetSeconds(Duration.ofDays(400).toSeconds());
+        BusinessClock.setOffsetMillis(Duration.ofDays(400).toMillis());
 
         OffsetDateTime dateForPayment = new RetrieveQRCodePayloadInput("id", null).getZonedDateForPayment();
 
@@ -46,7 +46,7 @@ class BusinessClockReadsTest {
 
     @Test
     void anExplicitDateIsNotTouched() {
-        BusinessClock.setOffsetSeconds(Duration.ofDays(400).toSeconds());
+        BusinessClock.setOffsetMillis(Duration.ofDays(400).toMillis());
 
         OffsetDateTime dateForPayment =
             new RetrieveQRCodePayloadInput("id", LocalDate.parse("2030-01-02")).getZonedDateForPayment();
