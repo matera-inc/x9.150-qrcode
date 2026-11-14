@@ -1,204 +1,79 @@
+# Copyright © 2026 Matera Systems, Inc.
+# Licensed under the Matera Source License v1.0 (source-available; not open source). See LICENSE.md.
 """
-Fixtures for the black-box suite.
+Fixtures for the black-box suite. The protocol lives in ``x9client``; this wires it to pytest.
 
-Deliberately zero dependencies beyond pytest: the suite has to run against a container on a
-laptop, in CI, and against a deployed instance, and a dependency that fails to install is a
-suite that silently does not run.
-
-    pytest others/blackbox                      # against http://localhost:8080
+    make blackbox                                   # against http://localhost:8080
     X9_BASE_URL=http://localhost:8070 pytest others/blackbox
+
+Environment:
+
+- ``X9_BASE_URL``: the deployment's API (default ``http://localhost:8080``).
+- ``X9_CLOCK_URL``: its test-clock listener (default ``http://127.0.0.1:8099``). Time tests skip
+  with "test clock not enabled" when nothing answers there.
+- ``X9_DATABASE_URL``: optional read-only database connection. Database checks skip, with the
+  reason, when it is unset or its driver is not installed.
+- ``X9_REQUIRE_ALL=1``: turn every skip for a missing capability into a failure. CI sets it, so a
+  suite that could not run is a red job, never a green one.
 """
-import base64
-import json
 import os
-import urllib.error
-import urllib.request
-import uuid
 
 import pytest
 
-RECIPIENT = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
-PAYER_WALLET = "5xoBq7f7CDgZwqHrDBdRWM84ExRetg4gZq93dyJtoSwp"
-TX_HASH = "3n8kLq2Vb7yTfXpR9sWzM4cJhG6dEuA1"
-FEDNOW = {"routingNumber": "021000021", "accountNumber": "1234567890",
-          "protectionType": "plaintext"}
-BILL = 1000
-FAR_FUTURE = "2030-12-31T23:59:59Z"
+from x9client import clock as clock_module
+from x9client import db as db_module
+from x9client.api import ServiceSigner, X9Api
+from x9client.events import EventReader
+
+REQUIRE_ALL = os.environ.get("X9_REQUIRE_ALL", "") not in ("", "0", "false")
 
 
-def jws_body(answer):
-    """The JSON body of a compact JWS, or the answer unchanged when it is not one.
-
-    Every answer to a payment notification is signed (Story 2.3): `{"statusCode": n}` on a yes,
-    plus the error fields on a refusal. This reads the body only; it does not verify the signature.
-    """
-    if not isinstance(answer, str) or answer.count(".") != 2:
-        return answer
-    payload = answer.split(".")[1]
-    try:
-        return json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
-    except ValueError:
-        return answer
-
-
-class Api:
-    """The smallest HTTP client that tells the truth about what came back."""
-
-    def __init__(self, base_url):
-        self.base_url = base_url.rstrip("/")
-
-    def call(self, method, path, body=None, raw=None, headers=None):
-        hdrs = {"Content-Type": "application/json"}
-        hdrs.update(headers or {})
-
-        if raw is not None:
-            data = raw.encode()
-        elif body is not None:
-            data = json.dumps(body).encode()
-        else:
-            data = None
-
-        request = urllib.request.Request(self.base_url + path, data=data,
-                                         headers=hdrs, method=method)
-        try:
-            with urllib.request.urlopen(request, timeout=40) as response:
-                text, status = response.read().decode(), response.status
-        except urllib.error.HTTPError as e:
-            text, status = e.read().decode(errors="replace"), e.code
-        except Exception as e:
-            # Connection refused, DNS, timeout. Status 0 so the health probe can SKIP the suite
-            # rather than every test erroring individually — 34 stack traces saying "connection
-            # refused" tell you less than one line saying nothing is listening.
-            return 0, str(e)
-
-        try:
-            return status, json.loads(text)
-        except ValueError:
-            return status, text
-
-    def sign(self, payload):
-        """Sign JSON with the deployment's own key. Both headers are required."""
-        status, body = self.call("POST", "/api/v1/signature/generate", body=payload, headers={
-            "Correlation-Id": str(uuid.uuid4()), "TTL-Seconds": "300"})
-        assert status == 200, f"the deployment would not sign: {status} {body}"
-        return body
-
-    # ------------------------------------------------------------------ fixtures of convenience
-
-    def create_qr(self, *, tip=None, editable=None, networks=None, currency="USDC",
-                  valid_until=FAR_FUTURE, amount=BILL):
-        status, created = self.create_qr_detailed(
-            tip=tip, editable=editable, networks=networks, currency=currency,
-            valid_until=valid_until, amount=amount)
-        assert status == 201, f"fixture QR Code could not be created: {status} {created}"
-        return created["id"]
-
-    def create_qr_detailed(self, *, tip=None, editable=None, networks=None, currency="USDC",
-                           valid_until=FAR_FUTURE, amount=BILL):
-        """As create_qr, but returns the whole created object — callers that need the EMV content
-        or the location, rather than only the id."""
-        method = {"currency": currency, "validUntil": valid_until, "amount": amount,
-                  "networks": networks or {"solana": {"recipient": RECIPIENT}}}
-        if editable:
-            method["editable"] = editable
-
-        bill = {"description": "blackbox", "amountDue": {"amount": amount, "currency": currency}}
-        if tip:
-            bill["tip"] = tip
-
-        return self.call("POST", "/api/v1/payment-request", body={
-            "validUntil": valid_until,
-            "creditor": {"name": "Blackbox Co",
-                         "address": {"line1": "1 A St", "city": "Los Angeles", "country": "US"},
-                         "MCC": "4900"},
-            "bill": bill,
-            "paymentNotification": {"kind": "DEFAULT"},
-            "paymentMethods": [method]})
-        assert status == 201, f"fixture QR Code could not be created: {status} {created}"
-        return created["id"]
-
-    def notify(self, qr_id, *, amount=BILL, tip=None, currency="USDC", network="Solana",
-               action="PAYMENT_INITIATED", transaction_id=None, blockchain=True, raw=None,
-               payer_info="blackbox@example.com"):
-        payment = {"qrcodeId": qr_id, "amount": amount, "currency": currency, "network": network}
-        if tip is not None:
-            payment["tipAmount"] = tip
-        if transaction_id:
-            payment["transactionId"] = transaction_id
-
-        notification = {"payment": payment, "payer": {"info": payer_info}}
-        if blockchain:
-            notification["blockchain"] = {"action": action,
-                                          "from": PAYER_WALLET, "to": RECIPIENT}
-
-        token = raw if raw is not None else self.sign(notification)
-        status, answer = self.call("POST", "/pub/api/v1/payment-notification", raw=token,
-                                   headers={"Content-Type": "application/jose"})
-        return status, jws_body(answer)
-
-    def mark_paid(self, qr_id, *, end_to_end_id="E2E-BLACKBOX-1", network="solana"):
-        """The payee's order: this bill is settled."""
-        return self.call("PUT", f"/api/v1/payment-request/{qr_id}/status-update",
-                         body={"status": "PAID", "endToEndId": end_to_end_id, "network": network})
-
-    def set_status(self, qr_id, status):
-        return self.call("PUT", f"/api/v1/payment-request/{qr_id}/status-update",
-                         body={"status": status})
-
-    def status_of(self, qr_id):
-        _, current = self.call("GET", f"/api/v1/payment-request/{qr_id}")
-        return current.get("status")
+def unavailable(reason):
+    """Skip, or fail when the run requires every capability (``X9_REQUIRE_ALL``)."""
+    if REQUIRE_ALL:
+        pytest.fail(f"{reason} (X9_REQUIRE_ALL is set, so this is a failure, not a skip)")
+    pytest.skip(reason)
 
 
 @pytest.fixture(scope="session")
 def api():
     base_url = os.environ.get("X9_BASE_URL", "http://localhost:8080")
-    client = Api(base_url)
+    client = X9Api(base_url)
 
-    status, _ = client.call("GET", "/actuator/health")
+    status, _ = client.get("/actuator/health")
     if status != 200:
-        pytest.skip(f"no deployment answering at {base_url} (health returned {status})")
+        unavailable(f"no deployment answering at {base_url} (health returned {status})")
 
+    client.signer = ServiceSigner(client)
     return client
 
 
-def events_for(api, qr_id):
-    """Every event published so far for one QR Code.
-
-    The outbox drain is asynchronous, so a blind read races it and fails for a reason that has
-    nothing to do with what is being tested. Polls the long-polling cursor instead.
-    """
-    seen, cursor = {}, ""
-    for _ in range(20):
-        status, page = api.call("GET", f"/pub/api/v1/events?after={cursor}&limit=200&wait=2")
-        if status != 200 or not isinstance(page, dict):
-            break
-        for event in page.get("events", []):
-            if event.get("qrCodeId") == qr_id:
-                seen[event["eventId"]] = event
-        cursor = page.get("nextCursor") or cursor
-        if seen:
-            break
-    return list(seen.values())
+@pytest.fixture(scope="session")
+def events(api):
+    """A reader that starts at the end of the stream as it stood when the session began."""
+    reader = EventReader(api)
+    reader.mark()
+    return reader
 
 
-def refusal(response):
-    """The violations of a problem+json body, as one searchable string."""
-    status, body = response
-    if isinstance(body, dict):
-        return json.dumps(body.get("violations") or body)
-    return str(body)
+@pytest.fixture(scope="session")
+def _clock():
+    return clock_module.Clock(os.environ.get("X9_CLOCK_URL", "http://127.0.0.1:8099"))
 
 
-def assert_refused(response, *, naming):
-    """
-    A refusal has to be refused FOR THE RIGHT REASON.
+@pytest.fixture
+def clock(_clock):
+    """The test clock, reset before and after the test. Skips when the deployment has none."""
+    if not _clock.available():
+        unavailable(f"{clock_module.NOT_ENABLED} (nothing answers at {_clock.url})")
+    _clock.reset()
+    yield _clock
+    _clock.reset()
 
-    Asserting only on the status code is how a check passes because the fixture was never
-    built, or because an unrelated rule fired first. Every refusal here names the field it
-    is about, so the test can insist on it.
-    """
-    status, body = response
-    assert status >= 400, f"expected a refusal, got {status}: {body}"
-    text = refusal(response)
-    assert naming in text, f"refused, but not for the expected reason.\n  wanted: {naming}\n  got:    {text}"
+
+@pytest.fixture(scope="session")
+def db():
+    inspector, reason = db_module.connect()
+    if inspector is None:
+        unavailable(f"database checks skipped: {reason}")
+    return inspector
