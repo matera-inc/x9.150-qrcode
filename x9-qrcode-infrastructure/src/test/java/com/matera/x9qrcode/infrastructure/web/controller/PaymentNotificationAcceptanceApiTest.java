@@ -138,8 +138,11 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
     private static final int VALIDITY_SECONDS = 20;
 
     private static String expiringShortly() {
-        return OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(VALIDITY_SECONDS).withNano(0)
-                .toString().replace("+00:00", "Z");
+        // Formatted with seconds always present. OffsetDateTime.toString() drops ":00" when the
+        // seconds are zero ("14:05Z"), which the API refuses as unparseable: a create that failed
+        // with 400 once a minute, whenever the window happened to end on a whole minute.
+        return OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(VALIDITY_SECONDS)
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'"));
     }
 
     /**

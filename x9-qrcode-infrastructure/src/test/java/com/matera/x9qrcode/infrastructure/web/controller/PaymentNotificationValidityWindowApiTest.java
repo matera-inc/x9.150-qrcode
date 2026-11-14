@@ -65,7 +65,9 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
     private static final long LATE_FEE_FIXED = 500_000L;
 
     private static String utc(OffsetDateTime moment) {
-        return moment.withNano(0).toString().replace("+00:00", "Z");
+        // Seconds always present: toString() drops ":00" on a whole minute, which the API refuses.
+        return moment.withOffsetSameInstant(ZoneOffset.UTC)
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'"));
     }
 
     /**
