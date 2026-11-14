@@ -43,7 +43,7 @@ public class SendPaymentNotificationUseCase
             input.notification(), input.endpoint(), input.correlationId());
 
         return new SendPaymentNotificationOutput(result.statusCode(), result.accepted(), result.body(),
-            result.signature(), result.signatureProblem());
+            result.signature(), result.signatureProblem(), result.signatureDetail());
     }
 
     /**

@@ -16,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.method.annotation.ExceptionHandlerMethodResolver;
 
 import java.lang.reflect.InvocationTargetException;
@@ -24,7 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
-import static java.util.Objects.isNull;
+import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.INTERNAL_ERROR;
 import static java.util.Objects.nonNull;
 
 /**
@@ -38,6 +39,10 @@ import static java.util.Objects.nonNull;
  * <p>A refusal keeps its HTTP status and today's error fields: the problem the
  * {@link GlobalControllerAdvice} would have rendered is rendered here, by the same handler, and
  * signed with {@code statusCode} added. One set of refusal rules, two encodings.
+ *
+ * <p>The answers the controller never writes, a request Spring refuses before it runs and an
+ * exception nothing maps, are signed here too, through {@link PaymentNotificationAnswerExceptionResolver}
+ * (Story 2.3 follow-up). Only a failure to sign leaves an answer unsigned.
  */
 @Slf4j
 @Component
@@ -64,13 +69,14 @@ public class NotificationAnswerSigner {
     }
 
     /**
-     * The signed no. The refusal is mapped exactly as the advice maps it everywhere else; a
-     * refusal the advice has no handler for is rethrown, and reaches the caller as it does today.
+     * The signed no. The refusal is mapped exactly as the advice maps it everywhere else. One that
+     * Spring raised itself carries its own problem (a 415, a 406); anything else nothing maps is a
+     * signed 500 that says nothing about its cause.
      *
      * @param correlationId the question's, once its signature verified; otherwise a fresh one,
      *                      because an unverified question has no correlationId worth echoing
      */
-    public ResponseEntity<String> refused(RuntimeException refusal, UUID correlationId) {
+    public ResponseEntity<String> refused(Exception refusal, UUID correlationId) {
         ProblemDetail problem = problemFor(refusal);
 
         Map<String, Object> body = new LinkedHashMap<>();
@@ -98,19 +104,38 @@ public class NotificationAnswerSigner {
         return ResponseEntity.status(status).contentType(APPLICATION_JOSE).body(jws);
     }
 
-    private ProblemDetail problemFor(RuntimeException refusal) {
+    private ProblemDetail problemFor(Exception refusal) {
         Method handler = handlers.resolveMethodByExceptionType(refusal.getClass());
 
-        if (isNull(handler)) {
-            throw refusal;
+        if (nonNull(handler)) {
+            try {
+                return (ProblemDetail) handler.invoke(globalControllerAdvice, refusal);
+            } catch (IllegalAccessException | InvocationTargetException e) {
+                log.error("Could not map a payment notification refusal to a problem", e);
+
+                return internalError(refusal);
+            }
         }
 
-        try {
-            return (ProblemDetail) handler.invoke(globalControllerAdvice, refusal);
-        } catch (IllegalAccessException | InvocationTargetException e) {
-            log.error("Could not map a payment notification refusal to a problem", e);
+        if (refusal instanceof ErrorResponse spring) {
+            // Raised by Spring before the controller ran (an unsupported Content-Type, a 405, a 406).
+            // Its problem is already the one Spring would have rendered; only the encoding changes.
+            log.warn("Payment notification refused by Spring before the controller: {}", refusal.getMessage());
 
-            throw refusal;
+            return spring.getBody();
         }
+
+        return internalError(refusal);
+    }
+
+    private static ProblemDetail internalError(Exception cause) {
+        log.error("Unexpected failure answering a payment notification; answering a signed 500", cause);
+
+        ProblemDetail problem = ProblemDetail.forStatus(INTERNAL_ERROR.status());
+        problem.setTitle(INTERNAL_ERROR.title());
+        problem.setType(INTERNAL_ERROR.uriType());
+        problem.setDetail(INTERNAL_ERROR.description());
+
+        return problem;
     }
 }

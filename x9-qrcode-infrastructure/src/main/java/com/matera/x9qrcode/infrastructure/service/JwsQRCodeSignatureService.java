@@ -8,6 +8,7 @@ package com.matera.x9qrcode.infrastructure.service;
 
 import com.matera.x9qrcode.app.dto.SignatureInputDataDTO;
 import com.matera.x9qrcode.app.dto.SignatureOutputDataDTO;
+import com.matera.x9qrcode.app.dto.enumerated.SignatureProblemEnumDTO;
 import com.matera.x9qrcode.app.exception.ServiceException;
 import com.matera.x9qrcode.app.service.JwkService;
 import com.matera.x9qrcode.app.service.PEMService;
@@ -30,10 +31,13 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jose.Algorithm;
 import com.nimbusds.jose.JOSEException;
+import com.nimbusds.jose.JOSEObject;
 import com.nimbusds.jose.JOSEObjectType;
+import com.nimbusds.jose.JWEObject;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.JWSObject;
+import com.nimbusds.jose.PlainObject;
 import com.nimbusds.jose.JWSSigner;
 import com.nimbusds.jose.JWSVerifier;
 import com.nimbusds.jose.Payload;
@@ -111,6 +115,9 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
     private static final Set<String> SUPPORTED_CRITICAL_HEADERS =
         Set.of(JWS_HEADER_CORRELATION_ID, JWS_HEADER_IAT, JWS_HEADER_TTL, JWS_HEADER_STATUS_CODE);
 
+    /** Used when {@code x9.public-endpoints.jws-clock-skew-seconds} is not set: one minute. */
+    private static final long DEFAULT_CLOCK_SKEW_MILLIS = 60_000L;
+
     private static final List<String> RSA_ALGORITHMS = List.of(
         JWSAlgorithm.RS256.getName(), JWSAlgorithm.RS384.getName(), JWSAlgorithm.RS512.getName(),
         JWSAlgorithm.PS256.getName(), JWSAlgorithm.PS384.getName(), JWSAlgorithm.PS512.getName());
@@ -148,19 +155,52 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
                 if (!input.correlationId().equals(correlationId)) {
                     log.error("Correlation ID mismatch. Expected: {}, Found: {}", input.correlationId(), correlationId);
 
-                    return SignatureValidationOutput.invalidSignature(
+                    return SignatureValidationOutput.invalidSignature(SignatureProblemEnumDTO.CORRELATION_ID_MISMATCH,
                         "correlationId mismatch: expected %s, found %s".formatted(input.correlationId(), correlationId));
                 }
             }
 
             return SignatureValidationOutput.validSignature(
                 correlationId, validated.submittedQrCodeContent(), validated.signerSubject());
+        } catch (SignatureCheckException e) {
+            log.error("JWS signature did not verify ({}): {}", e.problem(), e.getMessage(), e);
+
+            return SignatureValidationOutput.invalidSignature(e.problem(), e.getMessage());
         } catch (Exception e) {
             log.error("Error validating JWS signature: {}", e.getMessage(), e);
 
-            return SignatureValidationOutput.invalidSignature(
+            return SignatureValidationOutput.invalidSignature(SignatureProblemEnumDTO.UNVERIFIABLE,
                 isBlank(e.getMessage()) ? e.getClass().getSimpleName() : e.getMessage());
         }
+    }
+
+    /**
+     * A check that failed for a reason with a name: the code from the closed list, and the words.
+     *
+     * <p>A {@link ServiceException}, so anything that reaches past {@link #validateSignature} reads as
+     * before; only the code is new.
+     */
+    static final class SignatureCheckException extends ServiceException {
+
+        private final transient SignatureProblemEnumDTO problem;
+
+        SignatureCheckException(SignatureProblemEnumDTO problem, String message) {
+            super(message);
+            this.problem = problem;
+        }
+
+        SignatureCheckException(SignatureProblemEnumDTO problem, String message, Throwable cause) {
+            super(message, cause);
+            this.problem = problem;
+        }
+
+        SignatureProblemEnumDTO problem() {
+            return problem;
+        }
+    }
+
+    private static SignatureCheckException check(SignatureProblemEnumDTO problem, String message) {
+        return new SignatureCheckException(problem, message);
     }
 
     @Override
@@ -193,7 +233,18 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         log.debug("Retrieving JWK information for signature validation with algorithm: {}", algorithm);
 
         if (CertificateEndpointTypeEnum.JWK_SET.equals(externalCertificateOutput.endpointTypeEnum())) {
-            JWK externalJwk = JWKSet.parse(externalCertificateOutput.jwkSet()).getKeyByKeyId(header.getKeyID());
+            JWK externalJwk;
+            try {
+                externalJwk = JWKSet.parse(externalCertificateOutput.jwkSet()).getKeyByKeyId(header.getKeyID());
+            } catch (ParseException e) {
+                throw new SignatureCheckException(SignatureProblemEnumDTO.CERTIFICATE_UNAVAILABLE,
+                    "The signer's JWK set could not be read: %s".formatted(e.getMessage()), e);
+            }
+
+            if (isNull(externalJwk)) {
+                throw check(SignatureProblemEnumDTO.CERTIFICATE_UNAVAILABLE,
+                    "The signer's JWK set has no key with kid %s".formatted(header.getKeyID()));
+            }
 
             X509Certificate signatureExternalCertificate =
                 validateExternalCertificate(header, externalJwk.getParsedX509CertChain());
@@ -210,7 +261,8 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
                 toVerificationJwk(signatureExternalCertificate, algorithm), subjectOf(signatureExternalCertificate));
         }
 
-        throw new ServiceException("Could not retrieve JWK information for signature validation");
+        throw check(SignatureProblemEnumDTO.BAD_HEADER,
+            "The header's alg %s is not the algorithm of the signer's key".formatted(algorithm));
     }
 
     private static String subjectOf(X509Certificate certificate) {
@@ -246,7 +298,7 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
                 .keyUse(KeyUse.SIGNATURE)
                 .keyOperations(Set.of(KeyOperation.VERIFY))
                 .build();
-            default -> throw new ServiceException(
+            default -> throw check(SignatureProblemEnumDTO.UNTRUSTED_CHAIN,
                 "Unsupported certificate key type for signature verification: %s"
                     .formatted(certificateKey.getKeyType()));
         };
@@ -327,7 +379,7 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         String certificateIssuer = rootCertificate.getIssuerX500Principal().getName();
 
         if (isNotBlank(expectedIssuer) && !Strings.CI.contains(certificateIssuer, expectedIssuer)) {
-            throw new ServiceException(
+            throw check(SignatureProblemEnumDTO.UNTRUSTED_CHAIN,
                 "Invalid external certificate certificateIssuer. Expected to contain: %s, Found: %s".formatted(expectedIssuer, certificateIssuer));
         }
 
@@ -338,7 +390,8 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
                                    trustedCert.getSubjectX500Principal().equals(rootCertificate.getIssuerX500Principal()));
 
         if (issuerNotTrusted) {
-            throw new ServiceException("Certificate certificateIssuer not trusted: %s".formatted(certificateIssuer));
+            throw check(SignatureProblemEnumDTO.UNTRUSTED_CHAIN,
+                "Certificate certificateIssuer not trusted: %s".formatted(certificateIssuer));
         }
 
         log.debug("Certificate issuer validation passed: {}", certificateIssuer);
@@ -347,7 +400,8 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
     private X509Certificate validateCertificateChain(List<X509Certificate> externalCertificates) {
         try {
             if (CollectionUtils.isEmpty(externalCertificates)) {
-                throw new ServiceException("External certificate chain is empty. No certificates provided for validation");
+                throw check(SignatureProblemEnumDTO.UNTRUSTED_CHAIN,
+                    "External certificate chain is empty. No certificates provided for validation");
             }
 
             Set<TrustAnchor> trustAnchorSet =
@@ -398,7 +452,8 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
 
             return trustedRootCertificate;
         } catch (CertPathValidatorException | CertificateException e) {
-            throw new ServiceException("X9 Certificate chain validation failed: %s.".formatted(e.getMessage()), e);
+            throw new SignatureCheckException(SignatureProblemEnumDTO.UNTRUSTED_CHAIN,
+                "X9 Certificate chain validation failed: %s.".formatted(e.getMessage()), e);
         } catch (NoSuchAlgorithmException | InvalidAlgorithmParameterException e) {
             throw new ServiceException("Unexpected error during external certificate chain validation: %s".formatted(e.getMessage()), e);
         }
@@ -425,7 +480,8 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         boolean[] keyUsage = certificate.getKeyUsage();
 
         if (nonNull(keyUsage) && !keyUsage[0]) {
-            throw new ServiceException("Certificate does not have digitalSignature key usage, which is required for JWS verification");
+            throw check(SignatureProblemEnumDTO.UNTRUSTED_CHAIN,
+                "Certificate does not have digitalSignature key usage, which is required for JWS verification");
         }
 
         log.debug("Certificate key usage validation passed");
@@ -515,7 +571,7 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
     private record ValidatedJws(UUID correlationId, String submittedQrCodeContent, String signerSubject) { }
 
     private ValidatedJws validateJwsToken(String locationId, String jwsToken) throws ParseException, JOSEException {
-        JWSObject jwsObject = JWSObject.parse(jwsToken);
+        JWSObject jwsObject = parseJws(jwsToken);
         JWSHeader header = jwsObject.getHeader();
 
         log.info("Validating JWS token with algorithm: {}", header.getAlgorithm());
@@ -536,17 +592,24 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
 
             externalCertificateOutput = new ExternalCertificateOutput(CertificateEndpointTypeEnum.NONE, x509Certificates, Map.of());
         } else {
-            externalCertificateOutput = qrCodeExternalJwkService.retrieveCertificate(externalCertificateInput);
+            try {
+                externalCertificateOutput = qrCodeExternalJwkService.retrieveCertificate(externalCertificateInput);
+            } catch (RuntimeException e) {
+                throw new SignatureCheckException(SignatureProblemEnumDTO.CERTIFICATE_UNAVAILABLE,
+                    "The signer's certificate could not be retrieved from %s: %s"
+                        .formatted(externalCertificateInput.url(), e.getMessage()), e);
+            }
         }
 
         VerificationKey verificationKey = retrieveExternalJwkInformation(header, externalCertificateOutput);
 
         try {
             if (!jwsObject.verify(createVerifier(verificationKey.jwk(), header.getAlgorithm()))) {
-                throw new ServiceException("JWS signature verification failed.");
+                throw check(SignatureProblemEnumDTO.BAD_SIGNATURE, "JWS signature verification failed.");
             }
         } catch (JOSEException e) {
-            throw new ServiceException("Error during JWS signature verification: %s".formatted(e.getMessage()), e);
+            throw new SignatureCheckException(SignatureProblemEnumDTO.BAD_SIGNATURE,
+                "Error during JWS signature verification: %s".formatted(e.getMessage()), e);
         }
 
         log.info("JWS signature successfully validated for correlationId: {}", correlationId);
@@ -554,22 +617,50 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         return new ValidatedJws(correlationId, submittedQrCodeContent, verificationKey.signerSubject());
     }
 
+    /**
+     * Reads the token as a JWS, and says precisely what it is when it is not one: nothing at all, not
+     * JOSE, an unsecured object ({@code alg: none}) or an encrypted one.
+     */
+    private static JWSObject parseJws(String token) {
+        if (isBlank(token)) {
+            throw check(SignatureProblemEnumDTO.ABSENT_BODY, "There is no JWS: the body is empty");
+        }
+
+        JOSEObject jose;
+        try {
+            jose = JOSEObject.parse(token.trim());
+        } catch (ParseException e) {
+            throw new SignatureCheckException(SignatureProblemEnumDTO.NOT_JWS,
+                "The body is not a JWS: %s".formatted(e.getMessage()), e);
+        }
+
+        return switch (jose) {
+            case JWSObject jws -> jws;
+            case PlainObject plain -> throw check(SignatureProblemEnumDTO.ALG_NONE,
+                "The body is an unsecured JOSE object (alg none): it carries no signature");
+            case JWEObject jwe -> throw check(SignatureProblemEnumDTO.ENCRYPTED,
+                "The body is an encrypted JOSE object (alg %s), not a signed one".formatted(jwe.getHeader().getAlgorithm()));
+            default -> throw check(SignatureProblemEnumDTO.NOT_JWS,
+                "The body is a JOSE object that is not a JWS: %s".formatted(jose.getClass().getSimpleName()));
+        };
+    }
+
     private void validateCriticalHeaders(JWSHeader header) {
         Set<String> criticalHeaders = header.getCriticalParams();
 
         if (isNull(criticalHeaders) || criticalHeaders.isEmpty()) {
-            throw new ServiceException("Missing required 'crit' parameter. X9.150 requires the JWS Protected Header to include the 'crit' parameter");
+            throw check(SignatureProblemEnumDTO.BAD_HEADER, "Missing required 'crit' parameter. X9.150 requires the JWS Protected Header to include the 'crit' parameter");
         }
 
         if (!criticalHeaders.contains(JWS_HEADER_CORRELATION_ID) ||
             !criticalHeaders.contains(JWS_HEADER_IAT) ||
             !criticalHeaders.contains(JWS_HEADER_TTL)) {
-            throw new ServiceException("The 'crit' parameter must include at least: correlationId, iat, ttl");
+            throw check(SignatureProblemEnumDTO.BAD_HEADER, "The 'crit' parameter must include at least: correlationId, iat, ttl");
         }
 
         for (String criticalHeader : criticalHeaders) {
             if (!SUPPORTED_CRITICAL_HEADERS.contains(criticalHeader)) {
-                throw new ServiceException("Unrecognized critical header parameter: %s".formatted(criticalHeader));
+                throw check(SignatureProblemEnumDTO.BAD_HEADER, "Unrecognized critical header parameter: %s".formatted(criticalHeader));
             }
         }
 
@@ -580,7 +671,7 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         Object correlationIdHeader = header.getCustomParam(JWS_HEADER_CORRELATION_ID);
 
         if (isNull(correlationIdHeader)) {
-            throw new ServiceException("Missing required header parameter: correlationId");
+            throw check(SignatureProblemEnumDTO.BAD_HEADER, "Missing required header parameter: correlationId");
         }
 
         String correlationId = correlationIdHeader.toString();
@@ -590,7 +681,7 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         try {
             return UUID.fromString(correlationId);
         } catch (IllegalArgumentException e) {
-            throw new ServiceException("Invalid correlationId format. Must be a valid UUID: %s".formatted(correlationId));
+            throw check(SignatureProblemEnumDTO.BAD_HEADER, "Invalid correlationId format. Must be a valid UUID: %s".formatted(correlationId));
         }
     }
 
@@ -598,7 +689,7 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         Object iatHeader = header.getCustomParam(JWS_HEADER_IAT);
 
         if (isNull(iatHeader)) {
-            throw new ServiceException("Missing required header parameter: iat (issued-at)");
+            throw check(SignatureProblemEnumDTO.BAD_HEADER, "Missing required header parameter: iat (issued-at)");
         }
 
         long iat;
@@ -606,11 +697,11 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         try {
             iat = (Long) iatHeader;
         } catch (ClassCastException e) {
-            throw new ServiceException("Invalid iat format. Must be a Unix timestamp in milliseconds");
+            throw check(SignatureProblemEnumDTO.BAD_HEADER, "Invalid iat format. Must be a Unix timestamp in milliseconds");
         }
 
         if (iat <= 0) {
-            throw new ServiceException("Invalid iat value. Must be a positive Unix timestamp in milliseconds");
+            throw check(SignatureProblemEnumDTO.BAD_HEADER, "Invalid iat value. Must be a positive Unix timestamp in milliseconds");
         }
 
         log.debug("Validated iat: {}", iat);
@@ -622,7 +713,7 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         Object ttlHeader = header.getCustomParam(JWS_HEADER_TTL);
 
         if (isNull(ttlHeader)) {
-            throw new ServiceException("Missing required header parameter: ttl (time-to-live)");
+            throw check(SignatureProblemEnumDTO.BAD_HEADER, "Missing required header parameter: ttl (time-to-live)");
         }
 
         long ttl;
@@ -630,11 +721,11 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         try {
             ttl = (Long) ttlHeader;
         } catch (ClassCastException e) {
-            throw new ServiceException("Invalid ttl format. Must be a positive integer in milliseconds");
+            throw check(SignatureProblemEnumDTO.BAD_HEADER, "Invalid ttl format. Must be a positive integer in milliseconds");
         }
 
         if (ttl <= 0) {
-            throw new ServiceException("Invalid ttl value. Must be a positive integer in milliseconds");
+            throw check(SignatureProblemEnumDTO.BAD_HEADER, "Invalid ttl value. Must be a positive integer in milliseconds");
         }
 
         log.debug("Validated ttl: {} ms", ttl);
@@ -649,7 +740,7 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
 
         if (nonNull(criticalHeaders) && criticalHeaders.contains(JWS_HEADER_STATUS_CODE)) {
             if (isNull(statusCodeHeader)) {
-                throw new ServiceException("Missing required header parameter: statusCode (required for responses)");
+                throw check(SignatureProblemEnumDTO.BAD_HEADER, "Missing required header parameter: statusCode (required for responses)");
             }
 
             String statusCode = statusCodeHeader.toString();
@@ -659,12 +750,12 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
                 HttpStatus httpStatus = HttpStatus.resolve(code);
 
                 if (isNull(httpStatus)) {
-                    throw new ServiceException("Invalid statusCode. Must be a valid HTTP status code: %s".formatted(statusCode));
+                    throw check(SignatureProblemEnumDTO.BAD_HEADER, "Invalid statusCode. Must be a valid HTTP status code: %s".formatted(statusCode));
                 }
 
                 log.debug("Validated statusCode: {} ({})", statusCode, httpStatus.getReasonPhrase());
             } catch (NumberFormatException e) {
-                throw new ServiceException("Invalid statusCode format. Must be a numeric HTTP status code: %s".formatted(statusCode));
+                throw check(SignatureProblemEnumDTO.BAD_HEADER, "Invalid statusCode format. Must be a numeric HTTP status code: %s".formatted(statusCode));
             }
         }
     }
@@ -686,7 +777,7 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         }
 
         if (!payloadJson.containsKey(JWS_PAYLOAD_QR_CODE_CONTENT)) {
-            throw new ServiceException("JWS payload JSON expected to have property qrCodeContent.");
+            throw check(SignatureProblemEnumDTO.CONTENT_MISMATCH, "JWS payload JSON expected to have property qrCodeContent.");
         }
 
         String qrCodeContent = payloadJson.get(JWS_PAYLOAD_QR_CODE_CONTENT).toString();
@@ -696,22 +787,46 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         String payloadUrl = qrCodeEMVService.extractPayloadUrl(decodedQrCodeContent);
 
         if (!Strings.CI.contains(payloadUrl, locationId)) {
-            throw new ServiceException("JWS payload URL does not contains ID %s".formatted(locationId));
+            throw check(SignatureProblemEnumDTO.CONTENT_MISMATCH, "JWS payload URL does not contains ID %s".formatted(locationId));
         }
 
         return decodedQrCodeContent;
     }
 
+    /**
+     * The time window: {@code iat + ttl} must not have passed, and {@code iat} must not be ahead of
+     * this verifier's clock by more than the allowed skew.
+     *
+     * <p>The second half is ours (owner decision, Story 2.3 follow-up): ANSI X9.150 defines {@code iat}
+     * and {@code ttl} but no skew. A JWS dated ahead stretches its own window past what its signer's
+     * real clock allowed, so it could be held back and replayed later. The skew,
+     * {@code x9.public-endpoints.jws-clock-skew-seconds} (60 by default), forgives honest drift
+     * between two clocks. The rule holds for everything this verifier checks, questions and answers
+     * alike: this service's clock judges (INTERPRETATION.md I-13).
+     */
     private void validateJwsExpiration(long iat, long ttl) {
         long currentTime = Instant.now(BusinessClock.clock()).toEpochMilli();
         long expirationTime = iat + ttl;
+        long skewMillis = clockSkewMillis();
+
+        if (iat > currentTime + skewMillis) {
+            throw check(SignatureProblemEnumDTO.FUTURE_IAT,
+                String.format("JWS iat is in the future beyond the allowed clock skew. Current time: %d, iat: %d, allowed skew: %d ms",
+                    currentTime, iat, skewMillis));
+        }
 
         if (currentTime >= expirationTime) {
-            throw new ServiceException(
+            throw check(SignatureProblemEnumDTO.EXPIRED,
                 String.format("JWS message has expired. Current time: %d, Expiration time (iat + ttl): %d", currentTime, expirationTime));
         }
 
         log.debug("Expiration check passed. Message valid until: {}", Instant.ofEpochMilli(expirationTime));
+    }
+
+    private long clockSkewMillis() {
+        Long skewSeconds = x9Properties.getPublicEndpoints().getJwsClockSkewSeconds();
+
+        return isNull(skewSeconds) ? DEFAULT_CLOCK_SKEW_MILLIS : Math.max(0L, skewSeconds) * SECONDS_TO_MILLIS_VALUE;
     }
 
     private void validateCertificateValidity(X509Certificate certificate) {
@@ -720,9 +835,11 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
 
             log.debug("Certificate validity check passed. Valid until: {}", certificate.getNotAfter().toInstant());
         } catch (CertificateExpiredException e) {
-            throw new ServiceException("Certificate has expired. Expired at: %s".formatted(certificate.getNotAfter().toInstant()), e);
+            throw new SignatureCheckException(SignatureProblemEnumDTO.UNTRUSTED_CHAIN,
+                "Certificate has expired. Expired at: %s".formatted(certificate.getNotAfter().toInstant()), e);
         } catch (CertificateNotYetValidException e) {
-            throw new ServiceException("Certificate is not yet valid. Valid from: %s".formatted(certificate.getNotBefore().toInstant()), e);
+            throw new SignatureCheckException(SignatureProblemEnumDTO.UNTRUSTED_CHAIN,
+                "Certificate is not yet valid. Valid from: %s".formatted(certificate.getNotBefore().toInstant()), e);
         }
     }
 
@@ -730,7 +847,8 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         Base64URL thumbprint = header.getX509CertSHA256Thumbprint();
 
         if (isNull(thumbprint)) {
-            throw new ServiceException("Missing required header parameter: x5t#S256 (certificate thumbprint)");
+            throw check(SignatureProblemEnumDTO.BAD_HEADER,
+                "Missing required header parameter: x5t#S256 (certificate thumbprint)");
         }
 
         return externalCertificates
@@ -738,7 +856,7 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
             .map(certificate -> getX509CertificateIfMatch(thumbprint, certificate))
             .flatMap(Optional::stream)
             .findFirst()
-            .orElseThrow(() -> new ServiceException(
+            .orElseThrow(() -> check(SignatureProblemEnumDTO.UNTRUSTED_CHAIN,
                 String.format("No matching certificate found for thumbprint: %s", thumbprint)));
     }
 
@@ -767,7 +885,7 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
             return new ECDSAVerifier(((ECKey) jwk).toECPublicKey(), SUPPORTED_CRITICAL_HEADERS);
         }
 
-        throw new ServiceException("Unsupported signature algorithm: %s".formatted(algName));
+        throw check(SignatureProblemEnumDTO.BAD_HEADER, "Unsupported signature algorithm: %s".formatted(algName));
     }
 
     private ExternalCertificateInput createExternalCertificateInput(JWSHeader jwsHeader) {
@@ -788,7 +906,7 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
 
             return new ExternalCertificateInput(CertificateEndpointTypeEnum.NONE, null);
         } else {
-            throw new ServiceException("No certificate URL found in JWS header for signature validation.");
+            throw check(SignatureProblemEnumDTO.BAD_HEADER, "No certificate URL found in JWS header for signature validation.");
         }
     }
 
@@ -798,7 +916,9 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
 
             return (X509Certificate) factory.generateCertificate(new ByteArrayInputStream(base64Certificate.decode()));
         } catch (Exception e) {
-            throw new ServiceException("Could not convert to X509Certificate. Details: %s".formatted(e.getMessage()));
+            // Only reached for an x5c header: a certificate in the header that cannot be read.
+            throw check(SignatureProblemEnumDTO.BAD_HEADER,
+                "Could not convert to X509Certificate. Details: %s".formatted(e.getMessage()));
         }
     }
 

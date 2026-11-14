@@ -122,6 +122,12 @@ x9:
 
   public-endpoints:
     jws-ttl-seconds: 300
+    # How far ahead of this service's clock a JWS's iat may be when we verify it. Beyond this, the
+    # JWS is refused as dated in the future: a question gets a signed 401, a payee's answer is
+    # reported INVALID with signatureProblem FUTURE_IAT. It forgives honest drift between two clocks;
+    # a JWS dated further ahead would stretch its own iat + ttl window. Applies to every JWS this
+    # service verifies, questions and answers alike. 0 allows no drift at all.
+    jws-clock-skew-seconds: ${X9_JWS_CLOCK_SKEW_SECONDS:60}
     base-path: /pub
     certificate-path: ${x9.public-endpoints.base-path}/.well-known/certificate
     jwk-set-path: ${x9.public-endpoints.base-path}/.well-known/jwks

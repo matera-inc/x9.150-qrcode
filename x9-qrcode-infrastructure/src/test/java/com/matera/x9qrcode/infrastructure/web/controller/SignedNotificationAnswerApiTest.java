@@ -6,6 +6,7 @@
  */
 package com.matera.x9qrcode.infrastructure.web.controller;
 
+import com.matera.x9qrcode.domain.utils.BusinessClock;
 import com.matera.x9qrcode.infrastructure.AbstractIntegrationTest;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -140,6 +141,16 @@ class SignedNotificationAnswerApiTest extends AbstractIntegrationTest {
                 .extract().body().asString();
 
         return new Question(jws, correlationId);
+    }
+
+    /** A question signed while this deployment's clock reads {@code seconds} ahead: its iat is in the future. */
+    private Question signAhead(String payload, long seconds) {
+        BusinessClock.setOffsetSeconds(seconds);
+        try {
+            return sign(payload);
+        } finally {
+            BusinessClock.reset();
+        }
     }
 
     private MockMvcResponse post(String body) {
@@ -371,5 +382,33 @@ class SignedNotificationAnswerApiTest extends AbstractIntegrationTest {
         assertEquals(200, bodyOf(signedAnswer).path("statusCode").asInt());
         assertTrue(signedAnswer.getHeader().getCustomParam("iat") instanceof Number,
                 "the decision instant is the answer's iat");
+    }
+
+    // ----------------------------------------------------------------- a question from the future
+
+    /**
+     * <b>X9-SIG-145</b> — a question whose iat is in the future beyond the allowed skew is refused,
+     * signed, as unverifiable; within the skew it is accepted.
+     *
+     * <p><b>Source:</b> Ours (owner decision, Story 2.3 follow-up). ANSI X9.150-2026 §10.3.2 defines
+     * {@code iat} and {@code ttl} but no skew. The same rule as for the answers we check (X9-SIG-140).
+     *
+     * <p><b>Why:</b> {@code iat + ttl} is the window in which a signature counts. A question dated
+     * ahead stretches that window past what its signer's real clock allowed, so a captured question
+     * could be held back and replayed later. The payee's clock judges (I-13); the skew
+     * ({@code x9.public-endpoints.jws-clock-skew-seconds}, 60 by default) forgives honest drift.
+     */
+    @Test
+    void aQuestionFromTheFutureIsRefusedSignedAndWithinTheSkewItIsAccepted() throws Exception {
+        String qrCodeId = createQRCode();
+        Question ahead = signAhead(notification(qrCodeId, AMOUNT, "PAYMENT_INITIATED", null, PAYER), 300);
+
+        JWSObject refusal = assertSignedAnswer(post(ahead.jws()), HttpStatus.UNAUTHORIZED.value());
+        assertNotEquals(ahead.correlationId(), correlationIdOf(refusal), "an unverified correlationId is never echoed");
+        assertEquals("ACTIVE", statusOf(qrCodeId), "a refused question changes nothing");
+
+        Question drifting = signAhead(notification(qrCodeId, AMOUNT, "PAYMENT_INITIATED", null, PAYER), 30);
+        JWSObject yes = assertSignedAnswer(post(drifting.jws()), HttpStatus.OK.value());
+        assertEquals(drifting.correlationId(), correlationIdOf(yes));
     }
 }

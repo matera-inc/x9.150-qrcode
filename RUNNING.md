@@ -100,6 +100,20 @@ request bodies under
 unauthenticated, so no bearer token is needed. Access control is intentionally out of scope —
 protect the service at your edge (API gateway, mTLS, or network policy).
 
+## JWS clock skew
+
+Every JWS this service verifies (a payment notification it receives, a payload it decodes, a payee's
+answer to a notification it sends) must not be dated in the future. Its `iat` may be ahead of this
+service's clock by at most the allowed skew, which forgives honest drift between two clocks.
+
+| Variable | Property | Default | Meaning |
+|---|---|---|---|
+| `X9_JWS_CLOCK_SKEW_SECONDS` | `x9.public-endpoints.jws-clock-skew-seconds` | `60` | How many seconds ahead of this service's clock a JWS's `iat` may be. `0` allows no drift. |
+
+Beyond the skew, a payment notification is refused with a signed `401`, and a payee's answer is
+reported `INVALID` with `signatureProblem` `FUTURE_IAT`. An expired one (`iat + ttl` passed) is
+refused the same way, with `EXPIRED`.
+
 ## Moving the clock (test deployments only)
 
 Discount windows, `validUntil`, the reservation lapse and JWS `iat + ttl` all depend on "now". A
