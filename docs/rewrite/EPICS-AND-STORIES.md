@@ -1134,7 +1134,7 @@ So that the Go build cannot accept what Java refuses, or the reverse.
 **Then** tests cover: unsupported network named in the 400; unsupported and wrong-case currency
 (`usd`); a missing currency (no default); currencies from two peg groups; duplicate currency;
 `validUntil` in the past or exactly now; `dueDate` after `validUntil`; a method's `validUntil` after
-the QR Code's; tip `allowed: false` with a range and `true` without one; a negative amount; a
+the QR Code's; tip `allowed: false` with a range and `true` with neither a range nor presets; a negative amount; a
 19-digit amount (today's behaviour pinned); a host too long for EMV tag 26.
 
 **S4.2-AC2. PATCH (group B).**
@@ -1197,7 +1197,7 @@ over), and a stale `If-Match`.
 
 **S4.4-AC2. Events (group G).**
 **Then** every transition emits exactly its event; per-QR order; no gaps across pages; `wait` above
-30 clamps; `hasMore`; replay from an old cursor is safe by `eventId`.
+30 refused with 400 naming `wait` (the contract's `maximum: 30`); `hasMore`; replay from an old cursor is safe by `eventId`.
 
 ### Story 4.5: The time edges are pinned on the test clock
 

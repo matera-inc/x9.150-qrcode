@@ -57,6 +57,11 @@ three different codes. It is a true no-op: no event, no revision, no `revisedAt`
 emitting a second `payment.cleared` would make a duplicated request indistinguishable from a second
 payment. A repeated `PAID` therefore keeps the reference recorded first; that is what a no-op means.
 
+**A retry that carries `If-Match` must carry the current tag** (owner, 2026-11-14). The first
+attempt's tag is stale once that attempt has succeeded, so resending it is answered 412. A caller
+that gets 412 reads the QR Code and sees it is already in the status it asked for; a caller that
+retries without `If-Match` gets the 200 no-op above.
+
 **Payee-facing only.** A payer announcing twice is two payers reaching for one bill and is still
 refused. That lives on the notification endpoint, not this one — which is exactly why the rule
 change broke a test (`X9-LIFE-052`) that had been asserting a payer-protection property through the

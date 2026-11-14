@@ -22,9 +22,10 @@ public final class UpdateQRCodeStatusRequestMapper {
      * weak one. Absent or {@code *} means no condition — {@code *} being HTTP's "any current
      * representation", which every existing QR Code satisfies.
      *
-     * <p>A malformed value is a client error rather than something to ignore: silently treating
-     * {@code If-Match: abc} as unconditional would apply the very write the caller was trying to
-     * make conditional.
+     * <p>A malformed value is never ignored: silently treating {@code If-Match: abc} as
+     * unconditional would apply the very write the caller was trying to make conditional. It is a
+     * tag no QR Code can have, so the request is refused with 412, as for any stale tag (pinned by
+     * the black-box suite, Story 4.2).
      */
     public static String parseIfMatch(String ifMatch) {
         if (isNull(ifMatch) || ifMatch.isBlank() || "*".equals(ifMatch.trim())) {

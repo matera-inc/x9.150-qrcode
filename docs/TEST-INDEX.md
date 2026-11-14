@@ -370,7 +370,7 @@ The status-update matrix itself is `X9-MAP-010` to `-013` above.
 | `X9-EVT-050` | every status-update transition emits exactly its event, in order per QR Code, interleaved with another | `test_status_update_and_events.py` |
 | `X9-EVT-051` | paging two at a time from an old cursor yields exactly what one large read yields: no gap, no repeat | `test_status_update_and_events.py` |
 | `X9-EVT-052` | `hasMore` is true on a page cut at `limit`; a read past the end is empty, `hasMore` false, no `nextCursor` | `test_status_update_and_events.py` |
-| `X9-EVT-053` | `wait` above 30 clamps to 30 (Java answers 400: strict xfail, a question for the owner) | `test_status_update_and_events.py` |
+| `X9-EVT-053` | `wait` above 30 is refused at once with 400 naming `wait` (the contract's `maximum: 30`) | `test_status_update_and_events.py` |
 | `X9-EVT-054` | an empty long poll is held for `wait` seconds: 0 at once, 2, and 30 | `test_status_update_and_events.py` |
 | `X9-EVT-055` | a replay from an old cursor returns the same events, ids and bodies, so deduplication by `eventId` applies each once | `test_status_update_and_events.py` |
 

@@ -121,9 +121,8 @@ class TestPayload:
         location (a well-formed EMV with a correct CRC), so the lookup is what fails, not the
         location check of X9-LOC-020.
 
-        Source: Mechanism. Today it is a 400 with a generic reason ("Error processing payment
-          payload retrieve."), not the 404 the OpenAPI lists for this path; see "Questions for
-          the owner" in the Story 4.3 PR.
+        Source: Mechanism. A 400 with a generic reason ("Error processing payment payload
+          retrieve."); openapi.yaml says so since the owner kept 400 over 404 (2026-11-14).
         Why: A Go build answering 404 here, or naming the location, would be a visible change for
           every payer that branches on the status.
         """
