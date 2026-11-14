@@ -18,8 +18,10 @@ them. That is the whole of it.
 | **It does NOT** | move funds, receive funds, hold balances, settle, reconcile against a bank or ledger, or pay anyone — including paying out tips to staff |
 | **Nor does it** | call a payment system, a core banking system, a rail (FedNow, RTP, ACH), a wallet, a custody provider or a chain node |
 
-**It never touches a payment system either.** The system that receives the funds integrates with
-this service, never the other way round:
+**It never touches a payment system either.** The payment system creates the QR Code, receives the
+funds and integrates with this service, never the other way round:
+
+- **The payment system creates the QR Code** through the create API, and owns it from then on.
 
 - **This service only records events.** Each status change writes an event in the same transaction:
   a MongoDB collection today, the `payment_event` table in the Go build, where that table is the
@@ -27,8 +29,9 @@ this service, never the other way round:
   proposed).
 - **The payment system reads them** through the HTTP event API, or in the Go build straight from the
   table, by change data capture (Debezium, for example) or by plain SQL.
-- **The payment system tells this service** when it has matched the money, through the status-update
-  API. Only then is a QR Code `PAID`.
+- **The payment system closes the QR Code** through the status-update API: `PAID` once it has
+  matched the money, or `CANCELLED` when it no longer wants the QR Code paid. Only the payment system
+  closes a QR Code; nothing a payer says does.
 - **The only messages this service sends are X9.150's own:** signed answers to payers, and, when it
   acts for a payer, a signed payment notification to a payee's X9.150 endpoint.
 
@@ -40,11 +43,12 @@ flowchart LR
     ev[("events")]
     x9 -- "inserts" --> ev
   end
-  ps["Payment system that receives the funds"]
+  ps["Payment system: creates the QR Code, receives the funds"]
   payer -- "fetches the signed payload,<br/>sends signed notifications" --> x9
   x9 -- "signed answers" --> payer
+  ps -- "creates the QR Code" --> x9
   ps -- "reads: HTTP, CDC or SQL" --> ev
-  ps -- "status-update: PAID" --> x9
+  ps -- "status-update: PAID or CANCELLED" --> x9
   payer -. "the money, on a rail or chain" .-> ps
 ```
 
