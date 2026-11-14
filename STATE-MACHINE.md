@@ -190,11 +190,17 @@ From the payment system (status-update API), and from time:
 
 | Change | ACTIVE | Held by a payer | PAID or CANCELLED |
 |---|---|---|---|
-| **→ `PAYMENT_INITIATED`** | → `PAYMENT_INITIATED`, held by nobody identifiable; `payment.initiated` | 409 | 409 |
-| **→ `PAID`** | → `PAID`, `payment.cleared` | same | 400 |
-| **→ `CANCELLED`** | → `CANCELLED`, `payment.cancelled` | same | 400 |
-| **→ `ACTIVE`** (reactivate) | 400 | → `ACTIVE`, reservation cleared, no event | 400 |
+| **→ `PAYMENT_INITIATED`** | → `PAYMENT_INITIATED`, held by nobody identifiable; `payment.initiated` | 200, nothing changes ¶ | 409 |
+| **→ `PAID`** | → `PAID`, `payment.cleared` | same | `PAID`: 200, nothing changes ¶. `CANCELLED`: 400 |
+| **→ `CANCELLED`** | → `CANCELLED`, `payment.cancelled` | same | `CANCELLED`: 200, nothing changes ¶. `PAID`: 400 |
+| **→ `ACTIVE`** (reactivate) | 200, nothing changes ¶; a lapsed reservation: 400 | → `ACTIVE`, reservation cleared, no event | 400 |
 | **The reservation's window passes** | — | reads `ACTIVE`, nothing written, no event; never once a hash is registered, nor when `ttl-seconds` is `0` | — |
+
+¶ **A status-update to the status the QR Code already has is a retry:** 200, nothing written, no
+revision, no event (ADR-0020), so a payment system that timed out can send it again. "Already
+has" means both the stored and the effective status: a lapsed reservation reads `ACTIVE`, so
+`PAYMENT_INITIATED` on it reserves the QR Code again. A retry that carries `If-Match` must carry
+the current tag.
 
 § **Once a hash is registered, no payer message changes the QR Code's status** (owner,
 2026-11-14): money has moved, so only the payment system ends the reservation.
