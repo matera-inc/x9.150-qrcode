@@ -702,7 +702,7 @@ Today: FedNow/RTP require an End-to-End ID on every notification
 (`QRCodeEntityValidator.validatePaymentNotificationFromInstantPayments`), so they have no leg 1;
 ACH gates every notification as leg 1, even with a Trace Number.
 
-**Implements:** FR34; ADR-0004, ADR-0021
+**Implements:** FR34; ADR-0036 (proposed), ADR-0021
 
 **Acceptance Criteria:**
 
@@ -756,7 +756,7 @@ Today Java accepts the holder's retry (`validateAnnouncement`, `ReservationHolde
 and judges it again at the payee's clock (correct). Two gaps: a refused retry leaves the reservation
 in place until it lapses, and a takeover of a lapsed reservation emits no event.
 
-**Implements:** FR35; ADR-0019, ADR-0021
+**Implements:** FR35; ADR-0036 (proposed), ADR-0019, ADR-0021
 
 **Acceptance Criteria:**
 
