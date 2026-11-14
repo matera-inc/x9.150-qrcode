@@ -440,6 +440,16 @@ databaseChangeLog:
             constraints:
               nullable: false
         - column:
+            name: deviations
+            type: VARCHAR(255)
+            remarks: 'How the payer broke the protocol (ADR-0036), comma-separated codes in a closed list:
+              RECEIVED_IN_WRONG_STATUS (including a post-commit while another payer held the QR Code, where
+              received_in_status_code is INIT), ACTION_CONTRADICTS_HASH. Empty string = the payer followed the
+              rules.'
+            constraints:
+              nullable: false
+            defaultValue: ''
+        - column:
             name: phase
             type: VARCHAR(16)
             remarks: 'What the notification was taken as (ADR-0004, ADR-0036): PRE_COMMIT (no transactionId; a request
