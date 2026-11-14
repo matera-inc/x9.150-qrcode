@@ -434,7 +434,6 @@ def test_t8_after_a_lapse_another_payer_takes_over_and_the_first_payers_late_rep
     is registered in every status, never refused for status reasons; X9-MAP-033).
     Why: a payer who announced and vanished must not keep the bill from everyone else; and the money
     the first payer moved anyway is evidence the payment system needs, so its report is kept.
-    The story's own wording for A's late SENT ("refused") is X9-TIME-009.
     """
     qr = api.create_qr()
     assert api.notify(qr, signer=payer_a, payer_info=HOLDER).status == 200
@@ -458,28 +457,6 @@ def test_t8_after_a_lapse_another_payer_takes_over_and_the_first_payers_late_rep
     assert mine[2].get("payerInfo") == HOLDER and RIWS in (mine[2].get("deviations") or []), \
         f"A's report is A's, flagged: {mine[2]}"
     assert api.status_of(qr) == "PAYMENT_INITIATED", "B keeps the QR Code"
-
-
-@pytest.mark.xfail(strict=True, reason=(
-    "S4.5-AC1 T8 says A's late SENT is refused; ADR-0036 (accepted 2026-11-14) and X9-MAP-033 say "
-    "a post-commit is registered in every status, and Java registers it (200). See 'Questions for "
-    "the owner' in the Story 4.5 PR."))
-def test_t8_as_the_story_words_it_the_first_payers_late_sent_is_refused(
-        api, clock, payer_a, payer_b):
-    """X9-TIME-009 — T8 as S4.5-AC1 words it: after B's takeover, A's late SENT is refused.
-
-    Source: Ours. S4.5-AC1, row T8. It contradicts ADR-0036 and plan §4.2 T8 ("the first payer's
-    late SENT is still accepted"); Java follows the ADR. Strict, so it turns red the day the two
-    agree, whichever way the owner settles it.
-    """
-    qr = api.create_qr()
-    assert api.notify(qr, signer=payer_a, payer_info=HOLDER).status == 200
-    clock.move_by(LAPSED_MS)
-    assert api.notify(qr, signer=payer_b, payer_info=OTHER).status == 200
-
-    late = api.notify(qr, signer=payer_a, payer_info=HOLDER, action="SENT", transaction_id=TX_HASH)
-
-    assert late.status >= 400, f"the story says refused: {late}"
 
 
 def test_t9_a_reservation_taken_30_s_before_valid_until_ends_at_valid_until(api, clock):

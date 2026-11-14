@@ -1221,7 +1221,7 @@ expected results:
 | T5 | late fee per 24 h from `dueDate`; advertised `validUntil` = the next boundary (Story 2.6) |
 | T6 | pre-commit after `validUntil` refused; the payee may still mark it `PAID` (ADR-0020) |
 | T7 | an expired method is absent from the payload and refused in a notification; others served |
-| T8 | after a lapse, B's pre-commit accepted with `payment.initiated` (Story 2.5); A's late `SENT` refused |
+| T8 | after a lapse, B's pre-commit accepted with `payment.initiated` (Story 2.5); A's late `SENT` registered, flagged `RECEIVED_IN_WRONG_STATUS`, and B keeps the QR Code (ADR-0036) |
 | T9 | a reservation taken at `validUntil − 30 s` ends at `validUntil` |
 | T10 | a payer `iat` 10 min old with a 5-min `ttl`: refused before any lookup |
 | T11 | per build: Go keeps the expired code (payload refused with the expiry reason, GET works); Java's TTL deletion runs on the real clock, so it is asserted by waiting real time or marked `java_only` |
