@@ -6,6 +6,8 @@
  */
 package com.matera.x9qrcode.app.usecase.retrievepayload;
 
+import com.matera.x9qrcode.domain.utils.DateTimeUtils;
+
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -21,7 +23,7 @@ public record RetrieveQRCodePayloadInput(String uuid, LocalDate dateForPayment,
     public OffsetDateTime getZonedDateForPayment() {
         return dateForPayment != null
             ? dateForPayment.atStartOfDay().atZone(ZoneOffset.UTC).toOffsetDateTime()
-            : OffsetDateTime.now(ZoneOffset.UTC);
+            : DateTimeUtils.nowUTC();
     }
 
 }

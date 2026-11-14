@@ -113,6 +113,13 @@ x9:
   reservation:
     ttl-seconds: 90
 
+  # The movable test clock (ADR-0033). OFF by default and in production. When on, GET/PUT/DELETE
+  # /test/clock is served on clock-listen — a separate listener, never the API port — and the app
+  # refuses to start unless the signing certificate is a bundled demo or test-CA one.
+  testing:
+    clock-control: ${X9_TESTING_CLOCKCONTROL:false}
+    clock-listen: ${X9_TESTING_CLOCKLISTEN:127.0.0.1:8099}
+
   public-endpoints:
     jws-ttl-seconds: 300
     base-path: /pub

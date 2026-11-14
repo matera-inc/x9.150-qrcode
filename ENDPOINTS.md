@@ -67,6 +67,9 @@ x9:
 The authoritative contract is the OpenAPI spec:
 [`x9-qrcode-infrastructure/src/main/resources/apis/openapi.yaml`](x9-qrcode-infrastructure/src/main/resources/apis/openapi.yaml).
 
+`/test/clock` is deliberately **not** on this port and not in the contract. It exists only in a test
+deployment, on a listener of its own — see "Moving the clock" in [RUNNING.md](RUNNING.md).
+
 ## Consuming the payment event stream
 
 This is how the software around X9.150 learns that a QR Code was paid. It is the integration point
