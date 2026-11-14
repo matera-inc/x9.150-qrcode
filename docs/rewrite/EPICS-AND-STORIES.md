@@ -954,8 +954,10 @@ unknown `crit`, missing `x5c`, altered payload, `alg: none`
 **And** each is refused, naming the reason.
 
 **S3.2-AC3.** **Given** A holds a reservation
-**When** B announces or reports with its own key
-**Then** it is refused with 409.
+**When** B announces (pre-commit) or sends `NOT_SENT` with its own key
+**Then** it is refused with 409
+**And** when B reports a payment (post-commit) with its own key, it is accepted, A keeps the
+reservation, and the hash is registered flagged `RECEIVED_IN_WRONG_STATUS` (ADR-0036).
 
 **S3.2-AC4.** **Given** any answer from the service to a notification
 **Then** `x9client.jws` verifies it against the payee's certificate and checks its `correlationId`
