@@ -30,6 +30,7 @@ from x9client.samples import BILL, FAR_FUTURE, FEDNOW, RECIPIENT
 
 PR = "/api/v1/payment-request"
 INT64_MAX = 2 ** 63 - 1
+EIGHTEEN_NINES = 10 ** 18 - 1
 OTHER_CREDITOR = {"name": "Another Co", "address": {"line1": "2 B St", "city": "Denver",
                                                     "country": "US"}, "MCC": "5812"}
 
@@ -252,21 +253,34 @@ def test_a_negative_amount_is_refused(api, where):
     assert_not_created(response)
 
 
-@pytest.mark.parametrize("amount", [1234567890123456789, INT64_MAX], ids=["19-digits", "int64-max"])
-def test_a_19_digit_amount_within_int64_is_accepted_and_kept_exactly(api, amount):
-    """X9-AMT-421 — S4.2-AC1: a 19-digit amount up to 2^63−1 is accepted and read back to the unit
-    (today's behaviour pinned).
+@pytest.mark.parametrize("where, field", [
+    ("bill-and-method", "bill.amountDue.amount"),
+    ("method-only", "paymentMethods[0].amount"),
+])
+def test_18_nines_is_accepted_and_19_digits_refused(api, where, field):
+    """X9-AMT-421 — S4.2-AC1: 999999999999999999 (18 nines) is accepted and read back to the
+    unit; 10^18, the smallest 19-digit amount, is refused with 400 naming the field, and nothing
+    is created, though a 64-bit integer holds it.
 
-    Source: Ours. ADR-0005 (amounts stay int64); the standard says "64 bit integer".
-    Why: A JSON parser that goes through a double rounds 9223372036854775807 to ...808; the bill
-      would then read back as a different debt.
+    Source: ANSI X9.150-2026 §13.5.1 and §14.3 — amount fields have a maximum length of 18.
+      Conformance (ADR-0005; Java accepted 19 digits until 2026-11-14).
+    Why: A QR Code asking for an amount no conforming payer can hold is one nobody can pay. The
+      accepted case is the control, and a JSON parser that goes through a double would round it:
+      the bill would then read back as a different debt.
     """
-    response = api.create_qr_detailed(amount=amount)
-    assert response.status == 201, response
+    accepted = api.create_qr_detailed(amount=EIGHTEEN_NINES)
+    assert accepted.status == 201, accepted
+    read = api.qr(accepted.body["id"]).body
+    assert read["bill"]["amountDue"]["amount"] == EIGHTEEN_NINES
+    assert read["paymentMethods"][0]["amount"] == EIGHTEEN_NINES
 
-    read = api.qr(response.body["id"]).body
-    assert read["bill"]["amountDue"]["amount"] == amount
-    assert read["paymentMethods"][0]["amount"] == amount
+    body = samples.payment_request(amount=10 ** 18 if where == "bill-and-method" else BILL)
+    body["paymentMethods"][0]["amount"] = 10 ** 18
+
+    refused = api.post(PR, body=body)
+
+    assert_refused(refused, naming=field, status=400)
+    assert_not_created(refused)
 
 
 @pytest.mark.parametrize("amount", [INT64_MAX + 1, 9999999999999999999],

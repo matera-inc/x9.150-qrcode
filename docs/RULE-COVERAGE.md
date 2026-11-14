@@ -79,7 +79,6 @@ that is here must still be marked `GAP`.
 | `R-I5-01` | The generated contract cases break strings (required, length, pattern); none sends `paymentMethods` as an object. | Write the test (black-box, one case). |
 | `R-I10-08` | Every tip test uses one currency. None notifies in a currency with another scale (USDC against a USD bill). | Write the test (JUnit, `PaymentNotificationTipPolicyTest`). |
 | `R-I12-11` | No test reads the `typ` of the signed answer. | Write it when the owner reviews the `typ` values (I-12 says that review is pending). |
-| `R-ADR0005-03` | Java does not enforce 18 digits: `X9-AMT-421` pins that a 19-digit amount up to 2^63−1 is accepted. The ADR and the behaviour disagree. | The owner decides: enforce 18 digits (a contract change), or correct the ADR. |
 | `R-ADR0006-04` | `paymentNotification.mode` is not in the contract and `APPROVE` is not built. | The owner says whether it is still planned; if not, mark the rule obsolete in ADR-0006. |
 | `R-ADR0007-02` | `x9.certificate.trust.allowed-issuers` and `allow-self-signed` are not built: no code reads them. | The owner says whether the Go build implements them; until then the rule is not testable. |
 | `R-ADR0011-01` | The quote store applies when FX lands. It is not built. | Nothing to test until FX is built. |
@@ -259,9 +258,9 @@ the ADR that changed it.
 | `R-ADR0004-01` | The phase is inferred from `payment.transactionId`: absent is a pre-commit, present a post-commit (on every rail since ADR-0036). | `X9-HOLD-101`, `X9-HOLD-102` | `S2.4-AC1`, `S2.4-AC5` |
 | `R-ADR0004-02` | `SENT` without a transaction id is rejected. | `X9-MAP-041`, `X9-HOLD-121`, `X9-LIFE-064` | `S4.1-AC1`, `S4.1-AC3` |
 | `R-ADR0004-03` | `PAYMENT_INITIATED` with a transaction id is treated as a post-commit and recorded. | `X9-MAP-040`, `X9-HOLD-118` | `S2.4-AC5`, `S4.1-AC1`, `S4.1-AC3` |
-| `R-ADR0005-01` | Amounts are 64-bit integers in minor units, exact to the unit up to 2^63−1; a larger one is an unreadable body. | `X9-AMT-421`, `X9-AMT-422` | `S4.2-AC1` |
+| `R-ADR0005-01` | Amounts are 64-bit integers in minor units, exact to the unit; one past 2^63−1 is an unreadable body. | `X9-AMT-421`, `X9-AMT-422` | `S4.2-AC1` |
 | `R-ADR0005-02` | A payment amount and a tip amount are not negative. | `X9-AMT-002`, `X9-AMT-420`, `X9-TIP-106` | `S4.2-AC1` |
-| `R-ADR0005-03` | Amount fields carry at most 18 digits. | GAP | — |
+| `R-ADR0005-03` | Amount fields carry at most 18 digits: 999999999999999999 is accepted, 10^18 is refused with 400 naming the field (the adjustment amount is signed, bounded in magnitude). | `X9-AMT-110`, `X9-AMT-111`, `X9-AMT-112`, `X9-AMT-120`, `X9-AMT-121`, `X9-AMT-122`, `X9-AMT-123`, `X9-AMT-421`, `X9-AMT-006` | `S4.2-AC1` |
 | `R-ADR0006-01` | A QR Code created without `paymentNotification` refuses notifications. | `X9-LIFE-045`, `X9-HOLD-403` | `S4.3-AC2` |
 | `R-ADR0006-02` | `kind: DEFAULT` accepts and records notifications. | `X9-LIFE-040`, `X9-LIFE-104` | — |
 | `R-ADR0006-03` | `kind: EXTERNAL` names the creditor's own endpoint, and a notification sent here is refused. | `X9-LIFE-046`, `X9-HOLD-404` | `S4.3-AC2` |

@@ -19,6 +19,10 @@ public class OptionalAmountVO extends ValueObject<Long> {
             throw new ValueObjectRuleException("monetary values should not be negative.");
         }
 
+        if (nonNull(value)) {
+            AmountVO.requireAtMost18Digits(value);
+        }
+
         this.value = value;
     }
 

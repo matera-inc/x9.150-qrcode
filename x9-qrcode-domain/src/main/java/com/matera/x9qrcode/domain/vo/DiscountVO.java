@@ -21,6 +21,8 @@ public record DiscountVO(
             throw new ValueObjectRuleException("Discount value must be greater than 0.");
         }
 
+        AmountVO.requireAtMost18Digits(discount);
+
         if (daysBefore <= 0) {
             throw new ValueObjectRuleException("Days before discount must be greater than 0.");
         }

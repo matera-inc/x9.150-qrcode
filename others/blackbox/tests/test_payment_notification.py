@@ -120,6 +120,18 @@ class TestFixedAmount:
         qr = api.create_qr()
         assert_refused(api.notify(qr, amount=-1), naming="negative")
 
+    @pytest.mark.parametrize("field", ["amount", "tipAmount"])
+    def test_a_19_digit_amount_is_refused(self, api, field):
+        """X9-AMT-006 — a notified amount or tip amount of 19 digits is refused.
+
+        Source: ANSI X9.150-2026 §2.1 and §2.2 — maximum length 18. Conformance (ADR-0005).
+
+        Why: The payee would otherwise judge, and record, a payment no conforming payer can send.
+        """
+        qr = api.create_qr()
+        extra = {"amount": 10 ** 18} if field == "amount" else {"amount": BILL, "tip": 10 ** 18}
+        assert_refused(api.notify(qr, **extra), naming="should not exceed 18 digits")
+
     def test_the_exact_bill_is_accepted(self, api):
         """X9-AMT-003 — the exact bill is accepted.
 
