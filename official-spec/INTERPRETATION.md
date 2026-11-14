@@ -541,7 +541,10 @@ pre-commit. All three are closed by Story 2.4 of the rewrite breakdown
 > permission for money that has already moved. Its hash is still recorded, as a post-commit, with a
 > warning. Funds that arrive in the right amount with a matching hash are enough for the payment
 > system to mark the QR Code paid. Every hash is recorded, a second one included, so the payment
-> system can detect a duplicate payment.
+> system can detect a duplicate payment. "Recorded" means registered: the hash is published through
+> the outbox as `payment.sent`, telling the payment system which QR Code it pays. And a post-commit
+> that reaches an `ACTIVE` QR Code (a payer who skipped the pre-commit) is not refused: it moves the
+> QR Code to `PAYMENT_INITIATED` for that payer. Java refuses it today.
 
 ## I-12 — The answer to a payment notification is not signed yet (known deviation)
 
