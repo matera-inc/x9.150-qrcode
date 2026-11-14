@@ -234,6 +234,12 @@ the variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`.
 - **Logs are JSON** (`log/slog`), one line per request with `method`, `path`, `status` and
   `durationMs`. An incoming `b3`, `X-B3-TraceId`/`X-B3-SpanId` or `traceparent` header adds
   `traceId` and `spanId`. The ids are logged only; nothing is exported.
+- **The database.** Two pools on the primary, writes (8) and reads (4), named `x9-qrcode` in
+  `pg_stat_activity`. At start the service checks it is connected to the configured schema and
+  that the changelog applied there is the one it expects, and refuses to start otherwise, saying
+  which ([`db/README.md`](db/README.md)). While the database is unreachable it keeps retrying.
+  `go test ./...` starts PostgreSQL 16, Liquibase 4.33.0 and PgBouncer 1.21 with Docker
+  (testcontainers); `go test -short ./...` skips those tests.
 - **One clock.** Business time comes from `internal/clock` only
   ([ADR-0033](docs/adr/0033-the-clock-can-be-moved-in-test-deployments-only.md)). Lint refuses
   `time.Now`, `Since`, `Until`, `After`, `Tick` and `NewTimer` anywhere else, except at a

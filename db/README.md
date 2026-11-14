@@ -117,9 +117,15 @@ These describe the Go service as designed (ADR-0025, ADR-0032).
   connections are released after 5 minutes, and connections carry `application_name=x9-qrcode`.
   X9.150 runs one active instance. Your event readers and auditors connect separately, with their
   own roles.
+- **It checks where it is before serving.** At start, connected as the application role, it
+  refuses to start unless `current_schema()` is the configured schema (`DATABASE_SCHEMA`, default
+  `x9_qrcode`) and the latest changeset in `databasechangelog` is the one the binary was built for.
+  The error says which of the two differs, and what it found. While the database cannot be reached
+  it keeps retrying, and readiness stays DOWN.
 - **PgBouncer ≥ 1.21 in transaction mode works.** Every transaction sets `READ COMMITTED` and its
   own timeouts with `SET LOCAL`, and nothing relies on session state. Behind an older PgBouncer, or
-  one with `max_prepared_statements=0`, set the driver's `default_query_exec_mode=exec`.
+  one with `max_prepared_statements=0`, set `DATABASE_QUERY_EXEC_MODE=exec`. The Go tests run the
+  schema check through PgBouncer 1.21 in transaction mode, both ways.
 - **TLS:** `sslmode` and the root CA are configurable. Use `verify-full`. Credentials are read from
   a mounted file, so rotating them is a file change and a reconnect.
 - **Short transactions.** No transaction spans an outbound HTTP call. The one intentionally
