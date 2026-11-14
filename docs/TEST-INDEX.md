@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**489 tests documented** — every JUnit test in the repository and every case in the
+**509 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -314,6 +314,12 @@ Only the party that announced a payment may re-announce it, report it, or give i
 | `X9-HOLD-322` | with ttl-seconds 0 a refused retry still frees the QR Code | `NoReservationWindowApiTest.java` |
 | `X9-HOLD-323` | a negative x9.reservation.ttl-seconds refuses to start | `ReservationTtlConfigurationTest.java` |
 | `X9-HOLD-324` | 0 and positive values of x9.reservation.ttl-seconds are accepted as they are | `ReservationTtlConfigurationTest.java` |
+| `X9-HOLD-401` | a rail and a currency in another case are accepted and echoed as sent, stored and in the event | `test_payers.py` |
+| `X9-HOLD-402` | no post-commit marks a QR Code PAID, on any rail, the holder's or a second hash or one on ACTIVE | `test_payers.py` |
+| `X9-HOLD-403` | a QR Code created without paymentNotification refuses notifications, signed, and stays ACTIVE | `test_payers.py` |
+| `X9-HOLD-404` | paymentNotification EXTERNAL: the payload names the external endpoint; a notification here is refused | `test_payers.py` |
+| `X9-HOLD-405` | every answer to a payer is signed, refusals included, statusCode equal to the HTTP status | `test_payers.py` |
+| `X9-HOLD-406` | 32 concurrent pre-commits: exactly one 200, 31 signed 409s, one payment.initiated | `test_payers.py` |
 
 ## The transition map (ADR-0035)
 
@@ -365,6 +371,16 @@ One black-box test per row of ADR-0035's map (Story 4.1); the row-to-test table 
 | `X9-LOC-040` | a location held by a live QR Code cannot be claimed at creation | `QRCodesApisFlowTest.java` |
 | `X9-LOC-041` | the payload is retrieved by location, signed | `QRCodesApisFlowTest.java` |
 | `X9-LOC-042` | a location is reused once its holder is no longer live | `QRCodesApisFlowTest.java` |
+| `X9-LOC-301` | a location no QR Code holds is refused (400, generic reason; pinned) | `test_payers.py` |
+| `X9-LOC-302` | content not byte-equal to the issued EMV is refused | `test_payers.py` |
+| `X9-LOC-303` | the issued content, signed by a trusted payer, is served (control) | `test_payers.py` |
+| `X9-LOC-304` | a payload request failing any signature check is refused, 400, serving nothing | `test_payers.py` |
+| `X9-LOC-305` | a payer revoked on the CRL cannot fetch a payload | `test_payers.py` |
+| `X9-LOC-306` | with no CRL, OCSP decides: good accepted, revoked refused, on both payer endpoints | `test_payers.py` |
+| `X9-LOC-307` | an unreachable revocation source soft-fails (a CRL-only source contradicts ADR-0027: BUG-003, strict xfail) | `test_payers.py` |
+| `X9-LOC-308` | a certificate naming no revocation source is refused | `test_payers.py` |
+| `X9-LOC-309` | an expired payment method is dropped from the payload and the others stay | `test_payers.py` |
+| `X9-LOC-310` | a PAID or CANCELLED QR Code serves no payload and says which | `test_payers.py` |
 
 ### What the payer is told when a decode is refused
 
@@ -530,6 +546,10 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-SIG-147` | a wrong `Content-Type` is answered with a signed 415 | `NotificationAnswerSignedEverywhereApiTest.java` |
 | `X9-SIG-148` | a body Spring cannot read is answered with a signed 400 | `NotificationAnswerSignedEverywhereApiTest.java` |
 | `X9-SIG-149` | an exception nothing maps is answered with a signed 500 that says nothing about it | `NotificationAnswerSignedEverywhereApiTest.java` |
+| `X9-SIG-301` | the payee's refusal is reported as 200 with accepted false, changing nothing | `test_payers.py` |
+| `X9-SIG-302` | an unreachable payee is 502, with no verdict | `test_payers.py` |
+| `X9-SIG-303` | a pre-payment carrying a transactionId is refused before sending | `test_payers.py` |
+| `X9-SIG-304` | a post-payment SENT needs a transactionId; NOT_SENT without one is delivered | `test_payers.py` |
 
 ## Tips
 
