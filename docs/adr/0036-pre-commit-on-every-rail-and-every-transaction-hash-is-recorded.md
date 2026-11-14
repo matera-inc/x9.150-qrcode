@@ -120,18 +120,23 @@ the same payer. **Any other status is bad behaviour by the payer:**
 | Status at receipt | What the payer did |
 |---|---|
 | `ACTIVE` | It skipped the pre-commit, or paid after its reservation lapsed |
-| `PAYMENT_INITIATED`, held by another payer | It paid while someone else held the QR Code (see the open point below) |
+| `PAYMENT_INITIATED`, held by another payer | It paid while someone else held the QR Code |
 | `PAID` | It paid a QR Code that was already paid |
 | `CANCELLED` | It paid a QR Code the payment system had cancelled |
 
-The column serves the payee: it can count misbehaviour per payer (`payer.info` and certificate
-subject are on the same row) and take the numbers to the payer, so the payer fixes its side.
+The row also stores the `deviations` codes below, so a post-commit received while another payer
+held the QR Code (status `PAYMENT_INITIATED`, yet wrong) is visible on the row too. Together they
+serve the payee: it can count misbehaviour per payer (`payer.info` and certificate subject are on the
+same row) and take the numbers to the payer, so the payer fixes its side.
 
-### A post-commit on a closed QR Code is registered, and changes nothing
+### A post-commit on a closed or held QR Code is registered, and changes nothing
 
-A post-commit that reaches a QR Code already `PAID` or `CANCELLED` is accepted, never judged on amount
+A post-commit that reaches a QR Code already `PAID` or `CANCELLED`, or one held by another payer, is
+accepted, never judged on amount
 or time, and answered with a signed acknowledgement. Its hash is registered in the outbox as a
-`payment.sent` with the flag below. **The status does not change:** a closed QR Code never reopens.
+`payment.sent` with the flag below. **The status does not change:** a closed QR Code never reopens, and the holder keeps its
+reservation. A pre-commit from that payer is still refused with 409, so an honest payer is still
+stopped before it pays.
 
 On a bank rail it publishes no `payment.sent` (bank rails never do); the notification row still
 records it, with its status at receipt.
@@ -159,19 +164,14 @@ these fields only describe how it arrived.
   call site.
 - The same codes are logged with the warning.
 
-### Open points
+### Open point
 
-**1. Does a reservation lapse after a post-commit?** Today it keeps the pre-commit's window (90 s by
+**Does a reservation lapse after a post-commit?** Today it keeps the pre-commit's window (90 s by
 default; Java's `SENT` does not restamp it). Once the window passes the QR Code reads `ACTIVE`, and a
 second payer can be approved although money has already moved. Proposal: once a post-commit is
 recorded, the reservation no longer lapses (`reserved_until` takes the "no lapse" sentinel); it ends
 only when the payment system marks the QR Code `PAID`, `CANCELLED` or `ACTIVE`.
 
-**2. A post-commit while another payer holds the reservation.** Java refuses it with 409, which loses
-the hash. Proposal: the same as a closed QR Code. Register the hash with `RECEIVED_IN_WRONG_STATUS`
-and `receivedInStatus = PAYMENT_INITIATED`, and change nothing: the holder keeps the reservation. A
-pre-commit from that payer is still refused with 409, so an honest payer is still stopped before it
-pays.
 
 ## Consequences
 
@@ -195,7 +195,7 @@ pays.
 
 - **Let `blockchain.action` decide the phase on blockchains** (an earlier draft of this ADR). It
   refuses a contradictory message, so the payee loses the hash of money that has already moved.
-- **Refuse a post-commit on a closed QR Code** (what Java does, with 400). The money has moved
+- **Refuse a post-commit on a closed or held QR Code** (what Java does, with 400 or 409). The money has moved
   anyway; refusing only hides it from the payment system.
 - **Refuse a second or later hash.** It hides the one signal that a QR Code was paid twice.
 - **Keep only the latest hash.** Same loss, more quietly.
