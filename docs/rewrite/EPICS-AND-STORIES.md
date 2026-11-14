@@ -34,7 +34,7 @@ before tests are written against them:
 - the status is `PAYMENT_INITIATED` everywhere, not `INITIATED`;
 - Solana appears wherever the interpreted rails are listed;
 - per rail, what links a payment to its QR Code (`QRCD` in pacs.008 / ACH addenda / Solana memo),
-  that leg 1 is always used and leg 2 carries the `transactionId`, with the current Java deviations
+  that pre-commit is always used and post-commit carries the `transactionId`, with the current Java deviations
   recorded until Epic 2 closes them; ADR-0004 and ADR-0012 amended;
 - the unsigned answer to a notification is recorded as a deviation until Story 2.3;
 - no currency is ever implied: every payment method states its currency, and
@@ -196,15 +196,18 @@ arm64 via `docker buildx`. `make build`, `make test` and `make image` wrap `go` 
 | FR31 | 11 | cutover; rollback only until Go's first write (ADR-0030) |
 | FR32 | 12 | freeze Java into `legacy/java/` (ADR-0022) |
 
-FR34: Leg 1 is available, and the rule is the same, on every rail. A notification without a
-`transactionId` is leg 1: it goes through the acceptance gate at the payee's clock and takes the
+FR34: Pre-commit is available, and the rule is the same, on every rail. A notification without a
+`transactionId` is a pre-commit: it goes through the acceptance gate at the payee's clock and takes the
 reservation, so two payers cannot pay one QR Code at the same time. A notification with a
-`transactionId` is leg 2: accepted only from the payer that won leg 1, recorded, never judged
-again; leg 2 without leg 1 is refused. Solana keeps
-`blockchain.action`. Today FedNow/RTP refuse a notification without an End-to-End ID (no leg 1, no
-race protection) and ACH gates every notification as leg 1. Fixed in Java first.
+`transactionId` is a post-commit: accepted only from the payer that won the pre-commit, recorded, never judged
+again; post-commit without a pre-commit is refused (to be confirmed). The evidence decides the phase on every
+rail, Solana included (ADR-0004): a `PAYMENT_INITIATED` carrying a hash is payer misbehaviour, and is
+still a post-commit, recorded and logged as a warning. Every hash is recorded, a second one included,
+so the payment system can detect a duplicate payment. Today Solana keys on `blockchain.action`,
+FedNow/RTP refuse a notification without an End-to-End ID (no pre-commit, no
+race protection) and ACH gates every notification as a pre-commit. Fixed in Java first.
 
-FR35: The reservation holder may retry leg 1 (same `payer.info` and certificate subject): the retry
+FR35: The reservation holder may retry its pre-commit (same `payer.info` and certificate subject): the retry
 is judged again at the payee's clock. If it is accepted, the window is refreshed and no event is
 emitted. If it is refused, the refusal also releases the reservation: the QR Code goes back to
 `ACTIVE` at once, instead of staying reserved until the window lapses. A payer who takes over a
@@ -219,7 +222,7 @@ by the payment method's and the QR Code's `validUntil`. The acceptance gate acce
 amount up to and including that instant. Today the advertised `validUntil` is truncated to 23:59:59
 UTC of the day, up to ~21 h away from the real edge. Fixed in Java first.
 
-FR33: The payee's answer to an accepted payment notification (leg 1 and leg 2) is a signed JWS
+FR33: The payee's answer to an accepted payment notification (pre-commit and post-commit) is a signed JWS
 with body `{"statusCode": 200}` (spec A.4.5 note), whose `correlationId` echoes the payer's signed
 notification. The signed question plus the signed yes is the authorization evidence; settlement and
 reconciliation of the funds stay out of scope. Refusals are signed too (owner, 2026-11-13): the same
@@ -239,7 +242,7 @@ repository. Rules show only through code and the enforcing lint and CI configura
 
 NFR3: **The external contract is frozen** (ADR-0028) once Epic 2 ships: no change to paths, status
 codes, headers, field names or types after that. The owner-approved changes of Epic 2 (signed
-answers, leg 1 on every rail, the outbound `signature` verdict, exact `validUntil`) land in Java
+answers, pre-commit on every rail, the outbound `signature` verdict, exact `validUntil`) land in Java
 first, so the contract that freezes already contains them. Equivalence is proved by the
 differential run.
 
@@ -268,7 +271,7 @@ NFR8: **Every black-box test asserts what did not happen** (no status change, no
 reservation), not only the status code. Time scenarios run serially and reset the clock.
 
 NFR9: **The Java changes of Epics 1–2 are the last before the freeze:** the due-date fix (Story
-1.3), the test clock, the ETag fix, signed answers and their verification, leg 1 on every rail, the
+1.3), the test clock, the ETag fix, signed answers and their verification, pre-commit on every rail, the
 holder retry and takeover event, and the exact `validUntil` (Stories 2.1–2.6). Nothing else.
 
 NFR10: **Go build:** one pinned Go release, a cgo-free static binary, a reproducible build, one
@@ -320,7 +323,7 @@ None. The service has no UI.
 | FR3 | Epic 2 | Java test clock |
 | FR4 | Epic 2 | Java ETag fix |
 | FR33 | Epic 2 | signed answer to payment notifications |
-| FR34 | Epic 2 | leg 1 on every rail; `transactionId` decides the leg |
+| FR34 | Epic 2 | pre-commit on every rail; `transactionId` decides the phase |
 | FR35 | Epic 2 | holder retry; a refused retry releases; takeover is evented |
 | FR36 | Epic 2 | advertised `validUntil` of an adjusted amount is its exact edge |
 | FR5 | Epic 3 | `x9client` |
@@ -473,22 +476,23 @@ applies to the bank rails.
 **When** STATE-MACHINE's phase section and `official-spec/INTERPRETATION.md` are read
 **Then** they state, per rail:
 
-| Rail | The QR Code id travels in the payment | Leg 1 (no `transactionId`) | Leg 2 (with `transactionId`) |
+| Rail | The QR Code id travels in the payment | Pre-commit (no `transactionId`) | Post-commit (with `transactionId`) |
 |---|---|---|---|
 | FedNow / RTP | yes: pacs.008 `CdtrRefInf` `QRCD` (spec A.6) | reserves the QR Code (after Story 2.4) | courtesy, plus principal/tip split |
 | ACH | yes: addenda `QRCD:[32-digit-id]` (spec A.7, NACHA confirmation pending) | reserves the QR Code | courtesy (after Story 2.4) |
 | Solana | only if the memo `{QRCD:"id"}` is set and survives; some custody providers' webhooks do not expose it | reserves the QR Code | **the link in practice** |
 | any other blockchain (when interpreted) | most chains have no memo | reserves the QR Code | **the link** |
 
-**And** they state the two purposes: **leg 1 is always used**, on every rail, so that two payers
-cannot pay the same QR Code at the same time (the reservation); **leg 2** carries the
+**And** they state the two purposes: **pre-commit is always used**, on every rail, so that two payers
+cannot pay the same QR Code at the same time (the reservation); **post-commit** carries the
 `transactionId` (txId / txHash) and is recorded, never judged again on amount or time
-**And** until Story 2.4 ships, they record as a known deviation that FedNow/RTP have no leg 1 today
-(a notification without an End-to-End ID is refused) and that ACH gates every notification as leg 1.
+**And** until Story 2.4 ships, they record as a known deviation that FedNow/RTP have no pre-commit today
+(a notification without an End-to-End ID is refused), that ACH gates every notification as a pre-commit,
+and that Solana decides the phase from `blockchain.action` rather than from the transaction hash.
 
-**And** ADR-0004 gets a dated `## Amendment`: on blockchains the phase is explicit in
-`blockchain.action`, and the leg 1 / leg 2 protocol is the reconciliation mechanism for every chain,
-memo or not; its `transactionId` rule stands.
+**And** ADR-0004 gets a dated `## Amendment`: its `transactionId` rule stands on every rail, the
+Solana code departs from it until Story 2.4, and the pre-commit / post-commit protocol is the reconciliation
+mechanism for every chain, memo or not.
 
 **S1.1-AC5. ADR-0012 acknowledges Solana, and claims no default currency.**
 **Given** ADR-0012:36 says "Only `fednow`, `rtp` and `ach` are accepted", and ADR-0012:38 says
@@ -659,14 +663,14 @@ note, and its outbound sender passes the payee's answer through unverified.
 
 **Acceptance Criteria:**
 
-**S2.3-AC1.** **Given** an accepted payment notification, on leg 1 or leg 2
+**S2.3-AC1.** **Given** an accepted payment notification, on pre-commit or post-commit
 **Then** the 200 response is a compact JWS with body `{"statusCode": 200}`, signed with the payee's
 X9 key
 **And** its `correlationId` equals the notification's, and its `iat` is the payee's clock at the
 decision.
 
-**S2.3-AC2.** **Given** a refused notification (wrong amount, expired, another holder, leg 2 without
-leg 1)
+**S2.3-AC2.** **Given** a refused notification (wrong amount, expired, another holder, post-commit without
+pre-commit)
 **Then** the response keeps its HTTP status (400 / 409) and is a JWS whose body is
 `{"statusCode": <status>}` plus today's error fields (`type`, `title`, `detail`, `violations`),
 `Content-Type: application/jose`, `correlationId` echoing the question's
@@ -692,21 +696,21 @@ JWS
 one sent, and the verified `statusCode` is what is reported
 **And** a 200 with an empty or unverifiable body is reported as an unsigned yes, not refused.
 
-### Story 2.4: Leg 1 works on every rail, so two payers cannot pay the same QR Code
+### Story 2.4: Pre-commit works on every rail, so two payers cannot pay the same QR Code
 
 As a **payee**,
-I want every rail to offer leg 1 (the reservation) and to tell leg 1 from leg 2 by the same rule,
+I want every rail to offer a pre-commit (the reservation) and to tell pre-commit from post-commit by the same rule,
 So that two payers cannot pay the same QR Code at the same time, whatever rail they use.
 
 Today: FedNow/RTP require an End-to-End ID on every notification
-(`QRCodeEntityValidator.validatePaymentNotificationFromInstantPayments`), so they have no leg 1;
-ACH gates every notification as leg 1, even with a Trace Number.
+(`QRCodeEntityValidator.validatePaymentNotificationFromInstantPayments`), so they have no pre-commit;
+ACH gates every notification as a pre-commit, even with a Trace Number.
 
 **Implements:** FR34; ADR-0036 (proposed), ADR-0021
 
 **Acceptance Criteria:**
 
-**S2.4-AC1. FedNow/RTP leg 1.**
+**S2.4-AC1. FedNow/RTP pre-commit.**
 **Given** an `ACTIVE` QR Code with a FedNow or RTP method
 **When** a payer sends a notification without a `transactionId`
 **Then** it goes through the acceptance gate at the payee's clock (Story 1.3)
@@ -715,41 +719,56 @@ ACH gates every notification as leg 1, even with a Trace Number.
 
 **S2.4-AC2. The race.**
 **Given** payer A holds the reservation, on any rail
-**When** payer B sends leg 1
+**When** payer B sends a pre-commit
 **Then** B gets 409 and nothing changes
 **And** a concurrency test fires A and B together N times: exactly one wins each time
-**And** a leg 2 from B while A holds is refused with 409 too. B never received a signed yes, so B
+**And** a post-commit from B while A holds is refused with 409 too. B never received a signed yes, so B
 paid without authorization and that payment is B's to resolve; refusing it is intended, not a
 contradiction of "money that moved is never refused" (which protects the holder only)
-**And** INTERPRETATION states this: the only payment X9.150 authorizes is the one that won leg 1.
+**And** INTERPRETATION states this: the only payment X9.150 authorizes is the one that won the pre-commit.
 
-**S2.4-AC3. Leg 2 on the bank rails.**
+**S2.4-AC3. Post-commit on the bank rails.**
 **Given** a notification with a `transactionId` (End-to-End ID or Trace Number) from the holder
 **Then** it is recorded, status unchanged, with no amount or time check, and answered with a signed
 yes; no `payment.sent` (bank rails never emit it).
 
-**S2.4-AC4. No leg 2 without leg 1.**
+**S2.4-AC4. No post-commit without a pre-commit (to be confirmed with the owner).**
 **Given** an `ACTIVE` QR Code nobody reserved
-**When** any rail's leg 2 arrives (a payer who skipped leg 1)
-**Then** it is refused, and nothing changes: leg 1 is what blocks duplication, and a payer who
+**When** any rail's post-commit arrives (a payer who skipped the pre-commit)
+**Then** it is refused, and nothing changes: pre-commit is what blocks duplication, and a payer who
 skipped it holds no signed yes
-**And** a holder whose reservation lapsed may still send leg 2 (ADR-0021), unless another payer has
-since won leg 1
+**And** a holder whose reservation lapsed may still send a post-commit (ADR-0021), unless another payer has
+since won the pre-commit
 **And** the change is noted for integrators: FedNow/RTP payers who send only the after-payment
 notification today now get 400 (the payee still reconciles from `QRCD` in the pacs.008).
 
-**S2.4-AC5. Solana unchanged.**
-**Given** Solana notifications
-**Then** the phase still comes from `blockchain.action`, and every existing Solana test passes.
+**S2.4-AC5. Solana follows the evidence, and a contradiction is recorded loudly.**
+**Given** a Solana notification
+**When** `action = PAYMENT_INITIATED` carries a transaction hash
+**Then** it is a post-commit: recorded as received (its declared `action` included), never judged on
+amount or time, answered with a signed yes, and logged as a warning naming the payer
+**And** a code comment and INTERPRETATION say plainly that this is bad payer behaviour, and that the
+hash is kept because funds that arrive in the right amount with a matching hash are enough for the
+payment system to mark the QR Code paid
+**And** `SENT` without a hash is still refused with 400, and `NOT_SENT` still releases.
 
-**S2.4-AC6. Docs.**
+**S2.4-AC6. Every transaction hash is recorded.**
+**Given** the holder has already reported a hash
+**When** it reports another one
+**Then** the second is recorded beside the first, never overwriting it, and published as its own
+`payment.sent`
+**And** X9.150 never marks the QR Code paid itself: the payment system matches each hash against the
+funds and calls the status-update API, and two hashes for one QR Code are its signal of a duplicate
+payment.
+
+**S2.4-AC7. Docs.**
 **Then** STATE-MACHINE, INTERPRETATION and the ADR-0035 transition map get the new rows, and the
 deviation recorded by S1.1-AC4 is closed.
 
 ### Story 2.5: The same payer can retry, a refused retry frees the QR Code, and a takeover is visible
 
 As a **payer recovering from a failure**, and as a **payee**,
-I want my own retry of leg 1 accepted or refused on its merits, and a refusal to free the QR Code,
+I want my own retried pre-commit accepted or refused on its merits, and a refusal to free the QR Code,
 So that a lost answer can be retried, and a refused payer does not keep everyone else out.
 
 Today Java accepts the holder's retry (`validateAnnouncement`, `ReservationHolderVO.isSameParty`)
@@ -762,15 +781,15 @@ in place until it lapses, and a takeover of a lapsed reservation emits no event.
 
 **S2.5-AC1. A retry is judged again.**
 **Given** payer A holds the reservation, approved at 23:59:50 with the discounted amount
-**When** A retries leg 1 at 00:00:02 with the same amount
+**When** A retries its pre-commit at 00:00:02 with the same amount
 **Then** it is refused with 400 (the discount has ended): the payee's clock decides (Story 1.3).
 
 **S2.5-AC2. A refused retry releases the reservation.**
 **Given** the refusal in AC1
 **Then** in the same transaction the QR Code goes back to `ACTIVE` and the reservation is cleared,
 emitting what a release emits on that rail (Solana: `payment.failed`; bank rails: none)
-**And** A may send a new leg 1 with the face amount and be accepted
-**And** a refused leg 1 from a non-holder, or on an `ACTIVE` QR Code, still changes nothing.
+**And** A may send a new pre-commit with the face amount and be accepted
+**And** a refused pre-commit from a non-holder, or on an `ACTIVE` QR Code, still changes nothing.
 
 **S2.5-AC3. An accepted retry refreshes the window.**
 **Given** A retries within the discount window
@@ -785,7 +804,7 @@ INTERPRETATION warns PSPs to send `payer.info`
 
 **S2.5-AC5. A takeover is evented.**
 **Given** A's reservation lapsed (stored status still `PAYMENT_INITIATED`)
-**When** B wins leg 1
+**When** B wins the pre-commit
 **Then** `payment.initiated` is emitted for B, because the transition is decided on the effective
 status, not the stored one
 **And** the test asserts the events, not only that nothing was thrown.
@@ -815,13 +834,13 @@ calendar day.
 **When** the payload is fetched before E = D − N days
 **Then** the discounted amount's `validUntil` is exactly E (capped by the method's and the QR Code's
 `validUntil`)
-**And** a leg 1 with that amount is accepted at E and refused at E + 1 ms (face amount still
+**And** a pre-commit with that amount is accepted at E and refused at E + 1 ms (face amount still
 accepted).
 
 **S2.6-AC2. Late fee.**
 **Given** the payload fetched k days late (k = ceil((t − D) / 24 h))
 **Then** the fee amount's `validUntil` is exactly D + k × 24 h, capped as above
-**And** a leg 1 with that amount is accepted at that instant and refused 1 ms later.
+**And** a pre-commit with that amount is accepted at that instant and refused 1 ms later.
 
 **S2.6-AC3. Several discounts.**
 **Given** several discounts
@@ -1035,7 +1054,7 @@ So that the Go code ports a map that is true, not one that was believed.
 **Acceptance Criteria:**
 
 **S4.1-AC1.** **Given** every row of the ADR-0035 map, including the rows added by Stories 2.4 and
-2.5 (FedNow/RTP leg 1, leg 2 holder-only, refused retry releases, takeover emits)
+2.5 (FedNow/RTP pre-commit, post-commit holder-only, refused retry releases, takeover emits)
 **Then** one black-box test per row asserts the resulting status, the events emitted (exactly, in
 order) and what did not change.
 
@@ -1094,13 +1113,13 @@ signature, expired `iat + ttl`, missing or unknown `crit`, revoked certificate (
 untrusted CA, unreachable revocation source (soft-fail); expired QR Code; an expired method dropped
 while others stay; `PAID` and `CANCELLED` codes.
 
-**S4.3-AC2. Notifications (group E), under the leg 1 / leg 2 rule.**
-**Then** per rail: leg 1 reserves (FedNow, RTP, ACH, Solana); leg 2 only from the holder; leg 2
-without leg 1 refused; wrong amount; tip outside its range; tip on top of the bill (ADR-0017);
+**S4.3-AC2. Notifications (group E), under the pre-commit / post-commit rule.**
+**Then** per rail: pre-commit reserves (FedNow, RTP, ACH, Solana); post-commit only from the holder; post-commit
+without pre-commit refused; wrong amount; tip outside its range; tip on top of the bill (ADR-0017);
 unoffered currency; destination not on the QR Code; rail and currency in another case (accepted,
 echoed); second payer → 409; holder re-announces (refresh, no event); `NOT_SENT` releases; `SENT`
 never marks `PAID`; no `paymentNotification` or `kind: EXTERNAL`; every answer signed (Story 2.3)
-**And** 32 concurrent leg-1 announcements → exactly one 200 and one `payment.initiated`.
+**And** 32 concurrent pre-commit announcements → exactly one 200 and one `payment.initiated`.
 
 **S4.3-AC3. Payer-side endpoints (group H).**
 **Then** tests cover: the payee refuses → 200 + `accepted: false`; the payee is unreachable → 502; a
@@ -1143,12 +1162,12 @@ expected results:
 | # | Expected |
 |---|---|
 | T1/T3 | one edge: the discount is served, advertised and accepted up to and including E, refused 1 ms after (Story 2.6) |
-| T2 | leg 2 after the edge, from the holder: recorded, signed yes, no re-check |
+| T2 | post-commit after the edge, from the holder: recorded, signed yes, no re-check |
 | T4 | at exactly `dueDate`: full amount, no fee (Story 1.3) |
 | T5 | late fee per 24 h from `dueDate`; advertised `validUntil` = the next boundary (Story 2.6) |
-| T6 | leg 1 after `validUntil` refused; the payee may still mark it `PAID` (ADR-0020) |
+| T6 | pre-commit after `validUntil` refused; the payee may still mark it `PAID` (ADR-0020) |
 | T7 | an expired method is absent from the payload and refused in a notification; others served |
-| T8 | after a lapse, B's leg 1 accepted with `payment.initiated` (Story 2.5); A's late `SENT` refused |
+| T8 | after a lapse, B's pre-commit accepted with `payment.initiated` (Story 2.5); A's late `SENT` refused |
 | T9 | a reservation taken at `validUntil − 30 s` ends at `validUntil` |
 | T10 | a payer `iat` 10 min old with a 5-min `ttl`: refused before any lookup |
 | T11 | per build: Go keeps the expired code (payload refused with the expiry reason, GET works); Java's TTL deletion runs on the real clock, so it is asserted by waiting real time or marked `java_only` |
@@ -1219,7 +1238,7 @@ So that the comparison is the same test twice, not two tests.
 **Then** it creates only, with today's README profile (ramp to 500 VUs, 3 min sustain).
 
 **S5.1-AC2.** **Given** S2
-**Then** each VU runs create → signed payload fetch → leg 1 → leg 2 (Solana, with a
+**Then** each VU runs create → signed payload fetch → pre-commit → post-commit (Solana, with a
 `transactionId`) → status-update `PAID`, signing payer messages in k6 with WebCrypto as test-CA
 payers
 **And** every answer's signature and `correlationId` is checked; a failed check counts as an error.
@@ -1507,14 +1526,14 @@ wrap `go` and `docker`.
 ## Epics 8–17: stubs
 
 Detailed in a later run of this workflow, once Epic 4 is green. Scope now includes the Epic 2
-behaviour (signed answers and their verification, leg 1 on every rail, the holder retry and
+behaviour (signed answers and their verification, pre-commit on every rail, the holder retry and
 takeover event, exact `validUntil`), which Epics 9–10 port and Epic 11 proves equivalent.
 
 | Epic | Phase | Scope |
 |---|---|---|
 | 8 | 4 | X9.150 crypto in Go: EMV, JWS (including signed answers), keys; the test-clock listener and its certificate guard (FR23) |
 | 9 | 5 | Billers manage payment requests on Go (FR24) |
-| 10 | 6 | Payers fetch, notify and are evented on Go, under the leg 1 / leg 2 rule (FR25) |
+| 10 | 6 | Payers fetch, notify and are evented on Go, under the pre-commit / post-commit rule (FR25) |
 | 11 | 7 | Proven equivalent to Java: differential run and interop (FR26) |
 | 12 | 8 | Retention without surprises: housekeeping (FR27) |
 | 13 | 9 | Operators can migrate data and configuration, reservation holders included (FR28) |
