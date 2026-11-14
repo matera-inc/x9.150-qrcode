@@ -13,10 +13,11 @@
 # that cannot mount the repository's directory. Containers and network are removed on exit.
 #
 #   A. Liquibase applies the changelog (update), then again: the second run applies nothing.
-#      Smoke query (tables, comments, roles, search_path, nothing in public), then the role tests.
+#      Smoke query (tables, comments, roles, search_path, nothing in public), the role tests, and
+#      the event reader's claim-and-mark test (docs/EVENTS-TABLE.md).
 #   B. The DBA's path, in a second database with other schema and role names: `update-sql` writes
 #      the SQL to <output-dir>/update-sql.sql (S6.3-AC3), psql runs exactly that file as the owner,
-#      and Liquibase then finds nothing left to apply. Smoke query and role tests again.
+#      and Liquibase then finds nothing left to apply. The same checks again.
 
 set -euo pipefail
 
@@ -68,6 +69,7 @@ checks() {
   psql_su -d "$1" -v schema="$2" -v owner="$3" -v app="$4" -v readonly="$5" -v event_reader="$6" -f /db/test/smoke.sql
   docker exec -e X9_DB="$1" -e X9_SCHEMA="$2" -e X9_ROLE_OWNER="$3" -e X9_ROLE_APP="$4" \
     -e X9_ROLE_READONLY="$5" -e X9_ROLE_EVENT_READER="$6" "$PG" bash /db/test/roles-test.sh
+  docker exec -e X9_DB="$1" -e X9_ROLE_APP="$4" -e X9_ROLE_EVENT_READER="$6" "$PG" bash /db/test/events-table-test.sh
 }
 
 # --- A. Liquibase update, twice ------------------------------------------------------------------
@@ -80,8 +82,19 @@ step "A2. liquibase update again: applies nothing"
 lb postgres x9_qrcode x9_qrcode_owner update | tee "$OUT/update-2.log"
 grep -Eq "^Run: +0$" "$OUT/update-2.log" || { echo "FAIL  the second update applied something"; exit 1; }
 
-step "A3. smoke query and role tests"
+step "A3. smoke query, role tests, event-reader test"
 checks postgres x9_qrcode x9_qrcode_owner x9_qrcode_app x9_qrcode_readonly x9_qrcode_event_reader
+
+step "A4. docs/EVENTS-TABLE.md lists every column of payment_event, in order (S6.5-AC1)"
+DOC="$HERE/../docs/EVENTS-TABLE.md"
+documented=$(awk '/^## The columns/{on=1; next} /^#/{on=0} on' "$DOC" | sed -nE 's/^\| `([a-z_]+)` \|.*/\1/p' | paste -sd, -)
+actual=$(psql_su -d postgres -t -A -c "SELECT string_agg(column_name, ',' ORDER BY ordinal_position)
+           FROM information_schema.columns WHERE table_schema = 'x9_qrcode' AND table_name = 'payment_event'")
+if [ "$documented" = "$actual" ]; then
+  echo "ok  the document and the database agree: $actual"
+else
+  echo "FAIL  docs/EVENTS-TABLE.md lists [$documented], the database has [$actual]"; exit 1
+fi
 
 # --- B. The DBA's path: review the SQL, run exactly it ------------------------------------------
 NAMES=(-Dx9.schema=bank_x9 -Dx9.role.owner=bank_x9_owner -Dx9.role.app=bank_x9_app
@@ -108,7 +121,7 @@ step "B3. Liquibase finds nothing left to apply"
 lb dba_review bank_x9 bank_x9_owner update "${NAMES[@]}" | tee "$OUT/update-3.log"
 grep -Eq "^Run: +0$" "$OUT/update-3.log" || { echo "FAIL  the reviewed SQL did not apply everything"; exit 1; }
 
-step "B4. smoke query and role tests"
+step "B4. smoke query, role tests, event-reader test"
 checks dba_review bank_x9 bank_x9_owner bank_x9_app bank_x9_readonly bank_x9_event_reader
 
 echo
