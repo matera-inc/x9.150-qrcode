@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -18,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/matera-inc/x9.150-qrcode/internal/database"
+	"github.com/matera-inc/x9.150-qrcode/internal/dbtest"
 	"github.com/matera-inc/x9.150-qrcode/internal/leaktest"
 )
 
@@ -41,9 +44,9 @@ func (s *syncBuffer) String() string {
 	return s.b.String()
 }
 
-func freePort(t *testing.T) int {
+func freePort(ctx context.Context, t *testing.T) int {
 	t.Helper()
-	l, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	l, err := (&net.ListenConfig{}).Listen(ctx, "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,9 +82,9 @@ func TestVersionFlag(t *testing.T) {
 
 // S7.1-AC3: every log line is JSON, and a request's traceparent appears in its log line.
 func TestRunLogsJSONWithTraceIDs(t *testing.T) {
-	port := freePort(t)
+	port := freePort(t.Context(), t)
 	env := []string{
-		"DATABASE_HOST=db", "DATABASE_NAME=bank", "DATABASE_USER=app", "DATABASE_PASSWORD=pw",
+		"DATABASE_HOST=127.0.0.1", "DATABASE_PORT=1", "DATABASE_NAME=bank", "DATABASE_USER=app", "DATABASE_PASSWORD=pw",
 		"DATABASE_SSLMODE=disable", "X9_SERVER_PORT=" + strconv.Itoa(port),
 	}
 	ctx, cancel := context.WithCancel(t.Context())
@@ -132,4 +135,60 @@ func TestRunLogsJSONWithTraceIDs(t *testing.T) {
 	if !sawRequest {
 		t.Fatalf("no request line in:\n%s", out.String())
 	}
+}
+
+func dbEnv(db *dbtest.DB, port int) []string {
+	return []string{
+		"DATABASE_HOST=" + db.Host, "DATABASE_PORT=" + strconv.Itoa(db.Port), "DATABASE_NAME=postgres",
+		"DATABASE_USER=" + dbtest.AppRole, "DATABASE_PASSWORD=unused", "DATABASE_SSLMODE=disable",
+		"X9_SERVER_PORT=" + strconv.Itoa(port),
+	}
+}
+
+// waitForLog waits until the log holds msg, or fails the test.
+func waitForLog(t *testing.T, out *syncBuffer, msg string) {
+	t.Helper()
+	for range 500 {
+		if strings.Contains(out.String(), `"msg":"`+msg+`"`) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("no %q in the log:\n%s", msg, out.String())
+}
+
+func TestRunAgainstPostgres(t *testing.T) {
+	db := dbtest.Start(t)
+
+	// S7.2-AC2: the right schema and changelog: the service starts, and stops cleanly.
+	t.Run("starts on the right schema", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		var out syncBuffer
+		done := make(chan error, 1)
+		env := dbEnv(db, freePort(ctx, t))
+		go func() { done <- run(ctx, nil, env, &out) }()
+		waitForLog(t, &out, "x9-qrcode schema checked")
+		cancel()
+		if err := <-done; err != nil {
+			t.Fatalf("run returned %v", err)
+		}
+	})
+
+	// S7.2-AC2: current_schema() differs from the configured schema: the service refuses to start.
+	t.Run("refuses another schema", func(t *testing.T) {
+		env := append(dbEnv(db, freePort(t.Context(), t)), "DATABASE_SCHEMA=bank_x9")
+		err := run(t.Context(), nil, env, io.Discard)
+		if !errors.Is(err, database.ErrWrongSchema) || !strings.Contains(err.Error(), "bank_x9") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+
+	// A refused credential is an answer, not an outage: no retrying.
+	t.Run("refuses an unknown role", func(t *testing.T) {
+		env := append(dbEnv(db, freePort(t.Context(), t)), "DATABASE_USER=nobody_here")
+		err := run(t.Context(), nil, env, io.Discard)
+		if err == nil || !strings.Contains(err.Error(), "nobody_here") {
+			t.Fatalf("err = %v", err)
+		}
+	})
 }
