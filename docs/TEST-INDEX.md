@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**583 tests documented** — every test that carries a key. Some black-box cases and a few JUnit
+**591 tests documented** — every test that carries a key. Some black-box cases and a few JUnit
 classes (the test clock, the formula service) have no key yet;
 [RULE-COVERAGE.md](RULE-COVERAGE.md) names those as `File::function`.
 
@@ -28,6 +28,7 @@ single most important thing this index exists for.
 | `X9-AMT-003` | the exact bill is accepted | `test_payment_notification.py` |
 | `X9-AMT-004` | an amount outside the published editable range is refused | `test_payment_notification.py` |
 | `X9-AMT-005` | any amount inside the published range is accepted | `test_payment_notification.py` |
+| `X9-AMT-006` | a notified amount or tip amount of 19 digits is refused | `test_payment_notification.py` |
 | `X9-AMT-020` | two amounts with different values are not equal | `ValueObjectEqualityTest.java` |
 | `X9-AMT-021` | two amounts with the same value are equal | `ValueObjectEqualityTest.java` |
 | `X9-AMT-022` | different values give different hash codes | `ValueObjectEqualityTest.java` |
@@ -69,6 +70,13 @@ single most important thing this index exists for.
 | `X9-AMT-100` | a discount applies to every pegged payment method | `RetrieveQRCodePayloadPaymentMethodMapperTest.java` |
 | `X9-AMT-101` | a late fee applies to every pegged payment method | `RetrieveQRCodePayloadPaymentMethodMapperTest.java` |
 | `X9-AMT-102` | no adjustment leaves every amount untouched | `RetrieveQRCodePayloadPaymentMethodMapperTest.java` |
+| `X9-AMT-110` | the largest 18-digit amount is accepted and kept to the unit | `AmountVOTest.java` |
+| `X9-AMT-111` | an amount of 19 digits is refused, though a 64-bit integer holds it | `AmountVOTest.java` |
+| `X9-AMT-112` | a late fee or discount of 19 digits is refused, as every amount is | `AmountVOTest.java` |
+| `X9-AMT-120` | 18 nines is accepted at creation and read back to the unit | `AmountEighteenDigitsApiTest.java` |
+| `X9-AMT-121` | a 19-digit amount is refused at creation, naming the field | `AmountEighteenDigitsApiTest.java` |
+| `X9-AMT-122` | a 19-digit amount is refused by PATCH, naming the field, and nothing moves | `AmountEighteenDigitsApiTest.java` |
+| `X9-AMT-123` | a payer cannot send a 19-digit amount or tip amount to a payee | `AmountEighteenDigitsApiTest.java` |
 
 ## Currencies
 
@@ -473,7 +481,7 @@ status is `X9-MAP-002`.
 | `X9-TIP-420` | a tip offer that contradicts itself is refused: not allowed with a range or presets, allowed with neither | `test_payment_requests_pinned.py` |
 | `X9-TIP-421` | a tip allowed with presets and no range is accepted (pinned) | `test_payment_requests_pinned.py` |
 | `X9-AMT-420` | a negative amount is refused, in the bill or in the method alone | `test_payment_requests_pinned.py` |
-| `X9-AMT-421` | a 19-digit amount up to 2^63−1 is accepted and read back to the unit (pinned) | `test_payment_requests_pinned.py` |
+| `X9-AMT-421` | 18 nines is accepted and read back to the unit; 10^18 (19 digits) is refused with 400 naming the field, nothing created | `test_payment_requests_pinned.py` |
 | `X9-AMT-422` | an amount past 2^63−1 is an unreadable body: 400 `malformed-json`, nothing created (pinned) | `test_payment_requests_pinned.py` |
 | `X9-LOC-425` | tag 26 fits in 99 characters, which limits the configured host to 37 | `test_payment_requests_pinned.py` |
 | `X9-PATCH-420` | fields that are not patchable (creditor, status, id, revision, …) are never applied | `test_payment_requests_pinned.py` |

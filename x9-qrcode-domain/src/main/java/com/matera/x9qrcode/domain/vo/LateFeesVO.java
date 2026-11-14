@@ -37,6 +37,9 @@ public record LateFeesVO(
         if (perDay < 0) {
             throw new BusinessRuleException("Per day late fee must be greater than 0.");
         }
+
+        AmountVO.requireAtMost18Digits(fixed);
+        AmountVO.requireAtMost18Digits(perDay);
     }
 
 }

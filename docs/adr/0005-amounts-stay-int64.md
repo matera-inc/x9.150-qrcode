@@ -45,9 +45,14 @@ The rest, checked against the §13.5 / §14.3 / §2.1 field tables:
 - Consumers needing a wider representation convert on receipt, from a value they already trust.
 - **Consumer note:** `int64` minor units exceed JavaScript's exact integer range (2^53 ≈ 9.0e15), so a
   JS/TS consumer must use a bigint-aware JSON parser. A parsing concern, not a wire-format change.
-- **Conformance gap found:** `AmountVO` validates only non-null and non-negative, and the `Amount`
-  schema declares `format: int64` with no `maximum`, so we currently accept 19-digit amounts that
-  exceed the standard's 18-digit field length. Small, self-contained, and genuinely ours to fix.
+- **Conformance gap, fixed 2026-11-14:** `AmountVO` used to validate only non-null and
+  non-negative, and the `Amount` schema had no `maximum`, so 19-digit amounts were accepted. Every
+  amount the service takes is now refused past 999999999999999999 (18 nines): the `Amount` schema,
+  the editable range, discounts and late fees carry `maximum` in `openapi.yaml` (the adjustment
+  amount also `minimum`, as it is signed), and `AmountVO.requireAtMost18Digits` enforces it once, for
+  every path, including signed notifications that bypass bean validation. Tests: `X9-AMT-110` to
+  `X9-AMT-112` (`AmountVOTest`), `X9-AMT-120` to `X9-AMT-123` (`AmountEighteenDigitsApiTest`), and
+  the black-box `X9-AMT-421` and `X9-AMT-006`.
 
 ## Alternatives rejected
 

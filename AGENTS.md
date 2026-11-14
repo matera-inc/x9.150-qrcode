@@ -64,7 +64,8 @@ These describe how our software behaves; they're enforced in `openapi.yaml` + th
   lowercase; input is accepted case-insensitively but always emitted lowercase.
 - **Money is int64 minor units** — integer cents (or the currency's smallest unit): `600` = $6.00,
   `19825` = $198.25. Never floating-point; the module never converts minor↔major (the paying PSP
-  resolves a currency's decimals). Non-money counters (tip %, revision) are plain integers.
+  resolves a currency's decimals). At most 18 digits (999999999999999999), as
+  X9.150 requires: one fewer than int64 holds (ADR-0005). Non-money counters (tip %, revision) are plain integers.
 - **Currency** is an open string (ISO 4217 code or a digital-asset ticker like `USDC`/`BTC`), not an
   enum. Currencies on one QR must share a pegged group or be a single currency
   (`pegged-currencies.json`; `domain/service/PeggedCurrencyMixPolicy.java`).

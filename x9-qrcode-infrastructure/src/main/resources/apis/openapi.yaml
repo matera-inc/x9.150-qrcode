@@ -988,10 +988,12 @@ components:
         amount:
           type: integer
           format: int64
+          maximum: 999999999999999999
           description: "Minor units, as everywhere in this API."
         tipAmount:
           type: integer
           format: int64
+          maximum: 999999999999999999
           nullable: true
           description: |-
             How much of `amount` the payer **reported** as a tip, absent when none was reported.
@@ -1447,6 +1449,7 @@ components:
         amount:
           type: integer
           format: int64
+          maximum: 999999999999999999
           description: "Amount due as a positive integer in the smallest currency unit (minor units; the currency defines the decimals — e.g. cents for USD, none for JPY, micro-units for USDC). Example: 19825 = $198.25 (USD)."
           example: 19825
         currency:
@@ -1471,6 +1474,8 @@ components:
         amount:
           type: integer
           format: int64
+          minimum: -999999999999999999
+          maximum: 999999999999999999
           description: "Adjustment amount in minor units (e.g. cents). Per ANSI X9.150 §13.5.3.2 this is a signed integer that MAY be positive or negative: a discount is negative (e.g. -1000 = -$10.00), a late fee is positive."
           example: -1000
         validUntil:
@@ -1528,6 +1533,7 @@ components:
                   discount:
                     type: integer
                     format: int64
+                    maximum: 999999999999999999
                     description: "Discount amount as a positive integer in the smallest currency unit (minor units; the currency defines the decimals — e.g. cents for USD, none for JPY, micro-units for USDC)."
                     example: "1000"
                   explanation:
@@ -1544,11 +1550,13 @@ components:
                 fixed:
                   type: integer
                   format: int64
+                  maximum: 999999999999999999
                   description: "Fixed late fee amount as a positive integer in the smallest currency unit (minor units; decimals defined by the currency)."
                   example: "100"
                 perDay:
                   type: integer
                   format: int64
+                  maximum: 999999999999999999
                   description: "Per-day late fee amount as a positive integer in the smallest currency unit (minor units; decimals defined by the currency)."
                   example: "25"
                 explanation:
@@ -2195,12 +2203,14 @@ components:
         min:
           type: integer
           format: int64
-          description: "Minimum value in the range."
+          maximum: 999999999999999999
+          description: "Minimum value in the range. At most 18 digits (ANSI X9.150-2026 §14.4.1.1)."
           example: 1000
         max:
           type: integer
           format: int64
-          description: "Maximum value in the range."
+          maximum: 999999999999999999
+          description: "Maximum value in the range. At most 18 digits (ANSI X9.150-2026 §14.4.1)."
           example: 5000
 
     TipRange:
@@ -2233,7 +2243,8 @@ components:
     Amount:
       type: integer
       format: int64
-      description: "The monetary value is represented as an integer in the smallest unit of the currency (for example, cents in the case of USD). To interpret the value correctly, it is necessary to know the number of decimal places used by the currency. In this example, an amount of 100 USDC corresponds to one dollar, $1.00."
+      maximum: 999999999999999999
+      description: "The monetary value is represented as an integer in the smallest unit of the currency (for example, cents in the case of USD). To interpret the value correctly, it is necessary to know the number of decimal places used by the currency. In this example, an amount of 100 USDC corresponds to one dollar, $1.00. At most 18 digits: ANSI X9.150-2026 gives every amount field a maximum length of 18 (§13.5.1, §14.3, §2.1, §2.2), one digit fewer than a 64-bit integer holds, so the largest amount is 999999999999999999 (ADR-0005)."
       example: 18834
 
     NetworkEnum:
@@ -2453,6 +2464,7 @@ components:
               discount:
                 type: integer
                 format: int64
+                maximum: 999999999999999999
                 description: "Discount amount as a positive integer in the smallest currency unit (minor units; the currency defines the decimals — e.g. cents for USD, none for JPY, micro-units for USDC)."
                 example: "1000"
               explanation:
@@ -2470,11 +2482,13 @@ components:
             fixed:
               type: integer
               format: int64
+              maximum: 999999999999999999
               description: "Fixed late fee amount as a positive integer in the smallest currency unit (minor units; decimals defined by the currency)."
               example: "100"
             perDay:
               type: integer
               format: int64
+              maximum: 999999999999999999
               description: "Per-day late fee amount as a positive integer in the smallest currency unit (minor units; decimals defined by the currency)."
               example: "25"
             explanation:
