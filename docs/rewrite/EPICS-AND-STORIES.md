@@ -784,8 +784,11 @@ and `receivedInStatus` `PAID` or `CANCELLED`; bank rails publish no `payment.sen
 received while another payer held the QR Code.
 
 **S2.4-AC9. Docs.**
-**Then** STATE-MACHINE, INTERPRETATION and the ADR-0035 transition map get the new rows, and the
-deviation recorded by S1.1-AC4 is closed.
+**Then** STATE-MACHINE carries ADR-0036's message-by-status matrix, its happy-path sequence diagram
+and its unhappy-path state diagram, replacing today's per-network tables
+**And** INTERPRETATION and the ADR-0035 transition map get the new rows, and the deviation recorded by
+S1.1-AC4 is closed
+**And** the black-box suite has one test per cell of the matrix (Story 4.3).
 
 ### Story 2.5: The same payer can retry, a refused retry frees the QR Code, and a takeover is visible
 
