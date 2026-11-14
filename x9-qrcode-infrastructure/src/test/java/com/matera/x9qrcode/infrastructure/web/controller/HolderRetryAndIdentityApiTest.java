@@ -77,8 +77,9 @@ class HolderRetryAndIdentityApiTest extends NotificationMatrixApiSupport {
      */
     @Test
     void theHoldersRetryIsJudgedAgainAndItsRefusalFreesTheQRCode() throws InterruptedException {
-        String methodEnds = OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(METHOD_SECONDS).withNano(0)
-                .toString().replace("+00:00", "Z");
+        // Seconds always present: toString() drops ":00" on a whole minute, which the API refuses.
+        String methodEnds = OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(METHOD_SECONDS)
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'"));
         String qrCodeId = createQRCodeWhoseMethodEndsAt(methodEnds);
 
         assertEquals(HttpStatus.OK.value(), solana(qrCodeId, "PAYMENT_INITIATED", null, PAYER_A).statusCode());
