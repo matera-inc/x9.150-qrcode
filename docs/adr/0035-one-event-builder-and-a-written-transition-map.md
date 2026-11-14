@@ -42,6 +42,7 @@ for field. The event contract is unchanged except for ADR-0036's additive `devia
 | status-update `PAID` | `ACTIVE` or `PAYMENT_INITIATED` (stored, ADR-0020) | `PAID` | `payment.cleared` |
 | status-update `CANCELLED` | `ACTIVE` or `PAYMENT_INITIATED` (stored) | `CANCELLED` | `payment.cancelled` |
 | status-update `ACTIVE` (reactivate) | `PAYMENT_INITIATED` (effective) | `ACTIVE` | **none** |
+| status-update to the status it already has (stored and effective) | any | unchanged: 200, nothing written, no revision ([0020](0020-the-payee-states-the-outcome-of-its-own-receivable.md): a retry) | **none** |
 | pre-commit, any rail (no `transactionId`), new holder | `ACTIVE` (effective; a lapsed reservation counts) | `PAYMENT_INITIATED`, held by the sender | `payment.initiated` (also on a takeover of a lapsed reservation) |
 | pre-commit, any rail, same holder (retry) | `PAYMENT_INITIATED` (effective), held by the sender | unchanged, window refreshed (never restarted once a hash is registered) | **none** |
 | pre-commit, any rail, once a hash is registered (holder included) | `PAYMENT_INITIATED` (effective), hash registered | refused, 409 | none |
@@ -105,10 +106,10 @@ no test, or a test no key.
 |---|---|---|---|
 | X9-MAP-001 | create | `test_map_001_create` | agrees |
 | X9-MAP-002 | PATCH | `test_map_002_patch` (from ACTIVE, PAYMENT_INITIATED; refused from PAID, CANCELLED) | agrees |
-| X9-MAP-010 | status-update `PAYMENT_INITIATED` | `test_map_010_status_update_payment_initiated`, `..._on_a_lapsed_reservation` | **contradicts** in two cells, see below |
-| X9-MAP-011 | status-update `PAID` | `test_map_011_status_update_paid` | **contradicts** on `PAID` → `PAID`, see below |
-| X9-MAP-012 | status-update `CANCELLED` | `test_map_012_status_update_cancelled` | **contradicts** on `CANCELLED` → `CANCELLED`, see below |
-| X9-MAP-013 | status-update `ACTIVE` (reactivate) | `test_map_013_status_update_active_reactivates`, `..._on_a_lapsed_reservation_is_refused` | **contradicts** on `ACTIVE` → `ACTIVE`, see below |
+| X9-MAP-010 | status-update `PAYMENT_INITIATED` | `test_map_010_status_update_payment_initiated`, `..._on_a_lapsed_reservation` | agrees (after the amendment and BUG-002, see below) |
+| X9-MAP-011 | status-update `PAID` | `test_map_011_status_update_paid` | agrees (after the amendment, see below) |
+| X9-MAP-012 | status-update `CANCELLED` | `test_map_012_status_update_cancelled` | agrees (after the amendment, see below) |
+| X9-MAP-013 | status-update `ACTIVE` (reactivate) | `test_map_013_status_update_active_reactivates`, `..._on_a_lapsed_reservation_is_refused` | agrees (after the amendment, see below) |
 | X9-MAP-020 | pre-commit, new holder | `test_map_020_pre_commit_new_holder` (Solana, FedNow, RTP, ACH), `..._takes_over_a_lapsed_reservation` | agrees |
 | X9-MAP-021 | pre-commit, same holder (retry) | `test_map_021_pre_commit_retry_by_the_holder`, `test_map_021_a_retry_refreshes_the_window` | agrees |
 | X9-MAP-022 | pre-commit once a hash is registered | `test_map_022_pre_commit_once_a_hash_is_registered` | agrees |
@@ -129,15 +130,17 @@ no test, or a test no key.
 | X9-MAP-050 | location released by a rebind | `test_map_050_location_released_by_a_rebind` | agrees |
 | X9-MAP-051 | reservation lapse | `test_map_051_a_reservation_lapses_on_read_only`, `test_map_051_never_once_a_hash_is_registered` | agrees (`ttl-seconds: 0` is pinned by JUnit, not here) |
 
-**Where Java contradicts the map** (S4.1-AC2). Each is a strict expected failure carrying its key,
-so it turns red the day Java and this map agree. The decision above is not amended here; the owner
-decides each one.
+**Where Java contradicted the map** (S4.1-AC2), and how each was settled by the owner. A future
+contradiction is a strict expected failure carrying its key, so it turns red the day Java and this
+map agree.
 
 - **X9-MAP-010, -011, -012, -013: a status-update to the status already stored.** ADR-0036's
   matrix answers 409 (`PAYMENT_INITIATED` on a held QR Code) or 400 (`PAID` on `PAID`, `CANCELLED`
   on `CANCELLED`, `ACTIVE` on `ACTIVE`). Java answers 200 and changes nothing, no event, as
   [ADR-0020](0020-the-payee-states-the-outcome-of-its-own-receivable.md) decided for retries
-  (X9-LIFE-127).
+  (X9-LIFE-127). **Amended 2026-11-14 (owner):** the matrix was wrong; a same-status update is a
+  retry, 200 and nothing changes. The map's last status-update row says so, ADR-0036's matrix is
+  corrected, and the tests assert it.
 - **X9-MAP-010: status-update `PAYMENT_INITIATED` on a lapsed reservation.** The row allows it from
   `ACTIVE` (effective), so it should reserve the QR Code again, unattributed, with
   `payment.initiated`. Java compares the *stored* status for its X-to-X no-op, answers 200, writes

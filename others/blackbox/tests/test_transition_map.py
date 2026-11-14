@@ -156,6 +156,14 @@ def assert_untouched(before, after):
     assert after == before, f"something changed:\n  before {before}\n  after  {after}"
 
 
+def assert_same_status_is_a_noop(response, before, after, events, qr, setup):
+    """A status-update to the status the QR Code already has (stored and effective) is a retry:
+    200, nothing written (revisedAt and ETag included), no event (ADR-0020; ADR-0036 matrix)."""
+    assert response.status == 200, f"a same-status update is a retry, not a refusal: {response}"
+    assert_untouched(before, after)
+    assert_events(events, qr, setup)
+
+
 # ------------------------------------------------------------------ the events
 
 def assert_events(events, qr, expected, *, settle=2.0, timeout=20.0):
@@ -267,13 +275,11 @@ def test_map_002_patch(api, events, start):
 
 @pytest.mark.parametrize("start", [
     "ACTIVE",
-    pytest.param("held", marks=xfail(
-        "X9-MAP-010", "409 on a PAYMENT_INITIATED QR Code (ADR-0036 matrix)",
-        "answers 200 and changes nothing: X to X is a no-op on the stored status (ADR-0020)")),
-    "PAID", "CANCELLED"])
+    "held", "PAID", "CANCELLED"])
 def test_map_010_status_update_payment_initiated(api, events, start):
     """X9-MAP-010 — status-update PAYMENT_INITIATED: from ACTIVE, PAYMENT_INITIATED held by nobody
-    identifiable, payment.initiated; refused 409 from every other status.
+    identifiable, payment.initiated; on a live reservation a retry, 200 and nothing changes
+    (ADR-0020); refused 409 from PAID and CANCELLED.
 
     Source: Ours. ADR-0035 row "status-update PAYMENT_INITIATED"; ADR-0036 matrix, "→
     PAYMENT_INITIATED"; ADR-0021 (an unattributed reservation matches nobody).
@@ -292,6 +298,9 @@ def test_map_010_status_update_payment_initiated(api, events, start):
     response = api.set_status(qr, "PAYMENT_INITIATED")
 
     after = snap(api, qr)
+    if start == "held":
+        assert_same_status_is_a_noop(response, before, after, events, qr, setup)
+        return
     if start != "ACTIVE":
         assert response.status == 409, response
         assert_untouched(before, after)
@@ -330,13 +339,10 @@ def test_map_010_status_update_payment_initiated_on_a_lapsed_reservation(api, ev
 
 
 @pytest.mark.parametrize("start", [
-    "ACTIVE", "held", "held_with_hash", "unattributed", "CANCELLED",
-    pytest.param("PAID", marks=xfail(
-        "X9-MAP-011", "400 on a PAID QR Code (ADR-0036 matrix)",
-        "answers 200 and changes nothing: X to X is a no-op (ADR-0020, X9-LIFE-127)"))])
+    "ACTIVE", "held", "held_with_hash", "unattributed", "CANCELLED", "PAID"])
 def test_map_011_status_update_paid(api, events, start):
     """X9-MAP-011 — status-update PAID: from ACTIVE or PAYMENT_INITIATED (stored), PAID,
-    payment.cleared; refused from CANCELLED and PAID.
+    payment.cleared; on PAID a retry, 200 and nothing changes (ADR-0020); refused from CANCELLED.
 
     Source: Ours. ADR-0035 row "status-update PAID"; ADR-0020; ADR-0036 ("only the payment system
     marks a QR Code PAID").
@@ -364,7 +370,10 @@ def test_map_011_status_update_paid(api, events, start):
     response = api.mark_paid(qr, end_to_end_id="E2E-MAP-PAID", network="solana")
 
     after = snap(api, qr)
-    if start in ("PAID", "CANCELLED"):
+    if start == "PAID":
+        assert_same_status_is_a_noop(response, before, after, events, qr, setup)
+        return
+    if start == "CANCELLED":
         assert response.status == 400, response
         assert_untouched(before, after)
         assert_events(events, qr, setup)
@@ -382,13 +391,10 @@ def test_map_011_status_update_paid(api, events, start):
 
 
 @pytest.mark.parametrize("start", [
-    "ACTIVE", "held", "unattributed", "PAID",
-    pytest.param("CANCELLED", marks=xfail(
-        "X9-MAP-012", "400 on a CANCELLED QR Code (ADR-0036 matrix)",
-        "answers 200 and changes nothing: X to X is a no-op (ADR-0020, X9-LIFE-127)"))])
+    "ACTIVE", "held", "unattributed", "PAID", "CANCELLED"])
 def test_map_012_status_update_cancelled(api, events, start):
     """X9-MAP-012 — status-update CANCELLED: from ACTIVE or PAYMENT_INITIATED (stored), CANCELLED,
-    payment.cancelled; refused from PAID and CANCELLED.
+    payment.cancelled; on CANCELLED a retry, 200 and nothing changes (ADR-0020); refused from PAID.
 
     Source: Ours. ADR-0035 row "status-update CANCELLED"; ADR-0036 matrix.
     Why: Withdrawing a bill closes it for good; the event says so once, with the body of the last
@@ -410,7 +416,10 @@ def test_map_012_status_update_cancelled(api, events, start):
     response = api.set_status(qr, "CANCELLED")
 
     after = snap(api, qr)
-    if start in ("PAID", "CANCELLED"):
+    if start == "CANCELLED":
+        assert_same_status_is_a_noop(response, before, after, events, qr, setup)
+        return
+    if start == "PAID":
         assert response.status == 400, response
         assert_untouched(before, after)
         assert_events(events, qr, setup)
@@ -428,13 +437,11 @@ def test_map_012_status_update_cancelled(api, events, start):
 
 
 @pytest.mark.parametrize("start", [
-    "held", "held_with_hash", "unattributed", "PAID", "CANCELLED",
-    pytest.param("ACTIVE", marks=xfail(
-        "X9-MAP-013", "400 on an ACTIVE QR Code (ADR-0036 matrix)",
-        "answers 200 and changes nothing: X to X is a no-op (ADR-0020, X9-LIFE-127)"))])
+    "held", "held_with_hash", "unattributed", "PAID", "CANCELLED", "ACTIVE"])
 def test_map_013_status_update_active_reactivates(api, events, start):
     """X9-MAP-013 — status-update ACTIVE (reactivate): from PAYMENT_INITIATED (effective), ACTIVE,
-    reservation cleared, NO event; refused 400 from ACTIVE, PAID and CANCELLED.
+    reservation cleared, NO event; on ACTIVE a retry, 200 and nothing changes (ADR-0020); refused
+    400 from PAID and CANCELLED.
 
     Source: Ours. ADR-0035 row "status-update ACTIVE"; ADR-0019 (no event on a reactivate);
     ADR-0036 (the payment system's only way back once a hash is registered).
@@ -459,7 +466,10 @@ def test_map_013_status_update_active_reactivates(api, events, start):
     response = api.set_status(qr, "ACTIVE")
 
     after = snap(api, qr)
-    if start in ("ACTIVE", "PAID", "CANCELLED"):
+    if start == "ACTIVE":
+        assert_same_status_is_a_noop(response, before, after, events, qr, setup)
+        return
+    if start in ("PAID", "CANCELLED"):
         assert response.status == 400, response
         assert_untouched(before, after)
         assert_events(events, qr, setup)
