@@ -742,8 +742,7 @@ hash arrives, it is for this QR Code"); bank rails publish no `payment.sent`
 **And** both events carry `deviations: ["RECEIVED_IN_WRONG_STATUS"]` and `receivedInStatus: "ACTIVE"`,
 and `schemaVersion` is `1.1` (ADR-0036)
 **And** another payer's pre-commit is then refused with 409
-**And** whether this reservation may lapse is **open** (ADR-0036 proposes that, once a post-commit is
-recorded, it lasts until the payee marks the QR Code `PAID`, `CANCELLED` or `ACTIVE`).
+**And** this reservation never lapses (Story 2.5, S2.5-AC6).
 
 **S2.4-AC5. Solana follows the evidence, and a contradiction is recorded loudly.**
 **Given** a Solana notification
@@ -838,9 +837,25 @@ payers retry, release and report cleanly.
 status, not the stored one
 **And** the test asserts the events, not only that nothing was thrown.
 
-**S2.5-AC6. Docs and map.**
+**S2.5-AC6. A registered hash stops the window.**
+**Given** a reservation, held by anyone
+**When** any post-commit is registered for the QR Code, from the holder or not
+**Then** `reserved_until` takes the "no lapse" sentinel and the holder does not change
+**And** the QR Code still reads `PAYMENT_INITIATED` long after the window would have passed
+**And** only the status-update API ends it: `PAID`, `CANCELLED`, or `ACTIVE` (the payment system's
+revert, which clears the reservation).
+
+**S2.5-AC7. `ttl-seconds: 0` hands the window to the bank.**
+**Given** `x9.reservation.ttl-seconds` set to `0`
+**Then** an accepted pre-commit takes a reservation that never lapses; it ends only by a refused
+retry, `NOT_SENT`, or the status-update API
+**And** today's behaviour (every reservation lapses at once) is gone
+**And** the default stays `90`; `application.yml`, the Helm values and the OpenAPI 409 description
+say what `0` means, under the same environment variable for Java and Go.
+
+**S2.5-AC8. Docs and map.**
 **Then** STATE-MACHINE, INTERPRETATION and the ADR-0035 transition map get the "refused retry
-releases" and "takeover emits" rows.
+releases", "takeover emits", "a hash stops the window" and "`0` means no window" rows.
 
 ### Story 2.6: The amount's advertised `validUntil` is the instant it stops applying
 
