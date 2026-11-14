@@ -450,31 +450,24 @@ def test_has_more(api, cursor):
     assert "nextCursor" not in past or past["nextCursor"] in (None, ""), past
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "S4.4-AC2 and plan §4.1 group G say `wait` above 30 clamps to 30. Java refuses it: 400 "
-    "'listPaymentEvents.wait: must be less than or equal to 30', as openapi.yaml's `maximum: 30` "
-    "declares. Not a Java bug: the story and the frozen contract disagree. See 'Questions for "
-    "the owner' in the Story 4.4 PR."))
 @pytest.mark.parametrize("wait", [31, 300])
-def test_wait_above_30_clamps(api, wait):
-    """X9-EVT-053 — a long poll asking for more than 30 s is answered as if it asked for 30:
-    200, an empty page, after about 30 s.
+def test_wait_above_30_is_refused(api, wait):
+    """X9-EVT-053 — a long poll asking for more than 30 s is refused at once: 400 naming `wait`.
 
-    S4.4-AC2 ("`wait` above 30 clamps"). Polls past the end of any stream (``END``) so no other
-    test's event can end the hold early.
+    S4.4-AC2 ("`wait` above 30 refused with 400 naming `wait`").
 
-    Source: Ours. Plan §4.1 group G; PLAN-PAYMENT-NOTIFICATIONS ("wait above max-wait is
-    clamped"). openapi.yaml declares `maximum: 30` and Java enforces it with a 400.
-    Why: The hold is bounded to stay under proxy and ingress idle timeouts. A consumer asking
-    for more should get the bound, not an error that stops its loop.
+    Source: Ours. openapi.yaml `maximum: 30`, frozen by ADR-0028; the owner chose the refusal over
+    a clamp on 2026-11-14 (a clamp would silently change the contract).
+    Why: The hold is bounded to stay under proxy and ingress idle timeouts. A consumer asking for
+    more is told so at once, by name, instead of being held for a time it did not ask for.
     """
     started = time.monotonic()
     response = api.get(f"{PATH}?after={END}&limit=1&wait={wait}")
     held = time.monotonic() - started
 
-    assert response.status == 200, response
-    assert response.body["events"] == [], response
-    assert 29.0 <= held <= 34.0, f"held {held:.1f} s for wait={wait}"
+    assert response.status == 400, response
+    assert "wait" in str(response.body), f"the refusal names `wait`: {response.body}"
+    assert held < 5.0, f"refused at once, not held: {held:.1f} s"
 
 
 @pytest.mark.parametrize("wait, low, high", [(0, 0.0, 1.5), (2, 1.8, 4.0), (30, 29.0, 34.0)])
@@ -482,7 +475,7 @@ def test_wait_holds_an_empty_poll_for_as_long_as_asked(api, wait, low, high):
     """X9-EVT-054 — with nothing to return, the poll is held for `wait` seconds (0 returns at
     once, 30 is honoured), then answers 200 with an empty page.
 
-    S4.4-AC2 (the control for "`wait` above 30 clamps": 30 itself is accepted and held).
+    S4.4-AC2 (the control for X9-EVT-053: 30 itself is accepted and held).
 
     Source: Ours. openapi.yaml `wait` (0–30, default 0); ENDPOINTS.md.
     Why: An idle consumer costs one parked request instead of a poll loop only if the hold is

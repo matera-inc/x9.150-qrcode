@@ -229,7 +229,7 @@ rewrite is equivalent" is an opinion. Seed rows:
 | Payer endpoints: refusal = 200 + `accepted:false`; unreachable payee = 502 | ADR-0015 | |
 | `qrCodeContent` must byte-match the issued EMV | entity | |
 | Discount and late-fee windows, both discount edges, and the due-date case | FormulaService, ADR-0033 | |
-| Events: dedupe by `eventId`, per-QR order, `wait` ≤ 30 clamps, `hasMore`; a ULID `after=` is translated | ENDPOINTS, ADR-0026 | |
+| Events: dedupe by `eventId`, per-QR order, `wait` ≤ 30 (above: 400 naming `wait`), `hasMore`; a ULID `after=` is translated | ENDPOINTS, ADR-0026 | |
 | JWS: `crit`, `iat + ttl`, revoked certificate refused (CRL, OCSP fallback), unreachable revocation soft-fails | README, ADR-0027 | |
 
 ---
@@ -255,7 +255,7 @@ run (ADR-0028).
 | **D. Time edges** (ADR-0033, serial stage) | see §4.2 |
 | **E. Notifications** | per rail (FedNow/RTP courtesy, ACH requires payer and `expectedDate`, Solana `PAYMENT_INITIATED`/`SENT`/`NOT_SENT`); wrong amount; tip outside its range; tip on top of the bill (ADR-0017); unoffered currency; destination not on the QR Code; rail and currency in a different case (accepted, network echoed verbatim); a second payer → 409; the holder re-announces (refreshes, no event); `NOT_SENT` releases with no transaction id; `SENT` never marks `PAID`; QR Code with no `paymentNotification` or with `kind: EXTERNAL`; 32 concurrent announcements → exactly one 200 and one event |
 | **F. Status update** | the full transition matrix, including `PAID` after expiry and after a lapsed reservation (ADR-0020), `CANCELLED` final, `PAYMENT_INITIATED` through status-update, so no payer can take it over; stale `If-Match` |
-| **G. Events** | every transition emits exactly its event; per-QR order; no gaps across pages; `wait` above 30 clamps; `hasMore`; replay from an old cursor is safe by `eventId` |
+| **G. Events** | every transition emits exactly its event; per-QR order; no gaps across pages; `wait` above 30 refused with 400 naming `wait`; `hasMore`; replay from an old cursor is safe by `eventId` |
 | **H. Payer-side endpoints** | the payee refuses → 200 + `accepted:false`; the payee is unreachable → 502; a pre-payment carrying a `transactionId` is refused before sending (ADR-0015) |
 | **I. Transition map** (ADR-0035) | one test per row: create → `ACTIVE`, no event; PATCH from stored `ACTIVE` → audit row, no event; status-update `PAYMENT_INITIATED` from effective `ACTIVE` → `payment.initiated`; `PAID` from stored `ACTIVE`/`PAYMENT_INITIATED` → `payment.cleared`; `CANCELLED` → `payment.cancelled`; reactivate from effective `PAYMENT_INITIATED` → `ACTIVE`, **no event**; FedNow/RTP notification → unchanged, no event; ACH → `PAYMENT_INITIATED` + `payment.initiated` if changed; Solana `PAYMENT_INITIATED` new holder → `payment.initiated`, same holder → refreshed, **no event**; `SENT` (holder, also after lapse) → unchanged + `payment.sent`; `NOT_SENT` → `ACTIVE` + `payment.failed`; location release by rebind → no event; reservation lapse → reads `ACTIVE`, **no event**. Event bodies come from the last stored notification, else from the first payment method |
 
