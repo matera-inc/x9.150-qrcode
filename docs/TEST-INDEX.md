@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**568 tests documented** — every test that carries a key. Some black-box cases and a few JUnit
+**573 tests documented** — every test that carries a key. Some black-box cases and a few JUnit
 classes (the test clock, the formula service) have no key yet;
 [RULE-COVERAGE.md](RULE-COVERAGE.md) names those as `File::function`.
 
@@ -404,7 +404,7 @@ The status-update matrix itself is `X9-MAP-010` to `-013` above.
 | `X9-LOC-304` | a payload request failing any signature check is refused, 400, serving nothing | `test_payers.py` |
 | `X9-LOC-305` | a payer revoked on the CRL cannot fetch a payload | `test_payers.py` |
 | `X9-LOC-306` | with no CRL, OCSP decides: good accepted, revoked refused, on both payer endpoints | `test_payers.py` |
-| `X9-LOC-307` | an unreachable revocation source soft-fails (a CRL-only source contradicts ADR-0027: BUG-003, strict xfail) | `test_payers.py` |
+| `X9-LOC-307` | an unreachable revocation source soft-fails: CRL and OCSP, OCSP only, or CRL only (BUG-003, fixed) | `test_payers.py` |
 | `X9-LOC-308` | a certificate naming no revocation source is refused | `test_payers.py` |
 | `X9-LOC-309` | an expired payment method is dropped from the payload and the others stay | `test_payers.py` |
 | `X9-LOC-310` | a PAID or CANCELLED QR Code serves no payload and says which | `test_payers.py` |
@@ -566,6 +566,11 @@ status is `X9-MAP-002`.
 | `X9-SIG-052` | a payer from an untrusted CA is refused | `CaIssuedSignatureApiTest.java` |
 | `X9-SIG-053` | a revoked payer is refused | `CaIssuedSignatureApiTest.java` |
 | `X9-SIG-054` | an EC payer can fetch the payload | `CaIssuedSignatureApiTest.java` |
+| `X9-SIG-055` | a payer whose only revocation source is an unreachable CRL is accepted (soft-fail; BUG-003) | `CaIssuedSignatureApiTest.java` |
+| `X9-SIG-056` | the same payer can fetch the payload | `CaIssuedSignatureApiTest.java` |
+| `X9-SIG-057` | a payer whose only revocation source is an unreachable OCSP responder is accepted (soft-fail) | `CaIssuedSignatureApiTest.java` |
+| `X9-SIG-058` | a payer whose CRL and OCSP responder are both unreachable is accepted (soft-fail) | `CaIssuedSignatureApiTest.java` |
+| `X9-SIG-059` | a CA-issued payer naming no revocation source is refused | `CaIssuedSignatureApiTest.java` |
 | `X9-SIG-060` | a refusal is logged as a refusal | `RequestLoggerFilterStatusTest.java` |
 | `X9-SIG-061` | a failure is logged as a failure | `RequestLoggerFilterStatusTest.java` |
 | `X9-SIG-062` | a success is still logged as a success | `RequestLoggerFilterStatusTest.java` |

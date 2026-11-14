@@ -44,9 +44,8 @@ that replaced it.
 document is checked on its own. The matrix of ADR-0036 is in STATE-MACHINE.md and, row by row, in
 ADR-0035's map; the cell-by-cell tests are under `R-MAP-NNN`.
 
-**A strict expected failure is still a test.** Two tests fail today on purpose, and turn red the
-day Java changes: `X9-LOC-307` (BUG-003) and `X9-LOC-421` (BUG-004). They pin ADR-0027 and
-ADR-0024, which are outside this table.
+**A strict expected failure is still a test.** One test fails today on purpose, and turns red the
+day Java changes: `X9-LOC-421` (BUG-004). It pins ADR-0024, which is outside this table.
 
 ## The check
 

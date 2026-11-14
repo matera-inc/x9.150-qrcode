@@ -8,53 +8,6 @@ fixed ones stay under **Fixed**, for the record.
 
 ---
 
-## BUG-003 — An unreachable CRL is not soft-failed when the certificate names no OCSP responder
-
-- **Reported:** 2026-11-14 (Story 4.3, `X9-LOC-307`)
-- **Severity:** Medium — when a CA's CRL server is down, every PSP it issued without an OCSP
-  responder is refused: payload fetches and payment notifications alike.
-- **Pinned by:** `others/blackbox/tests/test_payers.py::TestPayload::test_an_unreachable_revocation_source_soft_fails`
-  (the `crl-unreachable-no-ocsp` cases are strict expected failures).
-- **Area:** `JwsQRCodeSignatureService.validateCertificateChain` (infrastructure layer)
-
-### Steps to reproduce
-
-1. Issue a payer certificate from a trusted CA with a CRL distribution point on a host and port
-   where nothing listens, and no Authority Information Access (no OCSP responder).
-2. Sign a payment notification (or a payload request) with it and send it.
-
-### Expected
-
-ADR-0027, "Revocation, parity with Java", step 4: **soft-fail when neither the CRL nor OCSP
-answers.** The payer is accepted, as it is when the certificate names both sources and both are
-unreachable, or only an unreachable OCSP responder.
-
-### Actual
-
-401 `UNTRUSTED_CHAIN` on the notification endpoint, 400 on `/pub/api/v1/loc/{id}`.
-
-| Sources the certificate names | Java today |
-|---|---|
-| CRL and OCSP, both unreachable | accepted (soft-fail) |
-| OCSP only, unreachable | accepted (soft-fail) |
-| **CRL only, unreachable** | **refused** |
-| neither | refused (no source to consult; `X9-LOC-308`) |
-
-### Root cause
-
-`PKIXRevocationChecker` runs with `PREFER_CRLS` and `SOFT_FAIL` but without `NO_FALLBACK`. The
-unreachable CRL raises `UNDETERMINED_REVOCATION_STATUS`, which `SOFT_FAIL` would forgive; the JDK
-then falls back to OCSP, finds no responder in the certificate, and raises a failure with an
-unspecified reason, which `SOFT_FAIL` does not forgive. The checker rethrows the CRL failure.
-
-### Suggested direction
-
-Either add `NO_FALLBACK` when the end entity has no AIA OCSP entry, or catch the fallback's
-"no responder" case and let the CRL's soft failure stand. Decide together with ADR-0027's Go
-implementation, which must give the same four answers.
-
----
-
 ## BUG-004 — An expired `ACTIVE` QR Code does not give up its location to a rebind
 
 - **Reported:** 2026-11-14 (Story 4.2, S4.2-AC4)
@@ -92,6 +45,68 @@ Leave the frozen Java build as it is and let the Go build close the gap, as ADR-
 Java is to agree with the suite, make `releaseLocation` also accept `isExpired()`.
 
 ## Fixed
+
+---
+
+## BUG-003 — An unreachable CRL is not soft-failed when the certificate names no OCSP responder
+
+- **Reported:** 2026-11-14 (Story 4.3, `X9-LOC-307`)
+- **Severity:** Medium — when a CA's CRL server is down, every PSP it issued without an OCSP
+  responder is refused: payload fetches and payment notifications alike.
+- **Fixed:** 2026-11-14 — when the end entity names a CRL distribution point but no OCSP responder,
+  the revocation checker no longer falls back to OCSP (`NO_FALLBACK`), so the unreachable CRL's soft
+  failure stands. Pinned by `X9-SIG-055` to `X9-SIG-059` (`CaIssuedSignatureApiTest`) and by
+  `others/blackbox/tests/test_payers.py::TestPayload::test_an_unreachable_revocation_source_soft_fails`
+  (`X9-LOC-307`, now asserted on both endpoints, no longer an expected failure).
+- **Area:** `JwsQRCodeSignatureService.validateCertificateChain` (infrastructure layer)
+
+### Steps to reproduce
+
+1. Issue a payer certificate from a trusted CA with a CRL distribution point on a host and port
+   where nothing listens, and no Authority Information Access (no OCSP responder).
+2. Sign a payment notification (or a payload request) with it and send it.
+
+### Expected
+
+ADR-0027, "Revocation, parity with Java", step 4: **soft-fail when neither the CRL nor OCSP
+answers.** The payer is accepted, as it is when the certificate names both sources and both are
+unreachable, or only an unreachable OCSP responder.
+
+### Actual (before the fix)
+
+401 `UNTRUSTED_CHAIN` on the notification endpoint, 400 on `/pub/api/v1/loc/{id}`.
+
+| Sources the certificate names | Java today |
+|---|---|
+| CRL and OCSP, both unreachable | accepted (soft-fail) |
+| OCSP only, unreachable | accepted (soft-fail) |
+| **CRL only, unreachable** | **refused** |
+| neither | refused (no source to consult; `X9-LOC-308`) |
+
+### Root cause
+
+`PKIXRevocationChecker` runs with `PREFER_CRLS` and `SOFT_FAIL` but without `NO_FALLBACK`. The
+unreachable CRL raises `UNDETERMINED_REVOCATION_STATUS`, which `SOFT_FAIL` would forgive; the JDK
+then falls back to OCSP, finds no responder in the certificate, and raises a failure with an
+unspecified reason, which `SOFT_FAIL` does not forgive. The checker rethrows the CRL failure.
+
+### Fix
+
+`validateCertificateChain` adds `NO_FALLBACK` only when the end entity carries a CRL distribution
+point and its Authority Information Access names no OCSP responder by URI. The four cases now read:
+
+| Sources the certificate names | Java |
+|---|---|
+| CRL and OCSP, both unreachable | accepted (soft-fail) |
+| OCSP only, unreachable | accepted (soft-fail) |
+| CRL only, unreachable | accepted (soft-fail) |
+| neither | refused (no source to consult; `X9-LOC-308`, `X9-SIG-059`) |
+
+A certificate a reachable CRL lists as revoked is still refused (`X9-SIG-053`, CRL only, no OCSP).
+A certificate naming neither source keeps the fallback, and so stays refused: `NO_FALLBACK` there
+would let the missing CRL soft-fail and accept a certificate nothing could ever revoke. The rule the
+Go build ports (ADR-0027): a source the certificate names but that cannot be reached soft-fails; a
+revoked certificate is refused; a certificate naming no source is refused.
 
 ---
 

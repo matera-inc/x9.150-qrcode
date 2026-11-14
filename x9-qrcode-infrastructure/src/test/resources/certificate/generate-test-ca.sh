@@ -25,11 +25,17 @@ CRL_URI="http://127.0.0.1:${CRL_PORT}/test-ca.crl"
 # swapped between tests: the JDK caches a fetched CRL, so reusing one URL would make the revocation
 # test depend on execution order and on a cache TTL nobody controls.
 CRL_URI_REVOKED="http://127.0.0.1:${CRL_PORT}/test-ca-revoked.crl"
+# Revocation sources a certificate NAMES but nobody can reach: port 1 on loopback, where nothing
+# listens, so the fetch is refused at once rather than timing out. Used by the soft-fail leaves
+# (BUG-003): each has its own path, so no cached result of one can answer for another.
+UNREACHABLE="http://127.0.0.1:1"
 DAYS_CA=7300                           # 20y: a fixture that expires is a test that breaks mysteriously
 DAYS_LEAF=7300
 DAYS_CRL=7300
 
 rm -f x9-test-ca.p12 x9-test-payer.p12 x9-test-payer-ec.p12 x9-test-payer-revoked.p12 \
+      x9-test-payer-crl-unreachable.p12 x9-test-payer-ocsp-unreachable.p12 \
+      x9-test-payer-both-unreachable.p12 x9-test-payer-no-revocation.p12 \
       x9-test-untrusted-ca.p12 x9-test-untrusted-payer.p12 x9-test-truststore.jks \
       test-ca.crl test-ca-revoked.crl ./*.cer ./*.csr ./*-chain.pem
 
@@ -47,14 +53,17 @@ keytool -genkeypair -alias x9-test-untrusted-ca -dname "CN=Example Untrusted Tes
   -ext bc:c=ca:true,pathlen:0 -ext ku:c=keyCertSign,cRLSign \
   -keystore x9-test-untrusted-ca.p12 -storetype PKCS12 -storepass "$STOREPASS" -keypass "$STOREPASS"
 
-# issue <ca-store> <ca-alias> <leaf-store> <leaf-alias> <dn> [keyalg-args...]
+# issue <ca-store> <ca-alias> <leaf-store> <leaf-alias> <dn> <crl-uri> <ocsp-uri> [keyalg-args...]
+#
+# <crl-uri> becomes the CRL Distribution Point and <ocsp-uri> the Authority Information Access OCSP
+# entry; an empty string leaves that extension out.
 #
 # The CA is RSA and signs with SHA512withRSA regardless of the leaf's key type — an RSA CA issuing
 # an EC leaf is ordinary. What changes is the leaf's own key, and therefore the JWS `alg` a payer
 # holding it can use.
 issue() {
-  local CA_STORE="$1" CA_ALIAS="$2" LEAF_STORE="$3" LEAF_ALIAS="$4" DN="$5" CDP="$6"
-  shift 6
+  local CA_STORE="$1" CA_ALIAS="$2" LEAF_STORE="$3" LEAF_ALIAS="$4" DN="$5" CDP="$6" OCSP="$7"
+  shift 7
   local KEY_ARGS=("$@")
   [ ${#KEY_ARGS[@]} -eq 0 ] && KEY_ARGS=(-keyalg RSA -keysize 3072 -sigalg SHA512withRSA)
 
@@ -65,8 +74,11 @@ issue() {
   # The CRL Distribution Point is what makes revocation DETERMINABLE. Without it PKIX rejects the
   # certificate outright with UNDETERMINED_REVOCATION_STATUS — SOFT_FAIL covers a revocation source
   # being unreachable, not one being absent. Verified, not assumed.
+  local SOURCES=()
+  [ -n "$CDP" ] && SOURCES+=(-ext "crl=URI:${CDP}")
+  [ -n "$OCSP" ] && SOURCES+=(-ext "aia=ocsp:URI:${OCSP}")
   keytool -gencert -alias "$CA_ALIAS" -keystore "$CA_STORE" -storepass "$STOREPASS" \
-    -ext ku:c=digitalSignature,nonRepudiation -ext "crl=URI:${CDP}" \
+    -ext ku:c=digitalSignature,nonRepudiation ${SOURCES[@]+"${SOURCES[@]}"} \
     -validity "$DAYS_LEAF" -rfc -infile "$LEAF_ALIAS.csr" -outfile "$LEAF_ALIAS.cer"
   keytool -exportcert -alias "$CA_ALIAS" -keystore "$CA_STORE" -storepass "$STOREPASS" -rfc -file "$CA_ALIAS.cer"
   cat "$LEAF_ALIAS.cer" "$CA_ALIAS.cer" > "$LEAF_ALIAS-chain.pem"
@@ -82,7 +94,7 @@ issue() {
 
 say "3/8  RSA payer leaf issued BY the Test Root CA (signs PS512)"
 issue x9-test-ca.p12 x9-test-ca x9-test-payer.p12 x9-test-payer \
-  "CN=Test Payer PSP,O=Example PSP,C=US" "$CRL_URI"
+  "CN=Test Payer PSP,O=Example PSP,C=US" "$CRL_URI" ""
 
 # ANSI X9.150-2026 leaves `alg` to the X9-approved suite (SD-34) and its own Annex A examples use
 # ES256, so a conformant payer may well present an EC key. JwsQRCodeSignatureService reads `alg` from
@@ -90,16 +102,28 @@ issue x9-test-ca.p12 x9-test-ca x9-test-payer.p12 x9-test-payer \
 # this fixture existed.
 say "4/8  EC payer leaf issued BY the Test Root CA (signs ES256)"
 issue x9-test-ca.p12 x9-test-ca x9-test-payer-ec.p12 x9-test-payer-ec \
-  "CN=Test Payer PSP EC,O=Example PSP,C=US" "$CRL_URI" \
+  "CN=Test Payer PSP EC,O=Example PSP,C=US" "$CRL_URI" "" \
   -keyalg EC -groupname secp256r1 -sigalg SHA256withECDSA
 
 say "5/8  Payer leaf that we will then REVOKE (its own distribution point)"
 issue x9-test-ca.p12 x9-test-ca x9-test-payer-revoked.p12 x9-test-payer-revoked \
-  "CN=Test Payer PSP Revoked,O=Example PSP,C=US" "$CRL_URI_REVOKED"
+  "CN=Test Payer PSP Revoked,O=Example PSP,C=US" "$CRL_URI_REVOKED" ""
 
 say "6/8  Payer leaf issued by the UNTRUSTED CA"
 issue x9-test-untrusted-ca.p12 x9-test-untrusted-ca x9-test-untrusted-payer.p12 x9-test-untrusted-payer \
-  "CN=Example Untrusted Payer,O=Example Org,C=US" "$CRL_URI"
+  "CN=Example Untrusted Payer,O=Example Org,C=US" "$CRL_URI" ""
+
+# The four ways a certificate can name its revocation sources when none of them answers (BUG-003,
+# ADR-0027 step 4). Three soft-fail; the last names nothing to consult and is refused.
+say "6b   Payer leaves whose revocation sources cannot be reached, and one that names none"
+issue x9-test-ca.p12 x9-test-ca x9-test-payer-crl-unreachable.p12 x9-test-payer-crl-unreachable \
+  "CN=Test Payer PSP CRL Unreachable,O=Example PSP,C=US" "$UNREACHABLE/crl-only.crl" ""
+issue x9-test-ca.p12 x9-test-ca x9-test-payer-ocsp-unreachable.p12 x9-test-payer-ocsp-unreachable \
+  "CN=Test Payer PSP OCSP Unreachable,O=Example PSP,C=US" "" "$UNREACHABLE/ocsp-only"
+issue x9-test-ca.p12 x9-test-ca x9-test-payer-both-unreachable.p12 x9-test-payer-both-unreachable \
+  "CN=Test Payer PSP Both Unreachable,O=Example PSP,C=US" "$UNREACHABLE/both.crl" "$UNREACHABLE/both-ocsp"
+issue x9-test-ca.p12 x9-test-ca x9-test-payer-no-revocation.p12 x9-test-payer-no-revocation \
+  "CN=Test Payer PSP No Revocation Source,O=Example PSP,C=US" "" ""
 
 say "7/8  Truststore holding ONLY the Test Root CA"
 keytool -importcert -noprompt -alias x9-test-ca -file x9-test-ca.cer \

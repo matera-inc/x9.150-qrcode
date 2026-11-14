@@ -195,7 +195,14 @@ class CaIssuedSignatureApiTest extends AbstractIntegrationTest {
     // --------------------------------------------------------------------------- the QR Code
 
     private String createQRCode() {
-        String body = """
+        return given().contentType("application/json").body(createBody())
+                .when().post(CREATE)
+                .then().statusCode(HttpStatus.CREATED.value())
+                .extract().path("id");
+    }
+
+    private static String createBody() {
+        return """
             {
               "validUntil": "2030-12-31T23:59:59Z",
               "creditor": {
@@ -211,11 +218,6 @@ class CaIssuedSignatureApiTest extends AbstractIntegrationTest {
               ]
             }
             """.formatted(AMOUNT, AMOUNT);
-
-        return given().contentType("application/json").body(body)
-                .when().post(CREATE)
-                .then().statusCode(HttpStatus.CREATED.value())
-                .extract().path("id");
     }
 
     private String notificationFor(String qrCodeId) {
@@ -373,6 +375,129 @@ class CaIssuedSignatureApiTest extends AbstractIntegrationTest {
 
         assertEquals(HttpStatus.OK.value(), response.statusCode(),
                 "an ES256 payer must be able to fetch the payload: " + response.asString());
+    }
+
+    // ------------------------------------- revocation sources that cannot be reached (BUG-003)
+    //
+    // Each leaf names its sources on port 1 of loopback, where nothing listens: the fetch is
+    // refused at once. ADR-0027 step 4 asks for one rule, which the Go port must give too: a
+    // source the certificate names but that cannot be reached soft-fails; a certificate naming no
+    // source at all is refused. A revoked certificate is refused whichever source says so
+    // (X9-SIG-053 for a CRL-only leaf).
+
+    /**
+     * <b>X9-SIG-055</b> — a payer whose only revocation source is a CRL that cannot be reached is
+     * accepted (soft-fail).
+     *
+     * <p><b>Source:</b> Ours. ADR-0027, "Revocation, parity with Java", step 4: soft-fail when
+     * neither the CRL nor OCSP answers.
+     *
+     * <p><b>Why:</b> BUG-003. The checker fell back to OCSP, found no responder in the certificate,
+     * and that failure was not forgiven: while a CA's CRL server was down, every PSP it issued
+     * without an OCSP responder was refused, though the same PSP naming an unreachable OCSP
+     * responder as well was accepted.
+     */
+    @Test
+    void aPayerWhoseOnlyRevocationSourceIsAnUnreachableCrlIsAccepted() throws Exception {
+        String qrCodeId = createQRCode();
+
+        MockMvcResponse response = notifyAs(
+            Payer.load("x9-test-payer-crl-unreachable.p12", "x9-test-payer-crl-unreachable"), qrCodeId);
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode(),
+                "an unreachable CRL must soft-fail: " + response.asString());
+        assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
+    }
+
+    /**
+     * <b>X9-SIG-056</b> — the same payer can fetch the payload.
+     *
+     * <p><b>Source:</b> Ours, as X9-SIG-055.
+     *
+     * <p><b>Why:</b> The payload and notification endpoints verify separately; BUG-003 refused
+     * both, so both are pinned.
+     */
+    @Test
+    void aPayerWhoseOnlyRevocationSourceIsAnUnreachableCrlCanFetchThePayload() throws Exception {
+        String created = given().contentType("application/json").body(createBody())
+                .when().post(CREATE)
+                .then().statusCode(HttpStatus.CREATED.value())
+                .extract().asString();
+        String locationId = io.restassured.path.json.JsonPath.from(created).getString("location.id");
+        String qrCodeB64 = io.restassured.path.json.JsonPath.from(created).getString("qrCodeB64");
+
+        Payer payer = Payer.load("x9-test-payer-crl-unreachable.p12", "x9-test-payer-crl-unreachable");
+        MockMvcResponse response = given().contentType(APPLICATION_JOSE)
+                .body(signAsPayer(payer, "{\"qrCodeContent\": \"%s\"}".formatted(qrCodeB64)))
+                .when().post("/pub/api/v1/loc/" + locationId);
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode(),
+                "an unreachable CRL must soft-fail on the payload too: " + response.asString());
+    }
+
+    /**
+     * <b>X9-SIG-057</b> — a payer whose only revocation source is an OCSP responder that cannot be
+     * reached is accepted (soft-fail).
+     *
+     * <p><b>Source:</b> Ours. ADR-0027 step 4.
+     *
+     * <p><b>Why:</b> The OCSP-only half of the rule X9-SIG-055 completes; the fix for BUG-003 must
+     * not move it.
+     */
+    @Test
+    void aPayerWhoseOnlyRevocationSourceIsAnUnreachableOcspResponderIsAccepted() throws Exception {
+        String qrCodeId = createQRCode();
+
+        MockMvcResponse response = notifyAs(
+            Payer.load("x9-test-payer-ocsp-unreachable.p12", "x9-test-payer-ocsp-unreachable"), qrCodeId);
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode(),
+                "an unreachable OCSP responder must soft-fail: " + response.asString());
+        assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
+    }
+
+    /**
+     * <b>X9-SIG-058</b> — a payer naming both a CRL and an OCSP responder, neither reachable, is
+     * accepted (soft-fail).
+     *
+     * <p><b>Source:</b> Ours. ADR-0027 step 4: soft-fail when neither answers.
+     *
+     * <p><b>Why:</b> The case ADR-0027 names literally; the fix for BUG-003 must leave the OCSP
+     * fallback in place for a certificate that names a responder.
+     */
+    @Test
+    void aPayerWhoseCrlAndOcspResponderAreBothUnreachableIsAccepted() throws Exception {
+        String qrCodeId = createQRCode();
+
+        MockMvcResponse response = notifyAs(
+            Payer.load("x9-test-payer-both-unreachable.p12", "x9-test-payer-both-unreachable"), qrCodeId);
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode(),
+                "unreachable CRL and OCSP must soft-fail: " + response.asString());
+        assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
+    }
+
+    /**
+     * <b>X9-SIG-059</b> — a CA-issued payer naming no revocation source at all is refused.
+     *
+     * <p><b>Source:</b> Mechanism. The JDK's {@code SOFT_FAIL} forgives a source that cannot be
+     * reached, not one that does not exist; ADR-0027 asks the Go port for parity. The black-box
+     * counterpart is {@code X9-LOC-308}.
+     *
+     * <p><b>Why:</b> The limit of soft-fail. Telling the checker never to fall back to OCSP, for
+     * every certificate, would also fix BUG-003 — and would quietly accept this one, whose
+     * revocation nobody could ever learn.
+     */
+    @Test
+    void aPayerNamingNoRevocationSourceIsRefused() throws Exception {
+        String qrCodeId = createQRCode();
+
+        MockMvcResponse response = notifyAs(
+            Payer.load("x9-test-payer-no-revocation.p12", "x9-test-payer-no-revocation"), qrCodeId);
+
+        assertNotEquals(HttpStatus.OK.value(), response.statusCode(),
+                "a certificate with no revocation source must be refused: " + response.asString());
+        assertEquals("ACTIVE", statusOf(qrCodeId), "a refused notification must change nothing");
     }
 
 }
