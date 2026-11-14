@@ -40,6 +40,13 @@ Three things have since been found or decided:
 
 ## Decision
 
+> **Only the payment system marks a QR Code `PAID`. This software never does.** It has no means to:
+> it never sees funds arrive, on any rail or chain, and receiving and matching money is outside its
+> scope. Everything below (pre-commits, post-commits, hashes, flags) is evidence handed to the payment
+> system. None of it, from any payer, in any status, ever makes a QR Code `PAID`. The payment system
+> does that, and only through the status-update API.
+
+
 ### The phase comes from the evidence, on every rail
 
 | Rail | Pre-commit | Post-commit |
@@ -82,9 +89,8 @@ payment system.
   `payment.sent`, beside the first. In Go each one is also its own row in `qr_code_notification`
   ([ADR-0024](0024-a-qr-code-is-one-row-and-every-patch-is-audit-logged.md)); the Java QR Code
   document keeps only the latest notification, but every event survives in the event log.
-- **X9.150 never marks a QR Code paid on a payer's report.** The payment system that receives the
-  funds matches each hash against what arrived, and calls the status-update API. Which party does
-  the matching changes; the mechanics do not.
+- **X9.150 never marks a QR Code paid** (see the top of this Decision). The payment system that
+  receives the funds matches each hash against what arrived, and calls the status-update API.
 - **More than one hash for one QR Code is the signal of a duplicate payment.** It should not happen
   when payers follow the protocol, and keeping every hash is what lets the payment system detect it
   when it does.
