@@ -271,11 +271,13 @@ From the payment system (status-update API), and from time:
 
 | Change | ACTIVE | Held by the sender | Held by someone else | PAID or CANCELLED |
 |---|---|---|---|---|
-| **→ `PAYMENT_INITIATED`** | → `PAYMENT_INITIATED`, held by nobody identifiable; `payment.initiated` | 409 | 409 | 409 |
-| **→ `PAID`** | → `PAID`, `payment.cleared` | same | same | 400 |
-| **→ `CANCELLED`** | → `CANCELLED`, `payment.cancelled` | same | same | 400 |
-| **→ `ACTIVE`** (reactivate) | 400 | → `ACTIVE`, no event | → `ACTIVE`, no event | 400 |
+| **→ `PAYMENT_INITIATED`** | → `PAYMENT_INITIATED`, held by nobody identifiable; `payment.initiated` | 200, nothing changes ¶ | 200, nothing changes ¶ | 409 |
+| **→ `PAID`** | → `PAID`, `payment.cleared` | same | same | `PAID`: 200, nothing changes ¶. `CANCELLED`: 400 |
+| **→ `CANCELLED`** | → `CANCELLED`, `payment.cancelled` | same | same | `CANCELLED`: 200, nothing changes ¶. `PAID`: 400 |
+| **→ `ACTIVE`** (reactivate) | 200, nothing changes ¶; a lapsed reservation: 400 | → `ACTIVE`, no event | → `ACTIVE`, no event | 400 |
 | **The reservation's window passes** | — | reads `ACTIVE`, nothing written, no event; never once a hash is registered, nor when `ttl-seconds` is `0` | same | — |
+
+¶ **A status-update to the status the QR Code already has is a retry** (amended 2026-11-14, owner): 200, nothing written, no revision, no event, as [ADR-0020](0020-the-payee-states-the-outcome-of-its-own-receivable.md) decided, so a payment system that timed out can simply send it again. "Already has" means both the stored and the effective status: a lapsed reservation reads `ACTIVE`, so `PAYMENT_INITIATED` on it reserves the QR Code again. This matrix first said 400 or 409 for these cells; that was a mistake, found by Story 4.1.
 
 ‡ The reservation no longer expires; only the payment system ends it (see *The reservation's window*).
 

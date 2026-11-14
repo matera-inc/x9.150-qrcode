@@ -323,10 +323,10 @@ One black-box test per row of ADR-0035's map (Story 4.1); the row-to-test table 
 |---|---|---|
 | `X9-MAP-001` | create: ACTIVE, no event | `test_transition_map.py` |
 | `X9-MAP-002` | PATCH: allowed from ACTIVE and PAYMENT_INITIATED, status unchanged, revision moves, no event; refused from PAID and CANCELLED | `test_transition_map.py` |
-| `X9-MAP-010` | status-update PAYMENT_INITIATED: from ACTIVE, unattributed reservation, `payment.initiated`; 409 otherwise (the held cell contradicts Java, strict xfail; the lapsed cell was BUG-002, fixed) | `test_transition_map.py` |
-| `X9-MAP-011` | status-update PAID: from ACTIVE or PAYMENT_INITIATED, `payment.cleared` with the last notification's body; 400 from CANCELLED (PAID → PAID contradicts Java, strict xfail) | `test_transition_map.py` |
-| `X9-MAP-012` | status-update CANCELLED: from ACTIVE or PAYMENT_INITIATED, `payment.cancelled`; 400 from PAID (CANCELLED → CANCELLED contradicts Java, strict xfail) | `test_transition_map.py` |
-| `X9-MAP-013` | status-update ACTIVE: from PAYMENT_INITIATED, no event, the reservation is gone; 400 from PAID, CANCELLED and a lapsed reservation (ACTIVE → ACTIVE contradicts Java, strict xfail) | `test_transition_map.py` |
+| `X9-MAP-010` | status-update PAYMENT_INITIATED: from ACTIVE, unattributed reservation, `payment.initiated`; on a live reservation a retry (200, nothing changes); 409 from PAID and CANCELLED; a lapsed reservation is reserved again (BUG-002, fixed) | `test_transition_map.py` |
+| `X9-MAP-011` | status-update PAID: from ACTIVE or PAYMENT_INITIATED, `payment.cleared` with the last notification's body; 400 from CANCELLED; PAID → PAID is a retry, 200 and nothing changes | `test_transition_map.py` |
+| `X9-MAP-012` | status-update CANCELLED: from ACTIVE or PAYMENT_INITIATED, `payment.cancelled`; 400 from PAID; CANCELLED → CANCELLED is a retry, 200 and nothing changes | `test_transition_map.py` |
+| `X9-MAP-013` | status-update ACTIVE: from PAYMENT_INITIATED, no event, the reservation is gone; 400 from PAID, CANCELLED and a lapsed reservation; ACTIVE → ACTIVE is a retry, 200 and nothing changes | `test_transition_map.py` |
 | `X9-MAP-020` | a pre-commit on ACTIVE, every rail, takes the reservation with `payment.initiated`, a lapsed one's takeover included | `test_transition_map.py` |
 | `X9-MAP-021` | the holder's retry changes nothing, emits nothing, and refreshes the window | `test_transition_map.py` |
 | `X9-MAP-022` | a pre-commit once a hash is registered is 409, the holder's included | `test_transition_map.py` |
