@@ -4,7 +4,7 @@ Date: 2026-11-14
 
 ## Status
 
-Proposed 2026-11-14. **Keeps** [ADR-0004](0004-phase-inferred-from-transaction-id.md) and brings the
+Accepted 2026-11-14. **Keeps** [ADR-0004](0004-phase-inferred-from-transaction-id.md) and brings the
 Solana code back in line with it. Completes [ADR-0003](0003-two-phase-payment-notification-approval.md)
 and [ADR-0021](0021-a-reservation-knows-who-holds-it.md), and **supersedes in part** ADR-0021: its
 bank-level fallback when `payer.info` is absent.

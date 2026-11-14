@@ -1,6 +1,6 @@
 # 0021 — A reservation knows who holds it
 
-**Status:** Accepted. The fallback when `payer.info` is absent is superseded by [ADR-0036](0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md) once it is accepted.
+**Status:** Accepted. The fallback when `payer.info` is absent is superseded by [ADR-0036](0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md).
 **Date:** 2026-10-03
 
 ## Context
