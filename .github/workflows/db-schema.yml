@@ -33,9 +33,11 @@ jobs:
         include:
           - label: postgres-16
             image: postgres:16
-          # The newest major, whatever it is on the day the job runs (ADR-0023).
+          # The newest major (ADR-0023), pinned so that a PostgreSQL release cannot turn this job red
+          # without a commit. Move it deliberately, in its own pull request, when a new major ships
+          # (and update the newest-major wording in db/README.md if it names a number).
           - label: postgres-newest
-            image: postgres:latest
+            image: postgres:18
     steps:
       - uses: actions/checkout@v4
 
