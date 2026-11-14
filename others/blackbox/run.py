@@ -4,6 +4,7 @@
 # dependencies = [
 #     "pytest==9.2.0",
 #     "cryptography==50.0.2",
+#     "pyyaml==6.0.3",
 # ]
 # ///
 # Copyright © 2026 Matera Systems, Inc.
