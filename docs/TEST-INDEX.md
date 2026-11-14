@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**349 tests documented** — every JUnit test in the repository and every case in the
+**365 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -387,6 +387,22 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-SIG-101` | signing and payload retrieval work on every interpreted rail | `QRCodesApisFlowTest.java` |
 | `X9-SIG-110` | a payer | `test_payment_notification.py` |
 | `X9-SIG-111` | a payer | `test_payment_notification.py` |
+| `X9-SIG-120` | an accepted pre-commit is answered with a signed `{"statusCode": 200}` | `SignedNotificationAnswerApiTest.java` |
+| `X9-SIG-121` | an accepted post-commit is answered with a signed yes too | `SignedNotificationAnswerApiTest.java` |
+| `X9-SIG-122` | a refusal keeps its status and error fields, signed, correlationId echoed | `SignedNotificationAnswerApiTest.java` |
+| `X9-SIG-123` | another holder's 409 is signed as well | `SignedNotificationAnswerApiTest.java` |
+| `X9-SIG-124` | a question that cannot be read is refused, signed, under a fresh correlationId | `SignedNotificationAnswerApiTest.java` |
+| `X9-SIG-125` | a SENT report after the discount edge is recorded and answered with a signed yes | `SignedNotificationAnswerApiTest.java` |
+| `X9-SIG-126` | with public keys only, a verifier links question and answer | `SignedNotificationAnswerApiTest.java` |
+| `X9-SIG-130` | a signed yes with the correlationId sent is VERIFIED | `OutboundAnswerVerificationApiTest.java` |
+| `X9-SIG-131` | a signed no is VERIFIED and not accepted | `OutboundAnswerVerificationApiTest.java` |
+| `X9-SIG-132` | a signed yes under another correlationId is INVALID, and still an unsigned yes | `OutboundAnswerVerificationApiTest.java` |
+| `X9-SIG-133` | a signed answer whose payload was altered is INVALID | `OutboundAnswerVerificationApiTest.java` |
+| `X9-SIG-134` | an HTTP status that differs from the signed one is INVALID | `OutboundAnswerVerificationApiTest.java` |
+| `X9-SIG-135` | an unsecured JOSE object (`alg: none`) is INVALID | `OutboundAnswerVerificationApiTest.java` |
+| `X9-SIG-136` | an empty 200 is ABSENT and reported as an unsigned yes | `OutboundAnswerVerificationApiTest.java` |
+| `X9-SIG-137` | unsigned JSON and plain text are ABSENT | `OutboundAnswerVerificationApiTest.java` |
+| `X9-SIG-138` | a plain JSON refusal is ABSENT, not accepted, body passed through | `OutboundAnswerVerificationApiTest.java` |
 
 ## Tips
 

@@ -109,6 +109,20 @@ def call_with_headers(method, path, body=None, headers=None):
         return status, text, response_headers
 
 
+def jws_body(answer):
+    """The JSON body of a compact JWS, or the answer unchanged when it is not one.
+
+    Every answer to a payment notification is signed (Story 2.3); this reads the body only.
+    """
+    if not isinstance(answer, str) or answer.count(".") != 2:
+        return answer
+    payload = answer.split(".")[1]
+    try:
+        return json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    except ValueError:
+        return answer
+
+
 def sign(payload):
     """Sign JSON with the deployment's own key. Both headers are required."""
     status, body = call("POST", "/api/v1/signature/generate", body=payload, headers={
@@ -490,8 +504,9 @@ def tip_notification(tip_config, total, tip_amount):
         return None, f"the QR Code could not be created: {created.get('violations', created)}"
 
     token = sign(notification_with_tip(qid, total, tip_amount))
-    return call("POST", "/pub/api/v1/payment-notification", raw_body=token or "",
-                headers={"Content-Type": "application/jose"})
+    status, answer = call("POST", "/pub/api/v1/payment-notification", raw_body=token or "",
+                          headers={"Content-Type": "application/jose"})
+    return status, jws_body(answer)
 
 
 def refuses_the_tip(body):

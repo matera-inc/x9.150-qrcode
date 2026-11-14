@@ -665,20 +665,50 @@ paths:
               example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpPU0UiLCJraWQiOiJ4OS1rZXkiLCJpYXQiOjE3Njg0ODA4NDQ5MzgsIng1dCNTMjU2Ijoiajc2dm9GSHhnLUhwTkhJSlBPUGxVOVpGNUY4NUVQSDRROUdwSEc1al9YTSIsIng1dSI6Ing5Lm1hdGVyYS5jb20vcHVibGljLy53ZWxsLWtub3duL2NlcnRpZmljYXRlL3g5LnBlbSIsImNvcnJlbGF0aW9uSWQiOiI5N2E2NDA2My03YzRkLTRkMzYtYTJmYy00YzU0NzcyMTBlZjciLCJ0dGwiOjMwMDAwMH0.eyJwYXltZW50Ijp7InFyY29kZUlkIjoiOTdBNjQwNjM3QzRENEQzNkEyRkM0QzU0NzcyMTBFRjciLCJhbW91bnQiOjUwMDAsImN1cnJlbmN5IjoiVVNEIiwibmV0d29yayI6IkZlZE5vdyIsInRyYW5zYWN0aW9uSWQiOiJYWVouVVNCSy5YOWFUZjcycUxtLjEifSwiZXhwZWN0ZWREYXRlIjoiMjAzMC0xMC0wOFQwNjo1OTo1OVoifQ.GmJEY9Eo1kWOL9mfx6Vh9eQAYgxb8iu5obTJIR37--U
       responses:
         "200":
-          description: "Notification received and validated"
+          description: |-
+            Notification accepted, on pre-commit or post-commit. The body is a **signed answer**: a
+            compact JWS (`application/jose`) whose body is `{"statusCode": 200}`, as the note under
+            ANSI X9.150 A.4.5 asks, signed with this payee's X9 key. Its `correlationId` header
+            echoes the notification's, and its `iat` is this payee's clock at the decision.
+
+            Keep it with the notification you signed. The two together, linked by `correlationId`,
+            are the evidence of what was authorized and when; a verifier needs only the public
+            certificates. Settlement and reconciliation of the funds stay with the system that
+            receives them.
+          content:
+            application/jose:
+              schema:
+                $ref: "#/components/schemas/SignedNotificationAnswer"
         "400":
-          $ref: "#/components/responses/BadRequestErrorResponse"
+          description: |-
+            The notification was authentic but its content failed a rule (wrong amount, expired,
+            unknown network...). **Signed**, like every answer from this endpoint: a JWS whose body
+            is `{"statusCode": 400}` plus the usual error fields (`type`, `title`, `status`,
+            `detail`, `violations`), with the notification's `correlationId` echoed.
+          content:
+            application/jose:
+              schema:
+                $ref: "#/components/schemas/SignedNotificationAnswer"
         "401":
           description: |-
             The JWS signature could not be verified, so the notification was **not processed** — the
             payload was never parsed and no QR Code was read or written. Distinct from `400`, which
             means the request was authentic but its content failed a rule.
+
+            Still a signed answer, with body `{"statusCode": 401}` plus the error fields. Its
+            `correlationId` is **fresh**: a question that cannot be verified has no correlationId
+            this payee can trust enough to echo.
           content:
-            application/json:
+            application/jose:
               schema:
-                $ref: "#/components/schemas/BaseError"
+                $ref: "#/components/schemas/SignedNotificationAnswer"
         "404":
-          $ref: "#/components/responses/NotFoundErrorResponse"
+          description: |-
+            The QR Code is unknown. A signed answer, body `{"statusCode": 404}` plus the error fields.
+          content:
+            application/jose:
+              schema:
+                $ref: "#/components/schemas/SignedNotificationAnswer"
         "409":
           description: |-
             Another payer holds this QR Code. The request is well formed and it is the state that
@@ -686,13 +716,19 @@ paths:
             its own (`x9.reservation.ttl-seconds`, 90 by default).
 
             Also returned for a `SENT` or `NOT_SENT` reporting on a payment somebody else
-            announced.
+            announced. A signed answer, body `{"statusCode": 409}` plus the error fields.
           content:
-            application/problem+json:
+            application/jose:
               schema:
-                $ref: "#/components/schemas/BaseError"
+                $ref: "#/components/schemas/SignedNotificationAnswer"
         "422":
-          $ref: "#/components/responses/UnprocessableEntityErrorResponse"
+          description: |-
+            The notification could not be processed. A signed answer, body `{"statusCode": 422}`
+            plus the error fields.
+          content:
+            application/jose:
+              schema:
+                $ref: "#/components/schemas/SignedNotificationAnswer"
         "500":
           $ref: "#/components/responses/InternalServerErrorResponse"
 
@@ -1714,6 +1750,15 @@ components:
         notification:
           $ref: "#/components/schemas/PaymentNotificationData"
 
+    SignedNotificationAnswer:
+      type: string
+      description: |-
+        A compact JWS signed with the payee's X9 key, `typ` `JOSE`, `crit` naming `correlationId`,
+        `iat`, `ttl` and `statusCode`. Its body is `{"statusCode": <HTTP status>}` (ANSI X9.150
+        A.4.5 note); on a refusal the body also carries the error fields `type`, `title`, `status`,
+        `detail` and `violations`, and any other property the refusal reports (`currentStatus`).
+      example: eyJhbGciOiJQUzUxMiJ9.eyJzdGF0dXNDb2RlIjoyMDB9.c2lnbmF0dXJl
+
     OutboundPaymentNotificationResult:
       type: object
       required:
@@ -1734,6 +1779,35 @@ components:
           type: string
           nullable: true
           description: "Whatever the payee returned, verbatim — usually a problem detail on refusal."
+        signature:
+          type: string
+          enum: [VERIFIED, ABSENT, INVALID]
+          description: |-
+            What this service found when it checked the payee's answer against the payee's X9
+            certificate (ANSI X9.150 A.4.5 asks the payee to answer with a signed
+            `{"statusCode": integer}`).
+
+            - `VERIFIED`: the answer is a JWS that verifies, its `correlationId` is the one this
+              service sent, and its signed `statusCode` equals the HTTP status. `statusCode` above is
+              the signed one. Keep `body`: it is the payee's signed yes or no.
+            - `ABSENT`: the answer is not a JWS at all (empty, plain JSON, plain text). `statusCode`
+              and `accepted` are the HTTP status, unsigned.
+            - `INVALID`: the answer looks like a JWS but fails a check: the signature, the
+              certificate chain, the time window, the `crit` header, the `correlationId`, or the
+              signed `statusCode` differs from the HTTP status. `statusCode` and `accepted` are the
+              HTTP status, unsigned. `signatureProblem` says which check failed.
+
+            A 200 that is `ABSENT` or `INVALID` is still reported as `accepted`: an unsigned yes,
+            not a refusal. Whether to act on an unsigned yes is the payer's decision; this service
+            only reports.
+          example: VERIFIED
+        signatureProblem:
+          type: string
+          nullable: true
+          description: |-
+            Why the answer is `INVALID` or `ABSENT`, in words. Absent when `signature` is
+            `VERIFIED`. Meant for a person reading a log, not for parsing.
+          example: "correlationId mismatch: sent 8a652794-9e73-4fd7-a628-4d525b638cbc, answer carries 1b4e28ba-2fa1-11d2-883f-0016d3cca427"
 
     PaymentNotificationData:
       type: object

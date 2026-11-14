@@ -160,8 +160,8 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
 
     private void assertRefusedAndUntouched(MockMvcResponse response, String qrCodeId, String expectedInBody) {
         assertNotEquals(HttpStatus.OK.value(), response.statusCode(), response.asString());
-        assertTrue(response.asString().contains(expectedInBody),
-                "reason should mention '%s': %s".formatted(expectedInBody, response.asString()));
+        assertTrue(answerBody(response).contains(expectedInBody),
+                "reason should mention '%s': %s".formatted(expectedInBody, answerBody(response)));
         assertEquals("ACTIVE", statusOf(qrCodeId), "a refused notification must leave the QR Code untouched");
     }
 
@@ -291,8 +291,8 @@ class PaymentNotificationAcceptanceApiTest extends AbstractIntegrationTest {
         assertNotEquals(HttpStatus.OK.value(), response.statusCode(),
                 "a payload fetched while valid must not remain payable after the QR Code expires: "
                         + response.asString());
-        assertTrue(response.asString().contains("expired"),
-                "the reason should say the QR Code expired, not merely name a field: " + response.asString());
+        assertTrue(answerBody(response).contains("expired"),
+                "the reason should say the QR Code expired, not merely name a field: " + answerBody(response));
         assertEquals("ACTIVE", statusOf(qrCodeId), "a refused notification must leave the QR Code untouched");
     }
 

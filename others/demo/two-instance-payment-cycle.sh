@@ -223,6 +223,7 @@ ACCEPTED="$(json "['accepted']" "$WORK/pre-result.json")"
 [ "$ACCEPTED" = "True" ] || { cat "$WORK/pre-result.json"; die "the payee refused the pre-payment"; }
 
 call GET "$PAYEE/api/v1/payment-request/$QR_ID" "" "$WORK/status.json" 200
+step "payee answer signature: $(json ".get('signature')" "$WORK/pre-result.json") (VERIFIED = a signed yes, ANSI X9.150 A.4.5)"
 step "payee accepted; QR Code is now $(json "['status']" "$WORK/status.json") — reserved, and no longer payable by anyone else"
 
 say "4. The payer pays on Solana"
@@ -246,7 +247,7 @@ call POST "$PAYER/api/v1/payment-notification/post-payment" "$WORK/post.json" "$
 ACCEPTED="$(json "['accepted']" "$WORK/post-result.json")"
 [ "$ACCEPTED" = "True" ] || { cat "$WORK/post-result.json"; die "the payee refused the post-payment"; }
 
-step "payee accepted the report"
+step "payee accepted the report (answer signature: $(json ".get('signature')" "$WORK/post-result.json"))"
 
 say "6. What the payee's own systems now see"
 

@@ -67,7 +67,9 @@ public class OutboundPaymentNotificationController implements PaymentNotificatio
         return new OutboundPaymentNotificationResultDTO()
             .statusCode(output.statusCode())
             .accepted(output.accepted())
-            .body(output.body());
+            .body(output.body())
+            .signature(OutboundPaymentNotificationResultDTO.SignatureEnum.fromValue(output.signature().name()))
+            .signatureProblem(output.signatureProblem());
     }
 
 }

@@ -26,6 +26,21 @@ BILL = 1000
 FAR_FUTURE = "2030-12-31T23:59:59Z"
 
 
+def jws_body(answer):
+    """The JSON body of a compact JWS, or the answer unchanged when it is not one.
+
+    Every answer to a payment notification is signed (Story 2.3): `{"statusCode": n}` on a yes,
+    plus the error fields on a refusal. This reads the body only; it does not verify the signature.
+    """
+    if not isinstance(answer, str) or answer.count(".") != 2:
+        return answer
+    payload = answer.split(".")[1]
+    try:
+        return json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    except ValueError:
+        return answer
+
+
 class Api:
     """The smallest HTTP client that tells the truth about what came back."""
 
@@ -117,8 +132,9 @@ class Api:
                                           "from": PAYER_WALLET, "to": RECIPIENT}
 
         token = raw if raw is not None else self.sign(notification)
-        return self.call("POST", "/pub/api/v1/payment-notification", raw=token,
-                         headers={"Content-Type": "application/jose"})
+        status, answer = self.call("POST", "/pub/api/v1/payment-notification", raw=token,
+                                   headers={"Content-Type": "application/jose"})
+        return status, jws_body(answer)
 
     def mark_paid(self, qr_id, *, end_to_end_id="E2E-BLACKBOX-1", network="solana"):
         """The payee's order: this bill is settled."""
