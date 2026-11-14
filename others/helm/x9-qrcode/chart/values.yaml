@@ -283,6 +283,12 @@ application:
       truststore:
         # -- Truststore location mounted in the container filesystem.
         location:
+    reservation:
+      # -- Seconds a payer's pre-commit holds the QR Code before it lapses (X9_RESERVATION_TTL_SECONDS).
+      # `90` suits simple installations. `0` means no window: a reservation never expires and ends
+      # only by a refused retry, NOT_SENT, or the status-update API (a bank that wants full control).
+      # Once a transaction hash is registered the reservation stops expiring whatever this says (ADR-0036).
+      ttl-seconds: 90
 
 # -- Extra application configuration rendered as application-kubernetes.yaml
 applicationExtra: {}

@@ -63,7 +63,7 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
 
     /**
      * How long a pre-commit's reservation holds before it stops counting —
-     * {@code x9.reservation.ttl-seconds}.
+     * {@code x9.reservation.ttl-seconds}. {@code 0} means it never lapses (ADR-0036).
      *
      * <p>Declared LAST on purpose: {@code @RequiredArgsConstructor} orders parameters by field
      * declaration, so inserting a field mid-list silently reorders the constructor and any caller
@@ -138,13 +138,23 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
      * A request for permission, so it must earn its yes: the correct amount, a currency and
      * destination this QR Code published, nothing expired, all at the payee's clock.
      *
-     * <p>The status is decided before the gate, so a second payer is told 409, not a 400 about its
-     * amount. The holder's own retry is judged again.
+     * <p>The holder's own retry is judged again, and if the gate now says no, the reservation is
+     * released in the same save (S2.5-AC2): a payer the payee has just refused must not keep
+     * everybody else out until its window lapses.
      */
     private void preCommit(QRCodeEntity qrCodeEntity, PaymentNotificationDataVO data, ReservationHolderVO sender) {
-        qrCodeEntity.admitPreCommit(data, sender);
+        boolean retryByHolder = qrCodeEntity.admitPreCommit(data, sender);
 
-        acceptancePolicy.accept(qrCodeEntity, data, DateTimeUtils.nowUTC());
+        try {
+            acceptancePolicy.accept(qrCodeEntity, data, DateTimeUtils.nowUTC());
+        } catch (BusinessRuleException refused) {
+            if (retryByHolder) {
+                qrCodeEntity.refuseRetriedPreCommit(data, refused.getMessage());
+                qrCodeRepository.save(qrCodeEntity);
+            }
+
+            throw refused;
+        }
 
         qrCodeEntity.acceptPreCommit(data, sender, reservationTtl);
     }

@@ -563,6 +563,24 @@ it is registered, flagged, and changes nothing, so the holder keeps the QR Code.
 - On a bank rail no `payment.sent` is published (the payment carries `QRCD`); the deviation is then
   in the `payment.initiated` event when there is one, and in the warning log otherwise.
 
+**The holder, its retry, and the window** (Story 2.5):
+
+- **The same payer** means both notifications carry `payer.info`, the values are equal, and the
+  certificate subjects are equal. Without `payer.info` there is no telling two payers apart, so
+  they are assumed to be different: such a payer may win a pre-commit, but cannot retry it (`409`),
+  release it with `NOT_SENT` (`409`), or report its post-commit as the holder (it is registered
+  with `RECEIVED_IN_WRONG_STATUS`). Sending `payer.info` is what lets a PSP's payers retry, release
+  and report cleanly ([BEST-PRACTICES §1](BEST-PRACTICES.md)).
+- **A retry is judged again** at the payee's clock, and **a refused retry releases** the
+  reservation in the same step (on a chain with `payment.failed`). A refused pre-commit from a
+  non-holder, or on an `ACTIVE` QR Code, changes nothing.
+- **A takeover is evented:** winning the pre-commit on a lapsed reservation publishes
+  `payment.initiated` for the new holder.
+- **A registered hash stops the window**, whoever sent it; only the payment system then ends the
+  reservation.
+- **`x9.reservation.ttl-seconds: 0` means no window:** a reservation ends only by a refused retry,
+  `NOT_SENT`, or the status-update API. The default stays `90`.
+
 > ⚠️ **A `PAYMENT_INITIATED` carrying a transaction hash is bad behaviour by the payer:** it asks
 > permission for money that has already moved. Either the payer skipped the question or it labelled
 > its report wrongly. **Its hash is still kept**, as a post-commit, because funds that arrive in the

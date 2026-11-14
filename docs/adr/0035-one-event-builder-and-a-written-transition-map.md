@@ -45,6 +45,7 @@ for field. The event contract is unchanged except for ADR-0036's additive `devia
 | pre-commit, any rail (no `transactionId`), new holder | `ACTIVE` (effective; a lapsed reservation counts) | `PAYMENT_INITIATED`, held by the sender | `payment.initiated` (also on a takeover of a lapsed reservation) |
 | pre-commit, any rail, same holder (retry) | `PAYMENT_INITIATED` (effective), held by the sender | unchanged, window refreshed (never restarted once a hash is registered) | **none** |
 | pre-commit, any rail, once a hash is registered (holder included) | `PAYMENT_INITIATED` (effective), hash registered | refused, 409 | none |
+| pre-commit, any rail, same holder, **refused** by the gate | `PAYMENT_INITIATED` (effective), held by the sender | `ACTIVE`, reservation cleared, in the same transaction (400 to the payer) | blockchain: `payment.failed`; bank rail: none |
 | pre-commit, any rail, another payer | `PAYMENT_INITIATED` (effective), held by someone else | refused, 409 | none |
 | pre-commit, any rail | `PAID` or `CANCELLED` | refused, 400 | none |
 | post-commit, bank rail (`transactionId` present) | `ACTIVE` (effective) | `PAYMENT_INITIATED`, held by the sender, window stopped | `payment.initiated`, flagged `RECEIVED_IN_WRONG_STATUS` |
@@ -59,7 +60,7 @@ for field. The event contract is unchanged except for ADR-0036's additive `devia
 | blockchain `NOT_SENT` **with** a `transactionId` | any | as the post-commit row for that status | as that row, plus `ACTION_CONTRADICTS_HASH` |
 | blockchain `NOT_SENT` | held by someone else: 409; `ACTIVE` with no reservation of the sender's, `PAID`, `CANCELLED`: 400 | unchanged | none |
 | location released by a rebind | not live ([0024](0024-a-qr-code-is-one-row-and-every-patch-is-audit-logged.md)) | unchanged, new random location | none |
-| reservation lapse | — (on read only) | reads as `ACTIVE`; never once a hash is registered (ADR-0036) | **none** (ADR-0019) |
+| reservation lapse | — (on read only) | reads as `ACTIVE`; never once a hash is registered, nor when `x9.reservation.ttl-seconds` is `0` (ADR-0036) | **none** (ADR-0019) |
 
 Phase 1 verifies the table against the Java code and the suite. Any row Java contradicts is
 corrected here before Go is built.
@@ -69,6 +70,9 @@ the event is built, in the same transaction. "Last stored notification" means th
 QR Code by its UUIDv7 `id`, read **after** that insert, so `payment.sent` carries the hash it
 reports (as Java assigns the notification before emitting, `QRCodeEntity.java:645-650`). Optional
 fields come from `notification_json`, so an absent tip stays absent.
+
+**Same holder** means `payer.info` present on both and equal, and the same certificate subject;
+without `payer.info` the sender is never the holder (ADR-0036).
 
 **Every transition sets `revised_at`;** only PATCH moves `revision` ([0024](0024-a-qr-code-is-one-row-and-every-patch-is-audit-logged.md)). The `request_json` never holds
 notification data ([0024](0024-a-qr-code-is-one-row-and-every-patch-is-audit-logged.md)).

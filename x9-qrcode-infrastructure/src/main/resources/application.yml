@@ -110,8 +110,21 @@ x9:
   #
   # Nothing is swept: the lapse is applied when somebody reads the status. See
   # QRCodeEntity.effectiveStatus.
+  #
+  # The window applies only before any transaction hash: once a post-commit is registered for the
+  # QR Code the reservation stops expiring, whoever sent it, and only the payment system ends it
+  # (status-update PAID, CANCELLED or ACTIVE). ADR-0036.
+  #
+  #   90 (default)  beginners and simple installations: a payer that vanishes cannot lock the QR
+  #                 Code for longer than 90 s.
+  #   0             no window: a bank that wants full control. A reservation never expires; it
+  #                 ends only by a refused retry, NOT_SENT, or the status-update API. (0 used to
+  #                 mean "expire at once".)
+  #   other > 0     tuning, the same as the default with that window.
+  #
+  # The same environment variable configures the Go build.
   reservation:
-    ttl-seconds: 90
+    ttl-seconds: ${X9_RESERVATION_TTL_SECONDS:90}
 
   # The movable test clock (ADR-0033). OFF by default and in production. When on, GET/PUT/DELETE
   # /test/clock is served on clock-listen — a separate listener, never the API port — and the app

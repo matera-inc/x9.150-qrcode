@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**428 tests documented** — every JUnit test in the repository and every case in the
+**451 tests documented** — every JUnit test in the repository and every case in the
 black-box suite.
 
 A reader looking for *what the standard requires* should read the **Source** lines first. A great
@@ -215,7 +215,7 @@ Only the party that announced a payment may re-announce it, report it, or give i
 | `X9-HOLD-001` | the same payer at the same institution is the same party | `ReservationHolderVOTest.java` |
 | `X9-HOLD-002` | a different payer at the same institution is a different party | `ReservationHolderVOTest.java` |
 | `X9-HOLD-003` | the same payer value from a different institution is a different party | `ReservationHolderVOTest.java` |
-| `X9-HOLD-004` | an institution with no payer info matches itself | `ReservationHolderVOTest.java` |
+| `X9-HOLD-004` | without payer info there is no telling two payers apart, so they are different | `ReservationHolderVOTest.java` |
 | `X9-HOLD-005` | nothing matches a holder nobody can name | `ReservationHolderVOTest.java` |
 | `X9-HOLD-010` | a repeated announcement from the same payer is accepted | `test_payment_notification.py` |
 | `X9-HOLD-011` | a second payer is refused, and told it is a conflict | `test_payment_notification.py` |
@@ -261,6 +261,14 @@ Only the party that announced a payment may re-announce it, report it, or give i
 | `X9-HOLD-138` | after a hash, the holder's NOT_SENT is accepted, flagged ACTION_CONTRADICTS_HASH, and changes nothing | `QRCodeEntityNotificationMatrixTest.java` |
 | `X9-HOLD-139` | a NOT_SENT carrying a transaction id is a post-commit, flagged ACTION_CONTRADICTS_HASH | `QRCodeEntityNotificationMatrixTest.java` |
 | `X9-HOLD-140` | the status-update API's revert clears the registered hash with the reservation | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-130` | a refused retry from the holder releases the reservation, with payment.failed on a chain | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-131` | a refused retry on a bank rail releases the reservation without an event | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-132` | a holder without payer.info cannot retry: 409 | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-133` | a holder without payer.info cannot release with NOT_SENT: 409 | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-134` | a holder without payer.info reports as somebody else: flagged, and nothing changes | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-135` | with ttl-seconds 0 a pre-commit's reservation never lapses | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-136` | with ttl-seconds 0 the status-update API's reservation never lapses either | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-137` | with ttl-seconds 0 a reservation still ends by NOT_SENT or a refused retry | `QRCodeEntityNotificationMatrixTest.java` |
 | `X9-HOLD-201` | a FedNow or RTP pre-commit is gated at the payee's clock and reserves the QR Code (S2.4-AC1) | `PreCommitOnEveryRailApiTest.java` |
 | `X9-HOLD-202` | a second payer's pre-commit is a 409 on every rail (S2.4-AC2) | `PreCommitOnEveryRailApiTest.java` |
 | `X9-HOLD-203` | two payers racing for one QR Code end with exactly one winner and one 409 (S2.4-AC2) | `PreCommitOnEveryRailApiTest.java` |
@@ -282,6 +290,21 @@ Only the party that announced a payment may re-announce it, report it, or give i
 | `X9-HOLD-219` | after a hash, the holder's retried pre-commit is a 409 and does not release | `PreCommitOnEveryRailApiTest.java` |
 | `X9-HOLD-220` | a NOT_SENT carrying a transaction id is a post-commit: registered, flagged ACTION_CONTRADICTS_HASH | `PreCommitOnEveryRailApiTest.java` |
 | `X9-HOLD-221` | losing the save race after every re-run answers 409 busy with the current status, never 500 | `PaymentNotificationRaceExhaustedTest.java` |
+| `X9-HOLD-301` | the holder's retry is judged again at the payee's clock, and its refusal frees the QR Code | `HolderRetryAndIdentityApiTest.java` |
+| `X9-HOLD-302` | after a refused retry on a bank rail, the same payer may pre-commit again with the right amount | `HolderRetryAndIdentityApiTest.java` |
+| `X9-HOLD-303` | a refused pre-commit from a non-holder, or on an ACTIVE QR Code, changes nothing | `HolderRetryAndIdentityApiTest.java` |
+| `X9-HOLD-304` | an accepted retry answers 200 and emits nothing | `HolderRetryAndIdentityApiTest.java` |
+| `X9-HOLD-305` | the same certificate with a different payer.info is a different payer | `HolderRetryAndIdentityApiTest.java` |
+| `X9-HOLD-306` | a holder without payer.info cannot retry, cannot release, and its post-commit changes nothing | `HolderRetryAndIdentityApiTest.java` |
+| `X9-HOLD-307` | once a hash is registered, only the status-update API ends the reservation | `HolderRetryAndIdentityApiTest.java` |
+| `X9-HOLD-311` | winning the pre-commit on a lapsed reservation emits payment.initiated for the new holder | `ReservationWindowApiTest.java` |
+| `X9-HOLD-312` | the holder's hash stops the window | `ReservationWindowApiTest.java` |
+| `X9-HOLD-313` | another payer's hash stops the window too, and the holder does not change | `ReservationWindowApiTest.java` |
+| `X9-HOLD-314` | a bank-rail hash stops the window as well | `ReservationWindowApiTest.java` |
+| `X9-HOLD-315` | without a hash, the same wait releases the reservation | `ReservationWindowApiTest.java` |
+| `X9-HOLD-316` | the holder of a lapsed reservation may still give it back with NOT_SENT | `ReservationWindowApiTest.java` |
+| `X9-HOLD-321` | with ttl-seconds 0 a reservation never lapses, and still ends by NOT_SENT or the status-update API | `NoReservationWindowApiTest.java` |
+| `X9-HOLD-322` | with ttl-seconds 0 a refused retry still frees the QR Code | `NoReservationWindowApiTest.java` |
 
 ## Locations and payload retrieval
 

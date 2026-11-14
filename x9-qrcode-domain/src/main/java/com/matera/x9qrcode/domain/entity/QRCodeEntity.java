@@ -57,9 +57,11 @@ public class QRCodeEntity {
 
     /**
      * The "no lapse" sentinel for {@link #initiatedExpiresAt}: a reservation that never expires on
-     * its own (ADR-0036). Taken once any transaction hash is registered for the QR Code. Only the payment
+     * its own (ADR-0036). Taken once any transaction hash is registered for the QR Code, and by
+     * every reservation when {@code x9.reservation.ttl-seconds} is {@code 0}. Only the payment
      * system ends it then, through the status-update API ({@code PAID}, {@code CANCELLED} or
-     * {@code ACTIVE}). Go stores the same instant in {@code reserved_until}.
+     * {@code ACTIVE}); or, before any hash, a refused retry or a {@code NOT_SENT}. Go stores the
+     * same instant in {@code reserved_until}.
      */
     public static final OffsetDateTime NO_LAPSE = OffsetDateTime.of(9999, 12, 31, 23, 59, 59, 0, ZoneOffset.UTC);
 
@@ -658,7 +660,8 @@ public class QRCodeEntity {
      * <p>The status is decided first, so a second payer reaching for a held QR Code is told 409
      * (come back later), not a 400 about its amount.
      *
-     * @return true when this is the holder's own retry, which is judged again
+     * @return true when this is the holder's own retry, which is judged again and, if refused,
+     *         releases the reservation (see {@link #refuseRetriedPreCommit})
      * @throws QRCodeStatusConflictException when another payer holds the QR Code, or the sender
      *                                       cannot be shown to be the holder (no {@code payer.info})
      * @throws BusinessRuleException         when the QR Code is {@code PAID} or {@code CANCELLED}
@@ -702,7 +705,7 @@ public class QRCodeEntity {
      *       reservation reads as ACTIVE, so a takeover emits too (S2.5-AC5): the transition is
      *       decided on the effective status, not the stored one.</li>
      *   <li><b>Held by the sender</b>: a retry. The window moves, nothing is emitted. A window that
-     *       a registered hash has stopped stays stopped.</li>
+     *       a registered hash (or {@code ttl-seconds: 0}) has stopped stays stopped.</li>
      * </ul>
      */
     public NotificationReceiptVO acceptPreCommit(PaymentNotificationDataVO data, ReservationHolderVO sender,
@@ -726,6 +729,30 @@ public class QRCodeEntity {
         this.emit(PaymentEventTypeEnum.PAYMENT_INITIATED, null, receipt);
 
         return receipt;
+    }
+
+    /**
+     * The holder's retried pre-commit was refused by the acceptance gate: the QR Code goes back to
+     * {@code ACTIVE} and the reservation is cleared (S2.5-AC2).
+     *
+     * <p>Without this the refused holder kept everyone else out until its window lapsed, for a
+     * payment the payee had just said no to. Emits what a release emits on the rail: on a chain
+     * {@code payment.failed}; on a bank rail nothing.
+     *
+     * <p>The refused notification itself is not stored: it was not accepted.
+     */
+    public void refuseRetriedPreCommit(PaymentNotificationDataVO data, String refusal) {
+        QRCodeStatusEnum receivedIn = this.effectiveStatus();
+
+        this.status = QRCodeStatusEnum.ACTIVE;
+        this.stampOrClearReservation(this.status, null, null);
+        this.touch();
+
+        if (isOnChain(data)) {
+            this.emit(PaymentEventTypeEnum.PAYMENT_FAILED,
+                "the holder's retried pre-commit was refused: " + refusal,
+                new NotificationReceiptVO(receivedIn, List.of()));
+        }
     }
 
     /**
@@ -948,6 +975,9 @@ public class QRCodeEntity {
      *   <li>No window given: unstamped. An unstamped reservation reads as holding, which is the
      *       safe direction: it keeps a payer's claim rather than handing their QR Code to somebody
      *       else on a guess.</li>
+     *   <li>{@code 0}: {@link #NO_LAPSE}. {@code ttl-seconds: 0} hands the window to the
+     *       bank: the reservation never expires and ends only by a refused retry, {@code NOT_SENT},
+     *       or the status-update API (ADR-0036). It used to mean "expire at once".</li>
      *   <li>Otherwise now plus the window, capped by the QR Code's own life: a reservation cannot
      *       outlive the thing reserved.</li>
      * </ul>
@@ -957,6 +987,10 @@ public class QRCodeEntity {
             return null;
         }
 
+        if (reservationTtl.isZero()) {
+            return NO_LAPSE;
+        }
+
         OffsetDateTime lapses = DateTimeUtils.nowUTC().plus(reservationTtl);
         OffsetDateTime codeExpires = this.getValidUntil();
 
@@ -964,7 +998,7 @@ public class QRCodeEntity {
     }
 
     /**
-     * Whether the reservation has stopped expiring because a hash was registered.
+     * Whether the reservation has stopped expiring: a hash was registered, or the window is off.
      * A retry never restarts a stopped window.
      */
     public boolean isWindowStopped() {
