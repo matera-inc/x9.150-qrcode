@@ -84,7 +84,9 @@ def pki():
     - ``a`` and ``b``: two distinct payer PSPs (RSA PS512 and EC ES256), trusted by a test
       deployment;
     - ``revoked``: issued by the same CA and revoked on its CRL;
-    - ``untrusted``: issued by a throwaway CA that no truststore holds.
+    - ``untrusted``: issued by a throwaway CA that no truststore holds;
+    - ``payee`` and ``payee_revoked``: the test payee's identity (``x9client.peer``), and a
+      revoked one for the answer the service must refuse to trust.
 
     Their certificates point at a CRL this process serves (``X9_SUITE_HOST``).
     """
@@ -98,8 +100,13 @@ def pki():
         "revoked": ca.issue("revoked", "Blackbox Payer Revoked", kind="rsa", crl_url=crl.url),
         "untrusted": jws.CertificateAuthority.throwaway().issue(
             "untrusted", "Blackbox Untrusted Payer", org="Example Org", crl_url=crl.url),
+        "payee": ca.issue("payee", "Blackbox Test Payee", org="Example Payee Bank",
+                          crl_url=crl.url),
+        "payee_revoked": ca.issue("payee_revoked", "Blackbox Test Payee Revoked",
+                                  org="Example Payee Bank", crl_url=crl.url),
     }
     ca.revoke(parties["revoked"])
+    ca.revoke(parties["payee_revoked"])
     yield parties
     crl.close()
 
@@ -151,6 +158,34 @@ def api(payer_a, pki):
             f"(set X9_SUITE_HOST to this machine's address as the service sees it)")
     assert probe.status == 200, f"the trust probe was refused for another reason: {probe}"
     return client
+
+
+@pytest.fixture(scope="session")
+def test_payee(api, pki, business_now):
+    """A test payee this service can notify (``x9client.peer``), answering right by default.
+
+    Before any test uses it, one pre-payment is sent to it through the service; if the service
+    cannot reach it (502), the tests that need it stop with that diagnosis.
+    """
+    from x9client import peer as peer_module
+
+    payee = peer_module.TestPayee(pki["payee"], now_ms=business_now)
+    probe = api.post("/api/v1/payment-notification/pre-payment", body=peer_module.outbound(
+        "pre-payment", endpoint=payee.endpoint, qr_id=api.create_qr()))
+    if probe.status == 502 or not payee.received:
+        payee.close()
+        unavailable(f"the service cannot reach the test payee at {payee.endpoint} ({probe.status}); "
+                    f"set X9_SUITE_HOST to this machine's address as the service sees it")
+    yield payee
+    payee.close()
+
+
+@pytest.fixture
+def peer(test_payee):
+    """The test payee, reset: nothing received, answering a signed yes until told otherwise."""
+    test_payee.reset()
+    yield test_payee
+    test_payee.reset()
 
 
 @pytest.fixture(scope="session")

@@ -48,6 +48,9 @@ one from a CA nobody trusts. So the deployment must:
   (the default) when both run on one host or share a network namespace, `host.docker.internal`
   for a container started with `--add-host host.docker.internal:host-gateway`.
 
+The same address is how the service reaches the **test payee** (`x9client.peer`) that its
+outbound notifications are sent to; `X9_SUITE_PEER_PORT` fixes its port (default: any free one).
+
 If either is missing, the first payer is refused with 401 and the suite stops there with that
 diagnosis, instead of failing every test for one reason. **Never** give a production deployment
 this truststore: it trusts keys anybody can download.
@@ -69,6 +72,7 @@ others/blackbox/
 │   ├── clock.py       the movable test clock: move_to(), now(), reset()
 │   ├── events.py      cursor reader of the event stream, deduplicating by eventId
 │   ├── jws.py         independent payers on the test CA, the tamperer, and the answer verifier
+│   ├── peer.py        a test payee that answers this service's outbound notifications right and wrong
 │   ├── db/            optional read-only inspectors: mongo.py (Java), postgres.py (Go)
 │   ├── samples.py     request bodies a scenario starts from
 │   └── checks.py      assert_refused: refused, and for the right reason
@@ -114,6 +118,7 @@ marks.
 | **Tip** | bill + tip accepted; tip taken out of the merchant's share refused; tip on a bill refusing tips; below / above the published range; absurd; zero; negative; whole transfer is tip; tip larger than the transfer; presets do not bind without a range; percentage taken against the merchant's share; percentage basis on an editable amount |
 | Currency & rail | a currency not offered, a destination address never published, blockchain data on a bank rail |
 | Lifecycle | second pre-payment, payment on a CANCELLED code, post-payment with no pre-payment (reserves, flagged), and a refused notification leaving the QR Code ACTIVE |
+| **A payee's answers** (`test_payee_answers.py`) | the service notifies the test payee (`x9client.peer`), which captures the exact JWS and answers in each of the 17 ways of Story 3.5 (signed yes, wrong or missing `correlationId`, a replayed yes, empty, unsigned, not a JWS, altered, untrusted, revoked, expired or future `iat`, `alg: none`, unknown `crit`, a signed status that differs from the HTTP one, a plain or signed 400, no answer); each is reported as `signature` VERIFIED / ABSENT / INVALID with its fixed `signatureProblem`, and changes nothing here. Every tamperer defect is named by its code |
 | **Signatures** (`test_signatures.py`) | payers A and B on their own keys; wrong key, untrusted CA, revoked certificate, expired `iat + ttl`, `iat` in the future, missing or unknown `crit`, missing `x5c`, altered payload, `alg: none`; B cannot take or release A's reservation; every answer verified against the payee's certificate, echoing the question's `correlationId` (fresh when the question could not be verified); the same signed question twice |
 
 ## One suite: `acceptance.py` was folded in
