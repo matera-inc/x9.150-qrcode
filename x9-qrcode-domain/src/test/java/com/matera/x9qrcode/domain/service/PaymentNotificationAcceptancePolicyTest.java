@@ -46,6 +46,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -77,6 +78,11 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
 
     /** Earns a {@value #DISCOUNT} discount up to 60 days before the due date, then a late fee after it. */
     private QRCodeEntity qrCode() {
+        return qrCode(DUE_DATE.plusDays(1), new LateFeesVO(LATE_FEE, 0L, "late"));
+    }
+
+    /** The same bill, valid (QR Code and payment method) until {@code validUntil}, with these late fees. */
+    private QRCodeEntity qrCode(OffsetDateTime validUntil, LateFeesVO lateFees) {
         BillVO bill = new BillVO(
             new DescriptionVO("late fee and discount"),
             null,
@@ -88,20 +94,20 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
                     FormulaEnum.FIXED_DISCOUNT_LATE_FEE_LINEAR_INTEREST,
                     new AdjustmentParametersVO(
                         List.of(new DiscountVO(60, DISCOUNT, "early payment")),
-                        new LateFeesVO(LATE_FEE, 0L, "late")))),
+                        lateFees))),
             PaymentTimingEnum.DEFERRED);
 
         return QRCodeEntity.create(
             UUID::randomUUID,
             null,
-            DUE_DATE.plusDays(1),
+            validUntil,
             CREDITOR_FIXTURE.creditor(),
             bill,
             new UnstructuredVO("late fee test"),
             List.of(),
             new PaymentNotificationVO(NotificationKindEnum.DEFAULT, null, null),
             List.of(new PaymentMethodVO(
-                "USDC", DUE_DATE.plusDays(1), new AmountVO(FACE), null,
+                "USDC", validUntil, new AmountVO(FACE), null,
                 new NetworksVO(null, null, null, new SolanaPaymentAddressVO(WALLET, MEMO), Map.of()))));
     }
 
@@ -271,6 +277,107 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
             () -> policy.accept(qrCode(), notificationOf(FACE + LATE_FEE), afterTheQRCodeExpired));
 
         assertTrue(exception.getMessage().contains("expired"), exception.getMessage());
+    }
+
+    // ------------------------------------------- the payee's clock decides (Story 1.3)
+
+    /**
+     * S1.3-AC1 — a discount quoted before its window closed is refused once the request reaches the
+     * payee after it, and the face amount is then accepted.
+     *
+     * <p><b>Why:</b> {@code at} is the payee's clock at receipt. What the payer's clock said when it
+     * fetched the quote does not enter into it: skew must never lock in a discount no longer granted.
+     */
+    @Test
+    void aDiscountFetchedBeforeTheWindowClosedIsRefusedWhenTheRequestArrivesAfterIt() {
+        OffsetDateTime windowEnds = DUE_DATE.minusDays(60);
+        OffsetDateTime arrivesAfter = windowEnds.plusNanos(1_000_000);
+
+        BusinessRuleException exception = assertThrows(BusinessRuleException.class,
+            () -> policy.accept(qrCode(), notificationOf(FACE - DISCOUNT), arrivesAfter));
+
+        assertEquals("paymentNotification.data.payment.amount", exception.field());
+        assertTrue(exception.getMessage().contains(String.valueOf(FACE - DISCOUNT)),
+            "the reason should name the stale discounted amount: " + exception.getMessage());
+        assertTrue(exception.getMessage().contains(String.valueOf(FACE)),
+            "the reason should name the face amount now owed: " + exception.getMessage());
+
+        assertDoesNotThrow(() -> policy.accept(qrCode(), notificationOf(FACE), arrivesAfter));
+    }
+
+    /**
+     * S1.3-AC2 — a payer whose clock runs behind still sees a request arriving after validUntil (on
+     * the payee's clock) refused on {@code validUntil}.
+     */
+    @Test
+    void aRequestArrivingAfterValidUntilOnThePayeesClockIsRefused() {
+        QRCodeEntity qrCode = qrCode();
+        OffsetDateTime afterValidUntil = qrCode.getValidUntil().plusNanos(1_000_000);
+
+        BusinessRuleException exception = assertThrows(BusinessRuleException.class,
+            () -> policy.accept(qrCode, notificationOf(FACE + LATE_FEE), afterValidUntil));
+
+        assertEquals("validUntil", exception.field());
+    }
+
+    /** S1.3-AC3 — validUntil is inclusive: a request arriving at exactly that instant is accepted. */
+    @Test
+    void aRequestArrivingAtExactlyValidUntilIsAccepted() {
+        QRCodeEntity qrCode = qrCode();
+
+        // validUntil is dueDate + 24 h: exactly one day late, so one day's fee is owed.
+        assertDoesNotThrow(() -> policy.accept(qrCode, notificationOf(FACE + LATE_FEE), qrCode.getValidUntil()));
+    }
+
+    /** S1.3-AC4 — at exactly dueDate the full amount is owed, with no late fee and no exception. */
+    @Test
+    void aRequestArrivingAtExactlyTheDueDateOwesTheFullAmount() {
+        assertDoesNotThrow(() -> policy.accept(qrCode(), notificationOf(FACE), DUE_DATE));
+
+        BusinessRuleException exception = assertThrows(BusinessRuleException.class,
+            () -> policy.accept(qrCode(), notificationOf(FACE + LATE_FEE), DUE_DATE));
+
+        assertEquals("paymentNotification.data.payment.amount", exception.field());
+    }
+
+    // ---------------------------- the payee honours what it signed (Story 2.6)
+
+    /**
+     * S2.6-AC1 — a pre-commit with the discounted amount is accepted at exactly E, the instant the
+     * discount was advertised until, and refused 1 ms later, when the face amount is still accepted.
+     */
+    @Test
+    void theDiscountedAmountIsAcceptedAtItsAdvertisedEdgeAndRefusedOneMillisecondAfter() {
+        OffsetDateTime eligibilityEnds = DUE_DATE.minusDays(60);
+        OffsetDateTime oneMsAfter = eligibilityEnds.plusNanos(1_000_000);
+
+        assertDoesNotThrow(() -> policy.accept(qrCode(), notificationOf(FACE - DISCOUNT), eligibilityEnds));
+
+        BusinessRuleException exception = assertThrows(BusinessRuleException.class,
+            () -> policy.accept(qrCode(), notificationOf(FACE - DISCOUNT), oneMsAfter));
+        assertEquals("paymentNotification.data.payment.amount", exception.field());
+
+        assertDoesNotThrow(() -> policy.accept(qrCode(), notificationOf(FACE), oneMsAfter));
+    }
+
+    /**
+     * S2.6-AC2 — k days late, a pre-commit with the fee advertised until dueDate + k × 24 h is
+     * accepted at that instant and refused 1 ms later, when one more day is owed.
+     */
+    @Test
+    void theLateFeeAmountIsAcceptedAtItsAdvertisedBoundaryAndRefusedOneMillisecondAfter() {
+        // A per-day fee and no fixed one, so each 24 h boundary changes the amount owed.
+        QRCodeEntity perDay = qrCode(DUE_DATE.plusDays(10), new LateFeesVO(0L, LATE_FEE, "late"));
+        OffsetDateTime secondBoundary = DUE_DATE.plusDays(2);
+        OffsetDateTime oneMsAfter = secondBoundary.plusNanos(1_000_000);
+
+        assertDoesNotThrow(() -> policy.accept(perDay, notificationOf(FACE + 2 * LATE_FEE), secondBoundary));
+
+        BusinessRuleException exception = assertThrows(BusinessRuleException.class,
+            () -> policy.accept(perDay, notificationOf(FACE + 2 * LATE_FEE), oneMsAfter));
+        assertEquals("paymentNotification.data.payment.amount", exception.field());
+
+        assertDoesNotThrow(() -> policy.accept(perDay, notificationOf(FACE + 3 * LATE_FEE), oneMsAfter));
     }
 
     // ------------------------------------------------------- what a third-party payer may send

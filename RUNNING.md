@@ -100,6 +100,41 @@ request bodies under
 unauthenticated, so no bearer token is needed. Access control is intentionally out of scope —
 protect the service at your edge (API gateway, mTLS, or network policy).
 
+## Moving the clock (test deployments only)
+
+Discount windows, `validUntil`, the reservation lapse and JWS `iat + ttl` all depend on "now". A
+test deployment can shift its business clock over HTTP, so a scenario like "fetch at 23:59:50,
+notify after midnight" runs in seconds
+([ADR-0033](docs/adr/0033-the-clock-can-be-moved-in-test-deployments-only.md)).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `X9_TESTING_CLOCKCONTROL` | `false` | Turns the clock control on. |
+| `X9_TESTING_CLOCKLISTEN` | `127.0.0.1:8099` | `host:port` of the clock listener. Never the API port. |
+
+```bash
+X9_TESTING_CLOCKCONTROL=true make run-local    # or any other way of starting the app
+curl -s localhost:8099/test/clock                                    # {"now":"…Z","offsetSeconds":0}
+curl -s -X PUT localhost:8099/test/clock -d '{"at":"2031-12-31T23:59:50Z"}'
+curl -s -X PUT localhost:8099/test/clock -d '{"offsetSeconds":86400}'
+curl -s -X DELETE localhost:8099/test/clock                          # back to real time
+```
+
+- **The clock keeps ticking.** It is the real clock plus a whole number of seconds; `at` is rounded
+  to the nearest second.
+- **`/test/clock` is never on the API port.** It is a separate listener and is not in `openapi.yaml`.
+  With the flag off, nothing listens on the clock address and `/test/clock` on the API port is 404.
+- **Real keys refuse it.** With the flag on, the app refuses to start unless its signing certificate
+  is the bundled demo certificate or one from the committed test CA — checked by SHA-256 fingerprint
+  compiled into the code, so no configuration value can satisfy it.
+- **It is visible.** A `WARN` is logged at startup, and while the offset is non-zero every API
+  response carries `X-Test-Clock-Offset: <seconds>`.
+- **MongoDB's TTL monitor runs on the real clock.** A moved clock never deletes an expired document.
+- **Certificate validity is judged on the real clock.** The JDK's PKIX chain validation does not see
+  the offset; only JWS `iat` and `iat + ttl` do.
+- Request logging, the event-drain lease and long-poll waits measure real durations and keep the
+  real clock.
+
 ## Multi-arch images (arm64 + amd64) & publishing
 
 The image is registry-agnostic — publish it wherever you like (a private registry, GHCR, Docker

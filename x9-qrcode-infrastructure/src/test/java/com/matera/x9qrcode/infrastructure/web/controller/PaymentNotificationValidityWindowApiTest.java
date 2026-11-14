@@ -8,6 +8,10 @@ package com.matera.x9qrcode.infrastructure.web.controller;
 
 import com.matera.x9qrcode.infrastructure.AbstractIntegrationTest;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.nimbusds.jose.JWSObject;
+import io.restassured.path.json.JsonPath;
+
 import io.restassured.module.mockmvc.response.MockMvcResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -178,6 +182,59 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
 
 
 
+
+    // --------------------------- what the payload advertises for the adjustment (Story 2.6)
+
+    /** Creates the QR Code, fetches its payload as a payer would, and returns the advertised adjustment's validUntil. */
+    private OffsetDateTime advertisedAdjustmentValidUntil(String validUntil, String dueDate,
+                                                          String methodValidUntil, int daysBefore) throws Exception {
+        String created = given().contentType("application/json")
+                .body(qrCodeBody(validUntil, dueDate, methodValidUntil, daysBefore))
+                .when().post(CREATE)
+                .then().statusCode(HttpStatus.CREATED.value())
+                .extract().body().asString();
+
+        MockMvcResponse payload = given().contentType(APPLICATION_JOSE)
+                .body(sign("{\"qrCodeContent\": \"%s\"}".formatted(JsonPath.from(created).getString("qrCodeB64"))))
+                .when().post("/pub/api/v1/loc/" + JsonPath.from(created).getString("location.id"));
+
+        assertEquals(HttpStatus.OK.value(), payload.statusCode(), payload.asString());
+
+        JsonNode body = objectMapper.readTree(JWSObject.parse(payload.asString()).getPayload().toString());
+
+        return OffsetDateTime.parse(body.at("/bill/amountDue/adjustment/0/validUntil").asText());
+    }
+
+    /**
+     * S2.6-AC1 — the discounted amount is advertised until exactly E = dueDate − daysBefore, not
+     * 23:59:59 of E's day. The due date carries a time of day so the two cannot coincide.
+     */
+    @Test
+    void theDiscountIsAdvertisedUntilExactlyTheInstantItStopsApplying() throws Exception {
+        OffsetDateTime dueDate = OffsetDateTime.now(ZoneOffset.UTC).plusDays(120)
+                .withHour(14).withMinute(30).withSecond(15).withNano(0);
+
+        OffsetDateTime advertised =
+            advertisedAdjustmentValidUntil(utc(dueDate.plusDays(1)), utc(dueDate), utc(dueDate), 60);
+
+        assertEquals(dueDate.minusDays(60).toInstant(), advertised.toInstant());
+    }
+
+    /**
+     * S2.6-AC1 — capped: when the only payment method lapses before E, the discount is advertised
+     * no later than that method's validUntil.
+     */
+    @Test
+    void theAdvertisedDiscountEdgeIsCappedByThePaymentMethodsValidUntil() throws Exception {
+        OffsetDateTime dueDate = OffsetDateTime.now(ZoneOffset.UTC).plusDays(120)
+                .withHour(14).withMinute(30).withSecond(15).withNano(0);
+        OffsetDateTime methodEnds = dueDate.minusDays(61);
+
+        OffsetDateTime advertised =
+            advertisedAdjustmentValidUntil(utc(dueDate.plusDays(1)), utc(dueDate), utc(methodEnds), 60);
+
+        assertEquals(methodEnds.toInstant(), advertised.toInstant());
+    }
 
     // ------------------------------------------------------------- the payer-chosen amount
 

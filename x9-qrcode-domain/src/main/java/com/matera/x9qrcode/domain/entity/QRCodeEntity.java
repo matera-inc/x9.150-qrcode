@@ -323,32 +323,6 @@ public class QRCodeEntity {
     }
 
     /**
-     * Refuses the operation unless this QR Code is still at {@code expectedRevision}.
-     *
-     * <p>Test-and-set. A caller reads the QR Code, decides on what it read, and passes the revision
-     * it saw; if anything changed in between, the decision was made on stale information and the
-     * operation is refused rather than applied.
-     *
-     * <p>The revision is the persistence layer's optimistic-lock token, which makes this stronger
-     * than comparing the status alone: a PATCH that altered the amount between the read and the
-     * write is caught too, and a status comparison would sail straight past it.
-     *
-     * <p>A null expectation means the caller is not making a conditional request, and nothing is
-     * checked — the unconditional behaviour every existing caller relies on.
-     */
-    /**
-     * The entity tag a conditional request echoes back: the version of the data AND what has
-     * happened to it.
-     *
-     * <p>It has to be both. `revision` alone stopped being enough the moment it correctly stopped
-     * moving for a status change — a caller meaning "cancel only if nobody has started paying"
-     * would have been given a token that a pre-payment leaves untouched. The status alone is not
-     * enough either: it would miss a PATCH that changed the amount between the read and the write.
-     *
-     * <p>Opaque to the caller by design. Read it from the {@code ETag} header, send it back in
-     * {@code If-Match}, and never parse it — the format is ours to change.
-     */
-    /**
      * Accepts the lock token the store assigned on the last save.
      *
      * <p>Persistence bookkeeping, not a business operation. Without it an entity saved twice in one
@@ -359,26 +333,63 @@ public class QRCodeEntity {
         this.lockVersion = lockVersion;
     }
 
+    /**
+     * The entity tag a conditional request echoes back: the version of the data AND what has
+     * happened to it, as of {@code at}.
+     *
+     * <p>It has to be both. `revision` alone stopped being enough the moment it correctly stopped
+     * moving for a status change — a caller meaning "cancel only if nobody has started paying"
+     * would have been given a token that a pre-payment leaves untouched. The status alone is not
+     * enough either: it would miss a PATCH that changed the amount between the read and the write.
+     *
+     * <p>The status is the <b>effective</b> one ({@link #effectiveStatus(OffsetDateTime)}), and this
+     * is the only place the tag is built: GET puts it in {@code ETag} and every {@code If-Match}
+     * comparison goes through {@link #requireEntityTag(String, OffsetDateTime)}, which calls it.
+     * When the two were built separately — GET from the effective status, {@code If-Match} from the
+     * stored one — a lapsed reservation made every conditional request answer 412 (ADR-0028).
+     *
+     * <p>Opaque to the caller by design. Read it from the {@code ETag} header, send it back in
+     * {@code If-Match}, and never parse it — the format is ours to change.
+     */
+    public String entityTag(OffsetDateTime at) {
+        return "%d-%s".formatted(isNull(this.revision) ? 0 : this.revision, this.effectiveStatus(at).value());
+    }
+
+    /** {@link #entityTag(OffsetDateTime)} as of now. */
     public String entityTag() {
-        return "%d-%s".formatted(isNull(this.revision) ? 0 : this.revision, this.status.value());
+        return entityTag(DateTimeUtils.nowUTC());
     }
 
     /**
      * Refuses the operation unless this QR Code is still exactly as the caller last read it.
      *
-     * <p>Test-and-set. A null expectation means the caller is not making a conditional request and
-     * nothing is checked — the unconditional behaviour every existing caller relies on.
+     * <p>Test-and-set. A caller reads the QR Code, decides on what it read, and passes the tag it
+     * saw; if anything changed in between — the revision, or the effective status — the decision
+     * was made on stale information and the operation is refused rather than applied.
+     *
+     * <p>A null expectation means the caller is not making a conditional request and nothing is
+     * checked — the unconditional behaviour every existing caller relies on.
      */
-    public void requireEntityTag(String expectedTag) {
-        if (isNull(expectedTag) || expectedTag.equals(entityTag())) {
+    public void requireEntityTag(String expectedTag, OffsetDateTime at) {
+        if (isNull(expectedTag)) {
+            return;
+        }
+
+        String currentTag = entityTag(at);
+        if (expectedTag.equals(currentTag)) {
             return;
         }
 
         throw new QRCodePreconditionFailedException(
-            this.status,
+            this.effectiveStatus(at),
             this.revision,
             "The QR Code has changed since it was read: expected %s, found %s."
-                .formatted(expectedTag, entityTag()));
+                .formatted(expectedTag, currentTag));
+    }
+
+    /** {@link #requireEntityTag(String, OffsetDateTime)} as of now. */
+    public void requireEntityTag(String expectedTag) {
+        requireEntityTag(expectedTag, DateTimeUtils.nowUTC());
     }
 
     /**

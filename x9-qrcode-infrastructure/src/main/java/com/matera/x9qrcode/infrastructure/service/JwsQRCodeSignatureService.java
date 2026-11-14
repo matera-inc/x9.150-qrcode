@@ -22,6 +22,7 @@ import com.matera.x9qrcode.app.usecase.validatesignature.ExternalCertificateOutp
 import com.matera.x9qrcode.app.usecase.validatesignature.SignatureValidationInput;
 import com.matera.x9qrcode.app.usecase.validatesignature.SignatureValidationOutput;
 import com.matera.x9qrcode.domain.dto.CertificateEndpointTypeEnum;
+import com.matera.x9qrcode.domain.utils.BusinessClock;
 import com.matera.x9qrcode.infrastructure.configuration.property.X9Properties;
 import com.matera.x9qrcode.infrastructure.service.thirdparty.keystore.TrustManagersFacadeBean;
 
@@ -78,7 +79,6 @@ import java.security.cert.PKIXRevocationChecker;
 import java.security.cert.TrustAnchor;
 import java.security.cert.X509Certificate;
 import java.text.ParseException;
-import java.time.Clock;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.EnumSet;
@@ -476,7 +476,7 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         }
 
         builder.customParam(JWS_HEADER_CORRELATION_ID, correlationId);
-        builder.customParam(JWS_HEADER_IAT, Instant.now(Clock.systemUTC()).toEpochMilli());
+        builder.customParam(JWS_HEADER_IAT, Instant.now(BusinessClock.clock()).toEpochMilli());
         builder.customParam(JWS_HEADER_TTL, ttl);
 
         if (nonNull(signatureInputDataDTO.statusCode())) {
@@ -701,7 +701,7 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
     }
 
     private void validateJwsExpiration(long iat, long ttl) {
-        long currentTime = Instant.now(Clock.systemUTC()).toEpochMilli();
+        long currentTime = Instant.now(BusinessClock.clock()).toEpochMilli();
         long expirationTime = iat + ttl;
 
         if (currentTime >= expirationTime) {

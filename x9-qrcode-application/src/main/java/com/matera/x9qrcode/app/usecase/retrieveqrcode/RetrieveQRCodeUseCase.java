@@ -24,6 +24,8 @@ import com.matera.x9qrcode.domain.vo.QRCodeIdVO;
 
 import lombok.RequiredArgsConstructor;
 
+import java.time.OffsetDateTime;
+
 import static java.util.Objects.nonNull;
 
 @RequiredArgsConstructor
@@ -41,6 +43,10 @@ public class RetrieveQRCodeUseCase extends UseCase<RetrieveQRCodeInput, Retrieve
 
         QRCodeEntity qrCodeEntity = retrieveQrCodeEntity(qrCodeIdVO, input.revision());
 
+        // One instant for the status and the tag: read twice, a reservation lapsing between the two
+        // reads would put ACTIVE in the body and PAYMENT_INITIATED in the ETag.
+        OffsetDateTime now = DateTimeUtils.nowUTC();
+
         LocationDTO locationDTO = RetrieveQRCodeLocationMapper.map(
             qrCodeEntity.getLocationId(), qrCodeLocationService.generateLocation(qrCodeEntity.getLocationId(), false));
 
@@ -50,11 +56,11 @@ public class RetrieveQRCodeUseCase extends UseCase<RetrieveQRCodeInput, Retrieve
             qrCodeEntity.getRevision(),
             qrCodeEntity.getCreatedAt(),
             qrCodeEntity.getRevisedAt(),
-            DateTimeUtils.nowUTC(),
+            now,
             qrCodeEntity.getValidUntil(),
             // effectiveStatus: a lapsed reservation reads as ACTIVE, so a caller is told what is
             // true now rather than what was last reported. See QRCodeEntity.effectiveStatus.
-            qrCodeEntity.effectiveStatus().value(),
+            qrCodeEntity.effectiveStatus(now).value(),
             RetrieveQRCodeCreditorMapper.map(qrCodeEntity.getCreditor()),
             RetrieveQRCodeBillMapper.map(qrCodeEntity.getBill()),
             qrCodeEntity.getUnstructured().value(),
@@ -63,7 +69,8 @@ public class RetrieveQRCodeUseCase extends UseCase<RetrieveQRCodeInput, Retrieve
             RetrieveQRCodePaymentMethodMapper.map(qrCodeEntity.getPaymentMethods()),
             RetrieveQRCodePaymentDetailsMapper.map(qrCodeEntity.getPaymentDetails()),
 
-            qrCodeEMVService.generateQrCodeContent(qrCodeEntity)
+            qrCodeEMVService.generateQrCodeContent(qrCodeEntity),
+            qrCodeEntity.entityTag(now)
         );
     }
 

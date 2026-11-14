@@ -44,7 +44,8 @@ outbox to drain; the event table plays that role itself.
 - **`seq` is the exact order.** It is gapless and equals commit order (ADR-0025).
 - **`event_id` is a UUIDv7** (ADR-0026). It is minted after the event-sequence lock is taken, from a
   monotonic generator in the single active instance, so sorting by `event_id` gives the same order
-  as `seq`. Events migrated from Java keep their original ids and sort before every new one.
+  as `seq`. Events migrated from Java keep their original ids, which are random UUIDv4s: they do not
+  sort by time, so order migrated events by `seq` (corrected 2026-11-14).
 - Use `seq` when exactness matters; use `event_id` when only a UUID is at hand (a CDC message key,
   for example).
 

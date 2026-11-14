@@ -46,29 +46,32 @@ public class FixedDiscountLateFeeLinearInterestFormulaService implements Formula
                 fee,
                 parameters.lateFees().explanation(),
                 currency,
-                calculateValidUntil(currentDate)
+                // The fee for k days applies up to and including dueDate + k × 24 h; one
+                // millisecond later it is k + 1 days. That boundary is what the payee signs.
+                dueDate.plus(Duration.ofMillis(daysLate * DAY_MILLIS))
             );
         }
 
-        if (currentDate.isBefore(dueDate)) {
-            if (isNull(parameters.discounts()) || parameters.discounts().isEmpty()) {
-                return null;
-            }
-
-            Optional<DiscountVO> maximumEligibleDiscount = parameters.discounts().stream()
-                .filter(discount -> !currentDate.isAfter(dueDate.minusDays(discount.daysBefore())))
-                .max(Comparator.comparingLong(DiscountVO::discount));
-
-            return maximumEligibleDiscount.map(
-                discount -> new FormulaResultDTO(
-                    originalAmount - discount.discount(),
-                    Math.negateExact(discount.discount()),
-                    discount.explanation(), currency,
-                    calculateValidUntil(dueDate, discount.daysBefore()))
-            ).orElse(null);
+        // On or before the due date. The due date is an instant, and a payment up to and including
+        // it is on time: the full amount, no late fee. Every discount ends at least a day before
+        // it (daysBefore > 0), so at exactly dueDate none is eligible and no adjustment applies.
+        if (isNull(parameters.discounts()) || parameters.discounts().isEmpty()) {
+            return null;
         }
 
-        throw new IllegalCallerException("Unable to calculate adjustments for bill.");
+        Optional<DiscountVO> maximumEligibleDiscount = parameters.discounts().stream()
+            .filter(discount -> !currentDate.isAfter(dueDate.minusDays(discount.daysBefore())))
+            .max(Comparator.comparingLong(DiscountVO::discount));
+
+        return maximumEligibleDiscount.map(
+            discount -> new FormulaResultDTO(
+                originalAmount - discount.discount(),
+                Math.negateExact(discount.discount()),
+                discount.explanation(), currency,
+                // E itself: the instant eligibility ends (inclusive), so the advertised edge and
+                // the accepted edge are the same instant.
+                dueDate.minusDays(discount.daysBefore()))
+        ).orElse(null);
     }
 
     private OffsetDateTime getCurrentDate(OffsetDateTime dateForPayment) {
@@ -85,14 +88,6 @@ public class FixedDiscountLateFeeLinearInterestFormulaService implements Formula
         long late = Duration.between(dueDate, currentDate).toMillis();
 
         return (late + DAY_MILLIS - 1) / DAY_MILLIS;
-    }
-
-    private static OffsetDateTime calculateValidUntil(OffsetDateTime date, Integer daysBefore) {
-        return date.minusDays(daysBefore).withHour(23).withMinute(59).withSecond(59);
-    }
-
-    private OffsetDateTime calculateValidUntil(OffsetDateTime date) {
-        return date.withHour(23).withMinute(59).withSecond(59);
     }
 
 }

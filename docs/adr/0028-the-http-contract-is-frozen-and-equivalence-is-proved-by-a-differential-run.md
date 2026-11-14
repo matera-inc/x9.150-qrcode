@@ -24,8 +24,9 @@ Go struct with JSON tags does not reproduce:
   case-insensitively.
 - **`If-Match` parsing** strips `W/` and quotes.
 - **The ETag is `"<revision>-<STATUS>"`.** It is built from the *effective* status on GET but
-  compared against the *stored* status on `If-Match`. That is a **Java bug today**: once a
-  reservation lapses, every conditional request answers 412.
+  compared against the *stored* status on `If-Match`. That was a **Java bug**: once a
+  reservation lapsed, every conditional request answered 412. Fixed in Java by Story 2.2
+  (`QRCodeEntity.entityTag(at)` builds the tag for GET and for every `If-Match` comparison).
 - **Limits:** request headers up to 30 KB (`application.yml:10`).
 
 A schema-validating test catches none of these.
