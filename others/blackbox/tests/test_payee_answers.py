@@ -222,8 +222,8 @@ def test_a_payee_answering_after_the_timeout_is_502(api, peer, events):
 @pytest.mark.parametrize("case", sorted(jws.Tamperer.CASES))
 def test_every_tampered_answer_is_named_by_its_fixed_code(api, peer, pki, events, case):
     """S3.2-AC2's reasons, named: each of the tamperer's defects, in a payee's answer, gets the
-    service's fixed code. (A payer's tampered question is refused with one generic 401; the
-    outbound check is where the service says which check failed.)"""
+    service's fixed code. (A payer's tampered question gets the same code in its signed 401:
+    ``test_signatures``.)"""
     tamperer = jws.Tamperer(peer.signer, pki["untrusted"])
     peer.answer = lambda question: peer_module.Answer(200, tamperer.token(
         case, {"statusCode": 200}, correlation_id=question.correlation_id,

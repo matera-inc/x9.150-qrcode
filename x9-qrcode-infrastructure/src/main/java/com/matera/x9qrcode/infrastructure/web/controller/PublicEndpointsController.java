@@ -9,6 +9,7 @@ package com.matera.x9qrcode.infrastructure.web.controller;
 import com.matera.x9qrcode.app.dto.SignatureInputDataDTO;
 import com.matera.x9qrcode.app.exception.InvalidSignatureException;
 import com.matera.x9qrcode.app.dto.SignatureOutputDataDTO;
+import com.matera.x9qrcode.app.dto.enumerated.SignatureProblemEnumDTO;
 import com.matera.x9qrcode.app.dto.enumerated.SignatureTypeEnumDTO;
 import com.matera.x9qrcode.app.service.QRCodeSignatureService;
 import com.matera.x9qrcode.app.usecase.paymentnotification.PaymentNotificationQRCodeUseCase;
@@ -47,6 +48,7 @@ import static com.matera.x9qrcode.app.service.SignatureConstants.CONTENT_TYPE_HE
 import static com.matera.x9qrcode.app.service.SignatureConstants.HEADER_PAYLOAD_BASED_DATE;
 import static com.matera.x9qrcode.app.service.SignatureConstants.PEM_ATTACHMENT_FILENAME_HEADER_VALUE;
 import static com.matera.x9qrcode.app.service.SignatureConstants.PEM_CONTENT_TYPE_HEADER_VALUE;
+import static java.util.Objects.isNull;
 
 @Slf4j
 @RestController
@@ -131,7 +133,10 @@ public class PublicEndpointsController implements PublicEndpointsApi {
         }
 
         if (!validationResult.isValid()) {
-            throw new InvalidSignatureException("Payment notification JWS signature is invalid.");
+            throw new InvalidSignatureException(
+                "Payment notification JWS signature is invalid (%s): %s".formatted(
+                    validationResult.problem(), validationResult.problemDetail()),
+                isNull(validationResult.problem()) ? SignatureProblemEnumDTO.UNVERIFIABLE : validationResult.problem());
         }
 
         return validationResult;

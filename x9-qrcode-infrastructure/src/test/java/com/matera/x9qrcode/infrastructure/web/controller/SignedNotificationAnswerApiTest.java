@@ -302,7 +302,9 @@ class SignedNotificationAnswerApiTest extends AbstractIntegrationTest {
      *
      * <p><b>Why:</b> A tampered or malformed question carries no correlationId this payee can trust, so
      * echoing one would sign a claim nobody verified. The refusal is still signed, so the sender can
-     * tell it came from this payee.
+     * tell it came from this payee. It names the check that failed by its fixed
+     * {@code signatureProblem} code, the same vocabulary the outbound check reports, so a payer can
+     * tell a bad signature from a body that was never a JWS without asking an operator.
      */
     @Test
     void aQuestionThatCannotBeReadIsRefusedSignedUnderAFreshCorrelationId() throws Exception {
@@ -314,9 +316,15 @@ class SignedNotificationAnswerApiTest extends AbstractIntegrationTest {
         JWSObject tamperedAnswer = assertSignedAnswer(post(tampered), HttpStatus.UNAUTHORIZED.value());
         assertNotEquals(question.correlationId(), correlationIdOf(tamperedAnswer),
                 "an unverified correlationId is never echoed");
+        assertEquals("BAD_SIGNATURE", bodyOf(tamperedAnswer).path("signatureProblem").asText(),
+                "the refusal names the check that failed: " + tamperedAnswer.getPayload());
 
         JWSObject garbageAnswer = assertSignedAnswer(post("not a jws"), HttpStatus.UNAUTHORIZED.value());
         assertNotEquals(correlationIdOf(tamperedAnswer), correlationIdOf(garbageAnswer));
+        assertEquals("NOT_JWS", bodyOf(garbageAnswer).path("signatureProblem").asText(),
+                "the refusal names the check that failed: " + garbageAnswer.getPayload());
+        assertFalse(bodyOf(garbageAnswer).has("signatureDetail"),
+                "only the fixed code: the words could describe this verifier's internals");
         assertEquals("ACTIVE", statusOf(qrCodeId));
     }
 
@@ -405,6 +413,7 @@ class SignedNotificationAnswerApiTest extends AbstractIntegrationTest {
 
         JWSObject refusal = assertSignedAnswer(post(ahead.jws()), HttpStatus.UNAUTHORIZED.value());
         assertNotEquals(ahead.correlationId(), correlationIdOf(refusal), "an unverified correlationId is never echoed");
+        assertEquals("FUTURE_IAT", bodyOf(refusal).path("signatureProblem").asText(), refusal.getPayload().toString());
         assertEquals("ACTIVE", statusOf(qrCodeId), "a refused question changes nothing");
 
         Question drifting = signAhead(notification(qrCodeId, AMOUNT, "PAYMENT_INITIATED", null, PAYER), 30);

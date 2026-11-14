@@ -92,10 +92,10 @@ class TestTamperedQuestions:
         Why: these are the signatures the service under test would never produce, which is why
     they could not be tested while the suite signed through the service.
 
-        Java answers every one with the same signed 401 ``invalid-signature``; it does not tell
-    the sender which check failed. The reason is named where the service reports it, on an
-    answer it receives as a payer (Story 3.5, ``test_payee_answers``). Here the reason is pinned
-    by construction: the control below is the same message, untampered, and it is accepted.
+        Each is a signed 401 ``invalid-signature`` whose body names the check that failed by its
+    fixed ``signatureProblem`` code, the same code the service gives the same defect in a payee's
+    answer (``test_payee_answers``), and nothing more: no ``signatureDetail``. The control below
+    is the same message, untampered, and it is accepted.
         """
         qr = api.create_qr()
         payload = api_notification(qr)
@@ -106,6 +106,9 @@ class TestTamperedQuestions:
         assert response.status == 401, f"{case} must be refused: {response.status} {body}"
         assert body["statusCode"] == 401 and body["status"] == 401
         assert body["type"].endswith("/invalid-signature"), body
+        assert body.get("signatureProblem") == jws.Tamperer.CASES[case], \
+            f"{case} must be refused for the right reason: {body}"
+        assert "signatureDetail" not in body, "only the code: the words stay in the log"
         assert api.status_of(qr) == "ACTIVE", "a refused question reserves nothing"
         assert events.none_for(qr, wait=0) == [], "and publishes nothing"
 
@@ -127,6 +130,7 @@ class TestTamperedQuestions:
         status, body = api.send_notification(token)
 
         assert status == 401, f"a revoked certificate must be refused: {status} {body}"
+        assert body.get("signatureProblem") == "UNTRUSTED_CHAIN", body
         assert pki["crl"].fetches > 0, "the service must have fetched the CRL to know"
         assert api.status_of(qr) == "ACTIVE"
 
@@ -296,6 +300,8 @@ class TestASignedNo:
         """S3.2-AC7 — not a JWS (401), an empty body (400): signed, fresh correlationId."""
         response, header, body = answer(api, payee_certificate, business_now, raw)
         assert response.status == status and body["statusCode"] == status, body
+        if status == 401:
+            assert body.get("signatureProblem") == "NOT_JWS", body
 
 
 def api_notification_with(qr, **kwargs):

@@ -735,6 +735,16 @@ paths:
             Still a signed answer, with body `{"statusCode": 401}` plus the error fields. Its
             `correlationId` is **fresh**: a question that cannot be verified has no correlationId
             this payee can trust enough to echo.
+
+            The body also carries `signatureProblem`: which check failed, as a fixed code from the
+            same closed list this service reports for a payee's answer
+            (`OutboundPaymentNotificationResult.signatureProblem`). On a question the codes that can
+            occur are `NOT_JWS`, `ALG_NONE`, `ENCRYPTED`, `BAD_HEADER`, `CERTIFICATE_UNAVAILABLE`,
+            `UNTRUSTED_CHAIN`, `BAD_SIGNATURE`, `EXPIRED`, `FUTURE_IAT` and `UNVERIFIABLE`. Only the
+            code is sent, never the words behind it: the caller is unauthenticated, and the words could
+            describe this verifier's internals. For example:
+            `{"statusCode": 401, "type": "https://x9.matera.com/api/invalid-signature", "title":
+            "Invalid Signature", "status": 401, "detail": "...", "signatureProblem": "BAD_SIGNATURE"}`.
           content:
             application/jose:
               schema:
@@ -1853,7 +1863,8 @@ components:
         A compact JWS signed with the payee's X9 key, `typ` `JOSE`, `crit` naming `correlationId`,
         `iat`, `ttl` and `statusCode`. Its body is `{"statusCode": <HTTP status>}` (ANSI X9.150
         A.4.5 note); on a refusal the body also carries the error fields `type`, `title`, `status`,
-        `detail` and `violations`, and any other property the refusal reports (`currentStatus`).
+        `detail` and `violations`, and any other property the refusal reports (`currentStatus`;
+        `signatureProblem` on a 401).
       example: eyJhbGciOiJQUzUxMiJ9.eyJzdGF0dXNDb2RlIjoyMDB9.c2lnbmF0dXJl
 
     OutboundPaymentNotificationResult:
