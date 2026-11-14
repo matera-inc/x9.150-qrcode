@@ -69,9 +69,8 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
     private static final long LATE_FEE_FIXED = 500_000L;
 
     private static String utc(OffsetDateTime moment) {
-        // Seconds always present: toString() drops ":00" on a whole minute, which the API refuses.
-        return moment.withOffsetSameInstant(ZoneOffset.UTC)
-                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'"));
+        // Instant.toString always prints the seconds; OffsetDateTime.toString drops ":00", which the API refuses.
+        return moment.toInstant().truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString();
     }
 
     /**
@@ -298,7 +297,7 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
         MockMvcResponse response = notify(qrCodeId, 999_999L);
 
         assertNotEquals(HttpStatus.OK.value(), response.statusCode(), response.asString());
-        assertTrue(response.asString().contains("editable"), response.asString());
+        assertTrue(answerBody(response).contains("editable"), answerBody(response));
         assertEquals("ACTIVE", statusOf(qrCodeId));
     }
 

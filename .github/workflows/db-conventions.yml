@@ -1,0 +1,41 @@
+name: DB conventions
+
+# Story 6.4: the changelog conventions of ADR-0023 are enforced, not remembered.
+# Fails a pull request that edits or removes a changeset already on main (S6.4-AC1), creates a
+# table or column without a COMMENT (S6.4-AC2), or uses a construct ADR-0023 keeps out of the
+# schema, naming the construct and the file (S6.4-AC3). See db/check/check_changelog.py.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - "db/**"
+      - ".github/workflows/db-conventions.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  changelog-conventions:
+    name: changelog conventions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML
+        run: python -m pip install --disable-pip-version-check -q "pyyaml==6.0.2"
+
+      - name: Test the check itself
+        run: python -m unittest discover -s db/check -v
+
+      - name: Check the changelog against the pull request's base
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python db/check/check_changelog.py --changelog-dir db/changelog --base "$BASE_SHA"

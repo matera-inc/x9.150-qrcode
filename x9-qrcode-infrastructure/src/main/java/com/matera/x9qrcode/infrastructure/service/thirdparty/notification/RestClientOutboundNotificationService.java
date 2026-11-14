@@ -9,11 +9,16 @@ package com.matera.x9qrcode.infrastructure.service.thirdparty.notification;
 import com.matera.x9qrcode.app.dto.PaymentNotificationDataDTO;
 import com.matera.x9qrcode.app.dto.SignatureInputDataDTO;
 import com.matera.x9qrcode.app.dto.SignatureOutputDataDTO;
+import com.matera.x9qrcode.app.dto.enumerated.AnswerSignatureEnumDTO;
 import com.matera.x9qrcode.app.dto.enumerated.SignatureTypeEnumDTO;
 import com.matera.x9qrcode.app.exception.NotificationUndeliverableException;
 import com.matera.x9qrcode.app.service.QRCodeOutboundNotificationService;
 import com.matera.x9qrcode.app.service.QRCodeSignatureService;
+import com.matera.x9qrcode.app.usecase.validatesignature.SignatureValidationInput;
+import com.matera.x9qrcode.app.usecase.validatesignature.SignatureValidationOutput;
 
+import com.nimbusds.jose.JOSEObject;
+import com.nimbusds.jose.JWSObject;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -21,9 +26,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestClient;
 
 import java.net.URI;
+import java.text.ParseException;
+import java.util.Map;
 import java.util.UUID;
 
+import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
+import static org.apache.commons.lang3.StringUtils.isBlank;
 
 /**
  * Signs a payment notification and posts it to the payee.
@@ -38,12 +47,20 @@ import static java.util.Objects.nonNull;
  * different things: the first is an answer to act on, the second is a delivery to retry. A refusal
  * comes back with the payee's own status; an unreachable payee raises, so the caller is never left
  * reading a fabricated status code as though somebody had sent it.
+ *
+ * <h2>The answer is checked, and the check is reported</h2>
+ *
+ * <p>ANSI X9.150 A.4.5 asks the payee to answer with a signed {@code {"statusCode": integer}}. The
+ * answer is verified against the payee's X9 certificate and the correlationId sent, and the outcome
+ * travels with it as {@code signature} (Story 2.3, S2.3-AC6). Nothing here refuses on that basis:
+ * an unsigned yes is still a yes, and what it is worth is the payer's call.
  */
 @Slf4j
 @RequiredArgsConstructor
 public class RestClientOutboundNotificationService implements QRCodeOutboundNotificationService {
 
     private static final String APPLICATION_JOSE = "application/jose";
+    private static final String STATUS_CODE = "statusCode";
 
     private final RestClient notificationRestClient;
     private final QRCodeSignatureService qrCodeSignatureService;
@@ -59,8 +76,10 @@ public class RestClientOutboundNotificationService implements QRCodeOutboundNoti
 
         String jws = sign(notification, callCorrelationId);
 
+        ResponseEntity<String> response;
+
         try {
-            ResponseEntity<String> response = notificationRestClient.post()
+            response = notificationRestClient.post()
                 .uri(endpoint)
                 .contentType(MediaType.parseMediaType(APPLICATION_JOSE))
                 .body(jws)
@@ -69,12 +88,84 @@ public class RestClientOutboundNotificationService implements QRCodeOutboundNoti
                 // default error handling is what lets the payee's own verdict reach the payer.
                 .onStatus(status -> true, (request, errorResponse) -> { })
                 .toEntity(String.class);
-
-            return new OutboundNotificationResult(response.getStatusCode().value(), response.getBody());
         } catch (Exception unreachable) {
             throw new NotificationUndeliverableException(
                 "Could not deliver the payment notification to %s".formatted(endpoint), unreachable);
         }
+
+        return checkAnswer(response.getStatusCode().value(), response.getBody(), callCorrelationId);
+    }
+
+    /**
+     * Checks the payee's answer against ANSI X9.150 A.4.5: a JWS signed with the payee's X9 key,
+     * whose body is {@code {"statusCode": integer}} and whose {@code correlationId} is the one sent.
+     *
+     * <p>Reports, never refuses. An answer that is not a JWS at all is {@code ABSENT}; one that is
+     * presented as a JWS and fails any check is {@code INVALID}. In both cases the HTTP status is
+     * what is reported, so a 200 stays an accepted, unsigned yes, and the payer decides what an
+     * unsigned yes is worth. Only a {@code VERIFIED} answer reports the status the payee signed.
+     */
+    private OutboundNotificationResult checkAnswer(int httpStatus, String body, UUID sentCorrelationId) {
+        if (isBlank(body)) {
+            return unsigned(httpStatus, body, AnswerSignatureEnumDTO.ABSENT, "the answer has no body");
+        }
+
+        JOSEObject answer;
+        try {
+            answer = JOSEObject.parse(body.trim());
+        } catch (ParseException notJose) {
+            return unsigned(httpStatus, body, AnswerSignatureEnumDTO.ABSENT, "the answer is not a JWS");
+        }
+
+        if (!(answer instanceof JWSObject)) {
+            // alg "none", or an encrypted object: presented as JOSE, carrying no signature we accept.
+            return unsigned(httpStatus, body, AnswerSignatureEnumDTO.INVALID,
+                "the answer is a JOSE object without a signature (alg %s)".formatted(answer.getHeader().getAlgorithm()));
+        }
+
+        SignatureValidationOutput verified;
+        try {
+            verified = qrCodeSignatureService.validateSignature(
+                new SignatureValidationInput(SignatureTypeEnumDTO.X9, sentCorrelationId, body.trim(), null));
+        } catch (Exception e) {
+            verified = SignatureValidationOutput.invalidSignature(e.getMessage());
+        }
+
+        if (!verified.isValid()) {
+            return unsigned(httpStatus, body, AnswerSignatureEnumDTO.INVALID,
+                isNull(verified.problem()) ? "the signature did not verify" : verified.problem());
+        }
+
+        Integer signedStatus = signedStatusCode((JWSObject) answer);
+
+        if (isNull(signedStatus)) {
+            return unsigned(httpStatus, body, AnswerSignatureEnumDTO.INVALID,
+                "the signed body has no integer statusCode");
+        }
+
+        if (signedStatus != httpStatus) {
+            return unsigned(httpStatus, body, AnswerSignatureEnumDTO.INVALID,
+                "statusCode mismatch: HTTP %d, signed %d".formatted(httpStatus, signedStatus));
+        }
+
+        return new OutboundNotificationResult(signedStatus, body, AnswerSignatureEnumDTO.VERIFIED, null);
+    }
+
+    private static Integer signedStatusCode(JWSObject answer) {
+        Map<String, Object> payload = answer.getPayload().toJSONObject();
+
+        if (isNull(payload) || !(payload.get(STATUS_CODE) instanceof Number number)) {
+            return null;
+        }
+
+        return number.intValue();
+    }
+
+    private static OutboundNotificationResult unsigned(int httpStatus, String body,
+                                                       AnswerSignatureEnumDTO signature, String problem) {
+        log.warn("Payee answer reported as {} ({}), HTTP {}", signature, problem, httpStatus);
+
+        return new OutboundNotificationResult(httpStatus, body, signature, problem);
     }
 
     /**

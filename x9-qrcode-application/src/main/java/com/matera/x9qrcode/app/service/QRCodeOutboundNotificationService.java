@@ -7,6 +7,7 @@
 package com.matera.x9qrcode.app.service;
 
 import com.matera.x9qrcode.app.dto.PaymentNotificationDataDTO;
+import com.matera.x9qrcode.app.dto.enumerated.AnswerSignatureEnumDTO;
 
 import java.net.URI;
 import java.util.UUID;
@@ -39,8 +40,18 @@ public interface QRCodeOutboundNotificationService {
      * <p>Returned rather than interpreted. A pre-payment is a request for permission and its status
      * is the answer the payer must act on; turning a refusal into an exception here would oblige
      * every caller to unpick it again.
+     *
+     * <p>The answer's signature is checked and reported, never acted on (ANSI X9.150 A.4.5, Story
+     * 2.3). When {@code signature} is {@link AnswerSignatureEnumDTO#VERIFIED}, {@code statusCode}
+     * is the one the payee signed; otherwise it is the HTTP status, and a 200 is still an
+     * accepted, unsigned yes.
+     *
+     * @param signatureProblem why the answer is not {@code VERIFIED}, in words; null when it is
      */
-    record OutboundNotificationResult(int statusCode, String body) {
+    record OutboundNotificationResult(int statusCode,
+                                      String body,
+                                      AnswerSignatureEnumDTO signature,
+                                      String signatureProblem) {
 
         public boolean accepted() {
             return statusCode >= 200 && statusCode < 300;

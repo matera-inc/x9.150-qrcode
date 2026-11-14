@@ -35,24 +35,35 @@ public record SignatureValidationOutput(
      * while this is whoever the trusted chain says signed it. Null when the path could not name a
      * subject, which reads as "no identity established".
      */
-    String signerSubject
+    String signerSubject,
+
+    /**
+     * Why the signature did not verify, in words, or null when it did. For a log line, or for a
+     * caller of this service who asked to be told (the outbound notification's
+     * {@code signatureProblem}); never echoed to an unauthenticated sender.
+     */
+    String problem
 ) {
 
     public static SignatureValidationOutput validSignature(UUID correlationId) {
-        return new SignatureValidationOutput(true, correlationId, null, null);
+        return new SignatureValidationOutput(true, correlationId, null, null, null);
     }
 
     public static SignatureValidationOutput validSignature(UUID correlationId, String submittedQrCodeContent) {
-        return new SignatureValidationOutput(true, correlationId, submittedQrCodeContent, null);
+        return new SignatureValidationOutput(true, correlationId, submittedQrCodeContent, null, null);
     }
 
     public static SignatureValidationOutput validSignature(UUID correlationId, String submittedQrCodeContent,
                                                            String signerSubject) {
-        return new SignatureValidationOutput(true, correlationId, submittedQrCodeContent, signerSubject);
+        return new SignatureValidationOutput(true, correlationId, submittedQrCodeContent, signerSubject, null);
     }
 
     public static SignatureValidationOutput invalidSignature() {
-        return new SignatureValidationOutput(false, null, null, null);
+        return new SignatureValidationOutput(false, null, null, null, null);
+    }
+
+    public static SignatureValidationOutput invalidSignature(String problem) {
+        return new SignatureValidationOutput(false, null, null, null, problem);
     }
 
 }

@@ -182,7 +182,7 @@ class PayerNotificationLeniencyApiTest extends AbstractIntegrationTest {
         MockMvcResponse response = notify(qrCodeId, "ACH", "EUR", AMOUNT);
 
         assertNotEquals(HttpStatus.OK.value(), response.statusCode(), response.asString());
-        assertTrue(response.asString().contains("EUR"), response.asString());
+        assertTrue(answerBody(response).contains("EUR"), answerBody(response));
         assertEquals("ACTIVE", statusOf(qrCodeId), "a refused notification must change nothing");
     }
 

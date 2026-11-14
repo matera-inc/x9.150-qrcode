@@ -14,11 +14,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.restassured.config.ObjectMapperConfig;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import io.restassured.module.mockmvc.config.RestAssuredMockMvcConfig;
+import io.restassured.module.mockmvc.response.MockMvcResponse;
+import com.nimbusds.jose.JWSObject;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.web.context.WebApplicationContext;
+
+import java.text.ParseException;
 
 @Slf4j
 @IntegrationTest
@@ -44,6 +48,20 @@ public abstract class AbstractIntegrationTest {
         // members are top-level and only map back via ProblemDetailJacksonMixin's @JsonAnySetter.
         RestAssuredMockMvc.config = RestAssuredMockMvcConfig.config()
             .objectMapperConfig(new ObjectMapperConfig().jackson2ObjectMapperFactory((type, charset) -> objectMapper));
+    }
+
+    /**
+     * The JSON a payment-notification answer carries: the body of its JWS when it is signed (every
+     * answer is, Story 2.3), the raw body otherwise. For assertions on what a refusal says.
+     */
+    protected static String answerBody(MockMvcResponse response) {
+        String raw = response.asString();
+
+        try {
+            return JWSObject.parse(raw).getPayload().toString();
+        } catch (ParseException notAJws) {
+            return raw;
+        }
     }
 
 }

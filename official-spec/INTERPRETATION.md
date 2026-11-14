@@ -568,26 +568,42 @@ it is registered, flagged, and changes nothing, so the holder keeps the QR Code.
 > marks a QR Code `PAID`**: the payment system matches each hash against the funds and calls the
 > status-update API.
 
-## I-12 — The answer to a payment notification is not signed yet (known deviation)
+## I-12 — The answer to a payment notification is signed, as the A.4.5 note models it
 
-**Where:** A.4.5, the note under the Payment Notification example
+**Where:** A.4.5, the note under the Payment Notification example; §10.3.2 (`correlationId`)
 
-**What the standard says.** "For Payment Notification responses, the JWS Body should contain
-`{ "statusCode": integer }` in order for the payer to have the signed response."
+**What the standard says.** The note asks that the JWS body of a payment notification response be
+`{"statusCode": integer}`, so the payer holds a signed response (a JWS body cannot be empty), and
+§10.3.2 has the responder echo the requester's `correlationId`.
 
-**What we do today.** `POST /pub/api/v1/payment-notification` answers an accepted notification with
-an **empty, unsigned 200** (`PublicEndpointsController.processPaymentNotification`), and refusals
-with a plain JSON error. When this service sends a notification on a payer's behalf, it passes the
-payee's answer back without verifying any signature.
+**What we do.** We follow that model, and extend it to refusals:
+
+- **A yes** (pre-commit or post-commit) is a compact JWS, `Content-Type: application/jose`, signed
+  with this payee's X9 key, whose body is exactly `{"statusCode": 200}`. Its `correlationId` echoes
+  the notification's, and its `iat` is this payee's clock at the decision.
+- **A no** keeps its HTTP status and is signed too: the body is `{"statusCode": <status>}` plus the
+  error fields a client already reads (`type`, `title`, `status`, `detail`, `violations`). The
+  standard's note speaks of responses in general; signing refusals as well is **ours** (owner
+  decision, 2026-11-13), so a payer holds the payee's no as evidence just as it holds a yes.
+- **A notification that cannot be verified** (not a JWS, or a signature that does not verify) is
+  refused, signed, under a **fresh** `correlationId`: one taken from an unverified header would be
+  echoing a claim nobody checked.
+- The header also carries `statusCode` and names it in `crit`, as our other responses do.
+
+When this service sends a notification on a payer's behalf, it checks the payee's answer the same
+way, against the payee's X9 certificate and the `correlationId` it sent, and reports `signature` as
+`VERIFIED`, `ABSENT` (not a JWS at all) or `INVALID` (a JWS failing a check, including a signed
+`statusCode` that differs from the HTTP status), with `signatureProblem`. It reports and never
+refuses: a 200 that is not verified is an unsigned yes, and what that is worth is the payer's call.
 
 **Why it matters.** The signed question (the payer's notification) plus the payee's signed answer,
-linked by `correlationId`, is the evidence of what was authorized and when. Without the signed
-answer, the payer holds nothing that proves the payee said yes.
+linked by `correlationId`, is the evidence of what was authorized and when, checkable by anyone with
+the public certificates. Settlement and reconciliation of the funds stay with the system that
+receives them.
 
-**Closed by** Story 2.3 of the rewrite breakdown
-([docs/rewrite/EPICS-AND-STORIES.md](../docs/rewrite/EPICS-AND-STORIES.md)): every answer signed,
-refusals included, and the answers this service receives verified. Until then this is a deviation
-from the A.4.5 note, recorded here so nobody mistakes it for a reading.
+**History.** Until Story 2.3 this was a known deviation: an empty, unsigned 200 and plain JSON
+refusals, and the outbound sender passed answers through unverified. See the 2026-11-14 amendment to
+[ADR-0028](../docs/adr/0028-the-http-contract-is-frozen-and-equivalence-is-proved-by-a-differential-run.md).
 
 ## I-13 — The payee's clock decides, and the due date's last instant is on time
 

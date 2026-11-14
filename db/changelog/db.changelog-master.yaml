@@ -3,17 +3,26 @@
 # Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
 # based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
 #
-# The X9.150 schema (ADR-0023, ADR-0024, ADR-0025, ADR-0026, ADR-0032).
+# The X9.150 schema (ADR-0023, ADR-0024, ADR-0025, ADR-0026, ADR-0032, ADR-0037).
 #
 # Everything lives in ONE schema, named by the `x9.schema` property (default `x9_qrcode`).
 # The schema itself is not created here: it belongs to the bank's DBA (ADR-0032), who creates it
-# before the first run. Liquibase's own tracking tables go into the same schema, so nothing is ever
-# written to `public`:
+# before the first run, owned by the owner role. Liquibase connects AS that owner role, and its own
+# tracking tables go into the same schema, so nothing is ever written to `public`:
+#
+#   -- once, by the DBA (no password is ever written in this changelog):
+#   CREATE ROLE x9_qrcode_owner LOGIN PASSWORD '…';
+#   CREATE SCHEMA x9_qrcode AUTHORIZATION x9_qrcode_owner;
+#   -- and either ALTER ROLE x9_qrcode_owner CREATEROLE, or pre-create the three runtime roles
 #
 #   liquibase update \
 #     --changelog-file=db/changelog/db.changelog-master.yaml \
+#     --username=x9_qrcode_owner \
 #     --default-schema-name=x9_qrcode --liquibase-schema-name=x9_qrcode \
 #     -Dx9.schema=x9_qrcode
+#
+# Role names are properties too (0002, ADR-0032): x9.role.owner, x9.role.app, x9.role.readonly and
+# x9.role.event_reader. Override any of them with -D<name>=<value>; lowercase identifiers only.
 #
 # Rules for this directory (ADR-0023):
 #   - an applied changeset is never edited; a change is a new numbered file;
@@ -25,6 +34,21 @@ databaseChangeLog:
   - property:
       name: x9.schema
       value: x9_qrcode
+  - property:
+      name: x9.role.owner
+      value: x9_qrcode_owner
+  - property:
+      name: x9.role.app
+      value: x9_qrcode_app
+  - property:
+      name: x9.role.readonly
+      value: x9_qrcode_readonly
+  - property:
+      name: x9.role.event_reader
+      value: x9_qrcode_event_reader
   - include:
       file: changes/0001-initial-schema.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: changes/0002-roles-and-grants.yaml
       relativeToChangelogFile: true

@@ -22,6 +22,7 @@ import com.matera.x9qrcode.infrastructure.generated.api.PublicEndpointsApi;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentEventPageDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentNotificationDataDTO;
 import com.matera.x9qrcode.infrastructure.service.events.PaymentEventReader;
+import com.matera.x9qrcode.infrastructure.web.controller.advice.NotificationAnswerSigner;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentPayloadResponseDTO;
 import com.matera.x9qrcode.infrastructure.web.controller.mapper.request.PaymentNotificationRequestMapper;
 import com.matera.x9qrcode.infrastructure.web.controller.mapper.response.RetrieveQRCodePayloadResponseMapper;
@@ -39,6 +40,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.LocalDate;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 import static com.matera.x9qrcode.app.service.SignatureConstants.CONTENT_DISPOSITION_HEADER;
 import static com.matera.x9qrcode.app.service.SignatureConstants.CONTENT_TYPE_HEADER;
@@ -56,6 +58,7 @@ public class PublicEndpointsController implements PublicEndpointsApi {
     private final QRCodeSignatureService qrCodeSignatureService;
     private final ObjectMapper objectMapper;
     private final PaymentEventReader paymentEventReader;
+    private final NotificationAnswerSigner notificationAnswerSigner;
 
     @Override
     public ResponseEntity<Resource> getCertificate(String fileName) {
@@ -82,21 +85,36 @@ public class PublicEndpointsController implements PublicEndpointsApi {
         return ResponseEntity.ok(paymentEventReader.read(after, limit, wait));
     }
 
+    /**
+     * Every answer from here is a signed JWS, a yes or a no (ANSI X9.150 A.4.5 note, Story 2.3).
+     *
+     * <p>The answer's {@code correlationId} echoes the question's once the question's signature has
+     * verified. Before that there is nothing trustworthy to echo, so a question that cannot be read
+     * at all is refused, signed, under a fresh one.
+     */
     @Override
-    public ResponseEntity<Void> processPaymentNotification(String body) {
-        // Nothing below the signature check may touch the payload. The body is unauthenticated input
-        // and may be an exploit attempt, so an unverifiable JWS is refused before it is parsed, let
-        // alone before any QR Code is read or written.
-        SignatureValidationOutput verified = verifySignatureOrReject(body);
+    public ResponseEntity<String> processPaymentNotification(String body) {
+        UUID answerCorrelationId = UUID.randomUUID();
 
-        PaymentNotificationDataDTO notificationData = parseVerifiedPayload(body);
+        try {
+            // Nothing below the signature check may touch the payload. The body is unauthenticated
+            // input and may be an exploit attempt, so an unverifiable JWS is refused before it is
+            // parsed, let alone before any QR Code is read or written.
+            SignatureValidationOutput verified = verifySignatureOrReject(body);
+            answerCorrelationId = verified.correlationId();
 
-        // The signer's subject travels with the payload: only the party that announced a payment
-        // may re-announce or release it, and `payer.info` alone cannot establish who that is.
-        paymentNotificationQRCodeUseCase.execute(
-            PaymentNotificationRequestMapper.map(notificationData, verified.signerSubject()));
+            PaymentNotificationDataDTO notificationData = parseVerifiedPayload(body);
 
-        return ResponseEntity.ok().build();
+            // The signer's subject travels with the payload: only the party that announced a payment
+            // may re-announce or release it, and `payer.info` alone cannot establish who that is.
+            paymentNotificationQRCodeUseCase.execute(
+                PaymentNotificationRequestMapper.map(notificationData, verified.signerSubject()));
+        } catch (RuntimeException refusal) {
+            return notificationAnswerSigner.refused(refusal, answerCorrelationId);
+        }
+
+        // Signed after the decision is made, so the answer's iat is the payee's clock at the decision.
+        return notificationAnswerSigner.accepted(answerCorrelationId);
     }
 
     private SignatureValidationOutput verifySignatureOrReject(String body) {
