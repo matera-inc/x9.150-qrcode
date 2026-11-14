@@ -75,6 +75,7 @@ class QRCodeEntityNotificationMatrixTest extends AbstractTest {
 
     private static final ReservationHolderVO A = ReservationHolderVO.of("payer-a", SUBJECT);
     private static final ReservationHolderVO B = ReservationHolderVO.of("payer-b", SUBJECT);
+    private static final ReservationHolderVO ANONYMOUS = ReservationHolderVO.of(null, SUBJECT);
 
     private QRCodeEntity qrCode() {
         BillVO bill = new BillVO(
@@ -836,6 +837,164 @@ class QRCodeEntityNotificationMatrixTest extends AbstractTest {
             assertNull(paid.getInitiatedExpiresAt());
         }
 
+    }
+
+    // ------------------------------------------- the holder: retry, release, identity, window
+
+    @Nested
+    class TheHolder {
+
+        /**
+         * <b>X9-HOLD-130</b> — a refused retry from the holder releases the reservation, with payment.failed on a chain.
+         *
+         * <p><b>Source:</b> Ours. ADR-0036 (S2.5-AC2). X9.150 defines no reservation.
+         *
+         * <p><b>Why:</b> A refused retry used to leave the reservation in place until it lapsed:
+         * the payee had just said no to that payer, yet it kept everyone else out.
+         */
+        @Test
+        void aRefusedRetryReleasesTheReservationAndOnAChainEmitsPaymentFailed() {
+            QRCodeEntity qrCode = heldBy(qrCode(), A);
+
+            qrCode.refuseRetriedPreCommit(solana(ActionEnum.PAYMENT_INITIATED, null, A), "discount ended");
+
+            assertEquals(QRCodeStatusEnum.ACTIVE, qrCode.getStatus());
+            assertNull(qrCode.getReservedBy());
+            assertNull(qrCode.getInitiatedExpiresAt());
+            assertEquals(List.of(PaymentEventTypeEnum.PAYMENT_INITIATED, PaymentEventTypeEnum.PAYMENT_FAILED),
+                types(qrCode));
+            assertEquals(QRCodeStatusEnum.PAYMENT_INITIATED, last(qrCode).receivedInStatus());
+        }
+
+        /**
+         * <b>X9-HOLD-131</b> — a refused retry on a bank rail releases the reservation without an event.
+         *
+         * <p><b>Source:</b> Ours. ADR-0036 (S2.5-AC2).
+         *
+         * <p><b>Why:</b> A release emits what a release emits on the rail, and bank rails never
+         * emit payment.failed.
+         */
+        @Test
+        void aRefusedRetryOnABankRailReleasesWithoutAnEvent() {
+            QRCodeEntity qrCode = qrCode();
+            preCommit(qrCode, fedNow(null, A), A, TTL);
+
+            qrCode.refuseRetriedPreCommit(fedNow(null, A), "discount ended");
+
+            assertEquals(QRCodeStatusEnum.ACTIVE, qrCode.getStatus());
+            assertEquals(List.of(PaymentEventTypeEnum.PAYMENT_INITIATED), types(qrCode));
+        }
+
+        /**
+         * <b>X9-HOLD-132</b> — a holder without payer.info cannot retry: 409.
+         *
+         * <p><b>Source:</b> Ours. ADR-0036 (S2.5-AC4), replacing ADR-0021's certificate fallback.
+         *
+         * <p><b>Why:</b> Without payer.info nothing shows the retry comes from the payer that holds
+         * the QR Code rather than from another customer of the same PSP.
+         */
+        @Test
+        void aHolderWithoutPayerInfoCannotRetry() {
+            QRCodeEntity qrCode = heldBy(qrCode(), ANONYMOUS);
+
+            assertEquals(QRCodeStatusEnum.PAYMENT_INITIATED, qrCode.effectiveStatus(),
+                "a payer without payer.info may still win a pre-commit");
+            assertThrows(QRCodeStatusConflictException.class,
+                () -> qrCode.admitPreCommit(solana(ActionEnum.PAYMENT_INITIATED, null, ANONYMOUS), ANONYMOUS));
+        }
+
+        /**
+         * <b>X9-HOLD-133</b> — a holder without payer.info cannot release with NOT_SENT: 409.
+         *
+         * <p><b>Source:</b> Ours. ADR-0036 (S2.5-AC4).
+         *
+         * <p><b>Why:</b> A release that cannot be attributed would let one customer of a PSP free
+         * another customer's reservation.
+         */
+        @Test
+        void aHolderWithoutPayerInfoCannotRelease() {
+            QRCodeEntity qrCode = heldBy(qrCode(), ANONYMOUS);
+
+            assertThrows(QRCodeStatusConflictException.class,
+                () -> qrCode.releaseByPayer(solana(ActionEnum.NOT_SENT, null, ANONYMOUS), ANONYMOUS));
+            assertEquals(QRCodeStatusEnum.PAYMENT_INITIATED, qrCode.effectiveStatus());
+        }
+
+        /**
+         * <b>X9-HOLD-134</b> — a holder without payer.info reports as somebody else: flagged, and nothing changes.
+         *
+         * <p><b>Source:</b> Ours. ADR-0036 (S2.5-AC4).
+         *
+         * <p><b>Why:</b> Its hash is still registered (the money moved), but nothing proves it is
+         * the holder's, so it carries RECEIVED_IN_WRONG_STATUS.
+         */
+        @Test
+        void aHolderWithoutPayerInfoIsFlaggedAndChangesNothing() {
+            QRCodeEntity qrCode = heldBy(qrCode(), ANONYMOUS);
+            ReservationHolderVO holderBefore = qrCode.getReservedBy();
+
+            qrCode.registerPostCommit(solana(ActionEnum.SENT, HASH_1, ANONYMOUS), ANONYMOUS);
+
+            assertEquals(holderBefore, qrCode.getReservedBy());
+            assertEquals(PaymentEventTypeEnum.PAYMENT_SENT, last(qrCode).type());
+            assertEquals(List.of(NotificationDeviationEnum.RECEIVED_IN_WRONG_STATUS), last(qrCode).deviations());
+        }
+
+        /**
+         * <b>X9-HOLD-135</b> — with ttl-seconds 0 a pre-commit's reservation never lapses.
+         *
+         * <p><b>Source:</b> Ours. ADR-0036 (S2.5-AC7).
+         *
+         * <p><b>Why:</b> 0 used to make every reservation expire at once, a useless setting; it now
+         * hands the window to a bank that wants full control.
+         */
+        @Test
+        void aZeroWindowNeverLapses() {
+            QRCodeEntity qrCode = qrCode();
+
+            preCommit(qrCode, fedNow(null, A), A, Duration.ZERO);
+
+            assertEquals(QRCodeEntity.NO_LAPSE, qrCode.getInitiatedExpiresAt());
+            assertEquals(QRCodeStatusEnum.PAYMENT_INITIATED, qrCode.effectiveStatus(aDayLater()));
+        }
+
+        /**
+         * <b>X9-HOLD-136</b> — with ttl-seconds 0 the status-update API's reservation never lapses either.
+         *
+         * <p><b>Source:</b> Ours. ADR-0036 (S2.5-AC7).
+         *
+         * <p><b>Why:</b> Both doors into PAYMENT_INITIATED stamp the window through one method; a
+         * setting honoured by one door only would be the half nobody notices.
+         */
+        @Test
+        void aZeroWindowAppliesToTheStatusUpdateApiToo() {
+            QRCodeEntity qrCode = qrCode();
+
+            qrCode.initiatePayment(null, Duration.ZERO);
+
+            assertEquals(QRCodeStatusEnum.PAYMENT_INITIATED, qrCode.effectiveStatus(aDayLater()));
+        }
+
+        /**
+         * <b>X9-HOLD-137</b> — with ttl-seconds 0 a reservation still ends by NOT_SENT or a refused retry.
+         *
+         * <p><b>Source:</b> Ours. ADR-0036 (S2.5-AC7).
+         *
+         * <p><b>Why:</b> No window must not mean no way out: the payer can still give the QR Code
+         * back, and a refused payer still loses it.
+         */
+        @Test
+        void aZeroWindowStillEndsByNotSentOrARefusedRetry() {
+            QRCodeEntity released = qrCode();
+            preCommit(released, solana(ActionEnum.PAYMENT_INITIATED, null, A), A, Duration.ZERO);
+            released.releaseByPayer(solana(ActionEnum.NOT_SENT, null, A), A);
+            assertEquals(QRCodeStatusEnum.ACTIVE, released.effectiveStatus());
+
+            QRCodeEntity refused = qrCode();
+            preCommit(refused, solana(ActionEnum.PAYMENT_INITIATED, null, A), A, Duration.ZERO);
+            refused.refuseRetriedPreCommit(solana(ActionEnum.PAYMENT_INITIATED, null, A), "refused");
+            assertEquals(QRCodeStatusEnum.ACTIVE, refused.effectiveStatus());
+        }
     }
 
 }

@@ -34,11 +34,14 @@ import static java.util.Objects.isNull;
  * customer's payment from one hot wallet, so the sending address identifies the PSP and says
  * nothing about which of its customers this is.
  *
- * <p><b>What happens when {@code payerInfo} is absent.</b> Identity falls back to the certificate
- * alone, which means the granularity drops from "this payer" to "this payer's bank" — and two
- * customers of one PSP then read as the same party, so either may refresh or release the other's
- * reservation. That is the best this service can do with what it was given, and it is the concrete
- * reason for a PSP to send {@code payer.info}: without it, its own customers tread on each other.
+ * <p><b>What happens when {@code payerInfo} is absent: the two are different payers</b>
+ * (ADR-0036, replacing ADR-0021's certificate-only fallback). Without {@code payer.info} nothing
+ * tells two customers of one PSP apart, and matching on the certificate alone let either retry or
+ * release the other's reservation: the collision the reservation exists to prevent. So a payer
+ * that sends no {@code payer.info} may still win a pre-commit and hold the QR Code, but it cannot
+ * retry that pre-commit (409), release it with {@code NOT_SENT}, or report its post-commit as the
+ * holder (it is registered with {@code RECEIVED_IN_WRONG_STATUS}). Sending {@code payer.info} is
+ * what lets a PSP's payers retry, release and report cleanly.
  */
 public record ReservationHolderVO(String payerInfo, String signerSubject) {
 
@@ -64,20 +67,24 @@ public record ReservationHolderVO(String payerInfo, String signerSubject) {
     }
 
     /**
-     * Whether {@code other} is the same party as this one.
+     * Whether {@code other} is the same payer as this one (ADR-0036).
      *
-     * <p>Both parts must agree, and an unidentified holder matches nobody — including another
-     * unidentified one. Two anonymous announcements are not evidence of being the same payer, and
-     * treating them as such would hand one payer's reservation to the next caller who sent no
-     * identity at all, which is precisely the case the reservation exists to prevent.
+     * <p>Only when <b>both</b> carry {@code payer.info}, the two values are equal, <b>and</b> the
+     * certificate subjects are equal. Without {@code payer.info} on either side there is no means
+     * to tell two payers apart, so they are assumed to be different. An unattributed holder (a
+     * reservation taken through the status-update API) therefore matches nobody.
      */
     public boolean isSameParty(ReservationHolderVO other) {
-        if (isNull(other) || !this.isIdentified() || !other.isIdentified()) {
+        if (isNull(other) || isBlank(this.payerInfo) || isBlank(other.payerInfo)) {
             return false;
         }
 
-        return Objects.equals(this.payerInfo, other.payerInfo)
+        return this.payerInfo.equals(other.payerInfo)
             && Objects.equals(this.signerSubject, other.signerSubject);
+    }
+
+    private static boolean isBlank(String value) {
+        return isNull(value) || value.isBlank();
     }
 
 }

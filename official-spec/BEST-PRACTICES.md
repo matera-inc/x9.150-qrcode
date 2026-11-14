@@ -49,17 +49,28 @@ from the same payer, which is what the state machine needs, while telling the pa
 who that person is. The standard's own example is `JaneDoe@Gmail.com`; you are not obliged to follow
 it, and we would rather you did not.
 
-**Why it matters.** A reservation is held by whoever announced it, and only that party may release
-it, re-announce it, or report on it (ADR-0021). With `payer.info` the "whoever" is a payer; without
-it, the best we can do is a bank. **Two of your own customers then read as the same party**, and
-either may refresh or release the other's reservation — the collision a reservation exists to
-prevent, happening inside the one institution where two payers are most likely to share a signer.
+**Why it matters.** A reservation is held by whoever announced it, and only that payer may retry
+its pre-commit, release it with `NOT_SENT`, or report its post-commit as the holder. **Two
+notifications come from the same payer only when both carry `payer.info`, the values are equal, and
+the certificate subjects are equal**
+([ADR-0036](../docs/adr/0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md)).
+Without `payer.info` nothing tells two of your customers apart, so this service assumes they are
+**different** payers. (It used to fall back to the certificate alone, so two of your customers read
+as one party and could retry or release each other's reservation. That fallback is gone.)
 
 What you get by sending it, concretely:
 
-- **a retry is safe.** A repeated announcement from the same party answers `200` and refreshes the
-  window. A request that timed out can simply be sent again.
+- **a retry is safe.** A repeated pre-commit from the same payer is judged again; if accepted it
+  answers `200` and refreshes the window. A request that timed out can simply be sent again.
+- **you can give the QR Code back.** `NOT_SENT` from the holder releases it.
+- **your post-commit is clean.** The holder's post-commit is registered without a deviation flag.
 - **a second payer is told apart from you**, and gets `409` rather than taking your reservation.
+
+What happens when you do not send it: your payer may still win a pre-commit and hold the QR Code, but
+its retry is refused with `409`, its `NOT_SENT` is refused, and its post-commit is registered with
+`RECEIVED_IN_WRONG_STATUS` and changes nothing. ACH already requires `payer.info`; on FedNow, RTP and
+Solana it stays optional on the wire, and sending it is what lets your payers retry, release and
+report cleanly.
 
 **Do not put in it:** anything you would mind a payee storing and logging, anything you would mind
 appearing in a support ticket, or anything a payer did not consent to share. It is transported and
@@ -76,8 +87,9 @@ Keep your identifier far shorter than the maximum anyway — an opaque token nee
 or two.
 
 **What we never trust it for.** `payer.info` is supplied by the sender and verified by nobody, so it
-can only ever *narrow* an identity the certificate already established. It can never widen one, and
-a notification whose certificate does not match is refused whatever it claims in `payer.info`.
+can only ever *narrow* an identity the certificate already established. It can never widen one: a
+notification whose certificate does not match is never treated as the holder, whatever it claims in
+`payer.info`.
 
 ## 2. Tell the payee when you are not going to pay
 

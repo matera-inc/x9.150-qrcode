@@ -71,18 +71,21 @@ class ReservationHolderVOTest {
     }
 
     /**
-     * <b>X9-HOLD-004</b> — an institution with no payer info matches itself.
+     * <b>X9-HOLD-004</b> — without payer info there is no telling two payers apart, so they are
+     * different (S2.5-AC4).
      *
-     * <p><b>Source:</b> Ours. ADR-0021.
+     * <p><b>Source:</b> Ours. ADR-0036, replacing ADR-0021's certificate-only fallback.
      *
-     * <p><b>Why:</b> {@code payer.info} is optional in the standard (§3.1), so a PSP that sends
-     * none must still be able to retry its own announcement. The granularity drops from "this
-     * payer" to "this payer's bank" — which is the concrete cost of omitting the field, and the
-     * reason BEST-PRACTICES.md asks for it.
+     * <p><b>Why:</b> Two customers of one PSP sign with one certificate. Matching on the
+     * certificate alone let either retry or release the other's reservation. With
+     * {@code payer.info} absent on either side, the two are assumed to be different payers.
      */
     @Test
-    void anInstitutionWithNoPayerInfoMatchesItself() {
-        assertTrue(ReservationHolderVO.of(null, SUBJECT).isSameParty(ReservationHolderVO.of(null, SUBJECT)));
+    void withoutPayerInfoTwoNotificationsAreDifferentPayers() {
+        assertFalse(ReservationHolderVO.of(null, SUBJECT).isSameParty(ReservationHolderVO.of(null, SUBJECT)));
+        assertFalse(ReservationHolderVO.of(PAYER, SUBJECT).isSameParty(ReservationHolderVO.of(null, SUBJECT)));
+        assertFalse(ReservationHolderVO.of(null, SUBJECT).isSameParty(ReservationHolderVO.of(PAYER, SUBJECT)));
+        assertFalse(ReservationHolderVO.of(" ", SUBJECT).isSameParty(ReservationHolderVO.of(" ", SUBJECT)));
     }
 
     /**

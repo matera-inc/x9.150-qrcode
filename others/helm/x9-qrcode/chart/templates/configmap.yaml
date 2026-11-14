@@ -27,3 +27,5 @@ data:
   x9.public-endpoints.host: {{ required "The '.Values.application.x9.public-endpoints.host' is required! See documentation for more details!" (dig "x9" "public-endpoints" "host" nil .Values.application) | quote }}
   x9.certificate.private-keystore.location: {{ required "The '.Values.application.x9.certificate.private-keystore.location' is required! See documentation for more details!" (dig "x9" "certificate" "private-keystore" "location" nil .Values.application) | quote }}
   x9.certificate.truststore.location: {{ required "The '.Values.application.x9.certificate.truststore.location' is required! See documentation for more details!" (dig "x9" "certificate" "truststore" "location" nil .Values.application) | quote }}
+  # 0 means no window: a reservation never expires on its own (ADR-0036).
+  x9.reservation.ttl-seconds: {{ dig "x9" "reservation" "ttl-seconds" 90 .Values.application | quote }}

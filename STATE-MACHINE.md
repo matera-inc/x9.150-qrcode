@@ -18,9 +18,14 @@ notification methods `admitPreCommit` / `acceptPreCommit`, `registerPostCommit` 
 ### PAYMENT_INITIATED is held against a clock
 
 A `PAYMENT_INITIATED` QR Code carries the instant its reservation stops counting
-(`x9.reservation.ttl-seconds`, 90 by default). **Past that instant it reads as
-`ACTIVE` again** — a payer who announced and then vanished cannot lock a bill until
-`validUntil`, which could be days away for a code held for seconds.
+(`x9.reservation.ttl-seconds`, environment variable `X9_RESERVATION_TTL_SECONDS`, 90 by
+default). **Past that instant it reads as `ACTIVE` again** — a payer who announced and
+then vanished cannot lock a bill until `validUntil`, which could be days away for a
+code held for seconds.
+
+**`0` means no window** (a bank that wants full control): a reservation never expires,
+and ends only by the holder's refused retry, its `NOT_SENT`, or the status-update API
+(`ACTIVE`, `PAID` or `CANCELLED`). `0` used to mean "expire at once".
 
 Nothing sweeps. The stored status keeps saying what was last *reported*, and the
 lapse is applied when somebody looks, so a reservation expiring at 3am wakes nobody
@@ -160,11 +165,12 @@ sequenceDiagram
 arrives; every event the message produces carries it as `receivedInStatus`.
 
 - **ACTIVE**: never reserved, or the reservation's window has passed.
-- **Held by the sender**: `PAYMENT_INITIATED`, and the sender is the same payer
-  (`payer.info` paired with the certificate subject,
-  [ADR-0021](docs/adr/0021-a-reservation-knows-who-holds-it.md)).
-- **Held by someone else**: `PAYMENT_INITIATED`, held by another payer, or by
-  nobody identifiable (taken through the status-update API).
+- **Held by the sender**: `PAYMENT_INITIATED`, and the sender is the same payer:
+  `payer.info` present on both and equal, and the same certificate subject.
+- **Held by someone else**: `PAYMENT_INITIATED`, held by another payer, by nobody
+  identifiable (taken through the status-update API), or **the sender sent no
+  `payer.info`**: without it there is no telling two payers apart, so they are
+  assumed to be different (ADR-0036, replacing ADR-0021's certificate-only fallback).
 - **On a chain** means Solana and any chain interpreted later. Bank rails never
   publish `payment.sent`; the QR Code id travels in their payment (`QRCD`).
 
@@ -172,7 +178,7 @@ Messages from a payer:
 
 | Message | ACTIVE | Held by the sender | Held by someone else | PAID or CANCELLED |
 |---|---|---|---|---|
-| **Pre-commit** (no `transactionId`) | Judged at the payee's clock. Yes: → `PAYMENT_INITIATED` held by the sender, `payment.initiated`. No: 400, nothing changes | A retry, judged again. Yes: window refreshed, no event. Once a hash is registered: 409, nothing changes § | 409, nothing changes | 400, nothing changes |
+| **Pre-commit** (no `transactionId`) | Judged at the payee's clock. Yes: → `PAYMENT_INITIATED` held by the sender, `payment.initiated` (also when it takes over a lapsed reservation). No: 400, nothing changes | A retry, judged again. Yes: window refreshed, no event. No: 400, → `ACTIVE`, reservation cleared (on a chain: `payment.failed`). Once a hash is registered: 409, nothing changes § | 409, nothing changes | 400, nothing changes |
 | **Post-commit** (`transactionId` present) | Accepted, never judged: → `PAYMENT_INITIATED` held by the sender; `payment.initiated`, then `payment.sent` on a chain; flagged `RECEIVED_IN_WRONG_STATUS`; the window stops | Accepted, status unchanged; `payment.sent` on a chain; the window stops | Accepted, the holder keeps it; `payment.sent` on a chain, flagged `RECEIVED_IN_WRONG_STATUS`; the window stops | Accepted, status unchanged; `payment.sent` on a chain, flagged `RECEIVED_IN_WRONG_STATUS` |
 | **`PAYMENT_INITIATED` with a hash** (chain) | As a post-commit, also flagged `ACTION_CONTRADICTS_HASH` | same | same | same |
 | **`SENT` without a hash** (chain) | 400 | 400 | 400 | 400 |
@@ -187,7 +193,7 @@ From the payment system (status-update API), and from time:
 | **→ `PAID`** | → `PAID`, `payment.cleared` | same | 400 |
 | **→ `CANCELLED`** | → `CANCELLED`, `payment.cancelled` | same | 400 |
 | **→ `ACTIVE`** (reactivate) | 400 | → `ACTIVE`, reservation cleared, no event | 400 |
-| **The reservation's window passes** | — | reads `ACTIVE`, nothing written, no event; never once a hash is registered | — |
+| **The reservation's window passes** | — | reads `ACTIVE`, nothing written, no event; never once a hash is registered, nor when `ttl-seconds` is `0` | — |
 
 § **Once a hash is registered, no payer message changes the QR Code's status** (owner,
 2026-11-14): money has moved, so only the payment system ends the reservation.
@@ -216,7 +222,7 @@ stateDiagram-v2
     ACTIVE --> PAYMENT_INITIATED : post-commit, flagged (no pre-commit)
     ACTIVE --> PAYMENT_INITIATED : status-update, held by nobody
     PAYMENT_INITIATED --> PAYMENT_INITIATED : retry accepted, or a post-commit (flagged if not the holder's)
-    PAYMENT_INITIATED --> ACTIVE : NOT_SENT, reactivate, or the window passes (never once a hash is registered)
+    PAYMENT_INITIATED --> ACTIVE : refused retry, NOT_SENT, reactivate, or the window passes (never once a hash is registered)
     ACTIVE --> PAID : status-update
     PAYMENT_INITIATED --> PAID : status-update
     ACTIVE --> CANCELLED : status-update

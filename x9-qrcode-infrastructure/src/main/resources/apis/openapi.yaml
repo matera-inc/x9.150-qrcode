@@ -652,7 +652,7 @@ paths:
         Code `PAID`**; only the payment system does, through the status-update API.
 
         **Only the party holding the reservation may retry its pre-commit, report as the holder, or
-        give it back** (ADR-0021). That party is `payer.info` paired with the subject of the
+        give it back** (ADR-0021, ADR-0036). That party is `payer.info` paired with the subject of the
         certificate that signed this JWS, both must match. `payer.info` is a field you filled in,
         so on its own it would let any signer claim to be any payer; paired with the certificate it
         distinguishes between customers of an institution that has already been authenticated.
@@ -661,7 +661,12 @@ paths:
 
         - **Retrying is safe.** A repeated pre-commit from the holder is judged again; if accepted
           it answers `200` and refreshes the reservation's window. It publishes no second
-          `payment.initiated`, so a consumer cannot mistake your retry for a second payer.
+          `payment.initiated`, so a consumer cannot mistake your retry for a second payer. **If
+          the retry is refused** (say the discount has ended), the reservation is released in the
+          same step: the QR Code returns to `ACTIVE` (on a chain, with `payment.failed`), and you
+          may send a new pre-commit with the face amount.
+        - **The same payer means `payer.info` present on both, equal, and the same certificate
+          subject.** Without `payer.info` you are assumed to be a different payer (ADR-0036).
         - **A second payer's pre-commit gets `409`**, not `400`. Your request is well formed;
           somebody else is holding the bill. Come back later rather than looking for a mistake.
           The only payment this service authorizes is the one that won the pre-commit.
@@ -737,9 +742,15 @@ paths:
           description: |-
             Another payer holds this QR Code, and this is a pre-commit or a `NOT_SENT`. The request
             is well formed and it is the state that refuses it, so retry later rather than
-            correcting the request: a reservation lapses on its own (`x9.reservation.ttl-seconds`,
-            90 by default), unless a transaction hash has been registered for the QR Code, after
-            which only the payment system ends it.
+            correcting the request: a reservation lapses on its own after
+            `x9.reservation.ttl-seconds` (environment variable `X9_RESERVATION_TTL_SECONDS`, 90 by
+            default). It does not lapse when that setting is `0` (no window: it ends only by the
+            holder's refused retry, its `NOT_SENT`, or the payment system's status-update), nor once
+            a transaction hash has been registered for the QR Code, after which only the payment
+            system ends it.
+
+            A payer that sends no `payer.info` is never recognised as the holder, so its own retry
+            and its `NOT_SENT` get `409` too.
 
             Also returned to any pre-commit once a transaction hash is registered for the QR Code,
             and as "busy" (with the current status) when the notification kept losing a concurrent
