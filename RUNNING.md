@@ -209,6 +209,9 @@ fetches it).
 go test ./...                     # unit tests
 go tool golangci-lint run ./...   # lint (.golangci.yml; the linter is pinned in go.mod)
 others/scripts/check-go-lint-planted.sh   # proves each lint rule still fires (testdata/lint)
+others/scripts/ci-go.sh           # everything CI's `go` job runs: vet, lint, nilaway, govulncheck,
+                                  # go-licenses, race + shuffle + leak checks, fuzz smoke,
+                                  # reproducible build, SBOM. `ci-go.sh lint test` runs just those.
 # against the throwaway database of db/docker-compose.yml (it trusts every local connection):
 DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=postgres DATABASE_USER=x9_qrcode_app \
 DATABASE_PASSWORD=unused DATABASE_SSLMODE=disable go run ./cmd/x9-qrcode

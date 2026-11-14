@@ -5,15 +5,136 @@
 #
 # The Go lint configuration: the only one in the repository. Run it with
 #   go tool golangci-lint run ./...
-# A //nolint must name the linter and give its reason.
+# CI runs it in the `go` job (others/scripts/ci-go.sh). A //nolint must name the linter and give its
+# reason. testdata/lint/planted proves the rules below still fire.
 
 version: "2"
 
 linters:
+  # The standard set (errcheck, govet, ineffassign, staticcheck, unused), plus a chosen list. Never
+  # `default: all`, whose meaning changes with every release.
   default: standard
   enable:
-    - forbidigo   # banned identifiers, below
+    - bodyclose         # an HTTP response body left open holds its connection
+    - contextcheck      # a function that has a context passes it on
+    - depguard          # the libraries this module chose, and the ones it did not (below)
+    - errorlint         # errors compared with errors.Is / errors.As, wrapped with %w
+    - exhaustive        # a switch on an enum names every value
+    - forbidigo         # banned identifiers (below)
+    - gochecknoinits    # no init(): main is the start-up order
+    - goheader          # every Go file carries the licence header
+    - gosec             # injection, weak crypto, file permissions, missing server timeouts
+    - misspell
+    - modernize         # the newer API where one exists
+    - nilerr            # an error checked, then nil returned
+    - noctx             # every outbound request and query carries a context
+    - nolintlint        # every //nolint names its linter and says why
+    - perfsprint        # strconv over fmt.Sprintf for plain conversions
+    - prealloc
+    - revive            # naming and doc comments
+    - rowserrcheck      # rows.Err() is checked
+    - sloglint          # structured, constant-message logging
+    - sqlclosecheck     # rows and statements are closed
+    - usestdlibvars     # http.MethodGet, http.StatusOK, …
+
   settings:
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment  # readability of structs outranks a few bytes of padding
+        - shadow          # `err :=` in an inner scope is idiomatic; the noise would train people to ignore lint
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+    sloglint:
+      no-mixed-args: true
+      static-msg: true
+      key-naming-case: camel
+      no-global: default   # log through the logger main builds, not slog's package functions
+
+    goheader:
+      values:
+        regexp:
+          year: 20\d\d
+      template: |-
+        Copyright © {{ year }} Matera Systems, Inc.
+        Licensed under the Matera Source License v1.0 (source-available; not open source). See LICENSE.md.
+        Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
+        based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
+
+    depguard:
+      rules:
+        chosen-libraries:
+          list-mode: lax
+          deny:
+            # HTTP: the standard library's ServeMux and func(http.Handler) http.Handler (ADR-0022).
+            - { pkg: github.com/gin-gonic/gin, desc: "use net/http's ServeMux with method patterns (ADR-0022)" }
+            - { pkg: github.com/labstack/echo, desc: "use net/http's ServeMux with method patterns (ADR-0022)" }
+            - { pkg: github.com/go-chi/chi, desc: "use net/http's ServeMux with method patterns (ADR-0022)" }
+            - { pkg: github.com/gorilla/mux, desc: "use net/http's ServeMux with method patterns (ADR-0022)" }
+            - { pkg: github.com/gofiber/fiber, desc: "use net/http's ServeMux with method patterns (ADR-0022)" }
+            - { pkg: github.com/julienschmidt/httprouter, desc: "use net/http's ServeMux with method patterns (ADR-0022)" }
+            - { pkg: github.com/go-resty/resty, desc: "use a *http.Client built in main" }
+            - { pkg: github.com/hashicorp/go-retryablehttp, desc: "use a *http.Client built in main" }
+            # Database: pgx/v5 directly, hand-written SQL; no ORM, no SQL generator (ADR-0022).
+            - { pkg: gorm.io, desc: "use pgx/v5 with hand-written SQL (ADR-0022)" }
+            - { pkg: entgo.io, desc: "use pgx/v5 with hand-written SQL (ADR-0022)" }
+            - { pkg: github.com/uptrace/bun, desc: "use pgx/v5 with hand-written SQL (ADR-0022)" }
+            - { pkg: github.com/jmoiron/sqlx, desc: "use pgx/v5 with hand-written SQL (ADR-0022)" }
+            - { pkg: github.com/georgysavva/scany, desc: "use pgx/v5 with hand-written SQL (ADR-0022)" }
+            - { pkg: github.com/lib/pq, desc: "use github.com/jackc/pgx/v5 (ADR-0022)" }
+            - { pkg: github.com/jackc/pgx/v5/stdlib, desc: "use pgx/v5's native interface, not database/sql (ADR-0022)" }
+            - { pkg: database/sql, desc: "use pgx/v5's native interface (ADR-0022)" }
+            - { pkg: github.com/jackc/pgx/v4, desc: "use github.com/jackc/pgx/v5" }
+            - { pkg: github.com/jackc/pgx$, desc: "use github.com/jackc/pgx/v5" }
+            # Configuration: internal/config (ADR-0031).
+            - { pkg: github.com/spf13/viper, desc: "configuration comes from internal/config (ADR-0031)" }
+            - { pkg: github.com/kelseyhightower/envconfig, desc: "configuration comes from internal/config (ADR-0031)" }
+            - { pkg: github.com/joho/godotenv, desc: "configuration comes from internal/config (ADR-0031)" }
+            # Dependency injection: constructors, wired in main (ADR-0022).
+            - { pkg: github.com/google/wire, desc: "wire constructors by hand in main (ADR-0022)" }
+            - { pkg: go.uber.org/fx, desc: "wire constructors by hand in main (ADR-0022)" }
+            - { pkg: go.uber.org/dig, desc: "wire constructors by hand in main (ADR-0022)" }
+            # Validation: hand-written (ADR-0022).
+            - { pkg: github.com/go-playground/validator, desc: "validation is hand-written (ADR-0022)" }
+            - { pkg: github.com/go-ozzo/ozzo-validation, desc: "validation is hand-written (ADR-0022)" }
+            # Logging: log/slog, JSON (ADR-0022).
+            - { pkg: log$, desc: "use log/slog" }
+            - { pkg: github.com/sirupsen/logrus, desc: "use log/slog" }
+            - { pkg: go.uber.org/zap, desc: "use log/slog" }
+            - { pkg: github.com/rs/zerolog, desc: "use log/slog" }
+            # JSON: encoding/json.
+            - { pkg: github.com/json-iterator/go, desc: "use encoding/json" }
+            - { pkg: github.com/goccy/go-json, desc: "use encoding/json" }
+            - { pkg: github.com/bytedance/sonic, desc: "use encoding/json" }
+            - { pkg: github.com/mailru/easyjson, desc: "use encoding/json" }
+            # Errors: the standard library.
+            - { pkg: github.com/pkg/errors, desc: "use errors and fmt.Errorf with %w" }
+            # JOSE: go-jose v4 parses, crypto/* verifies (ADR-0027).
+            - { pkg: github.com/golang-jwt/jwt, desc: "parse with github.com/go-jose/go-jose/v4 (ADR-0027)" }
+            - { pkg: github.com/lestrrat-go/jwx, desc: "parse with github.com/go-jose/go-jose/v4 (ADR-0027)" }
+            - { pkg: gopkg.in/square/go-jose, desc: "use github.com/go-jose/go-jose/v4 (ADR-0027)" }
+            - { pkg: github.com/square/go-jose, desc: "use github.com/go-jose/go-jose/v4 (ADR-0027)" }
+            # UUIDs: github.com/google/uuid (ADR-0026).
+            - { pkg: github.com/gofrs/uuid, desc: "use github.com/google/uuid (ADR-0026)" }
+            - { pkg: github.com/satori/go.uuid, desc: "use github.com/google/uuid (ADR-0026)" }
+            # Tests: the standard testing package and go-cmp; the runtime's goroutineleak profile.
+            - { pkg: github.com/stretchr/testify, desc: "use testing and github.com/google/go-cmp" }
+            - { pkg: github.com/onsi/ginkgo, desc: "use testing" }
+            - { pkg: github.com/onsi/gomega, desc: "use testing and github.com/google/go-cmp" }
+            - { pkg: github.com/golang/mock, desc: "write a small fake behind the consumer's interface" }
+            - { pkg: go.uber.org/mock, desc: "write a small fake behind the consumer's interface" }
+            - { pkg: go.uber.org/goleak, desc: "use internal/leaktest (the runtime's goroutineleak profile)" }
+            # Scheduling: one goroutine and one time.Timer, reset after each run (ADR-0029).
+            - { pkg: github.com/robfig/cron, desc: "one goroutine with a time.Timer, reset after each run (ADR-0029)" }
+            - { pkg: github.com/go-co-op/gocron, desc: "one goroutine with a time.Timer, reset after each run (ADR-0029)" }
+            # Runtime: defaults.
+            - { pkg: go.uber.org/automaxprocs, desc: "the runtime reads the CPU quota itself" }
+            - { pkg: math/rand$, desc: "use math/rand/v2, or crypto/rand for anything secret" }
+            - { pkg: io/ioutil, desc: "use io and os" }
+
     forbidigo:
       analyze-types: true
       forbid:
@@ -22,7 +143,34 @@ linters:
           msg: >-
             business time comes from internal/clock (ADR-0033). Measuring a real duration (latency,
             a timeout) may use it with //nolint:forbidigo // <what it measures>
+        # The global mux is shared with every imported package; ListenAndServe can set no timeout.
+        - pattern: ^http\.(Handle|HandleFunc|DefaultServeMux|ListenAndServe|ListenAndServeTLS)$
+          msg: build an http.ServeMux and an http.Server with ADR-0031's timeouts in main
+        # The default client has no timeout.
+        - pattern: ^http\.(DefaultClient|Get|Head|Post|PostForm)$
+          msg: use a *http.Client built in main, with timeouts
+        # Configuration has one reader.
+        - pattern: ^os\.(Getenv|LookupEnv)$
+          msg: configuration comes from internal/config (ADR-0031)
+        # Logging goes through slog.
+        - pattern: ^fmt\.Print(f|ln)?$
+          msg: log with log/slog
+        # A map per row turns every read into a type assertion.
+        - pattern: ^pgx\.RowToMap$
+          msg: scan into typed values, or pgx.RowToStructByName
+
   exclusions:
+    generated: strict
     rules:
       - path: ^internal/clock/
         linters: [forbidigo]
+        text: "time\\."
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/matera-inc/x9.150-qrcode

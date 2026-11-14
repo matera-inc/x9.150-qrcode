@@ -93,9 +93,11 @@ func TestRunLogsJSONWithTraceIDs(t *testing.T) {
 	client := &http.Client{Timeout: 2 * time.Second}
 	var resp *http.Response
 	for range 100 {
-		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 		req.Header.Set("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
-		var err error
 		if resp, err = client.Do(req); err == nil {
 			break
 		}

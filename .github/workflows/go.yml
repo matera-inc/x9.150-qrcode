@@ -1,0 +1,80 @@
+name: Go
+
+# Story 7.5: every check of the Go build on every pull request that touches Go. The checks live in
+# others/scripts/ci-go.sh, which runs the same on a laptop; every tool is pinned with a `tool`
+# directive in go.mod. The Java `build` job (ci.yml) is separate and unchanged.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - ".golangci.yml"
+      - "testdata/**"
+      - "cmd/**"
+      - "internal/**"
+      - "db/changelog/**"
+      - "others/scripts/ci-go.sh"
+      - "others/scripts/check-go-lint-planted.sh"
+      - ".github/workflows/go.yml"
+  push:
+    branches: [main]
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - ".golangci.yml"
+      - "testdata/**"
+      - "cmd/**"
+      - "internal/**"
+      - "db/changelog/**"
+      - "others/scripts/ci-go.sh"
+      - "others/scripts/check-go-lint-planted.sh"
+      - ".github/workflows/go.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: go
+    runs-on: ubuntu-latest
+    env:
+      # Never let `go` fetch another toolchain: the pin step fails instead.
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the toolchain go.mod pins
+        id: toolchain
+        run: echo "version=$(sed -nE 's/^toolchain go([0-9.]+)$/\1/p' go.mod)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up that toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.toolchain.outputs.version }}
+          cache: true
+
+      - name: Toolchain, modules, vet, lint, planted violations
+        run: others/scripts/ci-go.sh pin modules vet lint planted
+
+      - name: nilaway, govulncheck, go-licenses
+        run: others/scripts/ci-go.sh nilaway vuln licenses
+
+      # The database tests start PostgreSQL and Liquibase with Docker, which the runner provides.
+      - name: Tests (race, shuffled, leak-checked) and fuzz smoke
+        run: others/scripts/ci-go.sh leakcheck test fuzz
+
+      - name: Reproducible build and SBOM
+        run: others/scripts/ci-go.sh reproducible sbom
+
+      - name: Publish the SBOM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-sbom
+          path: go-ci-out/*.sbom.json
+          if-no-files-found: warn
