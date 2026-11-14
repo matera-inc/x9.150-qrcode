@@ -6,6 +6,10 @@ fixed ones stay under **Fixed**, for the record.
 
 ## Open
 
+_None._
+
+## Fixed
+
 ---
 
 ## BUG-002 — A status-update `PAYMENT_INITIATED` on a lapsed reservation reserves nothing
@@ -13,8 +17,9 @@ fixed ones stay under **Fixed**, for the record.
 - **Reported:** 2026-11-14 (Story 4.1, ADR-0035 row X9-MAP-010)
 - **Severity:** Medium — the payment system believes it has reserved a QR Code that any payer can
   still take.
-- **Status:** Open. Pinned by the strict expected failure
-  `others/blackbox/tests/test_transition_map.py::test_map_010_status_update_payment_initiated_on_a_lapsed_reservation`.
+- **Fixed:** 2026-11-14 — the X-to-X no-op now requires both the stored and the effective status to
+  match the request. Pinned by `X9-LIFE-142`/`X9-LIFE-143` (`StatusUpdateAfterLapsedReservationApiTest`)
+  and `others/blackbox/tests/test_transition_map.py::test_map_010_status_update_payment_initiated_on_a_lapsed_reservation`.
 - **Area:** `UpdateQRCodeStatusUseCase` (application layer)
 
 ### Steps to reproduce
@@ -48,8 +53,6 @@ status for the `ACTIVE` case; for `PAYMENT_INITIATED` the same choice drops a re
 Compare the effective status for `PAYMENT_INITIATED` (or for every status: on a lapsed reservation
 an `ACTIVE` request is already refused by `reactivate`). Decide with the owner's answer on the X-to-X
 cells of ADR-0036's matrix (Story 4.1, "Questions for the owner").
-
-## Fixed
 
 ---
 

@@ -60,10 +60,14 @@ public class UpdateQRCodeStatusUseCase extends UseCase<UpdateQRCodeStatusInput, 
         //
         // PAYEE-FACING ONLY. A payer announcing twice is two payers reaching for one bill and is
         // still refused — that path is the notification endpoint, not this one.
-        // Compared against the STORED status, not the effective one. A lapsed reservation asked to
-        // go ACTIVE is a real transition — it writes the release down and clears the stamp — and
-        // short-circuiting on the effective reading would leave that stamp behind.
-        if (qrCodeEntity.getStatus().equals(QRCodeStatusEnum.fromValue(updateQRCodeStatusInput.status().value()))) {
+        // Both the STORED and the EFFECTIVE status must already be the one asked for:
+        // - a lapsed reservation asked to go ACTIVE is a real transition (stored PAYMENT_INITIATED):
+        //   it writes the release down and clears the stamp;
+        // - a lapsed reservation asked to go PAYMENT_INITIATED is a real transition too (effective
+        //   ACTIVE): it reserves the QR Code again and emits payment.initiated. Skipping it left the
+        //   payment system believing it held a QR Code any payer could take (BUG-002).
+        QRCodeStatusEnum requested = QRCodeStatusEnum.fromValue(updateQRCodeStatusInput.status().value());
+        if (qrCodeEntity.getStatus().equals(requested) && qrCodeEntity.effectiveStatus().equals(requested)) {
             return new UpdateQRCodeStatusOutput(qrCodeIdVO.valueAsString(), qrCodeEntity.effectiveStatus().value());
         }
 

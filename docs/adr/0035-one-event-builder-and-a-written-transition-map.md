@@ -142,7 +142,8 @@ decides each one.
   `ACTIVE` (effective), so it should reserve the QR Code again, unattributed, with
   `payment.initiated`. Java compares the *stored* status for its X-to-X no-op, answers 200, writes
   nothing and emits nothing: the QR Code still reads `ACTIVE` and the next payer takes it
-  ([BUG-002](../../known-bugs.md)).
+  ([BUG-002](../../known-bugs.md)). **Fixed 2026-11-14:** the no-op now requires the stored and
+  the effective status both to match, and the test asserts the row.
 
 ---
 
