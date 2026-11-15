@@ -193,13 +193,17 @@ func TestTestClockRefusesARealCertificate(t *testing.T) {
 	}
 
 	apiPort, clockPort := freePort(t.Context(), t), freePort(t.Context(), t)
-	env := clockEnv(apiPort, clockPort, "X9_TESTING_CLOCKCONTROL=true", "X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION="+path)
+	// The key is EC P-256, so the algorithm is ES256: the refusal must come from the clock guard,
+	// not from the signing check (Story 8.4) that runs before it.
+	env := clockEnv(apiPort, clockPort, "X9_TESTING_CLOCKCONTROL=true", "X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION="+path,
+		"X9_CERTIFICATE_JWKALGORITHM=ES256")
 	err = run(t.Context(), nil, env, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "not a bundled certificate") || !strings.Contains(err.Error(), "CN=real.example.com") {
 		t.Fatalf("err = %v, want a refusal naming the certificate", err)
 	}
 
 	// The same key starts with the flag off: only the clock is refused.
-	_, stop := startRun(t, clockEnv(apiPort, clockPort, "X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION="+path))
+	_, stop := startRun(t, clockEnv(apiPort, clockPort, "X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION="+path,
+		"X9_CERTIFICATE_JWKALGORITHM=ES256"))
 	stop()
 }
