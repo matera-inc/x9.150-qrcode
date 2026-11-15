@@ -111,7 +111,12 @@ func TestRunLogsJSONWithTraceIDs(t *testing.T) {
 	if resp == nil {
 		t.Fatal("the server never answered")
 	}
+	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
+	// S9.2-AC1: the API's routes sit behind httplog, and an unknown path is Spring's 404.
+	if resp.StatusCode != http.StatusNotFound || !strings.Contains(string(body), `"error":"Not Found","path":"/nothing-here"`) {
+		t.Errorf("an unknown path: %d %s, want Spring's 404", resp.StatusCode, body)
+	}
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatalf("run returned %v after SIGTERM", err)

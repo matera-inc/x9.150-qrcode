@@ -29,6 +29,7 @@ import (
 	"github.com/matera-inc/x9.150-qrcode/internal/config"
 	"github.com/matera-inc/x9.150-qrcode/internal/database"
 	"github.com/matera-inc/x9.150-qrcode/internal/health"
+	"github.com/matera-inc/x9.150-qrcode/internal/httpapi"
 	"github.com/matera-inc/x9.150-qrcode/internal/httplog"
 	"github.com/matera-inc/x9.150-qrcode/internal/jws"
 	"github.com/matera-inc/x9.150-qrcode/internal/keys"
@@ -123,9 +124,11 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 
 	// ── 3. HTTP server: liveness UP from now on, readiness OUT_OF_SERVICE until the schema check passes ──
 	// Every API answer carries X-Test-Clock-Offset while the business clock is moved.
-	mux := http.NewServeMux()
-	probes.Register(mux)
-	srv := newServer(cfg.Server.Port, httplog.Middleware(logger, testclock.OffsetHeader(businessClock, mux)))
+	// The routes of Epics 9 and 10 are registered on api (internal/httpapi), which answers what no
+	// route takes, and request headers past 30 KB, as the Java build does (S9.2-AC1, S9.2-AC8).
+	api := httpapi.New(logger, businessClock.Now)
+	probes.Register(api.Mux())
+	srv := newServer(cfg.Server.Port, httplog.Middleware(logger, testclock.OffsetHeader(businessClock, api)))
 	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", srv.Addr)
 	if err != nil {
 		pools.Close()
@@ -253,7 +256,9 @@ func newServer(port int, h http.Handler) *http.Server {
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      40 * time.Second,
 		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    30 << 10, // 30 KB, as the Java build
+		// net/http answers a header past this limit itself, with a 431 the Java build never gives;
+		// httpapi refuses past 30 KB as Tomcat does (a 400), so this stays well above it.
+		MaxHeaderBytes: 1 << 20,
 	}
 }
 
