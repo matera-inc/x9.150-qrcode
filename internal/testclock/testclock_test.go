@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/matera-inc/x9.150-qrcode/internal/clock"
+	"github.com/matera-inc/x9.150-qrcode/internal/config"
 	"github.com/matera-inc/x9.150-qrcode/internal/keys"
 	"github.com/matera-inc/x9.150-qrcode/internal/leaktest"
 )
@@ -67,9 +68,23 @@ func readCertPEM(t *testing.T, path string) *x509.Certificate {
 	return cert
 }
 
+// bundledDemoCertificate is the certificate of the demo identity internal/keys bundles (Java's own
+// x9-demo file), loaded the way the service loads it.
+func bundledDemoCertificate() (*x509.Certificate, error) {
+	store, err := keys.Load(config.Certificate{}, slog.New(slog.DiscardHandler))
+	if err != nil {
+		return nil, err
+	}
+	return store.Current().Identity.Certificate(), nil
+}
+
 func demoCertificate(t *testing.T) *x509.Certificate {
 	t.Helper()
-	return readCertPEM(t, filepath.Join(repoRoot, "internal/keys/bundled/x9-demo.pem"))
+	cert, err := bundledDemoCertificate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cert
 }
 
 // freshCertificate is generated here, never committed: the only kind of certificate the refusal
@@ -103,12 +118,14 @@ func TestBundledCertificatesPassTheGuard(t *testing.T) {
 	if !IsBundled(keys.DemoFingerprint) {
 		t.Fatal("the demo fingerprint is not bundled")
 	}
-	paths := []string{filepath.Join(repoRoot, "internal/keys/bundled/x9-demo.pem")}
+	if err := RequireBundled(demoCertificate(t)); err != nil {
+		t.Errorf("bundled demo: %v", err)
+	}
 	golden, err := filepath.Glob(filepath.Join(repoRoot, "others/blackbox/golden/pki/*.pem"))
 	if err != nil || len(golden) == 0 {
 		t.Fatalf("no golden PKI certificates: %v", err)
 	}
-	for _, path := range append(paths, golden...) {
+	for _, path := range golden {
 		if err := RequireBundled(readCertPEM(t, path)); err != nil {
 			t.Errorf("%s: %v", path, err)
 		}
@@ -473,7 +490,7 @@ func FuzzPut(f *testing.F) {
 		`{}`, `not json`, `{"at": null, "offsetMillis": 1e3}`, `[1]`} {
 		f.Add(s)
 	}
-	cert, err := loadCert(filepath.Join(repoRoot, "internal/keys/bundled/x9-demo.pem"))
+	cert, err := bundledDemoCertificate()
 	if err != nil {
 		f.Fatal(err)
 	}
