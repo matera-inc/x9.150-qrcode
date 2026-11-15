@@ -26,7 +26,7 @@ tests/test_qr_code.py
 !X9-DEC-016
 tests/test_create_refusals.py
 # What we generate is closed at every level (INTERPRETATION I-16): create and PATCH. The
-# outbound cases (X9-RAIL-509) join with the payer side.
+# outbound cases (X9-RAIL-509) are Story 10.6's, below.
 X9-RAIL-507
 X9-RAIL-508
 # A PATCH may carry what a GET carries, compared with the stored value (option B).
@@ -152,6 +152,7 @@ X9-TIME-017
 
 # Story 10.6: a PSP pays somebody else's QR Code: the outbound pre-payment and post-payment.
 # X9-SIG-475's other cases (a question sent to /pub/api/v1/payment-notification) join with Story 10.4.
+X9-RAIL-509
 tests/test_payee_answers.py
 X9-SIG-301
 X9-SIG-302
