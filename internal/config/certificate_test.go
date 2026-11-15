@@ -1,0 +1,131 @@
+// Copyright © 2026 Matera Systems, Inc.
+// Licensed under the Matera Source License v1.0 (source-available; not open source). See LICENSE.md.
+// Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
+// based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
+
+package config
+
+import (
+	"errors"
+	"strings"
+	"testing"
+)
+
+// S8.2-AC1: the keystore and truststore keep the Java build's variable names (ADR-0031), and
+// Spring's file: prefix keeps its meaning.
+func TestCertificateVariablesAreJavas(t *testing.T) {
+	ks, ts := writeFile(t, "signer.pem", "pem"), writeFile(t, "trust.pem", "pem")
+	cfg, err := Load("", append(complete(),
+		"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION=file:"+ks,
+		"X9_CERTIFICATE_PRIVATEKEYSTORE_TYPE=PKCS12",
+		"X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD=store-pw",
+		"X9_CERTIFICATE_PRIVATEKEYSTORE_PRIVATEKEYPASSWORD=key-pw",
+		"X9_CERTIFICATE_PRIVATEKEYSTORE_ALIAS=x9-private-keystore",
+		"X9_CERTIFICATE_PRIVATEKEYSTORE_ENFORCEDALIAS=signer",
+		"X9_CERTIFICATE_TRUSTSTORE_LOCATION=file://"+ts,
+		"X9_CERTIFICATE_TRUSTSTORE_TYPE=JKS",
+		"X9_CERTIFICATE_TRUSTSTORE_PASSWORD=trust-pw",
+		"X9_CERTIFICATE_TRUSTSTORE_ALIAS=x9-truststore",
+		"KEYSTORE_RELOAD_FREQUENCY=5000",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Certificate{
+		PrivateKeystore: PrivateKeystore{
+			Location: ks, Type: "PKCS12", Password: "store-pw", PrivateKeyPassword: "key-pw",
+			Alias: "x9-private-keystore", EnforcedAlias: "signer",
+		},
+		Truststore: Truststore{Location: ts, Type: "JKS", Password: "trust-pw", Alias: "x9-truststore"},
+	}
+	if cfg.Certificate != want {
+		t.Errorf("certificate = %+v, want %+v", cfg.Certificate, want)
+	}
+	if cfg.Keystore.Reload.Frequency != 5000 {
+		t.Errorf("keystore.reload.frequency = %d", cfg.Keystore.Reload.Frequency)
+	}
+	if v := cfg.Certificate.LogValue().String(); strings.Contains(v, "-pw") {
+		t.Errorf("a keystore password reached the log value: %s", v)
+	}
+}
+
+// S8.2-AC4: with nothing configured, the bundled demo identity is used (empty locations), and the
+// keystore files are re-read every 30 s, as in Java.
+func TestCertificateDefaults(t *testing.T) {
+	cfg, err := Load("", complete())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Certificate != (Certificate{}) || cfg.Keystore.Reload.Frequency != 30000 {
+		t.Fatalf("certificate = %+v, reload = %d", cfg.Certificate, cfg.Keystore.Reload.Frequency)
+	}
+}
+
+// S8.2-AC1: what the Go build cannot honour is refused at start, saying what to do instead.
+func TestCertificateRefusals(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		env  []string
+		want string
+	}{
+		{
+			"classpath location", []string{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION=classpath:/certificate/x9-demo.jks"},
+			`certificate.private-keystore.location (X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION): "classpath:/certificate/x9-demo.jks" is a Java classpath location`,
+		},
+		{
+			"missing file", []string{"X9_CERTIFICATE_TRUSTSTORE_LOCATION=/nonexistent/trust.pem"},
+			"certificate.truststore.location (X9_CERTIFICATE_TRUSTSTORE_LOCATION): cannot be read",
+		},
+		{
+			"PKCS11 type", []string{"X9_CERTIFICATE_PRIVATEKEYSTORE_TYPE=PKCS11"},
+			"certificate.private-keystore.type (X9_CERTIFICATE_PRIVATEKEYSTORE_TYPE): PKCS11 (an HSM) is not supported",
+		},
+		{
+			"unknown type", []string{"X9_CERTIFICATE_TRUSTSTORE_TYPE=BKS"},
+			"certificate.truststore.type (X9_CERTIFICATE_TRUSTSTORE_TYPE): must be PKCS12 or PEM",
+		},
+		{
+			"provider", []string{"X9_CERTIFICATE_PRIVATEKEYSTORE_PROVIDER=SunPKCS11-HSM"},
+			`X9_CERTIFICATE_PRIVATEKEYSTORE_PROVIDER: "SunPKCS11-HSM" selects an HSM or a security provider`,
+		},
+		{"HSM", []string{"X9_CERTIFICATE_PRIVATEKEYSTORE_HSMENABLED=true"}, "X9_CERTIFICATE_PRIVATEKEYSTORE_HSMENABLED"},
+		{"load strategy", []string{"X9_CERTIFICATE_TRUSTSTORE_LOADSTRATEGY=DO_NOT_LOAD"}, "X9_CERTIFICATE_TRUSTSTORE_LOADSTRATEGY"},
+		{
+			"no reload interval", []string{"KEYSTORE_RELOAD_FREQUENCY=0"},
+			"keystore.reload.frequency (KEYSTORE_RELOAD_FREQUENCY): must be at least 1",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Load("", append(complete(), tc.env...))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want it to contain %q", err, tc.want)
+			}
+		})
+	}
+	// Java's own defaults for the HSM settings are harmless, and accepted.
+	if _, err := Load("", append(complete(), "X9_CERTIFICATE_PRIVATEKEYSTORE_HSMENABLED=false",
+		"X9_CERTIFICATE_PRIVATEKEYSTORE_LOADSTRATEGY=LOAD_INPUT_STREAM")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// S8.2-AC2: an ENC(…) value is refused at start, naming the converter; Go never decrypts Jasypt.
+func TestEncryptedValuesAreRefused(t *testing.T) {
+	for _, name := range []string{"X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD", "X9_CERTIFICATE_TRUSTSTORE_PASSWORD", "DATABASE_PASSWORD"} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Load("", append(without(complete(), name), name+"=ENC(n3SxV0l1E2fZ)"))
+			if !errors.Is(err, ErrOldConfiguration) {
+				t.Fatalf("err = %v, want ErrOldConfiguration", err)
+			}
+			for _, w := range []string{name, "Jasypt", Converter} {
+				if !strings.Contains(err.Error(), w) {
+					t.Errorf("the refusal does not name %q: %v", w, err)
+				}
+			}
+		})
+	}
+	path := writeFile(t, "x9.yaml", "certificate:\n  private-keystore:\n    password: ENC(n3SxV0l1E2fZ)\n")
+	if _, err := Load(path, complete()); !errors.Is(err, ErrOldConfiguration) || !strings.Contains(err.Error(), Converter) {
+		t.Fatalf("an ENC(…) value in the file: err = %v", err)
+	}
+}

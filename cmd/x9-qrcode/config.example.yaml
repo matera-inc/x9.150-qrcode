@@ -48,6 +48,36 @@ log:
 reservation:
   ttl-seconds: 90                # X9_RESERVATION_TTL_SECONDS. 0 = no window; negative is invalid.
 
+# The signing key and the truststore (ADR-0027, ADR-0031): the Java build's x9.certificate.* keys and
+# variables. A location is a path (Spring's file: prefix is accepted); left empty, the bundled DEMO
+# identity is used, as in Java: NON-PRODUCTION, its private key is public, and a WARN says so.
+# The file's content decides its format: PEM (one unencrypted private key, RSA or EC, and its
+# certificate, in one file) or PKCS#12. A JKS file is refused: convert it with x9-config-convert.
+# PKCS#12 is not readable yet in this build: convert it with `openssl pkcs12 -in f.p12 -nodes -out f.pem`.
+# An ENC(…) value is refused: x9-config-convert decrypts it once. HSM / provider settings are refused.
+certificate:
+  private-keystore:
+    location: ""                 # X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION. Empty: the bundled demo.
+    type: ""                     # X9_CERTIFICATE_PRIVATEKEYSTORE_TYPE. Informative: PKCS12, PEM or JKS
+                                 #   (Java's default name); PKCS11 is refused.
+    password: ""                 # X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD (PKCS#12)
+    private-key-password: ""     # X9_CERTIFICATE_PRIVATEKEYSTORE_PRIVATEKEYPASSWORD (PKCS#12; defaults
+                                 #   to the password)
+    alias: x9-private-keystore   # X9_CERTIFICATE_PRIVATEKEYSTORE_ALIAS. Names the keystore in logs.
+    enforced-alias: ""           # X9_CERTIFICATE_PRIVATEKEYSTORE_ENFORCEDALIAS. The PKCS#12 entry to sign
+                                 #   with; without it the file must hold exactly one private key.
+  truststore:
+    location: ""                 # X9_CERTIFICATE_TRUSTSTORE_LOCATION. Empty: the bundled demo truststore.
+    type: ""                     # X9_CERTIFICATE_TRUSTSTORE_TYPE
+    password: ""                 # X9_CERTIFICATE_TRUSTSTORE_PASSWORD (PKCS#12)
+    alias: x9-truststore         # X9_CERTIFICATE_TRUSTSTORE_ALIAS. Names the truststore in logs.
+
+keystore:
+  reload:
+    frequency: 30000             # KEYSTORE_RELOAD_FREQUENCY, in milliseconds, as in Java. Both files
+                                 # are re-read this often; a file that fails to read leaves the last
+                                 # good keys in use, and the error is logged.
+
 testing:
   clock-control: false           # X9_TESTING_CLOCKCONTROL. Must stay false in this build: the movable
                                  # test clock (ADR-0033) arrives with the signing keys.
