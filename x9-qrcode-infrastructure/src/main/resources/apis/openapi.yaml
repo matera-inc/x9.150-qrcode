@@ -2748,7 +2748,7 @@ components:
 
     dateForPayment:
       name: dateForPayment
-      description: "The optional header of date for payment"
+      description: "The date the payer intends to pay, read as that day's UTC start. The payload is priced at the later of that instant and now, and only the payment methods still valid at that same instant are shown, so a date already begun or past is priced, and its methods chosen, at now (INTERPRETATION I-14). Absent: now."
       in: header
       schema:
         type: string
