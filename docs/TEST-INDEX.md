@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**873 tests documented** — every JUnit test and every black-box case.
+**877 tests documented** — every JUnit test and every black-box case.
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
 (STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036 and ADR-0027's EMV and JWS verification rules), the
@@ -579,6 +579,8 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-PATCH-054` | an order, an invoice with its invoicee and adjustments sent to a bill that had none are applied | `PatchMergedRulesApiTest.java` |
 | `X9-PATCH-055` | a currency named twice is refused naming it, nothing moves | `PatchMergedRulesApiTest.java` |
 | `X9-PATCH-056` | `bill: null` is refused by name; `editable: {}` on a non-editable method is the create's refusal; `editable: null` removes it | `PatchMergedRulesApiTest.java` |
+| `X9-PATCH-057` | a merged tip not allowed with a range or presets is refused in the create's words | `QRCodeEntityPatchRulesTest.java` |
+| `X9-PATCH-058` | a PATCH that refuses tips and sends a range or presets is refused, nothing moves; `allowed: false` alone turns the offer off | `PatchMergedRulesApiTest.java` |
 | `X9-PATCH-440` | `lockVersion` is in no answer: create, GET, PATCH, or the signed payload | `test_conditional_requests.py` |
 | `X9-PATCH-501` | a GET serves an ETag | `test_conditional_requests.py` |
 | `X9-PATCH-502` | a stale If-Match on PATCH is 412, and neither the amount nor the ETag moves | `test_conditional_requests.py` |
@@ -598,6 +600,8 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-PATCH-516` | an order, an invoice with its invoicee and adjustments sent to a bill that had none are applied | `test_patch_merged_rules.py` |
 | `X9-PATCH-517` | a currency named twice is refused naming it, nothing moves | `test_patch_merged_rules.py` |
 | `X9-PATCH-518` | `bill: null` and `editable: {}` are refused by name; `editable: null` removes `editable` | `test_patch_merged_rules.py` |
+| `X9-PATCH-519` | a PATCH whose tip is not allowed and carries a range or presets is refused in the create's words, nothing moves | `test_patch_merged_rules.py` |
+| `X9-PATCH-520` | `allowed: false` alone, or with `presets: null`, turns a stored tip offer off, its range and presets with it | `test_patch_merged_rules.py` |
 
 ## Payment requests pinned: create, PATCH, ETag, rebind (Story 4.2)
 

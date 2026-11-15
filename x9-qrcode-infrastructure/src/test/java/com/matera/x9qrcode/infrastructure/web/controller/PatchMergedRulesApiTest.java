@@ -22,6 +22,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
@@ -160,6 +161,42 @@ class PatchMergedRulesApiTest extends AbstractIntegrationTest {
         assertApplied(patch(withPresets, "{ \"bill\": %s, \"paymentMethods\": [ %s ] }"
             .formatted(patchBill("\"tip\": { \"allowed\": true },"), method(FAR))));
         assertEquals(List.of(10, 15), read(withPresets).getList("bill.tip.presets"));
+    }
+
+    /**
+     * <b>X9-PATCH-058</b> — a PATCH that refuses tips and still sends a range or presets is
+     * refused in the create's words, and nothing moves; {@code allowed: false} alone, or with
+     * {@code presets: null}, turns a stored offer off, its range and presets going with it.
+     *
+     * <p><b>Source:</b> Ours. ADR-0017, INTERPRETATION I-10; the merged tip is held to the
+     * create's rule by the owner's decision of 2026-11-15.
+     *
+     * <p><b>Why:</b> A create refused a tip not allowed that carries a range, while a PATCH
+     * answered 200 and silently dropped what the caller sent.
+     */
+    @Test
+    void aPatchThatRefusesTipsCarriesNoOffer() {
+        String offer = "\"tip\": { \"allowed\": true, \"range\": { \"min\": 5, \"max\": 25 }, \"presets\": [10, 15] },";
+        String words = "tip.allow: cannot provided range or presets when tip is not allowed";
+        String body = "{ \"bill\": %s, \"paymentMethods\": [ %s ] }";
+
+        for (String stored : List.of("", offer)) {
+            String id = create(FAR, bill(stored), method(FAR));
+
+            for (String tip : List.of(
+                "{ \"allowed\": false, \"range\": { \"min\": 5, \"max\": 25 } }",
+                "{ \"allowed\": false, \"presets\": [10, 15] }",
+                "{ \"allowed\": false, \"range\": { \"min\": 5, \"max\": 25 }, \"presets\": [10, 15] }")) {
+                assertRefusedUnchanged(id, body.formatted(patchBill("\"tip\": %s,".formatted(tip)), method(FAR)), words);
+            }
+        }
+
+        for (String off : List.of("{ \"allowed\": false }", "{ \"allowed\": false, \"presets\": null }")) {
+            String id = create(FAR, bill(offer), method(FAR));
+
+            assertApplied(patch(id, body.formatted(patchBill("\"tip\": %s,".formatted(off)), method(FAR))));
+            assertEquals(Map.of("allowed", false), read(id).getMap("bill.tip"));
+        }
     }
 
     /**

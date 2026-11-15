@@ -3,7 +3,8 @@
 """A PATCH is checked like a create on its merged result, and ``sentAt`` is when the JSON is
 generated (owner decisions of 2026-11-15), the same on both builds.
 
-- The merged tip is held to ADR-0017: allowed with neither a range nor presets is refused.
+- The merged tip is held to ADR-0017: allowed with neither a range nor presets is refused, and so
+  is not allowed with a range or presets beside it.
 - A date the PATCH sets is not already past on the payee's clock, in the create's words; a date it
   leaves as it was is not judged again, so an expired QR Code can still be extended.
 - A PATCH that moves ``validUntil`` earlier cuts a running reservation back to it (ADR-0019).
@@ -87,6 +88,45 @@ def test_the_merged_tip_is_held_to_the_creates_rule(api):
     response = _patch(api, qr, {"bill": _bill(tip={"allowed": True}), "paymentMethods": [_method()]})
     assert response.status == 200, response
     assert api.qr(qr).body["bill"]["tip"].get("presets") == [10, 15], "the stored presets are kept"
+
+
+TIP_RANGE = {"min": 5, "max": 25}
+TIP_OFFER = {"allowed": True, "range": TIP_RANGE, "presets": [10, 15]}
+
+
+@pytest.mark.parametrize("stored", [None, TIP_OFFER], ids=["no-tip-stored", "offer-stored"])
+@pytest.mark.parametrize("tip", [
+    {"allowed": False, "range": TIP_RANGE},
+    {"allowed": False, "presets": [10, 15]},
+    {"allowed": False, "range": TIP_RANGE, "presets": [10, 15]},
+], ids=["range", "presets", "range-and-presets"])
+def test_a_patch_that_refuses_tips_and_sends_a_range_or_presets_is_refused(api, stored, tip):
+    """X9-PATCH-519 — a PATCH whose tip is not allowed and still carries a range or presets is
+    refused in the create's words, and nothing moves, whatever tip the QR Code had.
+
+    Source: Ours. ADR-0017, INTERPRETATION I-10; the merged tip is held to the create's rule by the
+    owner's decision of 2026-11-15.
+    Why: a create refused the contradiction while a PATCH answered 200 and dropped the range."""
+    created = api.post(PR, body=samples.payment_request(tip=stored))
+    assert created.status == 201, created
+    _assert_refused_unchanged(api, created.body["id"], {"bill": _bill(tip=tip), "paymentMethods": [_method()]},
+                              "tip.allow: cannot provided range or presets when tip is not allowed")
+
+
+@pytest.mark.parametrize("tip", [{"allowed": False}, {"allowed": False, "presets": None}],
+                         ids=["allowed-false-alone", "presets-null"])
+def test_a_patch_that_refuses_tips_turns_the_stored_offer_off(api, tip):
+    """X9-PATCH-520 — ``allowed: false`` alone, or with ``presets: null``, turns a stored tip offer
+    off: the stored range and presets go with it, and the PATCH is applied.
+
+    Source: Ours. ADR-0017; the PATCH restates the tip, so a range it leaves out is gone.
+    Why: refusing a range beside ``allowed: false`` must not make a tip impossible to turn off."""
+    created = api.post(PR, body=samples.payment_request(tip=TIP_OFFER))
+    assert created.status == 201, created
+    qr = created.body["id"]
+    response = _patch(api, qr, {"bill": _bill(tip=tip), "paymentMethods": [_method()]})
+    assert response.status == 200, response
+    assert api.qr(qr).body["bill"]["tip"] == {"allowed": False}
 
 
 def test_a_due_date_or_discount_the_patch_sets_in_the_past_is_refused(api):

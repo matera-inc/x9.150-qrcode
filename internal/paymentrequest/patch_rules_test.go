@@ -64,6 +64,7 @@ func TestPatchRulesAgainstPostgres(t *testing.T) {
 		test func(t *testing.T, e *env)
 	}{
 		{"TheMergedTipIsHeldToTheCreatesRule", testTheMergedTipIsHeldToTheCreatesRule},
+		{"ARefusedTipCarriesNoOffer", testARefusedTipCarriesNoOffer},
 		{"ADateThePatchSetsIsNotPast", testADateThePatchSetsIsNotPast},
 		{"AnEarlierValidUntilCutsTheReservationBack", testAnEarlierValidUntilCutsTheReservationBack},
 		{"WhatJavaDroppedOrFailedOnIsApplied", testWhatJavaDroppedOrFailedOnIsApplied},
@@ -89,6 +90,41 @@ func testTheMergedTipIsHeldToTheCreatesRule(t *testing.T, e *env) {
 	tip := e.get(t, presets).body["bill"].(map[string]any)["tip"]
 	if !cmp.Equal(tip, map[string]any{"allowed": true, "presets": []any{float64(10), float64(15)}}) {
 		t.Errorf("tip after the PATCH: %v", tip)
+	}
+}
+
+// ADR-0017, X9-PATCH-519, X9-PATCH-520: a PATCH that refuses tips and still sends a range or
+// presets is refused in the create's words, where it used to answer 200 and drop them. Refusing
+// tips with nothing else, or with presets null, turns the stored offer off.
+func testARefusedTipCarriesNoOffer(t *testing.T, e *env) {
+	const naming = "tip.allow: cannot provided range or presets when tip is not allowed"
+	tipPatch := func(tip map[string]any) map[string]any {
+		return patchOf(1000, map[string]any{"bill": patchBill(map[string]any{"tip": tip})})
+	}
+	tipRange := map[string]any{"min": 5, "max": 25}
+	offer := map[string]any{"allowed": true, "range": tipRange, "presets": []any{10, 15}}
+	withOffer := map[string]any{"bill": map[string]any{"description": "blackbox", "tip": offer,
+		"amountDue": map[string]any{"amount": 1000, "currency": "USDC"}}}
+
+	for _, stored := range []map[string]any{nil, withOffer} {
+		id := e.create(t, stored)
+		for _, tip := range []map[string]any{
+			{"allowed": false, "range": tipRange},
+			{"allowed": false, "presets": []any{10, 15}},
+			{"allowed": false, "range": tipRange, "presets": []any{10, 15}},
+		} {
+			e.refusedUnchanged(t, id, tipPatch(tip), naming)
+		}
+	}
+
+	for _, off := range []map[string]any{{"allowed": false}, {"allowed": false, "presets": nil}} {
+		id := e.create(t, withOffer)
+		if a := e.patch(t, id, tipPatch(off), ""); a.status != http.StatusOK {
+			t.Fatalf("turning the tip off with %v: %d %s", off, a.status, a.text)
+		}
+		if tip := e.get(t, id).body["bill"].(map[string]any)["tip"]; !cmp.Equal(tip, map[string]any{"allowed": false}) {
+			t.Errorf("tip after it was turned off with %v: %v", off, tip)
+		}
 	}
 }
 

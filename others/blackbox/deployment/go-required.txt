@@ -116,6 +116,8 @@ X9-PATCH-515
 X9-PATCH-516
 X9-PATCH-517
 X9-PATCH-518
+X9-PATCH-519
+X9-PATCH-520
 X9-TIME-024
 
 # Story 10.2: signatures on the wire. The two signature endpoints have no black-box test of their

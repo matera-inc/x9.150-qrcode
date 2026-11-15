@@ -65,7 +65,8 @@ x9:
 >
 > **What a create refuses, a PATCH refuses, on the merged result** (owner, 2026-11-15; both
 > builds, the same words): a tip `allowed: true` with neither a `range` nor `presets` (presets the
-> PATCH leaves out keep their stored value); a date the PATCH **sets** that is already past on the
+> PATCH leaves out keep their stored value); a tip `allowed: false` sent with a `range` or `presets`
+> (`allowed: false` alone turns the stored offer off, its range and presets with it); a date the PATCH **sets** that is already past on the
 > payee's clock — `validUntil`, `bill.invoice.dueDate`, a discount's edge, a changed payment
 > method's `validUntil`, the edge inclusive. A date the PATCH leaves as it was is not judged again,
 > so an expired QR Code can still be extended. A currency named twice is refused; an `order`,

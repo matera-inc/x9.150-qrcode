@@ -183,16 +183,19 @@ public final class PatchQRCodeRequestMapper {
 
         Boolean allowed = patchTipDTO.getAllowed();
 
-        if (isNotTrue(allowed)) {
-            return PartialInput.of(TipUpdateDTO.noTip());
-        }
-
         com.matera.x9qrcode.infrastructure.generated.dto.TipRangeDTO range = patchTipDTO.getRange();
 
         JsonNullable<List<Integer>> presets = patchTipDTO.getPresets();
 
         PartialInput<List<Integer>> presetsPartialInput =
             presets.isPresent() ? PartialInput.of(presets.get()) : PartialInput.absent();
+
+        if (isNotTrue(allowed)) {
+            // A range or presets sent beside "allowed: false" are carried, so that the tip rule
+            // refuses them (ADR-0017); they used to be dropped here, and the PATCH answered 200.
+            return PartialInput.of(isNull(range) ? TipUpdateDTO.notAllowed(presetsPartialInput)
+                : TipUpdateDTO.notAllowed(range.getMin(), range.getMax(), presetsPartialInput));
+        }
 
         if (isNull(range)) {
             return PartialInput.of(TipUpdateDTO.of(presetsPartialInput));

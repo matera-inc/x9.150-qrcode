@@ -353,7 +353,9 @@ func changedMethods(stored, merged []contract.PaymentMethod) ([]bool, error) {
 // tip it leaves out are its own; what it may leave out inside them keeps its stored value (an
 // order's date; an invoice's invoicee, its phone, email and address, and the address's line2, state
 // and postalCode; a tip's presets; the adjustments, and their discounts). The currency is the
-// stored one. A tip that is absent, null or not allowed is no tip.
+// stored one. A tip that is absent, null or not allowed is no tip, the stored range and presets
+// going with it; a tip not allowed that itself sends a range or presets is kept as sent, and the
+// tip rule then refuses it.
 //
 // Java drops an order, an invoice, an invoicee or adjustments sent to a bill that had none, and
 // answers 200; Go applies them, and they are then held to the bill's rules.
@@ -385,7 +387,9 @@ func mergeBill(old contract.Bill, p contract.PatchBill) contract.Bill {
 		out.Invoice = contract.Obj(inv)
 	}
 
-	if t := p.Tip; t.IsSet() && (!t.Value.Allowed.IsSet() || t.Value.Allowed.Value) {
+	switch t := p.Tip; {
+	case !t.IsSet():
+	case !t.Value.Allowed.IsSet() || t.Value.Allowed.Value:
 		tip := contract.Tip{Allowed: contract.Bool(true), Range: t.Value.Range, Presets: t.Value.Presets}
 		switch {
 		case !tip.Presets.Present && old.Tip.IsSet():
@@ -394,6 +398,10 @@ func mergeBill(old contract.Bill, p contract.PatchBill) contract.Bill {
 			tip.Presets = contract.List[contract.Integer]{}
 		}
 		out.Tip = contract.Obj(tip)
+	case t.Value.Range.IsSet() || len(t.Value.Presets.Items) > 0:
+		// Tips refused, with a range or presets beside it: kept as sent, for the tip rule to
+		// refuse (ADR-0017). It used to be dropped, and the PATCH answered 200.
+		out.Tip = contract.Obj(contract.Tip{Allowed: contract.Bool(false), Range: t.Value.Range, Presets: t.Value.Presets})
 	}
 
 	pa := p.AmountDue.Value

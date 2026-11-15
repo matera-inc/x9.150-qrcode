@@ -20,6 +20,16 @@ public record TipUpdateDTO(
         return new TipUpdateDTO(false, null, PartialInput.absent());
     }
 
+    /** Tips refused, with the presets the PATCH sent beside it, if any: the tip rule refuses them. */
+    public static TipUpdateDTO notAllowed(PartialInput<List<Integer>> presets) {
+        return new TipUpdateDTO(false, null, presets);
+    }
+
+    /** Tips refused, with the range the PATCH sent beside it: the tip rule refuses it. */
+    public static TipUpdateDTO notAllowed(Integer min, Integer max, PartialInput<List<Integer>> presets) {
+        return new TipUpdateDTO(false, new TipRangeDTO(min, max), presets);
+    }
+
     public static TipUpdateDTO of(PartialInput<List<Integer>> presets) {
         return new TipUpdateDTO(true, null, presets);
     }
