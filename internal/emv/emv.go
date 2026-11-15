@@ -82,6 +82,32 @@ var (
 	ErrValue     = errors.New("value cannot be written in EMV")
 )
 
+// DecodeError is why Decode or DecodeFields refused a string: one of ErrMalformed, ErrCRC and
+// ErrNoX9, and the reason in the Java build's words (EmvReader), which the decoder's answer quotes
+// (S10.7-AC1).
+type DecodeError struct {
+	Kind   error
+	Reason string
+}
+
+func (e *DecodeError) Error() string { return e.Kind.Error() + ": " + e.Reason }
+
+// Unwrap is Kind, for errors.Is.
+func (e *DecodeError) Unwrap() error { return e.Kind }
+
+// Reason is the reason err gives, in the Java build's words, when it is a *DecodeError; otherwise
+// err's text.
+func Reason(err error) string {
+	if d, ok := errors.AsType[*DecodeError](err); ok {
+		return d.Reason
+	}
+	return err.Error()
+}
+
+func malformed(format string, args ...any) *DecodeError {
+	return &DecodeError{Kind: ErrMalformed, Reason: fmt.Sprintf(format, args...)}
+}
+
 // Field is one TLV field: a two-digit tag and its value. The length is the value's.
 type Field struct {
 	Tag   string
@@ -189,28 +215,32 @@ func EncodeFields(fields []Field) (string, error) {
 // and a value that runs past the end.
 func DecodeFields(s string) ([]Field, error) {
 	if !utf8.ValidString(s) {
-		return nil, fmt.Errorf("%w: not UTF-8", ErrMalformed)
+		return nil, malformed("it is not UTF-8")
 	}
 	fields := make([]Field, 0, 12) // a QR Code of this shape has ten
-	for pos := 0; pos < len(s); {
+	// at is pos in UTF-16 code units, the offset Java names.
+	for pos, at := 0, 0; pos < len(s); {
 		if len(s)-pos < 4 {
-			return nil, fmt.Errorf("%w: truncated field at offset %d", ErrMalformed, pos)
+			return nil, malformed("the field at offset %d is truncated", at)
 		}
 		tag, length := s[pos:pos+2], s[pos+2:pos+4]
 		if !isTag(tag) {
-			return nil, fmt.Errorf("%w: tag %q at offset %d is not two digits", ErrMalformed, tag, pos)
+			return nil, malformed("the tag at offset %d is not two digits", at)
 		}
 		if !isTag(length) || length == "00" {
-			return nil, fmt.Errorf("%w: tag %s has length %q, not 01 to 99", ErrMalformed, tag, length)
+			return nil, malformed("tag %s has a length that is not 01 to 99", tag)
 		}
 		n := int(length[0]-'0')*10 + int(length[1]-'0')
 		start := pos + 4
-		end, ok := advanceUTF16(s, start, n)
-		if !ok {
-			return nil, fmt.Errorf("%w: tag %s declares %d characters, and fewer are left", ErrMalformed, tag, n)
+		end, split := advanceUTF16(s, start, n)
+		if end < 0 {
+			if split {
+				return nil, malformed("tag %s ends inside a character", tag)
+			}
+			return nil, malformed("tag %s declares %s characters, and fewer are left", tag, length)
 		}
 		fields = append(fields, Field{Tag: tag, Value: s[start:end]})
-		pos = end
+		pos, at = end, at+4+n
 	}
 	return fields, nil
 }
@@ -222,31 +252,31 @@ func Decode(s string) (QRCode, error) {
 		return QRCode{}, err
 	}
 	if len(fields) == 0 {
-		return QRCode{}, fmt.Errorf("%w: empty", ErrMalformed)
+		return QRCode{}, malformed("it is empty")
 	}
 	seen := make(map[string]bool, len(fields))
 	for i, f := range fields {
 		if seen[f.Tag] {
-			return QRCode{}, fmt.Errorf("%w: tag %s appears twice", ErrMalformed, f.Tag)
+			return QRCode{}, malformed("tag %s appears twice", f.Tag)
 		}
 		seen[f.Tag] = true
 		if f.Tag == TagCRC && i != len(fields)-1 {
-			return QRCode{}, fmt.Errorf("%w: the CRC (tag 63) is not the last field", ErrMalformed)
+			return QRCode{}, malformed("the CRC (tag 63) is not the last field")
 		}
 	}
 	crc := fields[len(fields)-1]
 	if crc.Tag != TagCRC {
-		return QRCode{}, fmt.Errorf("%w: no CRC (tag 63) at the end", ErrMalformed)
+		return QRCode{}, malformed("there is no CRC (tag 63) at the end")
 	}
-	if len(crc.Value) != 4 {
-		return QRCode{}, fmt.Errorf("%w: the CRC (tag 63) has %d characters, not 4", ErrMalformed, crc.Len())
+	if crc.Len() != 4 {
+		return QRCode{}, malformed("the CRC (tag 63) has %d characters, not 4", crc.Len())
 	}
 	got, err := strconv.ParseUint(crc.Value, 16, 16)
 	if err != nil {
-		return QRCode{}, fmt.Errorf("%w: the CRC %q is not four hex digits", ErrMalformed, crc.Value)
+		return QRCode{}, malformed("the CRC (tag 63) is not four hex digits")
 	}
 	if want := CRC16([]byte(s[:len(s)-4])); uint16(got) != want {
-		return QRCode{}, fmt.Errorf("%w: written %s, computed %s", ErrCRC, crc.Value, crcHex(want))
+		return QRCode{}, &DecodeError{Kind: ErrCRC, Reason: "the CRC (tag 63) does not match its content"}
 	}
 
 	q := QRCode{Fields: fields, CRC: crc.Value}
@@ -266,7 +296,7 @@ func (q *QRCode) findX9() error {
 		}
 		sub, err := DecodeFields(f.Value)
 		if err != nil {
-			return fmt.Errorf("tag %s: %w", f.Tag, err)
+			return malformed("in tag %s, %s", f.Tag, Reason(err))
 		}
 		gui, url := value(sub, SubTagGUI), value(sub, SubTagURL)
 		if gui != GUI {
@@ -274,15 +304,15 @@ func (q *QRCode) findX9() error {
 			continue
 		}
 		if url == "" {
-			return fmt.Errorf("%w: tag %s has GUI %s and no URL (sub-tag 01)", ErrNoX9, f.Tag, GUI)
+			return &DecodeError{Kind: ErrNoX9, Reason: fmt.Sprintf("tag %s has GUI %s and no URL (sub-tag 01)", f.Tag, GUI)}
 		}
 		q.Template, q.URL = sub, url
 		return nil
 	}
 	if len(guis) == 0 {
-		return fmt.Errorf("%w: no merchant account information template (tags 26 to 51)", ErrNoX9)
+		return &DecodeError{Kind: ErrNoX9, Reason: "there is no merchant account information template (tags 26 to 51)"}
 	}
-	return fmt.Errorf("%w: the templates carry GUI %s", ErrNoX9, strings.Join(guis, ", "))
+	return &DecodeError{Kind: ErrNoX9, Reason: "the templates carry GUI " + strings.Join(guis, ", ")}
 }
 
 func value(fields []Field, tag string) string {
@@ -342,21 +372,21 @@ func utf16Len(s string) int {
 	return n
 }
 
-// advanceUTF16 returns the byte offset n UTF-16 code units after start, and false when s ends
-// first or the count would split a surrogate pair.
-func advanceUTF16(s string, start, n int) (int, bool) {
+// advanceUTF16 returns the byte offset n UTF-16 code units after start, or -1 when s ends first,
+// and -1 and true when the count would split a surrogate pair.
+func advanceUTF16(s string, start, n int) (end int, split bool) {
 	pos := start
 	for n > 0 {
 		if pos >= len(s) {
-			return 0, false
+			return -1, false
 		}
 		r, size := utf8.DecodeRuneInString(s[pos:])
 		units := utf16.RuneLen(r)
 		if units > n {
-			return 0, false
+			return -1, true
 		}
 		n -= units
 		pos += size
 	}
-	return pos, true
+	return pos, false
 }
