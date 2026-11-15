@@ -44,12 +44,8 @@ func AnsweredCorrelationID(token string) string {
 // chain, its time window or its statusCode is not "a bad correlationId", whatever it carries, and
 // one refused BAD_HEADER for another parameter while carrying sent is not either.
 func NotEchoed(problem Problem, token string, sent uuid.UUID) bool {
-	switch problem {
-	case CorrelationIDMismatch:
+	if problem == CorrelationIDMismatch {
 		return true
-	case BadHeader:
-		return !strings.EqualFold(AnsweredCorrelationID(token), sent.String())
-	default:
-		return false
 	}
+	return problem == BadHeader && !strings.EqualFold(AnsweredCorrelationID(token), sent.String())
 }
