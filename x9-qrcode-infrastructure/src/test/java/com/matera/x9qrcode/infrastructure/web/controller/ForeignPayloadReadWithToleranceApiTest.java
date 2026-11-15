@@ -6,13 +6,18 @@
  */
 package com.matera.x9qrcode.infrastructure.web.controller;
 
+import com.matera.x9qrcode.app.dto.SignatureInputDataDTO;
+import com.matera.x9qrcode.app.dto.enumerated.SignatureTypeEnumDTO;
 import com.matera.x9qrcode.app.service.QRCodeExternalPayloadService;
+import com.matera.x9qrcode.app.service.QRCodeSignatureService;
 import com.matera.x9qrcode.app.usecase.decodeemv.DecodeEmvOutput;
 import com.matera.x9qrcode.infrastructure.AbstractIntegrationTest;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import io.restassured.path.json.JsonPath;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
@@ -49,6 +54,9 @@ class ForeignPayloadReadWithToleranceApiTest extends AbstractIntegrationTest {
 
     @MockitoBean
     private QRCodeExternalPayloadService qrCodeExternalPayloadService;
+
+    @Autowired
+    private QRCodeSignatureService qrCodeSignatureService;
 
     /**
      * Another bank's payload: a USD method on ACH with fields we do not know, a BRL method on Pix only,
@@ -95,14 +103,17 @@ class ForeignPayloadReadWithToleranceApiTest extends AbstractIntegrationTest {
             """;
     }
 
-    private String sign(String payload) {
-        return given().contentType("application/json")
-            .header("Correlation-Id", UUID.randomUUID().toString())
-            .header("TTL-Seconds", "300")
-            .body(payload)
-            .when().post("/api/v1/signature/generate")
-            .then().statusCode(HttpStatus.OK.value())
-            .extract().body().asString();
+    /**
+     * The payee's answer: {@code payload}, signed with this deployment's key (which the test
+     * configuration trusts) under {@code correlationId}, the one the request went out under.
+     */
+    private String sign(String payload, UUID correlationId) {
+        try {
+            return qrCodeSignatureService.signData(new SignatureInputDataDTO(SignatureTypeEnumDTO.X9,
+                objectMapper.readTree(payload), correlationId, null, null)).jwsToken();
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /** A syntactically valid EMV with a payload URL; which QR Code it names does not matter. */
@@ -132,8 +143,8 @@ class ForeignPayloadReadWithToleranceApiTest extends AbstractIntegrationTest {
 
     private JsonPath decode() {
         Mockito.when(qrCodeExternalPayloadService.retrievePayload(anyString(), anyString(), any(), any()))
-            .thenReturn(new DecodeEmvOutput(
-                URI.create("https://other-bank.example.com/loc/1"), 200, sign(foreignPayload())));
+            .thenAnswer(asked -> new DecodeEmvOutput(
+                URI.create("https://other-bank.example.com/loc/1"), 200, sign(foreignPayload(), asked.getArgument(3))));
 
         return given().contentType("application/json")
             .body("{\"qrCode\": \"%s\"}".formatted(anEmvThatParses()))
@@ -237,11 +248,14 @@ class ForeignPayloadReadWithToleranceApiTest extends AbstractIntegrationTest {
      */
     @Test
     void aForeignPayloadWhoseSignatureIsBrokenIsRefused() {
-        String[] parts = sign(foreignPayload()).split("\\.");
-        String sig = parts[2];
-        String broken = parts[0] + "." + parts[1] + "." + (sig.charAt(0) == 'A' ? 'B' : 'A') + sig.substring(1);
+        // Signed under the correlationId asked, so the broken signature is the one thing wrong.
         Mockito.when(qrCodeExternalPayloadService.retrievePayload(anyString(), anyString(), any(), any()))
-            .thenReturn(new DecodeEmvOutput(URI.create("https://other-bank.example.com/loc/1"), 200, broken));
+            .thenAnswer(asked -> {
+                String[] parts = sign(foreignPayload(), asked.getArgument(3)).split("\\.");
+                String sig = parts[2];
+                String broken = parts[0] + "." + parts[1] + "." + (sig.charAt(0) == 'A' ? 'B' : 'A') + sig.substring(1);
+                return new DecodeEmvOutput(URI.create("https://other-bank.example.com/loc/1"), 200, broken);
+            });
 
         var response = given().contentType("application/json")
             .body("{\"qrCode\": \"%s\"}".formatted(anEmvThatParses()))

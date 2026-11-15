@@ -13,6 +13,12 @@ import java.util.UUID;
 
 public interface QRCodeExternalPayloadService {
 
-    DecodeEmvOutput retrievePayload(String emv, String payloadLocation, LocalDate dateForPayment, UUID uuid);
+    /**
+     * Fetches the payload at {@code payloadLocation}, asking under {@code correlationId}.
+     *
+     * @param correlationId the correlationId the request is signed under; required. The payee's answer
+     *                      is checked against it, so the caller must know which one was sent.
+     */
+    DecodeEmvOutput retrievePayload(String emv, String payloadLocation, LocalDate dateForPayment, UUID correlationId);
 
 }
