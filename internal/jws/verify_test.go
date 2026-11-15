@@ -192,6 +192,29 @@ func TestCheckAnswer(t *testing.T) {
 	}
 }
 
+// Story 2.3, S10.6-AC3: a payee's answer refused by the certificate checks says why in its detail,
+// not only whose certificate it was: the payer reads signatureDetail to tell an untrusted chain
+// from a revoked certificate (X9-SIG-503).
+func TestCheckAnswerSaysWhyTheCertificateWasRefused(t *testing.T) {
+	key, stranger := keyFor(t, "RSA"), keyFor(t, "P-256")
+	s := newSigner(t, Config{Algorithm: "ES256", Publication: PublishChain}, fixedClock{epoch})
+	v := newTestVerifier(t, epoch, nil, key)
+	sent := uuid.New()
+	answer, err := s.SignAnswer(stranger, sent, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a := v.CheckAnswer(t.Context(), 200, answer, sent)
+
+	if a.Problem != UntrustedChain {
+		t.Fatalf("%+v; want %s", a, UntrustedChain)
+	}
+	if !strings.HasPrefix(a.Detail, "the signer's certificate: ") || len(a.Detail) <= len("the signer's certificate: ") {
+		t.Fatalf("detail %q does not say why the certificate was refused", a.Detail)
+	}
+}
+
 // A jku or x5u certificate is remembered only after the token it came with verified in full: a
 // refused token never fills the cache, so the next one fetches again; a verified one does, so the
 // next one with the same thumbprint does not (ADR-0027, "Certificate fetching").
