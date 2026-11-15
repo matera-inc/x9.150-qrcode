@@ -32,6 +32,7 @@ func TestCertificateVariablesAreJavas(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := Certificate{
+		EndpointType: "JWK_SET", JWKAlgorithm: "PS512",
 		PrivateKeystore: PrivateKeystore{
 			Location: ks, Type: "PKCS12", Password: "store-pw", PrivateKeyPassword: "key-pw",
 			Alias: "x9-private-keystore", EnforcedAlias: "signer",
@@ -56,8 +57,44 @@ func TestCertificateDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Certificate != (Certificate{}) || cfg.Keystore.Reload.Frequency != 30000 {
+	want := Certificate{EndpointType: "JWK_SET", JWKAlgorithm: "PS512"}
+	if cfg.Certificate != want || cfg.Keystore.Reload.Frequency != 30000 {
 		t.Fatalf("certificate = %+v, reload = %d", cfg.Certificate, cfg.Keystore.Reload.Frequency)
+	}
+}
+
+// S8.4-AC1: the signing settings keep the Java build's names and defaults (x9.certificate.endpoint-type
+// JWK_SET, x9.certificate.jwk-algorithm PS512, x9.public-endpoints.jws-ttl-seconds 300), and a value
+// the Go build cannot sign with is refused at start.
+func TestSigningSettings(t *testing.T) {
+	cfg, err := Load("", complete())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.PublicEndpoints.JWSTTLSeconds != 300 {
+		t.Errorf("jws-ttl-seconds = %d, want 300", cfg.PublicEndpoints.JWSTTLSeconds)
+	}
+	cfg, err = Load("", append(complete(), "X9_CERTIFICATE_ENDPOINTTYPE=NONE", "X9_CERTIFICATE_JWKALGORITHM=ES384",
+		"X9_PUBLICENDPOINTS_JWSTTLSECONDS=30"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Certificate.EndpointType != "NONE" || cfg.Certificate.JWKAlgorithm != "ES384" || cfg.PublicEndpoints.JWSTTLSeconds != 30 {
+		t.Errorf("certificate = %+v, jws-ttl-seconds = %d", cfg.Certificate, cfg.PublicEndpoints.JWSTTLSeconds)
+	}
+	for _, tc := range []struct {
+		env  string
+		want string
+	}{
+		{"X9_CERTIFICATE_ENDPOINTTYPE=X5C", "certificate.endpoint-type (X9_CERTIFICATE_ENDPOINTTYPE): must be JWK_SET"},
+		{"X9_CERTIFICATE_JWKALGORITHM=HS256", "certificate.jwk-algorithm (X9_CERTIFICATE_JWKALGORITHM): must be RS256"},
+		{"X9_CERTIFICATE_JWKALGORITHM=ES256K", "certificate.jwk-algorithm (X9_CERTIFICATE_JWKALGORITHM)"},
+		{"X9_CERTIFICATE_JWKALGORITHM=none", "certificate.jwk-algorithm (X9_CERTIFICATE_JWKALGORITHM)"},
+		{"X9_PUBLICENDPOINTS_JWSTTLSECONDS=0", "public-endpoints.jws-ttl-seconds (X9_PUBLICENDPOINTS_JWSTTLSECONDS): must be at least 1"},
+	} {
+		if _, err := Load("", append(complete(), tc.env)); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: err = %v, want it to contain %q", tc.env, err, tc.want)
+		}
 	}
 }
 

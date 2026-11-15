@@ -30,6 +30,7 @@ import (
 	"github.com/matera-inc/x9.150-qrcode/internal/database"
 	"github.com/matera-inc/x9.150-qrcode/internal/health"
 	"github.com/matera-inc/x9.150-qrcode/internal/httplog"
+	"github.com/matera-inc/x9.150-qrcode/internal/jws"
 	"github.com/matera-inc/x9.150-qrcode/internal/keys"
 	"github.com/matera-inc/x9.150-qrcode/internal/testclock"
 )
@@ -79,6 +80,10 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	keyStore, err := keys.Load(cfg.Certificate, logger, keys.WithPKCS12(keys.SSLMatePKCS12{}))
 	if err != nil {
 		return fmt.Errorf("loading the signing keys: %w", err)
+	}
+	// The configured alg must be one the key can produce (Java refuses the same at start).
+	if err := jws.CheckKey(cfg.Certificate.JWKAlgorithm, keyStore.Current().Identity); err != nil {
+		return fmt.Errorf("x9.certificate.jwk-algorithm (X9_CERTIFICATE_JWKALGORITHM) and the signing key: %w", err)
 	}
 	reloadCtx, stopReload := context.WithCancel(ctx)
 	reloading := make(chan struct{})

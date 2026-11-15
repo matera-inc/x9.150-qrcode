@@ -21,6 +21,7 @@ import (
 
 	"github.com/matera-inc/x9.150-qrcode/internal/database"
 	"github.com/matera-inc/x9.150-qrcode/internal/dbtest"
+	"github.com/matera-inc/x9.150-qrcode/internal/jws"
 	"github.com/matera-inc/x9.150-qrcode/internal/keys"
 	"github.com/matera-inc/x9.150-qrcode/internal/leaktest"
 )
@@ -154,6 +155,20 @@ func TestRunRefusesAJKSTruststore(t *testing.T) {
 	err := run(t.Context(), nil, env, io.Discard)
 	if err == nil || !errors.Is(err, keys.ErrUnsupportedFormat) || !strings.Contains(err.Error(), "x9-config-convert") {
 		t.Fatalf("err = %v, want a JKS refusal naming x9-config-convert", err)
+	}
+}
+
+// S8.4-AC1: an algorithm the signing key cannot produce stops the service at start, naming the
+// setting and both halves, as the Java build does; the database is never reached.
+func TestRunRefusesAnAlgorithmTheKeyCannotProduce(t *testing.T) {
+	env := []string{
+		"DATABASE_HOST=127.0.0.1", "DATABASE_PORT=1", "DATABASE_NAME=bank", "DATABASE_USER=app", "DATABASE_PASSWORD=pw",
+		"DATABASE_SSLMODE=disable", "X9_CERTIFICATE_JWKALGORITHM=ES256",
+	}
+	err := run(t.Context(), nil, env, io.Discard)
+	if err == nil || !errors.Is(err, jws.ErrKey) || !strings.Contains(err.Error(), "X9_CERTIFICATE_JWKALGORITHM") ||
+		!strings.Contains(err.Error(), "ES256 needs an EC key, the key is RSA") {
+		t.Fatalf("err = %v, want a refusal naming X9_CERTIFICATE_JWKALGORITHM and the RSA demo key", err)
 	}
 }
 

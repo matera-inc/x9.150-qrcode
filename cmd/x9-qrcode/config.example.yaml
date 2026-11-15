@@ -23,6 +23,8 @@ public-endpoints:
   host: x9-150.example.com       # X9_PUBLICENDPOINTS_HOST. The public host, no scheme, written into
                                  # every QR Code's location URL. At most 37 characters, or the URL
                                  # would not fit EMV tag 26: a longer host is refused at start.
+  jws-ttl-seconds: 300           # X9_PUBLICENDPOINTS_JWSTTLSECONDS. The ttl of every JWS this service
+                                 # signs; the header carries it in milliseconds (300000).
 
 database:
   host: postgres.example.com     # DATABASE_HOST            REQUIRED
@@ -56,6 +58,13 @@ reservation:
 # or JCEKS file is refused: convert it with x9-config-convert.
 # An ENC(…) value is refused: x9-config-convert decrypts it once. HSM / provider settings are refused.
 certificate:
+  endpoint-type: JWK_SET         # X9_CERTIFICATE_ENDPOINTTYPE. Where a signed JWS says the certificate is:
+                                 #   JWK_SET (jku, https://<host>/pub/.well-known/jwks), PEM (x5u,
+                                 #   https://<host>/pub/.well-known/certificate/x9-key.pem) or NONE (the
+                                 #   chain itself, in x5c). Every JWS also carries x5t#S256.
+  jwk-algorithm: PS512           # X9_CERTIFICATE_JWKALGORITHM. RS256/384/512 or PS256/384/512 for an RSA
+                                 #   key; ES256 (P-256), ES384 (P-384) or ES512 (P-521) for an EC key.
+                                 #   An algorithm the key cannot sign with is refused at start.
   private-keystore:
     location: ""                 # X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION. Empty: the bundled demo.
     type: ""                     # X9_CERTIFICATE_PRIVATEKEYSTORE_TYPE. Informative: PKCS12, PEM or JKS

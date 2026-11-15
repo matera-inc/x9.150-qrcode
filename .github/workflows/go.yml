@@ -18,6 +18,9 @@ on:
       - "go.sum"
       - ".golangci.yml"
       - "testdata/**"
+      - "others/blackbox/x9client/**"
+      - "others/blackbox/golden/**"
+      - "others/blackbox/requirements.txt"
       - "cmd/**"
       - "internal/**"
       - "db/changelog/**"
@@ -38,6 +41,9 @@ on:
       - "go.sum"
       - ".golangci.yml"
       - "testdata/**"
+      - "others/blackbox/x9client/**"
+      - "others/blackbox/golden/**"
+      - "others/blackbox/requirements.txt"
       - "cmd/**"
       - "internal/**"
       - "db/changelog/**"
@@ -79,6 +85,16 @@ jobs:
 
       - name: nilaway, govulncheck, go-licenses
         run: others/scripts/ci-go.sh nilaway vuln licenses
+
+      # Story 8.4: internal/jws checks Go's tokens with the black-box suite's independent verifier
+      # (others/blackbox/x9client), which needs the suite's pinned Python dependencies. On CI the
+      # test fails rather than skips without them.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: The black-box suite's Python (for the independent JWS verifier)
+        run: make blackbox-venv
 
       # The database tests start PostgreSQL and Liquibase with Docker, which the runner provides.
       - name: Tests (race, shuffled, leak-checked) and fuzz smoke
