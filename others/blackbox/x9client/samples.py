@@ -86,6 +86,12 @@ def full_payment_request(*, valid_until=FAR_FUTURE):
     })
 
 
+def patch_amount_due(amount_due):
+    """``amountDue`` as a PATCH restates it: without ``currency``, which a PATCH cannot change and
+    whose schema does not have it (a PATCH is closed, INTERPRETATION I-16)."""
+    return {key: value for key, value in amount_due.items() if key != "currency"}
+
+
 def full_patch(created):
     """A PATCH body restating everything a patch may carry, for a QR Code made from
     :func:`full_payment_request`. ``bill.amountDue.currency`` is left out: a PATCH cannot change

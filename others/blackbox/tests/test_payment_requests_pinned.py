@@ -390,39 +390,43 @@ NOT_PATCHABLE = {"creditor": OTHER_CREDITOR, "status": "CANCELLED", "id": "0" * 
                  "paymentNotification": {"kind": "EXTERNAL"}}
 
 
+PATCH_FIELDS = ("is not a field of the payment request, whose fields are locationId, validUntil, "
+                "bill, unstructured, additionalInformation and paymentMethods")
+
+
 def test_fields_that_are_not_patchable_are_never_applied(api, events):
     """X9-PATCH-420 — S4.2-AC2: creditor, status, id, revision, createdAt, qrCode and
-    paymentNotification sent beside a real change: 200, the change applies, none of them does.
+    paymentNotification sent beside a real change: 400 naming each of them, and nothing applies,
+    the real change included.
 
-    Source: Ours. ADR-0024 "six top-level tags can change"; Jackson ignores the rest.
+    Source: Ours. ADR-0024 "six top-level tags can change"; INTERPRETATION I-16 (owner,
+      2026-11-15): a PATCH is closed, so any other top-level key is refused by name. Until then
+      Jackson ignored them and the real change applied.
     Why: A PATCH that could set ``status`` would be a cancel with no ``payment.cancelled``; one that
-      could set ``creditor`` would re-point a printed code at another merchant.
+      could set ``creditor`` would re-point a printed code at another merchant. Dropping them in
+      silence told the caller nothing; naming them does.
     """
     qr = api.create_qr()
     before = snap(api, qr)
-    created_at = api.qr(qr).body["createdAt"]
     body, etag = restated(api, qr)
     body["paymentMethods"][0]["amount"] = BILL - 100
 
     response = patch(api, qr, {**body, **NOT_PATCHABLE}, if_match=etag)
 
-    assert response.status == 200, response
-    after = api.qr(qr).body
-    assert after["id"] == qr and after["status"] == "ACTIVE"
-    assert after["revision"] == before["revision"] + 1, "the revision moved by one, not to 7"
-    assert after["creditor"] == before["creditor"]
-    assert after["createdAt"] == created_at
-    assert after["paymentNotification"] == {"kind": "DEFAULT"}
-    assert after["qrCode"] != NOT_PATCHABLE["qrCode"]
-    assert after["paymentMethods"][0]["amount"] == BILL - 100, "the patchable change applied"
+    assert response.status == 400, response
+    for key in NOT_PATCHABLE:
+        assert f"{key}: {PATCH_FIELDS}" in response.violations, (key, response.body)
+    assert_untouched(before, snap(api, qr))
+    assert api.qr(qr).body["paymentMethods"][0]["amount"] == BILL, "nothing applied"
     assert_events(events, qr, [])
 
 
 def test_a_patch_changing_only_fields_that_are_not_patchable_is_a_refused_no_op(api):
-    """X9-PATCH-421 — S4.2-AC2: the same methods plus a new creditor: nothing patchable changed, so
-    400 and nothing moves, ETag included.
+    """X9-PATCH-421 — S4.2-AC2: the same methods plus a new creditor: 400 naming ``creditor``,
+    and nothing moves, ETag included.
 
-    Source: Ours. ADR-0024 "a PATCH that changes nothing is refused".
+    Source: Ours. ADR-0024 "a PATCH that changes nothing is refused"; INTERPRETATION I-16: a PATCH
+      is closed, so ``creditor`` is refused by name before anything else is decided.
     Why: Answering 200 would tell the caller the creditor changed.
     """
     qr = api.create_qr()
@@ -431,7 +435,8 @@ def test_a_patch_changing_only_fields_that_are_not_patchable_is_a_refused_no_op(
 
     response = patch(api, qr, {**body, "creditor": OTHER_CREDITOR}, if_match=etag)
 
-    assert_refused(response, naming="can not find any paymentMethod to be updated", status=400)
+    assert response.status == 400, response
+    assert response.violations == [f"creditor: {PATCH_FIELDS}"], response.body
     assert_untouched(before, snap(api, qr))
 
 
@@ -467,7 +472,7 @@ def test_restating_the_bill_unchanged_counts_as_a_change(api):
     current = api.qr(qr).body
     body, etag = restated(api, qr)
     body["bill"] = {"description": current["bill"]["description"], "paymentTiming": "immediate",
-                    "amountDue": current["bill"]["amountDue"]}
+                    "amountDue": samples.patch_amount_due(current["bill"]["amountDue"])}
 
     response = patch(api, qr, body, if_match=etag)
 

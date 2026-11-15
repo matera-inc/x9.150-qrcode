@@ -584,8 +584,8 @@ status is `X9-MAP-002`.
 | `X9-AMT-423` | a late fee that could pass 18 digits before validUntil is refused at create (bill, fee, method) and on PATCH, naming the field | `test_payment_requests_pinned.py` |
 | `X9-AMT-422` | an amount past 2^63−1 is an unreadable body: 400 `malformed-json`, nothing created (pinned) | `test_payment_requests_pinned.py` |
 | `X9-LOC-425` | tag 26 fits in 99 characters, which limits the configured host to 37 | `test_payment_requests_pinned.py` |
-| `X9-PATCH-420` | fields that are not patchable (creditor, status, id, revision, …) are never applied | `test_payment_requests_pinned.py` |
-| `X9-PATCH-421` | a patch changing only fields that are not patchable is a refused no-op | `test_payment_requests_pinned.py` |
+| `X9-PATCH-420` | fields that are not patchable (creditor, status, id, revision, …) are refused by name and nothing applies | `test_payment_requests_pinned.py` |
+| `X9-PATCH-421` | a patch carrying a field that is not patchable is refused naming it, and nothing moves | `test_payment_requests_pinned.py` |
 | `X9-PATCH-422` | a no-op patch is refused and nothing moves | `test_payment_requests_pinned.py` |
 | `X9-PATCH-423` | restating the bill unchanged counts as a change: 200, revision moves (pinned, not endorsed) | `test_payment_requests_pinned.py` |
 | `X9-PATCH-424` | a patch may not add a currency to a single-currency QR Code | `test_payment_requests_pinned.py` |
