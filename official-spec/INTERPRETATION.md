@@ -935,8 +935,11 @@ read and `ClosedRequestFieldsValidator` adds each to the 400 beside the other vi
 payload-side types are other classes and are never checked (X9-RAIL-058, -059, -065; tolerant
 reading X9-DEC-017 to -021). In the Go build, `internal/contract` reads every request object keeping
 an unknown key aside (`Unknown`) and the create, PATCH and outbound checks refuse it; reading never
-fails on one, and a payment notification read on its own is not refused. The Go decoder of Story
-10.7 is not built yet, and must read somebody else's payload as described above. The black-box
+fails on one, and a payment notification read on its own is not refused. The Go decoder
+(`internal/decoder`, Story 10.7) never reads a payload with those types: it projects the payload
+onto `PaymentPayloadResponse` member by member, carrying an unknown network exactly as written and
+dropping every other unknown member, and a known member whose JSON type is not the contract's (a
+string where a number is declared) is dropped like an unknown one rather than refused. The black-box
 suite pins the words on both builds (X9-RAIL-507 to -509) and generates a case for every closed
 object of the contract (`contract.py`, kind `closed`).
 

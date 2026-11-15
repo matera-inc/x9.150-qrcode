@@ -29,6 +29,7 @@ import (
 	"github.com/matera-inc/x9.150-qrcode/internal/clock"
 	"github.com/matera-inc/x9.150-qrcode/internal/config"
 	"github.com/matera-inc/x9.150-qrcode/internal/database"
+	"github.com/matera-inc/x9.150-qrcode/internal/decoder"
 	"github.com/matera-inc/x9.150-qrcode/internal/domain"
 	"github.com/matera-inc/x9.150-qrcode/internal/eventstream"
 	"github.com/matera-inc/x9.150-qrcode/internal/health"
@@ -148,6 +149,19 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 		return err
 	}
 
+	// ── 1e. The EMV decoder (Story 10.7): a payload request signed with the same signer, posted with
+	// Story 10.6's client, the payload checked with the same verifier. A location on this
+	// deployment's own host is read from this process over localhost, as the Java build reads it.
+	payloads := outbound.NewClient(outbound.Config{})
+	defer payloads.CloseIdleConnections()
+	emvDecoder, err := decoder.New(keyStore, signer, verifier, payloads, decoder.Config{
+		OwnHost:    cfg.PublicEndpoints.Host,
+		OwnBaseURL: "http://localhost:" + strconv.Itoa(cfg.Server.Port),
+	}, logger)
+	if err != nil {
+		return err
+	}
+
 	// ── 2. Database pools (they connect lazily) and the health probes ─────────────────────────
 	pools, err := database.Open(ctx, cfg.Database)
 	if err != nil {
@@ -174,6 +188,7 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	payer := outbound.New(keyStore, signer, verifier, logger, outbound.Config{})
 	payer.Register(api)
 	defer payer.CloseIdleConnections()
+	emvDecoder.Register(api)
 
 	// A payer's payment notification (Story 10.4): verified, refused by name, decided by the
 	// transition map, and always answered signed.
