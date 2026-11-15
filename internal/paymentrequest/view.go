@@ -87,7 +87,7 @@ func (s *Service) view(q store.QRCode, now time.Time) (jsontext.Value, error) {
 	w.member("revision", q.Revision)
 	w.member("createdAt", contract.FormatInstant(q.CreatedAt))
 	w.member("revisedAt", contract.FormatInstant(q.RevisedAt))
-	w.member("sentAt", contract.FormatInstant(now))
+	w.member("sentAt", contract.FormatInstant(SentAt(q.RevisedAt, now)))
 	w.member("status", string(domain.EffectiveStatus(q.Row, now)))
 	if q.EndToEndID != "" || q.PaymentNetwork != "" {
 		w.member("paymentDetails", paymentDetails{EndToEndID: nonBlank(q.EndToEndID), Network: nonBlank(q.PaymentNetwork)})
@@ -97,6 +97,16 @@ func (s *Service) view(q store.QRCode, now time.Time) (jsontext.Value, error) {
 		return nil, w.err
 	}
 	return jsontext.Value(bytes.TrimRight(buf.Bytes(), "\n")), nil
+}
+
+// SentAt is the sentAt of a JSON this service generates about a QR Code: the instant it is
+// generated (now, on the business clock), but never before revisedAt, which X9.150 §6 requires
+// sentAt to follow (INTERPRETATION I-17). The GET answer and the signed payload both use it.
+func SentAt(revisedAt, now time.Time) time.Time {
+	if now.Before(revisedAt) {
+		return revisedAt
+	}
+	return now
 }
 
 // paymentDetails is BasePaymentDetails: what status-update PAID recorded.

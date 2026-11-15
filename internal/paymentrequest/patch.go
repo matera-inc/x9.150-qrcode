@@ -158,6 +158,8 @@ func (s *Service) decidePatch(ctx context.Context, rd *store.Reader, now time.Ti
 
 	d.Row.RequestJSON = requestJSON
 	d.Row.ValidUntil = merged.ValidUntil.Value
+	// A reservation cannot outlive what it reserves (ADR-0019): an earlier validUntil cuts it back.
+	d.Row = domain.CapReservation(d.Row)
 	change := store.Change{Release: release, Before: &before, Audit: audit}
 	if loc != before.LocationID {
 		d.Row.LocationID = loc
@@ -203,9 +205,10 @@ func (s *Service) patchLocation(ctx context.Context, rd *store.Reader, now time.
 }
 
 // merge applies a PATCH to the stored request and checks the result, in Java's order: validUntil,
-// unstructured and additionalInformation; the bill, checked as soon as it is applied; the
-// currencies the PATCH names (ADR-0018); each merged payment method; then whether anything changed,
-// whether a changed method is already past, and the merged request as a whole (billing.CheckPatch).
+// unstructured and additionalInformation; the bill, checked as soon as it is applied (its values,
+// its due date, its tip); the currencies the PATCH names (ADR-0018); each merged payment method;
+// then whether anything changed, whether a changed method is already past, and the merged request
+// as a whole, a date the PATCH changed included (billing.CheckPatch).
 func (s *Service) merge(stored contract.CreateRequest, p *contract.PatchRequest, now time.Time) (contract.CreateRequest, error) {
 	out := stored
 	if p.ValidUntil.Present {
@@ -233,6 +236,11 @@ func (s *Service) merge(stored contract.CreateRequest, p *contract.PatchRequest,
 			return out, err
 		}
 		if err := billing.CheckInvoiceDueDate(rules); err != nil {
+			return out, err
+		}
+		// ADR-0017 as on create, on the merged tip: presets the PATCH left out are kept, so an
+		// allowed tip with neither a range nor presets of its own may still be an offer.
+		if err := billing.CheckTip(rules.Bill.Tip); err != nil {
 			return out, err
 		}
 	}
@@ -268,7 +276,7 @@ func (s *Service) merge(stored contract.CreateRequest, p *contract.PatchRequest,
 				m.Currency.Value)}
 		}
 	}
-	return out, billing.CheckPatch(billingRequest(&out), s.currencies)
+	return out, billing.CheckPatch(billingRequest(&out), billingRequest(&stored), s.currencies, now)
 }
 
 // requireCurrencies is ADR-0018: a PATCH names every currency the QR Code offers, and no other.

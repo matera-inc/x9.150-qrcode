@@ -62,6 +62,22 @@ x9:
 > date rules of creation: `bill.invoice.dueDate` and every `paymentMethods[].validUntil` no later
 > than `validUntil`. A PATCH that breaks one, whichever side it moved, is refused with 400 naming
 > the field, and changes nothing, the revision included.
+>
+> **What a create refuses, a PATCH refuses, on the merged result** (owner, 2026-11-15; both
+> builds, the same words): a tip `allowed: true` with neither a `range` nor `presets` (presets the
+> PATCH leaves out keep their stored value); a date the PATCH **sets** that is already past on the
+> payee's clock — `validUntil`, `bill.invoice.dueDate`, a discount's edge, a changed payment
+> method's `validUntil`, the edge inclusive. A date the PATCH leaves as it was is not judged again,
+> so an expired QR Code can still be extended. A currency named twice is refused; an `order`,
+> `invoice`, `invoicee` or `adjustments` sent to a bill that had none is applied and checked;
+> `bill: null` is refused and `editable: null` removes `editable`.
+>
+> **A PATCH that moves `validUntil` earlier cuts a running reservation back to it**: a reservation
+> never outlives the QR Code (ADR-0019). It never lengthens one, and leaves alone a reservation that
+> no longer lapses (a hash registered, or `ttl-seconds: 0`).
+>
+> **`sentAt`** in a GET answer and in the payload is the instant that JSON is generated, on the
+> payee's clock, never earlier than `revisedAt` (X9.150 §6; INTERPRETATION I-17).
 
 > **Two roles, one service.** Most endpoints serve the **payee** — the side that issues a QR Code
 > and is told about payments. The two under `/api/v1/payment-notification/` serve the **payer**: they

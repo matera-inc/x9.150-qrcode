@@ -107,6 +107,17 @@ tests/test_contract.py::test_a_contract_constraint_is_refused[status-update:
 #   (Stories 10.4 and 10.5); X9-LOC-422's and -423's PATCH cases: Story 9.7;
 #   X9-LIFE-503 passes already, but joins with Story 10.5, whose pre-commit it uses.
 
+# Owner decisions of 2026-11-15: a PATCH is checked like a create on its merged result, an
+# earlier validUntil cuts a reservation back, and sentAt in a GET answer is never before revisedAt.
+X9-PATCH-512
+X9-PATCH-513
+X9-PATCH-514
+X9-PATCH-515
+X9-PATCH-516
+X9-PATCH-517
+X9-PATCH-518
+X9-TIME-024
+
 # Story 10.2: signatures on the wire. The two signature endpoints have no black-box test of their
 # own (X9-SUITE-501: the suite never signs through the service under test); a Go handler test covers
 # them, and Epic 11's differential run compares them with Java. X9-LOC-420's create case reads the

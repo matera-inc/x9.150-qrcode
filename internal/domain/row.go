@@ -145,6 +145,18 @@ func reservationEnd(now, validUntil time.Time, ttl time.Duration) time.Time {
 	return end
 }
 
+// CapReservation is row with its reservation cut back to its validUntil when the window would end
+// after it: what a PATCH that moves validUntil earlier does to a running reservation, since a
+// reservation cannot outlive the thing reserved (ADR-0019, owner 2026-11-15). A later validUntil
+// never lengthens a window; a reservation that never lapses (a hash registered, ttl 0, or no stamp)
+// is left alone, since only the payment system ends it (ADR-0036).
+func CapReservation(row Row) Row {
+	if stamped(row.ReservedUntil) && row.ValidUntil.Before(row.ReservedUntil) {
+		row.ReservedUntil = row.ValidUntil
+	}
+	return row
+}
+
 // reserve puts row in PAYMENT_INITIATED, held by holder, with a fresh window.
 func reserve(row *Row, holder Holder, now time.Time, s Settings) {
 	row.Status = StatusPaymentInitiated

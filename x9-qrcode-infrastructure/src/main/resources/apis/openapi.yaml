@@ -144,6 +144,25 @@ paths:
         `bill.invoice.dueDate` and every `paymentMethods[].validUntil` must be no later than
         `validUntil`, whichever side the patch moved; otherwise **400** naming the field, and nothing
         changes, the revision included. A patch of `validUntil` alone is held to the bill's due date.
+
+        **What a create refuses, a patch refuses, on the merged result** (owner, 2026-11-15):
+
+        - the tip: `allowed: true` with neither a `range` nor `presets` is refused, in the create's
+          words (presets the patch leaves out keep their stored value, and count);
+        - a date the patch **sets** that is already past on the payee's clock: `validUntil`, the
+          bill's `dueDate`, a discount's edge (`dueDate − daysBefore`), and the `validUntil` of a
+          payment method the patch changes. The edge is inclusive, as at creation. A date the patch
+          leaves as it was is **not** judged again, so an expired QR Code can still be extended;
+        - a currency named twice in `paymentMethods`.
+
+        An `order`, `invoice`, `invoicee` or `adjustments` sent to a bill that had none is applied
+        and checked like the rest. `bill: null` is refused; `editable: null` removes `editable`.
+
+        **A reservation never outlives the QR Code.** On a `PAYMENT_INITIATED` QR Code, a patch that
+        moves `validUntil` before the end of the reservation's window cuts the window back to the
+        new `validUntil` (ADR-0019). A later `validUntil` never lengthens it, and a reservation that
+        no longer lapses (a transaction hash registered, or `x9.reservation.ttl-seconds: 0`) is left
+        alone.
       operationId: patchPaymentRequest
       tags:
         - payment-request
@@ -880,7 +899,7 @@ components:
         sentAt:
           type: string
           format: date-time
-          description: 'UTC timestamp indicating when the payment request was sent. Expected pattern: `^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d{1,3})?Z$`'
+          description: 'UTC timestamp at which this answer was generated, on the payee''s clock, but never earlier than `revisedAt` (ANSI X9.150 §6; INTERPRETATION I-17). It changes on every read and a PATCH never compares it. Expected pattern: `^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d{1,3})?Z$`'
           example: "2030-05-01T21:30:00Z"
         status:
           $ref: "#/components/schemas/QRCodeStatus"
@@ -1173,7 +1192,7 @@ components:
         sentAt:
           type: string
           format: date-time
-          description: "UTC timestamp of when this payload was sent to the payer's PSP (ANSI X9.150 §6): the payee's clock when it composed the answer, and never earlier than `revisedAt`. Expected pattern: `^(\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d{1,3})?Z$`"
+          description: "UTC timestamp at which this payload was generated and sent to the payer's PSP, on the payee's clock, but never earlier than `revisedAt` (ANSI X9.150 §6; INTERPRETATION I-17). Expected pattern: `^(\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d{1,3})?Z$`"
           example: "2030-05-01T21:30:00Z"
         validUntil:
           type: string

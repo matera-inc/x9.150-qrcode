@@ -433,7 +433,67 @@ public final class QRCodeEntityValidator {
         }
     }
 
-    private void validateTip() {
+    /**
+     * The create's "not already past" rules for a PATCH (owner decision 2026-11-15): of the dates
+     * creation judges against now, only those whose value the PATCH changed are judged, in the
+     * create's words and with its inclusive edge — {@code validUntil}, the due date, and each
+     * discount's edge ({@code dueDate − daysBefore}) the stored bill did not already have. A date
+     * left as it was, even one already past, is not judged again, so a biller can extend a QR Code
+     * that has expired. A payment method's {@code validUntil} is checked where a changed method is
+     * merged ({@code QRCodeEntity.updatePaymentMethods}).
+     */
+    public void validateChangedDatesNotPast(OffsetDateTime previousValidUntil, BillVO previousBill) {
+        OffsetDateTime now = DateTimeUtils.nowUTC();
+        OffsetDateTime validUntil = this.entity.getValidUntil();
+
+        if (!validUntil.isEqual(previousValidUntil) && validUntil.isBefore(now)) {
+            throw new BusinessRuleException("validUntil", "must not be less than the current date.");
+        }
+
+        BillVO bill = this.entity.getBill();
+        InvoiceVO invoice = bill.invoice();
+
+        if (isNull(invoice)) {
+            return;
+        }
+
+        InvoiceVO previousInvoice = isNull(previousBill) ? null : previousBill.invoice();
+        OffsetDateTime previousDue = isNull(previousInvoice) ? null : previousInvoice.dueDate();
+
+        if ((isNull(previousDue) || !invoice.dueDate().isEqual(previousDue)) && invoice.dueDate().isBefore(now)) {
+            throw new BusinessRuleException("bill.invoice.dueDate", "must be after or equal to actual date.");
+        }
+
+        List<OffsetDateTime> previousEdges = isNull(previousDue) ? List.of()
+            : discountsOf(previousBill).stream().map(discount -> previousDue.minusDays(discount.daysBefore())).toList();
+        List<DiscountVO> discounts = discountsOf(bill);
+
+        IntStream.range(0, discounts.size()).forEach(index -> {
+            OffsetDateTime edge = invoice.dueDate().minusDays(discounts.get(index).daysBefore());
+
+            if (previousEdges.stream().noneMatch(edge::isEqual) && edge.isBefore(now)) {
+                throw new BusinessRuleException(
+                    "bill.amountDue.adjustments.discounts[%d]".formatted(index),
+                    "target date must be after the current date.");
+            }
+        });
+    }
+
+    private static List<DiscountVO> discountsOf(BillVO bill) {
+        AdjustmentVO adjustment = bill.amountDue().adjustment();
+
+        if (isNull(adjustment) || isNull(adjustment.parameters()) || isNull(adjustment.parameters().discounts())) {
+            return List.of();
+        }
+
+        return adjustment.parameters().discounts();
+    }
+
+    /**
+     * ADR-0017, INTERPRETATION I-10: a tip offer agrees with itself. Run at creation and, by
+     * {@code QRCodeEntity.updateBill}, on a PATCH's merged bill.
+     */
+    public void validateTip() {
         TipVO tip = entity.getBill().tip();
         if (nonNull(tip)) {
             if (isNotTrue(tip.allowed()) && hasTipData(tip)) {

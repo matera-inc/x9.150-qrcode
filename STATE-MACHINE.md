@@ -44,6 +44,12 @@ Consequences that are easy to miss:
   `PAYMENT_INITIATED` QR Code, whoever sent it, the reservation stops expiring and the
   holder does not change; only the payment system ends it, through the status-update
   API ([ADR-0036](docs/adr/0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md)).
+- **A reservation never outlives the QR Code.** Its end is stamped at
+  `min(now + ttl, validUntil)`, and a PATCH that later moves `validUntil` before that end cuts
+  it back to the new `validUntil` (owner, 2026-11-15). A PATCH never lengthens a window, and
+  leaves alone a reservation that no longer lapses (a hash registered, or `ttl-seconds: 0`).
+  The status does not move and no event is written: past the new `validUntil` the QR Code
+  simply reads `ACTIVE`.
 
 ## Core lifecycle
 

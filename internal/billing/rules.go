@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf16"
@@ -60,7 +61,7 @@ func CheckCreate(req Request, currencies *Currencies, now time.Time) error {
 	if err := CheckMethodsTogether(req); err != nil {
 		return err
 	}
-	if err := checkTip(req.Bill.Tip); err != nil {
+	if err := CheckTip(req.Bill.Tip); err != nil {
 		return err
 	}
 	if err := checkNotPast(req, now); err != nil {
@@ -72,15 +73,19 @@ func CheckCreate(req Request, currencies *Currencies, now time.Time) error {
 	return CheckCurrencies(req, currencies)
 }
 
-// CheckPatch refuses the merged state of a PATCH that Java refuses once every change is applied,
-// in Java's order: no currency twice and no method valid after the QR Code, then the due date not
-// after the QR Code's validUntil, whichever side of each pair the PATCH moved (R-EP-27), then the
-// late-fee bound, then the currencies. The values of a patched bill or payment method are
-// checked first with CheckBill and CheckPaymentMethod, and a patched bill's due date with
-// CheckInvoiceDueDate as soon as it is applied, as Java does; which currencies a PATCH must name
+// CheckPatch refuses the merged state req of a PATCH applied to stored, once every change is
+// applied, in the order both builds use: no currency twice and no method valid after the QR Code;
+// then no date the PATCH changed already past at now (CheckChangedDatesNotPast); then the due date
+// not after the QR Code's validUntil, whichever side of each pair the PATCH moved (R-EP-27); then
+// the late-fee bound; then the currencies. The values of a patched bill or payment method are
+// checked first with CheckBill and CheckPaymentMethod, and a patched bill's due date and tip with
+// CheckInvoiceDueDate and CheckTip as soon as it is applied; which currencies a PATCH must name
 // (ADR-0018), and whether a changed method is already past, belong to the merge.
-func CheckPatch(req Request, currencies *Currencies) error {
+func CheckPatch(req, stored Request, currencies *Currencies, now time.Time) error {
 	if err := CheckMethodsTogether(req); err != nil {
+		return err
+	}
+	if err := CheckChangedDatesNotPast(req, stored, now); err != nil {
 		return err
 	}
 	if err := CheckInvoiceDueDate(req); err != nil {
@@ -298,10 +303,11 @@ func checkMethodWithinValidUntil(req Request, i int, m PaymentMethod) error {
 	return nil
 }
 
-// checkTip refuses a tip offer that contradicts itself (INTERPRETATION I-10, ADR-0017): a range or
+// CheckTip refuses a tip offer that contradicts itself (INTERPRETATION I-10, ADR-0017): a range or
 // presets when tips are refused, or neither when they are allowed. Presets alone are an offer; they
-// need not hold any minimum number of entries. No tip block is tips refused.
-func checkTip(t *Tip) error {
+// need not hold any minimum number of entries. No tip block is tips refused. A create checks its
+// bill; a PATCH checks the merged bill, with the presets it kept (owner, 2026-11-15).
+func CheckTip(t *Tip) error {
 	if t == nil {
 		return nil
 	}
@@ -338,6 +344,48 @@ func checkNotPast(req Request, now time.Time) error {
 			if discountEdge(inv.DueDate, d.DaysBefore).Before(now) {
 				return rule(fmt.Sprintf("bill.amountDue.adjustments.discounts[%d]", i), "target date must be after the current date.")
 			}
+		}
+	}
+	return nil
+}
+
+// CheckChangedDatesNotPast is checkNotPast for a PATCH (owner, 2026-11-15): of the dates the
+// create judges against now, only those whose value the PATCH changed from stored are judged, in
+// the create's words and with its inclusive edge: the QR Code's validUntil, the due date, and each
+// discount's edge (dueDate − daysBefore) that stored did not already have. A date left as it was,
+// even one already past, is not judged again, so a biller can extend a QR Code that has expired. A
+// payment method's validUntil is the merge's business: a method the PATCH changes is refused
+// whole when its validUntil is past.
+func CheckChangedDatesNotPast(req, stored Request, now time.Time) error {
+	if !req.ValidUntil.Equal(stored.ValidUntil) && req.ValidUntil.Before(now) {
+		return rule("validUntil", "must not be less than the current date.")
+	}
+	inv := req.Bill.Invoice
+	if inv == nil {
+		return nil
+	}
+	var storedDue *time.Time
+	if stored.Bill.Invoice != nil {
+		storedDue = &stored.Bill.Invoice.DueDate
+	}
+	if (storedDue == nil || !inv.DueDate.Equal(*storedDue)) && inv.DueDate.Before(now) {
+		return rule("bill.invoice.dueDate", "must be after or equal to actual date.")
+	}
+	adj := req.Bill.AmountDue.Adjustment
+	if adj == nil {
+		return nil
+	}
+	var storedEdges []time.Time
+	if storedDue != nil && stored.Bill.AmountDue.Adjustment != nil {
+		for _, d := range stored.Bill.AmountDue.Adjustment.Discounts {
+			storedEdges = append(storedEdges, discountEdge(*storedDue, d.DaysBefore))
+		}
+	}
+	for i, d := range adj.Discounts {
+		edge := discountEdge(inv.DueDate, d.DaysBefore)
+		kept := slices.ContainsFunc(storedEdges, edge.Equal)
+		if !kept && edge.Before(now) {
+			return rule(fmt.Sprintf("bill.amountDue.adjustments.discounts[%d]", i), "target date must be after the current date.")
 		}
 	}
 	return nil

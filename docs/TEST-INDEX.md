@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**830 tests documented** — every JUnit test and every black-box case.
+**853 tests documented** — every JUnit test and every black-box case.
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
 (STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036 and ADR-0027's EMV and JWS verification rules), the
@@ -553,6 +553,19 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-PATCH-042` | a PATCH of the GET answer with one patchable change is applied; the read-only members it carried, equal to the stored ones, are ignored | `ClosedRequestsAtEveryLevelApiTest.java` |
 | `X9-PATCH-043` | a PATCH of the GET answer changing a read-only member is refused naming it and its stored value; nothing moves | `ClosedRequestsAtEveryLevelApiTest.java` |
 | `X9-PATCH-041` | a PATCH moving `validUntil` before a method's, or a method's after the QR Code's, is refused naming `paymentMethods[0].validUntil`; nothing changes | `PatchCrossFieldDatesApiTest.java` |
+| `X9-PATCH-044` | a PATCH moving `validUntil` before the end of a running reservation cuts it back; a later `validUntil` never lengthens it | `QRCodeEntityPatchRulesTest.java` |
+| `X9-PATCH-045` | a reservation that never lapses is left alone by an earlier `validUntil` | `QRCodeEntityPatchRulesTest.java` |
+| `X9-PATCH-046` | `sentAt` is now, never before `revisedAt` | `QRCodeEntityPatchRulesTest.java` |
+| `X9-PATCH-047` | a date the PATCH changed must not be past (validUntil, due date, discount edge), the edge inclusive; a date left as it was is not judged again | `QRCodeEntityPatchRulesTest.java` |
+| `X9-PATCH-048` | the merged tip is held to the create's rule | `QRCodeEntityPatchRulesTest.java` |
+| `X9-PATCH-049` | a PATCH naming a currency twice is refused naming it | `QRCodeEntityPatchRulesTest.java` |
+| `X9-PATCH-050` | an allowed tip with neither range nor presets is refused on PATCH; one keeping its stored presets is applied | `PatchMergedRulesApiTest.java` |
+| `X9-PATCH-051` | a due date, a discount edge or a `validUntil` the PATCH sets in the past is refused, nothing moves | `PatchMergedRulesApiTest.java` |
+| `X9-PATCH-052` | an expired, overdue QR Code is extended: an untouched past date is not judged again | `PatchMergedRulesApiTest.java` |
+| `X9-PATCH-053` | an earlier `validUntil` cuts a running reservation back: ACTIVE past the new `validUntil` | `PatchMergedRulesApiTest.java` |
+| `X9-PATCH-054` | an order, an invoice with its invoicee and adjustments sent to a bill that had none are applied | `PatchMergedRulesApiTest.java` |
+| `X9-PATCH-055` | a currency named twice is refused naming it, nothing moves | `PatchMergedRulesApiTest.java` |
+| `X9-PATCH-056` | `bill: null` is refused by name; `editable: {}` on a non-editable method is the create's refusal; `editable: null` removes it | `PatchMergedRulesApiTest.java` |
 | `X9-PATCH-440` | `lockVersion` is in no answer: create, GET, PATCH, or the signed payload | `test_conditional_requests.py` |
 | `X9-PATCH-501` | a GET serves an ETag | `test_conditional_requests.py` |
 | `X9-PATCH-502` | a stale If-Match on PATCH is 412, and neither the amount nor the ETag moves | `test_conditional_requests.py` |
@@ -565,6 +578,13 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-PATCH-509` | a PATCH naming only an unknown currency is refused, not a silent 200 | `test_patch_currencies.py` |
 | `X9-PATCH-510` | a PATCH whose body is the whole GET answer, with one patchable change, is applied; the read-only members are accepted | `test_closed_requests.py` |
 | `X9-PATCH-511` | the whole GET answer with a read-only member changed (status, currency, creditor) is refused naming it; nothing moves | `test_closed_requests.py` |
+| `X9-PATCH-512` | a PATCH whose merged tip is allowed with neither range nor presets is refused, nothing moves; stored presets are kept and count | `test_patch_merged_rules.py` |
+| `X9-PATCH-513` | a due date or a discount edge the PATCH sets in the past is refused in the create's words, nothing moves | `test_patch_merged_rules.py` |
+| `X9-PATCH-514` | a `validUntil` set in the past is refused; an expired QR Code is extended, its untouched past dates not judged again | `test_patch_merged_rules.py` |
+| `X9-PATCH-515` | an earlier `validUntil` cuts a running reservation back: ACTIVE past it, not for the rest of the window | `test_patch_merged_rules.py` |
+| `X9-PATCH-516` | an order, an invoice with its invoicee and adjustments sent to a bill that had none are applied | `test_patch_merged_rules.py` |
+| `X9-PATCH-517` | a currency named twice is refused naming it, nothing moves | `test_patch_merged_rules.py` |
+| `X9-PATCH-518` | `bill: null` and `editable: {}` are refused by name; `editable: null` removes `editable` | `test_patch_merged_rules.py` |
 
 ## Payment requests pinned: create, PATCH, ETag, rebind (Story 4.2)
 
@@ -827,6 +847,9 @@ judged within the 2 s before it; "1 ms after" is exact.
 | `X9-TIME-017` | one instant: 1 ms past a method's `validUntil`, with `dateForPayment` that day, the expired method is absent and the other is priced one day late | `test_time_edges.py` |
 | `X9-TIME-020` | a past `dateForPayment` does not bring back an expired payment method; the methods shown are chosen at the instant the fee is computed | `PayloadPricingInstantApiTest.java` |
 | `X9-TIME-021` | a future `dateForPayment` still chooses the payment methods valid on that day | `PayloadPricingInstantApiTest.java` |
+| `X9-TIME-022` | the GET answer's `sentAt` is now on the business clock, never before `revisedAt` | `PatchMergedRulesApiTest.java` |
+| `X9-TIME-023` | the payload's `sentAt` is never before `revisedAt` | `PatchMergedRulesApiTest.java` |
+| `X9-TIME-024` | the GET answer's `sentAt` is never before `revisedAt` (black-box, both builds) | `test_patch_merged_rules.py` |
 | `X9-TIME-018` | a post-commit 1 ms after `validUntil` is accepted, signed, and registered with its hash | `test_time_edges.py` |
 | `X9-TIME-501` | the test clock moves, reads back and resets, and every answer carries `X-Test-Clock-Offset` while it is moved | `test_clock.py` |
 | `X9-TIME-502` | on the test clock, a payload stops being served once the clock passes `validUntil` (X9-LIFE-126 without sleeping) | `test_clock.py` |

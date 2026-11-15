@@ -88,6 +88,10 @@ public final class PatchQRCodeRequestMapper {
     }
 
     private static PartialInput<BillUpdateDTO> buildBillUpdateDTO(PatchBillUpdateDTO patchBillUpdateDTO) {
+        if (isNull(patchBillUpdateDTO)) {
+            return PartialInput.of(null);
+        }
+
         JsonNullable<PatchOrderDTO> order = patchBillUpdateDTO.getOrder();
         JsonNullable<PatchInvoiceDTO> invoice = patchBillUpdateDTO.getInvoice();
         JsonNullable<PatchTipDTO> tip = patchBillUpdateDTO.getTip();
@@ -237,6 +241,9 @@ public final class PatchQRCodeRequestMapper {
     }
 
     private static PartialInput<CurrencyEditableUpdateDTO> buildCurrencyEditableUpdateDTO(PatchEditableDTO patchEditableDTO) {
+        if (isNull(patchEditableDTO)) {
+            return PartialInput.of(null);
+        }
 
         JsonNullable<IntegerRangeDTO> range = patchEditableDTO.getRange();
 

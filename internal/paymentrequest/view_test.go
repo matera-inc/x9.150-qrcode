@@ -67,6 +67,45 @@ func TestViewIsJavasReadOfTheRow(t *testing.T) {
 	}
 }
 
+// X9.150 §6, INTERPRETATION I-17 (owner, 2026-11-15): sentAt is when the JSON is generated, on
+// the business clock, but never earlier than revisedAt; the GET answer carries it.
+func TestSentAtIsNowButNeverBeforeRevisedAt(t *testing.T) {
+	revised := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name string
+		now  time.Time
+		want time.Time
+	}{
+		{"later than revisedAt: now", revised.Add(time.Minute), revised.Add(time.Minute)},
+		{"at revisedAt", revised, revised},
+		{"a clock behind revisedAt: revisedAt", revised.Add(-time.Hour), revised},
+	} {
+		if got := SentAt(revised, tc.now); !got.Equal(tc.want) {
+			t.Errorf("%s: SentAt = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+
+	stored := `{"validUntil":"2030-12-31T23:59:59Z","creditor":{"name":"Co","MCC":"4900"},` +
+		`"bill":{"paymentTiming":"immediate","description":"d","amountDue":{"amount":1000,"currency":"USD"}},` +
+		`"paymentNotification":{"kind":"DEFAULT"},"paymentMethods":[{"currency":"USD","validUntil":"2030-12-31T23:59:59Z",` +
+		`"amount":1000,"networks":{"fednow":{"routingNumber":"021000021","accountNumber":"1234","protectionType":"plaintext"}}}]}`
+	id := uuid.MustParse("01a1dc2a-6a37-d73d-6313-076e9bfe04f5")
+	q := store.QRCode{ID: id, LocationID: id, ValidUntil: time.Date(2030, 12, 31, 23, 59, 59, 0, time.UTC),
+		Status: domain.StatusActive, ReservedUntil: domain.NoLapse, RequestJSON: json.RawMessage(stored),
+		CreatedAt: revised, RevisedAt: revised, EMVContent: "000201"}
+	got, err := (&Service{host: "pay.example"}).view(q, revised.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var answer map[string]any
+	if err := json.Unmarshal(got, &answer); err != nil {
+		t.Fatal(err)
+	}
+	if answer["sentAt"] != "2026-11-15T12:00:00Z" {
+		t.Errorf("GET at a clock behind revisedAt: sentAt %v, want revisedAt", answer["sentAt"])
+	}
+}
+
 // A body is read for the business rules as Java's value objects read it.
 func TestBillingRequestReadsTheBody(t *testing.T) {
 	var req contract.CreateRequest

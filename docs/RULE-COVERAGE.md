@@ -128,6 +128,7 @@ that is here must still be marked `GAP`.
 | `R-SM-44` | `NOT_SENT` is keyed on the action, and is the only message by which a payer gives a reserved QR Code back. | `X9-HOLD-103`, `X9-HOLD-020`, `X9-HOLD-021`, `X9-HOLD-213` | `S2.4-AC5`, `S2.4-AC6` |
 | `R-SM-45` | `payment.sent` and `payment.failed` are published on chains only. | `X9-HOLD-112`, `X9-HOLD-131`, `X9-HOLD-205`, `X9-MAP-030` | `S2.4-AC2`, `S2.4-AC3`, `S2.5-AC2`, `S4.1-AC1`, `S4.1-AC3` |
 | `R-SM-46` | There is no `txHash` field: `payment.transactionId` carries the reference of every rail. | `X9-HOLD-101`, `X9-EVT-503` | `S2.4-AC5`, `S3.4-AC1` |
+| `R-SM-47` | A PATCH that moves `validUntil` before the end of a running reservation cuts the reservation back to the new `validUntil`; it never lengthens one, and leaves alone a reservation that no longer lapses (a hash registered, or `ttl-seconds: 0`); past the new `validUntil` the QR Code reads `ACTIVE` (owner, 2026-11-15). | `X9-PATCH-044`, `X9-PATCH-045`, `X9-PATCH-053`, `X9-PATCH-515`, `row_test.go::TestCapReservation`, `patch_rules_test.go::TestPatchRulesAgainstPostgres` | — |
 
 ## ENDPOINTS.md
 
@@ -161,6 +162,10 @@ that is here must still be marked `GAP`.
 | `R-EP-26` | A payer fetches a payload or a JWK set from another host over `https` only. | `X9-LOC-481`, `X9-LOC-482`, `X9-LOC-483` | — |
 | `R-EP-27` | A PATCH is checked on its merged result: `dueDate` and every payment method's `validUntil` no later than `validUntil`, whichever side it moved; a refused PATCH changes nothing, the revision included. | `X9-PATCH-040`, `X9-PATCH-041`, `X9-PATCH-426` | — |
 | `R-EP-28` | A URL is this deployment's own only when its host, port included, is the configured host (case-insensitive); a URL that only mentions that host is another host's. | `X9-LOC-483`, `X9-LOC-484`, `X9-SIG-068`, `X9-LOC-312` | — |
+| `R-EP-29` | A PATCH's merged tip is held to the create's rule: `allowed: true` with neither a `range` nor `presets` is refused in the create's words; presets the PATCH leaves out keep their stored value and count (owner, 2026-11-15). | `X9-PATCH-048`, `X9-PATCH-050`, `X9-PATCH-512`, `rules_test.go::TestCheckTip`, `patch_rules_test.go::TestPatchRulesAgainstPostgres` | — |
+| `R-EP-30` | A date a PATCH sets already past on the payee's clock is refused in the create's words, the edge inclusive: `validUntil`, `bill.invoice.dueDate`, a discount's edge, a changed method's `validUntil`; a date the PATCH leaves as it was is not judged again, so an expired QR Code can be extended (owner, 2026-11-15). | `X9-PATCH-047`, `X9-PATCH-051`, `X9-PATCH-052`, `X9-PATCH-513`, `X9-PATCH-514`, `rules_test.go::TestCheckPatch` | — |
+| `R-EP-31` | An `order`, `invoice`, `invoicee` or `adjustments` a PATCH sends to a bill that had none is applied and checked; a currency named twice is refused, 400 naming it; `bill: null` is refused by name, `editable: null` removes `editable`, and `editable: {}` on a method that had none is the create's refusal (Story 9.7; owner, 2026-11-15). | `X9-PATCH-049`, `X9-PATCH-054`, `X9-PATCH-055`, `X9-PATCH-056`, `X9-PATCH-516`, `X9-PATCH-517`, `X9-PATCH-518` | — |
+| `R-EP-32` | `sentAt`, in a GET answer and in the payload, is the instant that JSON is generated on the payee's clock, never earlier than `revisedAt`. | `X9-TIME-022`, `X9-TIME-023`, `X9-TIME-024` | — |
 
 ## INTERPRETATION.md
 
@@ -201,6 +206,7 @@ that is here must still be marked `GAP`.
 | `R-I10-08` | Tip percentages are taken in the notified currency, not the bill's. | `X9-TIP-140` | — |
 | `R-I10-09` | `presets` has no minimum size: a bill with no tip block, with tips refused, or with a range only can be created. | `X9-TIP-121`, `X9-TIP-122`, `X9-TIP-501` | `S3.4-AC1` |
 | `R-I10-10` | A tip of zero, a negative tip, and a tip larger than the transfer are refused. | `X9-TIP-105`, `X9-TIP-106`, `X9-TIP-004`, `X9-TIP-108` | — |
+| `R-I10-11` | A PATCH whose merged bill offers a tip with neither a range nor presets is refused, as a create is; presets the PATCH leaves out keep their stored value and count (owner, 2026-11-15). | `X9-PATCH-048`, `X9-PATCH-050`, `X9-PATCH-512` | — |
 | `R-I11-01` | A notification without a `transactionId` is a pre-commit; with one, a post-commit. | `X9-HOLD-101`, `X9-HOLD-102` | `S2.4-AC1`, `S2.4-AC5` |
 | `R-I11-02` | A pre-commit is judged by the payee's clock and reserves the QR Code, on every rail. | `X9-HOLD-201`, `X9-MAP-020` | `S2.4-AC1`, `S2.4-AC2`, `S2.5-AC5`, `S4.1-AC1`, `S4.1-AC3` |
 | `R-I11-03` | A post-commit is recorded and never judged again. | `X9-TIME-002`, `X9-HOLD-206` | `S2.4-AC3`, `S2.4-AC4`, `S4.5-AC1` |
@@ -257,6 +263,10 @@ that is here must still be marked `GAP`.
 | `R-I16-08` | Generating: an unknown field at any level of a create or a PATCH (top level, creditor, address, bill and everything under it, payment method, editable, rail) is refused, 400, naming its path and the object's own fields, in the same words on both builds; only `networks` stays open (owner, 2026-11-15). | `X9-RAIL-058`, `X9-RAIL-059`, `X9-RAIL-067`, `X9-RAIL-068`, `X9-RAIL-507`, `X9-RAIL-508`, `X9-LIFE-505`, `closed_test.go::TestAnUnknownFieldIsRefusedAtEveryLevel` | — |
 | `R-I16-09` | Generating: an unknown field at any level of an outbound payment notification (`pre-payment`, `post-payment`) is refused before anything is sent; a payment notification read from another bank is not (owner, 2026-11-15). | `X9-RAIL-065`, `X9-RAIL-509`, `closed_test.go::TestANotificationReadOnItsOwnIsNotClosed` | — |
 | `R-I16-10` | A PATCH may carry what a GET answer carries but a PATCH cannot change: accepted and ignored when it equals the stored value as GET renders it (`sentAt` never compared), refused by name when it differs, nothing moving (owner, 2026-11-15, option B). | `X9-PATCH-042`, `X9-PATCH-043`, `X9-PATCH-420`, `X9-PATCH-421`, `X9-PATCH-510`, `X9-PATCH-511`, `patch_test.go::TestReadOnlyMembersAreComparedWithTheGetAnswer` | — |
+| `R-I17-01` | `sentAt` is the instant the JSON is generated, on the business clock, in the payload and in the GET answer; it is not stored. | `X9-TIME-022`, `X9-TIME-023`, `X9-TIME-024`, `view_test.go::TestSentAtIsNowButNeverBeforeRevisedAt` | — |
+| `R-I17-02` | `sentAt` is never earlier than `revisedAt`: a clock behind the last revision answers `revisedAt` (X9.150 §6). | `X9-PATCH-046`, `X9-TIME-022`, `X9-TIME-023`, `X9-TIME-024`, `view_test.go::TestSentAtIsNowButNeverBeforeRevisedAt` | — |
+| `R-I17-03` | A payload is never served past `validUntil`; the payer's fetch is refused instead, so `validUntil ≥ sentAt` holds for every payload sent. | `X9-LIFE-126`, `X9-TIME-012` | — |
+| `R-I17-04` | A PATCH never compares `sentAt`. | `X9-PATCH-510`, `X9-PATCH-042` | — |
 
 ## ADRs 0004 to 0021
 
@@ -317,6 +327,7 @@ the ADR that changed it.
 | `R-ADR0017-02` | A tip is accepted only when the bill allows one, it is inside the range, and it is not larger than the transfer. | `X9-TIP-005`, `X9-TIP-007`, `X9-TIP-008`, `X9-TIP-009`, `X9-TIP-004`, `X9-TIP-010` | — |
 | `R-ADR0017-03` | Presets do not bind; a bill with presets and no range accepts any positive tip. | `X9-TIP-011`, `X9-TIP-012` | — |
 | `R-ADR0017-04` | `presets` has no minimum size. | `X9-TIP-121`, `X9-TIP-122` | — |
+| `R-ADR0017-05` | A PATCH's merged tip is held to the same rule as a create's: allowed with neither a range nor presets is refused (owner, 2026-11-15). | `X9-PATCH-048`, `X9-PATCH-050`, `X9-PATCH-512` | — |
 | `R-ADR0018-01` | A PATCH naming every currency the QR Code offers is accepted, in any order. | `X9-PATCH-001`, `X9-PATCH-002`, `X9-PATCH-506` | `S3.4-AC1` |
 | `R-ADR0018-02` | A PATCH naming a currency the QR Code does not offer is refused, 400, naming it: a PATCH never adds a currency. | `X9-PATCH-003`, `X9-PATCH-005`, `X9-PATCH-424`, `X9-PATCH-508` | `S3.4-AC1`, `S4.2-AC2` |
 | `R-ADR0018-03` | A PATCH leaving out a currency the QR Code offers is refused, 400, naming it. | `X9-PATCH-004`, `X9-PATCH-507` | `S3.4-AC1` |
@@ -327,6 +338,7 @@ the ADR that changed it.
 | `R-ADR0019-04` | Every decision about status uses the effective status: the next payer, the ETag and `If-Match`. | `X9-LIFE-113`, `X9-LIFE-114`, `X9-LIFE-047`, `X9-LIFE-128`, `X9-LIFE-129`, `X9-TIME-008` | `S2.2-AC1`, `S2.2-AC2`, `S2.5-AC5`, `S4.5-AC1` |
 | `R-ADR0019-05` | A terminal status is never reinterpreted. | `X9-LIFE-117` | — |
 | `R-ADR0019-06` | A reservation with no stamp is treated as holding. | `X9-LIFE-118` | — |
+| `R-ADR0019-07` | A PATCH that moves `validUntil` earlier cuts a running reservation back to it: the window never outlives the QR Code (owner, 2026-11-15). | `X9-PATCH-044`, `X9-PATCH-053`, `X9-PATCH-515` | — |
 | `R-ADR0020-01` | The payee may mark `PAID` from `ACTIVE`, from `PAYMENT_INITIATED` (a lapsed reservation included) and past `validUntil`. | `X9-LIFE-120`, `X9-LIFE-121`, `X9-LIFE-122`, `X9-LIFE-170`, `X9-LIFE-171` | `S4.4-AC1` |
 | `R-ADR0020-02` | A `CANCELLED` QR Code cannot be marked paid. | `X9-LIFE-123` | — |
 | `R-ADR0020-03` | A status-update to the status already held is accepted and changes nothing: no event, no revision. | `X9-LIFE-127`, `X9-LIFE-125` | — |
