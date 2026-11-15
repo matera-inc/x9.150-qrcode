@@ -55,6 +55,9 @@ type PublicEndpoints struct {
 	// Host is the public host, with no scheme, written into every QR Code's location URL (EMV tag
 	// 26). At most 37 characters, or the URL would not fit the tag (emv.MaxHostLength).
 	Host string `yaml:"host"`
+	// JWSTTLSeconds is the ttl of every JWS this service signs, in seconds; the header carries it in
+	// milliseconds. The Java build's x9.public-endpoints.jws-ttl-seconds, 300 by default.
+	JWSTTLSeconds int `yaml:"jws-ttl-seconds"`
 }
 
 // Server is the HTTP listener. Health is served on the same port, as the Java build does.
@@ -127,6 +130,14 @@ type Testing struct {
 // keys and variables are the Java build's x9.certificate.* ones, so a mounted keystore keeps its
 // configuration. An empty location is the bundled DEMO identity (NON-PRODUCTION), as in Java.
 type Certificate struct {
+	// EndpointType is where a signed JWS says its certificate is published, Java's
+	// x9.certificate.endpoint-type: JWK_SET (jku, the default), PEM (x5u) or NONE (the chain itself,
+	// in x5c).
+	EndpointType string `yaml:"endpoint-type"`
+	// JWKAlgorithm is the JWS alg this service signs with, Java's x9.certificate.jwk-algorithm:
+	// PS512 by default; RS256, RS384, RS512, PS256, PS384 or PS512 for an RSA key, ES256 (P-256),
+	// ES384 (P-384) or ES512 (P-521) for an EC key.
+	JWKAlgorithm    string          `yaml:"jwk-algorithm"`
 	PrivateKeystore PrivateKeystore `yaml:"private-keystore"`
 	Truststore      Truststore      `yaml:"truststore"`
 }
@@ -134,6 +145,8 @@ type Certificate struct {
 // LogValue keeps the passwords out of every log line.
 func (c Certificate) LogValue() slog.Value {
 	return slog.GroupValue(
+		slog.String("endpointType", c.EndpointType),
+		slog.String("jwkAlgorithm", c.JWKAlgorithm),
 		slog.String("privateKeystore", c.PrivateKeystore.Location),
 		slog.String("privateKeystoreAlias", c.PrivateKeystore.Alias),
 		slog.String("truststore", c.Truststore.Location),
@@ -181,12 +194,14 @@ type KeystoreReload struct {
 // security-relevant is here: no host, credential, TLS mode or certificate.
 func defaults() Config {
 	return Config{
-		Server:      Server{Port: 8080, ShutdownDelaySeconds: 5},
-		Database:    Database{Port: 5432, Schema: "x9_qrcode", PoolWrites: 8, PoolReads: 4},
-		Log:         Log{Level: "info"},
-		Reservation: Reservation{TTLSeconds: 90},
-		Testing:     Testing{ClockListen: "127.0.0.1:8099"},
-		Keystore:    Keystore{Reload: KeystoreReload{Frequency: 30000}},
+		Server:          Server{Port: 8080, ShutdownDelaySeconds: 5},
+		PublicEndpoints: PublicEndpoints{JWSTTLSeconds: 300},
+		Database:        Database{Port: 5432, Schema: "x9_qrcode", PoolWrites: 8, PoolReads: 4},
+		Log:             Log{Level: "info"},
+		Reservation:     Reservation{TTLSeconds: 90},
+		Testing:         Testing{ClockListen: "127.0.0.1:8099"},
+		Certificate:     Certificate{EndpointType: "JWK_SET", JWKAlgorithm: "PS512"},
+		Keystore:        Keystore{Reload: KeystoreReload{Frequency: 30000}},
 	}
 }
 
@@ -201,6 +216,7 @@ var envVars = []envVar{
 	{"X9_SERVER_PORT", "server.port", setInt(func(c *Config) *int { return &c.Server.Port })},
 	{"X9_SERVER_SHUTDOWNDELAYSECONDS", "server.shutdown-delay-seconds", setInt(func(c *Config) *int { return &c.Server.ShutdownDelaySeconds })},
 	{"X9_PUBLICENDPOINTS_HOST", "public-endpoints.host", setString(func(c *Config) *string { return &c.PublicEndpoints.Host })},
+	{"X9_PUBLICENDPOINTS_JWSTTLSECONDS", "public-endpoints.jws-ttl-seconds", setInt(func(c *Config) *int { return &c.PublicEndpoints.JWSTTLSeconds })},
 	{"DATABASE_HOST", "database.host", setString(func(c *Config) *string { return &c.Database.Host })},
 	{"DATABASE_PORT", "database.port", setInt(func(c *Config) *int { return &c.Database.Port })},
 	{"DATABASE_NAME", "database.name", setString(func(c *Config) *string { return &c.Database.Name })},
@@ -217,6 +233,8 @@ var envVars = []envVar{
 	{"X9_RESERVATION_TTL_SECONDS", "reservation.ttl-seconds", setInt(func(c *Config) *int { return &c.Reservation.TTLSeconds })},
 	{"X9_TESTING_CLOCKCONTROL", "testing.clock-control", setBool(func(c *Config) *bool { return &c.Testing.ClockControl })},
 	{"X9_TESTING_CLOCKLISTEN", "testing.clock-listen", setString(func(c *Config) *string { return &c.Testing.ClockListen })},
+	{"X9_CERTIFICATE_ENDPOINTTYPE", "certificate.endpoint-type", setString(func(c *Config) *string { return &c.Certificate.EndpointType })},
+	{"X9_CERTIFICATE_JWKALGORITHM", "certificate.jwk-algorithm", setString(func(c *Config) *string { return &c.Certificate.JWKAlgorithm })},
 	{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION", "certificate.private-keystore.location", setString(func(c *Config) *string { return &c.Certificate.PrivateKeystore.Location })},
 	{"X9_CERTIFICATE_PRIVATEKEYSTORE_TYPE", "certificate.private-keystore.type", setString(func(c *Config) *string { return &c.Certificate.PrivateKeystore.Type })},
 	{"X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD", "certificate.private-keystore.password", setString(func(c *Config) *string { return &c.Certificate.PrivateKeystore.Password })},
@@ -549,6 +567,9 @@ func (c Config) validate() []error {
 	if c.Reservation.TTLSeconds < 0 {
 		errs = append(errs, problem("reservation.ttl-seconds", "must not be negative (0 means no window), got %d", c.Reservation.TTLSeconds))
 	}
+	if c.PublicEndpoints.JWSTTLSeconds < 1 {
+		errs = append(errs, problem("public-endpoints.jws-ttl-seconds", "must be at least 1, got %d", c.PublicEndpoints.JWSTTLSeconds))
+	}
 	errs = append(errs, c.Certificate.validate()...)
 	if c.Keystore.Reload.Frequency < 1 {
 		errs = append(errs, problem("keystore.reload.frequency", "must be at least 1 (milliseconds), got %d", c.Keystore.Reload.Frequency))
@@ -576,8 +597,26 @@ func (t Testing) validate(apiPort int) []error {
 
 var keystoreTypes = map[string]bool{"": true, "JKS": true, "PKCS12": true, "PEM": true}
 
+// endpointTypes are the values of Java's CertificateEndpointTypeEnum.
+var endpointTypes = map[string]bool{"JWK_SET": true, "PEM": true, "NONE": true}
+
+// jwkAlgorithms are the algorithms the Go build signs with (ADR-0027): RS*, PS* and ES*.
+var jwkAlgorithms = map[string]bool{
+	"RS256": true, "RS384": true, "RS512": true,
+	"PS256": true, "PS384": true, "PS512": true,
+	"ES256": true, "ES384": true, "ES512": true,
+}
+
 func (c Certificate) validate() []error {
 	var errs []error
+	if !endpointTypes[c.EndpointType] {
+		errs = append(errs, problem("certificate.endpoint-type", "must be JWK_SET (jku), PEM (x5u) or NONE (x5c); got %q", c.EndpointType))
+	}
+	if !jwkAlgorithms[c.JWKAlgorithm] {
+		errs = append(errs, problem("certificate.jwk-algorithm",
+			"must be RS256, RS384, RS512, PS256, PS384 or PS512 (an RSA key), or ES256, ES384 or ES512 (an EC key); got %q",
+			c.JWKAlgorithm))
+	}
 	store := func(prefix, location, typ string) {
 		switch t := strings.ToUpper(strings.TrimSpace(typ)); {
 		case t == "PKCS11":

@@ -272,6 +272,14 @@ the variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`.
   `//nolint:forbidigo` that says which real duration it measures. The clock supports a
   millisecond offset, but it stays disabled in the Go build until the `/test/clock` listener and
   its certificate guard arrive with the signing keys.
+- **Signing** (`internal/jws`, not yet behind an endpoint) uses the Java build's settings and
+  header profile: `X9_CERTIFICATE_JWKALGORITHM` (default `PS512`; RS\*, PS\*, or ES256/ES384/ES512
+  each on its own curve), `X9_CERTIFICATE_ENDPOINTTYPE` (`JWK_SET` → `jku`, the default; `PEM` →
+  `x5u`; `NONE` → `x5c`) and `X9_PUBLICENDPOINTS_JWSTTLSECONDS` (300, written as `ttl: 300000`
+  ms). An algorithm the signing key cannot produce stops the service at start. Its tests check
+  Go's tokens with the black-box suite's own verifier (`others/blackbox/x9client`) when
+  `.blackbox-venv` exists (`make blackbox-venv`) or `X9_BLACKBOX_PYTHON` names an interpreter with
+  the suite's dependencies; CI always runs it.
 
 ## Troubleshooting
 
