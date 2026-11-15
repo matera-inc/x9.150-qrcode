@@ -22,11 +22,18 @@ Other tests write events while these run, so nothing here assumes an empty or qu
 test filters by its own QR Codes, compares windows of the stream rather than the whole of it, and
 holds a long poll open only on a cursor past the end of any stream (``END``), where no other
 test's event can cut it short.
+
+On the Go build the cursor is ``seq`` as a decimal string, and a ULID is a Java build's cursor,
+translated through the migrated events (ADR-0026): with nothing migrated, ``END`` reads from the
+beginning. There, ``past_the_end`` is the stream's end as it stands, which no test moves while the
+suite runs one test at a time; a decimal past it is the Go build's 409 "cursor ahead of log"
+(ADR-0031, ``X9-EVT-058``).
 """
 import time
 
 import pytest
 
+import builds
 from test_transition_map import (
     CANCELLED_EVT, CLEARED, HOLDER, INITIATED, LAPSED_MS, OTHER, assert_events,
     assert_from_first_method, assert_from_notification, assert_from_status_update, assert_kept,
@@ -39,6 +46,14 @@ from x9client.events import PATH, EventReader
 # The largest ULID: no event's cursor is ever after it, so a long poll there always runs its
 # whole hold, whatever other tests write meanwhile.
 END = "7ZZZZZZZZZZZZZZZZZZZZZZZZZ"
+
+
+def past_the_end(api):
+    """A cursor after which nothing stands: ``END`` on Java; on Go, where a ULID addresses only the
+    migrated events, the stream's end as it stands now."""
+    if builds.under_test() == "go":
+        return EventReader(api).mark()
+    return END
 
 E2E = "E2E-BLACKBOX-S44"
 
@@ -445,13 +460,13 @@ def test_has_more(api, cursor):
         after = last["nextCursor"]
     assert last["hasMore"] is False, "the stream never reported its end"
 
-    past = page(api, after=END, limit=1)
+    past = page(api, after=past_the_end(api), limit=1)
     assert past["events"] == [] and past["hasMore"] is False, past
     assert "nextCursor" not in past or past["nextCursor"] in (None, ""), past
 
 
 @pytest.mark.parametrize("wait", [31, 300])
-def test_wait_above_30_is_refused(api, wait):
+def test_wait_above_30_is_refused(deployment, wait):
     """X9-EVT-053 — a long poll asking for more than 30 s is refused at once: 400 naming `wait`.
 
     S4.4-AC2 ("`wait` above 30 refused with 400 naming `wait`").
@@ -461,6 +476,7 @@ def test_wait_above_30_is_refused(api, wait):
     Why: The hold is bounded to stay under proxy and ingress idle timeouts. A consumer asking for
     more is told so at once, by name, instead of being held for a time it did not ask for.
     """
+    api = deployment  # reads the stream only: no QR Code, no payer probe
     started = time.monotonic()
     response = api.get(f"{PATH}?after={END}&limit=1&wait={wait}")
     held = time.monotonic() - started
@@ -471,7 +487,7 @@ def test_wait_above_30_is_refused(api, wait):
 
 
 @pytest.mark.parametrize("limit", [0, 501])
-def test_a_limit_outside_1_to_500_is_refused(api, limit):
+def test_a_limit_outside_1_to_500_is_refused(deployment, limit):
     """X9-EVT-056 — ``limit`` 0 and ``limit`` 501 are refused: 400 naming ``limit``. 1 and 500 are
     accepted.
 
@@ -481,6 +497,7 @@ def test_a_limit_outside_1_to_500_is_refused(api, limit):
     than 500 would be served a page the deployment never sized for. Either is told so, by name,
     rather than silently clamped into a page size it did not ask for.
     """
+    api = deployment  # reads the stream only: no QR Code, no payer probe
     response = api.get(f"{PATH}?after={END}&limit={limit}")
 
     assert response.status == 400, response
@@ -514,7 +531,7 @@ def test_without_limit_a_page_holds_at_most_100_events(api):
 
 
 @pytest.mark.parametrize("wait, low, high", [(0, 0.0, 1.5), (2, 1.8, 4.0), (30, 29.0, 34.0)])
-def test_wait_holds_an_empty_poll_for_as_long_as_asked(api, wait, low, high):
+def test_wait_holds_an_empty_poll_for_as_long_as_asked(deployment, wait, low, high):
     """X9-EVT-054 — with nothing to return, the poll is held for `wait` seconds (0 returns at
     once, 30 is honoured), then answers 200 with an empty page.
 
@@ -524,8 +541,10 @@ def test_wait_holds_an_empty_poll_for_as_long_as_asked(api, wait, low, high):
     Why: An idle consumer costs one parked request instead of a poll loop only if the hold is
     real; one that returned at once would turn every consumer into a busy loop.
     """
+    api = deployment  # reads the stream only: no QR Code, no payer probe
+    after = past_the_end(api)
     started = time.monotonic()
-    body = page(api, after=END, limit=1, wait=wait)
+    body = page(api, after=after, limit=1, wait=wait)
     held = time.monotonic() - started
 
     assert body["events"] == [] and body["hasMore"] is False, body
@@ -567,3 +586,30 @@ def test_replay_from_an_old_cursor_is_safe_by_event_id(api, cursor):
     for event in first + again + suffix:
         applied.setdefault(event["eventId"], event)
     assert list(applied.values()) == first, "deduplicated by eventId, each event applies once"
+
+
+@pytest.mark.go_only(reason="go_only: the Java build has no 'cursor ahead of log' answer; a recorded "
+                            "difference for Epic 11 (ADR-0031)")
+def test_a_cursor_ahead_of_the_log_is_a_conflict(deployment):
+    """X9-EVT-058 — a decimal cursor after the last event is refused 409 "cursor ahead of log",
+    carrying the log's current ``lastSeq``; the cursor of the last event itself reads an empty page.
+
+    S10.1-AC1, S10.1-AC6.
+
+    Source: Ours. ADR-0031 ("Point-in-time restore of the database": ``after`` greater than
+    ``last_seq`` answers 409 with the current ``last_seq``); ADR-0026 (the cursor is ``seq``).
+    Why: After a restore, a consumer's stored cursor may name events the log no longer has. Held
+    open, its long poll would wait forever for numbers already handed out; told so, it
+    re-synchronises from the QR Codes and resumes from ``lastSeq``.
+    """
+    api = deployment  # reads the stream only: no QR Code, no payer probe
+    end = past_the_end(api)
+    last = int(end or 0)
+
+    ahead = api.get(f"{PATH}?after={last + 1}&limit=1&wait=5")
+    assert ahead.status == 409, ahead
+    assert ahead.body.get("lastSeq") == str(last), ahead.body
+    assert "after" in str(ahead.body.get("violations")), f"the refusal names `after`: {ahead.body}"
+
+    at_end = page(api, after=str(last), limit=1)
+    assert at_end["events"] == [] and at_end["hasMore"] is False, at_end

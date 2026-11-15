@@ -7,6 +7,7 @@ package domain
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -44,6 +45,19 @@ func (t EventType) Code() string {
 	default:
 		return ""
 	}
+}
+
+// ErrUnknownEventType is returned for a code that is not one of the five event types.
+var ErrUnknownEventType = errors.New("unknown event type")
+
+// EventTypeFromCode reads an event type by its code in event_type (INIT, SENT, FAIL, CLRD, CANC).
+func EventTypeFromCode(code string) (EventType, error) {
+	for _, t := range []EventType{EventInitiated, EventSent, EventFailed, EventCleared, EventCancelled} {
+		if t.Code() == code {
+			return t, nil
+		}
+	}
+	return "", fmt.Errorf("%w: code %q", ErrUnknownEventType, code)
 }
 
 // SchemaVersion is the event body's schema: 1.1 added deviations and receivedInStatus (ADR-0036).

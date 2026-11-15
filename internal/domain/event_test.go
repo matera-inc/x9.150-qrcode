@@ -6,6 +6,7 @@
 package domain
 
 import (
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -133,6 +134,17 @@ func TestEventTypeCodes(t *testing.T) {
 	for typ, code := range want {
 		if got := typ.Code(); got != code {
 			t.Errorf("%s.Code() = %q, want %q", typ, got, code)
+		}
+		if code == "" {
+			continue
+		}
+		if back, err := EventTypeFromCode(code); err != nil || back != typ {
+			t.Errorf("EventTypeFromCode(%q) = %q, %v; want %s", code, back, err, typ)
+		}
+	}
+	for _, code := range []string{"", "init", "PAID", "XXXX"} {
+		if _, err := EventTypeFromCode(code); !errors.Is(err, ErrUnknownEventType) {
+			t.Errorf("EventTypeFromCode(%q): %v, want ErrUnknownEventType", code, err)
 		}
 	}
 }

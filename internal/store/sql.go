@@ -71,6 +71,15 @@ const (
  FROM payment_event WHERE seq > $1 ORDER BY seq FETCH FIRST $2 ROWS ONLY`
 
 	sqlSelectLastSeq = `SELECT last_seq FROM event_sequence WHERE id = 1`
+
+	// The translation of a Java build's ULID cursor (ADR-0026), in three steps: the cursor's own
+	// row; else the first migrated event whose cursor is greater; else after the last migrated
+	// event. A ULID is upper-case Crockford base32 (digits, then upper-case letters), which sorts
+	// the same way in every collation, so the comparison needs no COLLATE.
+	sqlSelectLegacyCursor     = `SELECT seq FROM payment_event_legacy_cursor WHERE legacy_cursor = $1`
+	sqlSelectNextLegacyCursor = `SELECT seq FROM payment_event_legacy_cursor WHERE legacy_cursor > $1
+ ORDER BY legacy_cursor FETCH FIRST 1 ROWS ONLY`
+	sqlSelectLastLegacySeq = `SELECT COALESCE(MAX(seq), 0) FROM payment_event_legacy_cursor`
 )
 
 // lockTimeoutSQL is ADR-0025's guard on an event transaction. SET takes no parameter; timeout is

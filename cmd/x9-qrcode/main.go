@@ -28,11 +28,13 @@ import (
 	"github.com/matera-inc/x9.150-qrcode/internal/clock"
 	"github.com/matera-inc/x9.150-qrcode/internal/config"
 	"github.com/matera-inc/x9.150-qrcode/internal/database"
+	"github.com/matera-inc/x9.150-qrcode/internal/eventstream"
 	"github.com/matera-inc/x9.150-qrcode/internal/health"
 	"github.com/matera-inc/x9.150-qrcode/internal/httpapi"
 	"github.com/matera-inc/x9.150-qrcode/internal/httplog"
 	"github.com/matera-inc/x9.150-qrcode/internal/jws"
 	"github.com/matera-inc/x9.150-qrcode/internal/keys"
+	"github.com/matera-inc/x9.150-qrcode/internal/store"
 	"github.com/matera-inc/x9.150-qrcode/internal/testclock"
 )
 
@@ -128,7 +130,12 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	// route takes, and request headers past 30 KB, as the Java build does (S9.2-AC1, S9.2-AC8).
 	api := httpapi.New(logger, businessClock.Now)
 	probes.Register(api.Mux())
+	st := store.New(pools.Write, pools.Read, businessClock)
+	events := eventstream.New(st)
+	events.Register(api)
 	srv := newServer(cfg.Server.Port, httplog.Middleware(logger, testclock.OffsetHeader(businessClock, api)))
+	// On SIGTERM, parked long-polls answer with their current page instead of holding the drain (ADR-0031).
+	srv.RegisterOnShutdown(events.Stop)
 	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", srv.Addr)
 	if err != nil {
 		pools.Close()
