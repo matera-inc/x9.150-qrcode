@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**788 tests documented** — every JUnit test and every black-box case.
+**798 tests documented** — every JUnit test and every black-box case.
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
 (STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036 and ADR-0027's EMV and JWS verification rules), the
@@ -618,11 +618,14 @@ status is `X9-MAP-002`.
 | `X9-RAIL-045` | a recipient that is not base58 of the right length is refused | `SolanaPaymentMethodApiTest.java` |
 | `X9-RAIL-046` | a 43-character recipient is accepted | `SolanaPaymentMethodApiTest.java` |
 | `X9-RAIL-047` | a memo beyond its published limit is refused | `SolanaPaymentMethodApiTest.java` |
+| `X9-RAIL-048` | an unknown field inside `solana` is refused at create, naming its path | `SolanaPaymentMethodApiTest.java` |
+| `X9-RAIL-049` | an unknown field inside `solana` is refused on PATCH, naming its path, and nothing changes | `SolanaPaymentMethodApiTest.java` |
 | `X9-RAIL-050` | the configured spelling is accepted | `NetworkNamingApiTest.java` |
 | `X9-RAIL-051` | a standard rail under any other spelling is refused at creation | `NetworkNamingApiTest.java` |
 | `X9-RAIL-052` | an unsupported network is refused, by name | `NetworkNamingApiTest.java` |
 | `X9-RAIL-053` | an unsupported network is not silently dropped | `NetworkNamingApiTest.java` |
 | `X9-RAIL-054` | a patch may not introduce an unsupported network | `NetworkNamingApiTest.java` |
+| `X9-RAIL-055` | an unknown field inside `solana` is named beside the other violations of the same request | `SolanaPaymentMethodApiTest.java` |
 | `X9-RAIL-060` | a payload offering an uninterpreted rail still decodes | `OpaqueNetworkOnDecodeApiTest.java` |
 | `X9-RAIL-061` | a rail we do interpret is unaffected by opacity | `OpaqueNetworkOnDecodeApiTest.java` |
 | `X9-RAIL-062` | an unknown network arrives with every field intact | `OpaqueNetworkOnDecodeApiTest.java` |
@@ -645,6 +648,8 @@ status is `X9-MAP-002`.
 | `X9-RAIL-111` | a payment notification is accepted on every interpreted rail | `QRCodesApisFlowTest.java` |
 | `X9-RAIL-120` | `paymentMethods` sent as a bare object is refused with 400 and no id | `test_create_refusals.py` |
 | `X9-RAIL-501` | a network this deployment does not interpret is refused at create, naming it, with no id | `test_create_refusals.py` |
+| `X9-RAIL-502` | an unknown field inside `solana` is refused at create, naming its path, with no id | `test_create_refusals.py` |
+| `X9-RAIL-503` | an unknown field inside `solana` is refused on PATCH, naming its path, and the ETag does not move | `test_create_refusals.py` |
 
 ## Signatures, keys and problem details
 
@@ -658,6 +663,7 @@ status is `X9-MAP-002`.
 | `X9-SIG-020` | problem detail extension members sit at the top level | `ProblemDetailShapeApiTest.java` |
 | `X9-SIG-021` | extension members are not nested under a properties object | `ProblemDetailShapeApiTest.java` |
 | `X9-SIG-022` | the standard problem detail members are kept | `ProblemDetailShapeApiTest.java` |
+| `X9-SIG-023` | a query parameter of the wrong type answers `violations` as an array | `ProblemDetailShapeApiTest.java` |
 | `X9-SIG-030` | what arrives at the payee is a signed JWS | `OutboundPaymentNotificationApiTest.java` |
 | `X9-SIG-031` | the id travels inside the payment object, where the standard puts it | `OutboundPaymentNotificationApiTest.java` |
 | `X9-SIG-032` | a payee can read what we sent using the contract type | `OutboundPaymentNotificationApiTest.java` |
@@ -762,6 +768,7 @@ status is `X9-MAP-002`.
 | `X9-SIG-525` | an EC payer issued by a trusted CA, carrying x5c, is accepted | `CaIssuedSignatureApiTest.java` |
 | `X9-SIG-526` | a canonical `correlationId` written in capitals is accepted | `test_signatures.py` |
 | `X9-SIG-527` | a payee answer whose body `statusCode` is not an integer, or exceeds 32 bits, is INVALID, `STATUS_MISSING` | `test_payee_answers.py` |
+| `X9-SIG-528` | a typed query parameter that does not parse is 400 with `violations` an array naming it | `test_create_refusals.py` |
 
 ## Time edges (the test clock)
 

@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.matera.x9qrcode.infrastructure.generated.dto.BillDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PatchBillUpdateDTO;
+import com.matera.x9qrcode.infrastructure.web.controller.validation.ClosedSolanaFields;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
@@ -107,6 +108,10 @@ public final class ObjectMapperFactory {
         // that mixin was absent and Jackson serialized the map as a plain bean property — nesting
         // every extension member under a "properties" object and silently breaking the contract.
         objectMapper.addMixIn(ProblemDetail.class, ProblemDetailJacksonMixin.class);
+
+        // Solana is closed (additionalProperties: false, INTERPRETATION I-9): an unknown field inside it
+        // is noted rather than dropped, so a create or PATCH can refuse it by name (R-I9-03).
+        objectMapper.addHandler(new ClosedSolanaFields());
 
         return objectMapper;
     }
