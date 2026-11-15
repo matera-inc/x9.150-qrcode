@@ -141,6 +141,7 @@ func TestEveryProblemTypeIsJavas(t *testing.T) {
 		{PayloadRefused(404, []string{"x"}), `{"type":"https://x9.matera.com/api/payload-refused","title":"Payload Refused","status":404,"detail":"The payee's service refused to release this payload. Its own reason is relayed in ` + "`violations`" + `.","violations":["x"]}`},
 		{PayloadUnreachable(), `{"type":"https://x9.matera.com/api/payload-unreachable","title":"Payload Unreachable","status":502,"detail":"The payee's service could not be reached, so this QR Code could not be decoded. Retry."}`},
 		{NotificationUndeliverable(), `{"type":"https://x9.matera.com/api/notification-undeliverable","title":"Notification Undeliverable","status":502,"detail":"The payee's answer was not received; the payee may have received the notification. Retrying is safe."}`},
+		{NotificationBadCorrelationID(), `{"type":"https://x9.matera.com/api/notification-undeliverable","title":"Notification Undeliverable","status":502,"detail":"failed to pay - payee is not responding (bad correlationId)"}`},
 		{Unavailable(), `{"type":"https://x9.matera.com/api/internal-error","title":"Service Unavailable","status":503,"detail":"The database did not answer in time, so nothing was written. Retry."}`},
 	} {
 		if diff := cmp.Diff(tc.want, string(problemBody(tc.p, "", false))); diff != "" {

@@ -21,6 +21,14 @@
 // status is 2xx, and what its signature is worth (jws.Verifier.CheckAnswer, Story 2.3). An
 // unsigned yes is still a yes; whether to act on it is the payer's call. Nothing in this
 // deployment's own state changes.
+//
+// One exception, by the owner's decision of 2026-11-15 (ADR-0027): a signed answer that does not
+// carry exactly the correlationId sent, none or another (jws.NotEchoed), is not an answer to our
+// question. Before the money moves (no transactionId on the wire) it is refused, 502
+// notification-undeliverable with the detail "failed to pay - payee is not responding (bad
+// correlationId)". After it moved (a transactionId), the notification is sent once more, under a
+// new correlationId; a good answer to that is reported as usual, and a second bad one, or none, is
+// recorded at WARN (MsgUntiedAnswers) and the retry's answer reported as it is.
 package outbound
 
 import (
@@ -103,13 +111,14 @@ type Service struct {
 	signer  *jws.Signer
 	checker AnswerChecker
 	logger  *slog.Logger
+	now     func() time.Time
 	client  *Client
 }
 
 // New returns the service. signer and checker are the deployment's one signer and one verifier
-// (S10.2-AC1).
-func New(k Keys, signer *jws.Signer, checker AnswerChecker, logger *slog.Logger, cfg Config) *Service {
-	return &Service{keys: k, signer: signer, checker: checker, logger: logger, client: NewClient(cfg)}
+// (S10.2-AC1); now is the business clock, read for the time a record is written.
+func New(k Keys, signer *jws.Signer, checker AnswerChecker, logger *slog.Logger, now func() time.Time, cfg Config) *Service {
+	return &Service{keys: k, signer: signer, checker: checker, logger: logger, now: now, client: NewClient(cfg)}
 }
 
 // Register adds the routes to api.
@@ -168,30 +177,133 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request, p phase) error {
 		return httpapi.BusinessRule("correlationId", violationNilCorrelationID)
 	}
 
-	payload, err := httpapi.Marshal(wireOf(note))
+	wire := wireOf(note)
+	payload, err := httpapi.Marshal(wire)
 	if err != nil {
 		return fmt.Errorf("composing the notification: %w", err)
 	}
+
+	first, err := s.exchange(r.Context(), endpoint, payload, correlationID)
+	if err != nil {
+		return err
+	}
+	if !first.badCorrelationID() {
+		return httpapi.WriteJSON(w, http.StatusOK, resultOf(first.check, first.body))
+	}
+
+	// The payee's answer is not tied to our question: no correlationId, or another one (owner,
+	// 2026-11-15; ADR-0027). The phase is the wire's own (ADR-0004): without a transactionId the
+	// payee reads a pre-commit notification, the money has not moved, and an answer we cannot tie
+	// to the question is no answer at all.
+	if wire.Payment.TransactionID == nil {
+		s.logger.WarnContext(r.Context(), "x9-qrcode pre-commit answer refused: bad correlationId",
+			"qrcodeId", wire.Payment.QRCodeID, "correlationIdSent", correlationID.String(),
+			"correlationIdAnswered", answered(first.body), "problem", string(first.check.Problem))
+		return httpapi.NotificationBadCorrelationID()
+	}
+
+	// Post-commit: the money has moved. Send it once more, as a new exchange under a new
+	// correlationId; a good answer to it is reported as any other.
+	retryID := jws.NewCorrelationID()
+	retry, err := s.exchange(r.Context(), endpoint, payload, retryID)
+	if err != nil || retry.badCorrelationID() {
+		s.recordUntiedAnswers(r.Context(), wire, []attempt{
+			{sent: correlationID, outcome: first},
+			{sent: retryID, outcome: retry},
+		})
+	}
+	if err != nil {
+		return err
+	}
+	return httpapi.WriteJSON(w, http.StatusOK, resultOf(retry.check, retry.body))
+}
+
+// outcome is one delivery of a notification and the check of its answer.
+type outcome struct {
+	// delivered is false when no whole answer came back.
+	delivered bool
+	status    int
+	body      string
+	check     jws.AnswerCheck
+	sent      uuid.UUID
+}
+
+// badCorrelationID reports whether the answer is a JWS refused because it does not carry the
+// correlationId sent (jws.NotEchoed). An answer that is not a JWS at all, or that fails another
+// check, is not: it is reported as it always was.
+func (o outcome) badCorrelationID() bool { return jws.NotEchoed(o.check.Problem, o.body, o.sent) }
+
+// exchange signs payload under correlationID, posts it, and checks the answer. No whole answer is
+// the 502 notification-undeliverable.
+func (s *Service) exchange(ctx context.Context, endpoint *url.URL, payload []byte, correlationID uuid.UUID) (outcome, error) {
 	token, err := s.signer.Sign(s.keys.Current().Identity, jws.Message{Payload: payload, CorrelationID: correlationID})
 	if err != nil {
-		return fmt.Errorf("signing the notification: %w", err)
+		return outcome{}, fmt.Errorf("signing the notification: %w", err)
 	}
 
-	s.logger.InfoContext(r.Context(), "x9-qrcode sending a payment notification", "host", endpoint.Host,
+	s.logger.InfoContext(ctx, "x9-qrcode sending a payment notification", "host", endpoint.Host,
 		"correlationId", correlationID.String())
-	status, body, err := s.client.Post(r.Context(), endpoint, http.Header{"Content-Type": {ContentTypeJOSE}}, token)
+	status, body, err := s.client.Post(ctx, endpoint, http.Header{"Content-Type": {ContentTypeJOSE}}, token)
 	if err != nil {
-		s.logger.WarnContext(r.Context(), "x9-qrcode payment notification undeliverable", "host", endpoint.Host,
+		s.logger.WarnContext(ctx, "x9-qrcode payment notification undeliverable", "host", endpoint.Host,
 			"correlationId", correlationID.String(), "err", err)
-		return httpapi.NotificationUndeliverable()
+		return outcome{sent: correlationID}, httpapi.NotificationUndeliverable()
 	}
 
-	check := s.checker.CheckAnswer(r.Context(), status, body, correlationID)
+	check := s.checker.CheckAnswer(ctx, status, body, correlationID)
 	if check.Signature != jws.AnswerVerified {
-		s.logger.WarnContext(r.Context(), "x9-qrcode payee answer not verified", "signature", string(check.Signature),
+		s.logger.WarnContext(ctx, "x9-qrcode payee answer not verified", "signature", string(check.Signature),
 			"problem", string(check.Problem), "detail", check.Detail, "httpStatus", status)
 	}
-	return httpapi.WriteJSON(w, http.StatusOK, resultOf(check, body))
+	return outcome{delivered: true, status: status, body: body, check: check, sent: correlationID}, nil
+}
+
+// attempt is one post-commit delivery, for the record.
+type attempt struct {
+	sent    uuid.UUID
+	outcome outcome
+}
+
+// MsgUntiedAnswers is the record of a post-commit notification whose answer, sent twice, never
+// carried the correlationId sent (owner, 2026-11-15; ADR-0027). It is the one place this is kept:
+// the payer side holds no state for a QR Code another bank issued, so the record is this log line,
+// at WARN, for the payer bank to investigate. Nothing else is started.
+const MsgUntiedAnswers = "x9-qrcode post-commit notification: the payee's answer did not carry our correlationId, twice"
+
+// recordUntiedAnswers writes the record: the QR Code, the transactionId, each correlationId sent,
+// what came back under it (the answer's correlationId, "missing", or "no answer"), and when. Never
+// the endpoint, and never a key.
+func (s *Service) recordUntiedAnswers(ctx context.Context, wire wireNotification, attempts []attempt) {
+	sent := make([]string, 0, len(attempts))
+	got := make([]string, 0, len(attempts))
+	problems := make([]string, 0, len(attempts))
+	for _, a := range attempts {
+		sent = append(sent, a.sent.String())
+		if !a.outcome.delivered {
+			got, problems = append(got, "no answer"), append(problems, "")
+			continue
+		}
+		got, problems = append(got, answered(a.outcome.body)), append(problems, string(a.outcome.check.Problem))
+	}
+	tx := ""
+	if wire.Payment.TransactionID != nil {
+		tx = *wire.Payment.TransactionID
+	}
+	s.logger.WarnContext(ctx, MsgUntiedAnswers,
+		"qrcodeId", wire.Payment.QRCodeID,
+		"transactionId", tx,
+		"correlationIdsSent", sent,
+		"correlationIdsAnswered", got,
+		"problems", problems,
+		"at", contract.FormatInstant(s.now()))
+}
+
+// answered is the correlationId an answer carried, for a log: "missing" when it carried none.
+func answered(body string) string {
+	if id := jws.AnsweredCorrelationID(body); id != "" {
+		return id
+	}
+	return "missing"
 }
 
 // checkEndpoint is the Java build's check: an absolute URL with a host. A relative or schemeless
