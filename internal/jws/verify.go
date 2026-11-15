@@ -453,13 +453,15 @@ func keyByID(body []byte, h *protected) (*jose.JSONWebKey, *Refusal) {
 	return nil, refusal(CertificateUnavailable, nil, "the signer's JWK set has no key with kid %q", h.kid)
 }
 
-// fromPKI carries internal/pki's code over.
+// fromPKI carries internal/pki's code over, and its reason in the detail: the outbound answer
+// check reports the detail to the payer (signatureDetail), who must be able to tell an untrusted
+// chain from a revoked certificate (Story 2.3). An inbound 401 never shows it.
 func fromPKI(err error) *Refusal {
 	p, ok := pki.ProblemOf(err)
 	if !ok {
 		return refusal(Unverifiable, err, "the certificate could not be checked")
 	}
-	return refusal(Problem(p), err, "the signer's certificate")
+	return refusal(Problem(p), err, "the signer's certificate: %v", err)
 }
 
 // hashes are the digest of each allowed algorithm.
