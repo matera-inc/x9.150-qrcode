@@ -23,7 +23,7 @@ import (
 // The first seven are the Java build's list (TestClockCertificateGuard); the last four are test-CA
 // leaves added to the repository after that list was written, whose keys are just as public.
 var bundledFingerprints = map[string]string{
-	// The demo identity: x9-demo.jks, and internal/keys/bundled/x9-demo.pem converted from it.
+	// The demo identity: x9-demo.jks, bundled byte for byte as internal/keys/bundled/x9-demo.p12.
 	"67e9eae59581e99c81d3744fe086042f7363e13c2d15e05113011d2d76e5ed1b": "x9-demo (CN=x9.matera.com, OU=Demo NonProduction)",
 	// x9-qrcode-infrastructure/src/test/resources/certificate/:
 	"795ff346e9689636e9ba68917fe9f12db9e5e3a43a0b9fe2a39026275859292a": "x9-test-ca.p12, the test root CA",
