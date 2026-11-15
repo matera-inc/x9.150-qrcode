@@ -9,7 +9,7 @@ package com.matera.x9qrcode.infrastructure.web.controller.mapper.response;
 import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
-import com.matera.x9qrcode.infrastructure.generated.dto.BillBaseTipDTO;
+import com.matera.x9qrcode.infrastructure.generated.dto.PayloadBillBaseTipDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.BillPayloadResponseDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentPayloadResponseDTO;
 
@@ -51,7 +51,7 @@ public class DecoderResponseMapper {
         }
     }
 
-    private static void filterTipEmptyArrays(BillBaseTipDTO tip) {
+    private static void filterTipEmptyArrays(PayloadBillBaseTipDTO tip) {
         if (isNull(tip)) {
             return;
         }

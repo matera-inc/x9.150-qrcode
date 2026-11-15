@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**816 tests documented** — every JUnit test and every black-box case.
+**825 tests documented** — every JUnit test and every black-box case.
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
 (STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036 and ADR-0027's EMV and JWS verification rules), the
@@ -261,7 +261,7 @@ single most important thing this index exists for.
 | `X9-LIFE-142` | a status-update PAYMENT_INITIATED after the reservation lapsed reserves the QR Code again, with payment.initiated | `StatusUpdateAfterLapsedReservationApiTest.java` |
 | `X9-LIFE-143` | a repeated status-update PAYMENT_INITIATED while the reservation is live is still a no-op | `StatusUpdateAfterLapsedReservationApiTest.java` |
 | `X9-LIFE-504` | the control of the contract cases: each operation's unbroken sample is accepted | `test_contract.py` |
-| `X9-LIFE-505` | every length, pattern, required and numeric bound in openapi.yaml is refused: 400, the field's path, nothing changed | `test_contract.py` |
+| `X9-LIFE-505` | every length, pattern, required and numeric bound in openapi.yaml, and an unknown field in every closed object, is refused: 400, the field's path (and, for a closed object, its own fields), nothing changed | `test_contract.py` |
 | `X9-LIFE-501` | a GET of an id nobody issued is 404 | `test_create_refusals.py` |
 | `X9-LIFE-506` | a create refused for its currency leaves the store exactly as it was | `test_database.py` |
 | `X9-LIFE-507` | a notification refused for its amount stores nothing and publishes nothing | `test_database.py` |
@@ -638,11 +638,17 @@ status is `X9-MAP-002`.
 | `X9-RAIL-055` | an unknown field inside `solana` is named beside the other violations of the same request | `SolanaPaymentMethodApiTest.java` |
 | `X9-RAIL-056` | an unknown field inside `fednow`, `rtp` or `ach` is refused at create, naming its path | `ClosedBankRailsApiTest.java` |
 | `X9-RAIL-057` | an unknown field inside a bank rail is refused on PATCH, naming its path, and nothing changes | `ClosedBankRailsApiTest.java` |
+| `X9-RAIL-058` | an unknown field at any level of a create is refused, naming its path and the object's own fields | `ClosedRequestsAtEveryLevelApiTest.java` |
+| `X9-RAIL-059` | an unknown field at any level of a PATCH is refused, naming its path; revision and ETag do not move | `ClosedRequestsAtEveryLevelApiTest.java` |
 | `X9-RAIL-060` | a payload offering an uninterpreted rail still decodes | `OpaqueNetworkOnDecodeApiTest.java` |
 | `X9-RAIL-061` | a rail we do interpret is unaffected by opacity | `OpaqueNetworkOnDecodeApiTest.java` |
 | `X9-RAIL-062` | an unknown network arrives with every field intact | `OpaqueNetworkOnDecodeApiTest.java` |
 | `X9-RAIL-063` | an unknown network of any shape survives | `OpaqueNetworkOnDecodeApiTest.java` |
 | `X9-RAIL-064` | an unknown network keeps its own key spelling | `OpaqueNetworkOnDecodeApiTest.java` |
+| `X9-RAIL-065` | an unknown field at any level of an outbound payment notification is refused before anything is sent | `ClosedRequestsAtEveryLevelApiTest.java` |
+| `X9-RAIL-066` | the controls: the full create, PATCH and outbound bodies, unbroken, are accepted | `ClosedRequestsAtEveryLevelApiTest.java` |
+| `X9-RAIL-067` | unknown fields at several levels are all named in one answer, beside the body's other violations | `ClosedRequestsAtEveryLevelApiTest.java` |
+| `X9-RAIL-068` | the closed-objects table covers every request object (except `networks`) with exactly its own fields | `ClosedRequestFieldsTest.java` |
 | `X9-RAIL-070` | a notified rail is matched whatever its case | `PayerNotificationLeniencyApiTest.java` |
 | `X9-RAIL-071` | the notified value is echoed back verbatim | `PayerNotificationLeniencyApiTest.java` |
 | `X9-RAIL-072` | leniency about case is not leniency about rail | `PayerNotificationLeniencyApiTest.java` |
@@ -668,6 +674,9 @@ status is `X9-MAP-002`.
 | `X9-RAIL-504` | an unknown field inside `fednow`, `rtp` or `ach` is refused at create, naming its path, with no id | `test_create_refusals.py` |
 | `X9-RAIL-505` | an unknown field inside a bank rail is refused on PATCH, naming its path, and the ETag does not move | `test_create_refusals.py` |
 | `X9-RAIL-506` | `protectionType` is read back as sent, on each bank rail, from GET and from the signed payload, for each allowed value | `test_payload.py` |
+| `X9-RAIL-507` | an unknown field at any level of a create is refused in the same words on both builds, with no id | `test_closed_requests.py` |
+| `X9-RAIL-508` | an unknown field at any level of a PATCH is refused in the same words on both builds; the ETag and revision do not move | `test_closed_requests.py` |
+| `X9-RAIL-509` | an unknown field at any level of an outbound payment notification is refused in the same words on both builds | `test_closed_requests.py` |
 
 ## Signatures, keys and problem details
 

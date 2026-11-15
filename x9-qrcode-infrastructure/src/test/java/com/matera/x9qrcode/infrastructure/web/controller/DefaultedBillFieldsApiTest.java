@@ -62,7 +62,7 @@ class DefaultedBillFieldsApiTest extends AbstractIntegrationTest {
                 "description": "defaults",
                 "paymentTiming": "immediate",
                 "invoice": { "number": "INV-D-1", "date": "2030-01-10", "dueDate": "2030-12-31T23:59:59Z" },
-                "amountDue": { "amount": 22500, "currency": "USDC" },
+                "amountDue": { "amount": 22500 },
                 "tip": %s
               },
               "paymentMethods": [

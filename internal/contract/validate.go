@@ -5,6 +5,8 @@
 
 package contract
 
+import "strings"
+
 // Each Validate returns the contract's violations of a body, "<field path>: <message>", in schema
 // order, or nil. The handler answers a non-nil result with httpapi.Validation(violations...).
 // The constraints are those of openapi.yaml as the Java build's generated DTOs carry them; where
@@ -24,9 +26,12 @@ func (r *CreateRequest) Validate() []string {
 	c.str("unstructured", r.Unstructured, rulePrintable)
 	checkKeyValues(c, "additionalInformation", r.AdditionalInformation)
 	if r.PaymentNotification.IsSet() {
-		c.notNull("paymentNotification.kind", r.PaymentNotification.Value.Kind.presence)
+		n := r.PaymentNotification.Value
+		c.notNull("paymentNotification.kind", n.Kind.presence)
+		c.closed("paymentNotification", "paymentNotification", n.Unknown, n)
 	}
 	checkPaymentMethods(c, r.PaymentMethods, false)
+	c.closed("", "the payment request", r.Unknown, *r)
 	return c.result()
 }
 
@@ -45,15 +50,18 @@ func (cr *Creditor) check(c *checker, path string) {
 			if c.notNull(up+".account.schemaName", a.SchemaName.presence) {
 				c.str(up+".account.schemaName", a.SchemaName, rulePrintable)
 			}
+			c.closed(up+".account", "account", a.Unknown, a)
 		}
 		checkParty(c, up, u.Value.Name, u.Value.Phone, u.Value.Email)
 		if c.notNull(up+".address", u.Value.Address.presence) {
 			u.Value.Address.Value.check(c, up+".address")
 		}
+		c.closed(up, "ultimateCreditor", u.Value.Unknown, u.Value)
 	}
 	if c.notNull(path+".MCC", cr.MCC.presence) {
 		c.str(path+".MCC", cr.MCC, ruleMCC, size(4, 4))
 	}
+	c.closed(path, "creditor", cr.Unknown, *cr)
 }
 
 // checkParty is the name, phone and email every party carries (Name, Phone, Email schemas).
@@ -78,6 +86,7 @@ func (a *Address) check(c *checker, path string) {
 	if c.notNull(path+".country", a.Country.presence) {
 		c.str(path+".country", a.Country, ruleCountry, size(2, 2))
 	}
+	c.closed(path, "address", a.Unknown, *a)
 }
 
 func (b *Bill) check(c *checker, path string) {
@@ -91,7 +100,9 @@ func (b *Bill) check(c *checker, path string) {
 			c.str(path+".amountDue.currency", a.Currency, ruleCurrency, maxLength(32))
 		}
 		checkAdjustment(c, path+".amountDue.adjustments", a.Adjustments)
+		c.closed(path+".amountDue", "amountDue", a.Unknown, a)
 	}
+	c.closed(path, "bill", b.Unknown, *b)
 }
 
 // checkBillBase is what Bill and PatchBill share. patch is PatchTip's presets rule (at least one).
@@ -105,6 +116,7 @@ func checkBillBase(c *checker, path string, description String, order Object[Ord
 		if c.notNull(path+".order.number", order.Value.Number.presence) {
 			c.str(path+".order.number", order.Value.Number, ruleDocumentNumber, maxLength(20))
 		}
+		c.closed(path+".order", "order", order.Value.Unknown, order.Value)
 	}
 	if invoice.IsSet() {
 		ip, inv := path+".invoice", invoice.Value
@@ -119,7 +131,9 @@ func checkBillBase(c *checker, path string, description String, order Object[Ord
 			if who.Address.IsSet() {
 				who.Address.Value.check(c, ip+".invoicee.address")
 			}
+			c.closed(ip+".invoicee", "invoicee", who.Unknown, who)
 		}
+		c.closed(ip, "invoice", inv.Unknown, inv)
 	}
 	if tip.IsSet() {
 		tp, t := path+".tip", tip.Value
@@ -132,6 +146,7 @@ func checkBillBase(c *checker, path string, description String, order Object[Ord
 			if c.notNull(tp+".range.max", r.Max.presence) {
 				c.rangeInt(tp+".range.max", r.Max, 0, 999)
 			}
+			c.closed(tp+".range", "range", r.Unknown, r)
 		}
 		if patch {
 			listSize(c, tp+".presets", t.Presets, 1, 10)
@@ -141,6 +156,7 @@ func checkBillBase(c *checker, path string, description String, order Object[Ord
 		for i, p := range t.Presets.Items {
 			c.rangeInt(item(tp+".presets", i), p, 0, 999)
 		}
+		c.closed(tp, "tip", t.Unknown, t)
 	}
 }
 
@@ -157,6 +173,7 @@ func checkAdjustment(c *checker, path string, adjustment Object[Adjustment]) {
 	}
 	a := adjustment.Value
 	c.notNull(path+".formula", a.Formula.presence)
+	defer c.closed(path, "adjustments", a.Unknown, a)
 	if !c.notNull(path+".parameters", a.Parameters.presence) {
 		return
 	}
@@ -168,13 +185,16 @@ func checkAdjustment(c *checker, path string, adjustment Object[Adjustment]) {
 		}
 		checkAmount(c, dp+".discount", d.Discount)
 		c.notNull(dp+".explanation", d.Explanation.presence)
+		c.closed(dp, "a discount", d.Unknown, d)
 	}
 	if c.notNull(pp+".lateFees", p.LateFees.presence) {
 		lf := p.LateFees.Value
 		checkAmount(c, pp+".lateFees.fixed", lf.Fixed)
 		checkAmount(c, pp+".lateFees.perDay", lf.PerDay)
 		c.notNull(pp+".lateFees.explanation", lf.Explanation.presence)
+		c.closed(pp+".lateFees", "lateFees", lf.Unknown, lf)
 	}
+	c.closed(pp, "parameters", p.Unknown, p)
 }
 
 func checkKeyValues(c *checker, path string, pairs List[KeyValuePair]) {
@@ -186,6 +206,7 @@ func checkKeyValues(c *checker, path string, pairs List[KeyValuePair]) {
 		if c.notNull(p+".value", kv.Value.presence) {
 			c.str(p+".value", kv.Value, rulePrintable)
 		}
+		c.closed(p, "an additionalInformation entry", kv.Unknown, kv)
 	}
 }
 
@@ -213,11 +234,16 @@ func checkPaymentMethods(c *checker, methods List[PaymentMethod], patch bool) {
 			if c.notNull(p+".editable.range", r.presence) {
 				checkAmount(c, p+".editable.range.min", r.Value.Min)
 				checkAmount(c, p+".editable.range.max", r.Value.Max)
+				c.closed(p+".editable.range", "range", r.Value.Unknown, r.Value)
 			}
+		}
+		if m.Editable.IsSet() {
+			c.closed(p+".editable", "editable", m.Editable.Value.Unknown, m.Editable.Value)
 		}
 		if c.notNull(p+".networks", m.Networks.presence) {
 			m.Networks.Value.check(c, p+".networks")
 		}
+		c.closed(p, "a payment method", m.Unknown, m)
 	}
 }
 
@@ -237,11 +263,7 @@ func (n *Networks) check(c *checker, path string) {
 			c.str(p+".accountNumber", b.AccountNumber, ruleAccountNumber, size(4, 17))
 		}
 		c.notNull(p+".protectionType", b.ProtectionType.presence)
-		// The bank rails are closed on what this service generates, as solana is (owner,
-		// 2026-11-15; INTERPRETATION I-16). The Java build ignores an unknown key here today.
-		for _, name := range b.Unknown.Names() {
-			c.add(p+"."+name, "is not a field of "+rail.name+", whose fields are routingNumber, accountNumber and protectionType")
-		}
+		c.closed(p, rail.name, b.Unknown, b)
 	}
 	if n.Solana.IsSet() {
 		p, s := path+".solana", n.Solana.Value
@@ -249,11 +271,7 @@ func (n *Networks) check(c *checker, path string) {
 			c.str(p+".recipient", s.Recipient, ruleBase58Address, size(32, 44))
 		}
 		c.str(p+".memo", s.Memo, size(1, 100))
-		// Solana is closed (additionalProperties: false, I-9). The Java build ignores an unknown
-		// key there; the contract and INTERPRETATION I-9 refuse it, and Go follows them.
-		for _, name := range s.Unknown.Names() {
-			c.add(p+"."+name, "is not a field of solana, whose fields are recipient and memo")
-		}
+		c.closed(p, "solana", s.Unknown, s)
 	}
 }
 
@@ -266,30 +284,18 @@ func (r *PatchRequest) Validate() []string {
 		c.notNull("bill.paymentTiming", b.PaymentTiming.presence)
 		checkBillBase(c, "bill", b.Description, b.Order, b.Invoice, b.Tip, true)
 		if c.notNull("bill.amountDue", b.AmountDue.presence) {
-			checkAmount(c, "bill.amountDue.amount", b.AmountDue.Value.Amount)
-			checkAdjustment(c, "bill.amountDue.adjustments", b.AmountDue.Value.Adjustments)
+			a := b.AmountDue.Value
+			checkAmount(c, "bill.amountDue.amount", a.Amount)
+			checkAdjustment(c, "bill.amountDue.adjustments", a.Adjustments)
+			c.closed("bill.amountDue", "amountDue", a.Unknown, a)
 		}
+		c.closed("bill", "bill", b.Unknown, b)
 	}
 	c.str("unstructured", r.Unstructured, rulePrintable)
 	checkKeyValues(c, "additionalInformation", r.AdditionalInformation)
 	checkPaymentMethods(c, r.PaymentMethods, true)
-	if ClosedPatchMembers {
-		checkUnknownPatchMembers(c, r)
-	}
+	c.closed("", "the payment request", r.Unknown, *r)
 	return c.result()
-}
-
-// checkUnknownPatchMembers refuses, by name, every key of a PATCH that its top level or one of its
-// payment methods does not declare. Off today (ClosedPatchMembers).
-func checkUnknownPatchMembers(c *checker, r *PatchRequest) {
-	for _, name := range r.Unknown.Names() {
-		c.add(name, "is not a field of a PATCH, whose fields are locationId, validUntil, bill, unstructured, additionalInformation and paymentMethods")
-	}
-	for i, m := range r.PaymentMethods.Items {
-		for _, name := range m.Unknown.Names() {
-			c.add(item("paymentMethods", i)+"."+name, "is not a field of a payment method, whose fields are currency, validUntil, amount, editable and networks")
-		}
-	}
 }
 
 // Validate checks a status update (StatusUpdate).
@@ -306,20 +312,29 @@ func (r *OutboundNotification) Validate() []string {
 	c := &checker{}
 	c.notNull("endpoint", r.Endpoint.presence)
 	if c.notNull("notification", r.Notification.presence) {
-		r.Notification.Value.check(c, "notification.")
+		r.Notification.Value.check(c, "notification.", true)
 	}
+	c.closed("", "the outbound notification", r.Unknown, *r)
 	return c.result()
 }
 
 // Validate checks a payment notification (PaymentNotificationData) on its own, its paths starting
-// at payment, payer and blockchain.
+// at payment, payer and blockchain. This is how a payee reads another bank's notification, so an
+// unknown member is not refused (tolerant to read, INTERPRETATION I-16).
 func (n *NotificationData) Validate() []string {
 	c := &checker{}
-	n.check(c, "")
+	n.check(c, "", false)
 	return c.result()
 }
 
-func (n *NotificationData) check(c *checker, prefix string) {
+// check checks n. closed is true for the outbound request, whose notification this service signs
+// and sends (OutboundPaymentNotificationData, closed at every level); false for one read.
+func (n *NotificationData) check(c *checker, prefix string, closed bool) {
+	refuse := func(path, object string, unknown Members, v any) {
+		if closed {
+			c.closed(path, object, unknown, v)
+		}
+	}
 	if c.notNull(prefix+"payment", n.Payment.presence) {
 		p, pay := prefix+"payment", n.Payment.Value
 		if c.notNull(p+".qrcodeId", pay.QRCodeID.presence) {
@@ -334,9 +349,11 @@ func (n *NotificationData) check(c *checker, prefix string) {
 			c.str(p+".network", pay.Network, maxLength(64))
 		}
 		c.str(p+".transactionId", pay.TransactionID, maxLength(255))
+		refuse(p, "payment", pay.Unknown, pay)
 	}
 	if n.Payer.IsSet() {
 		c.str(prefix+"payer.info", n.Payer.Value.Info, maxLength(254))
+		refuse(prefix+"payer", "payer", n.Payer.Value.Unknown, n.Payer.Value)
 	}
 	if n.Blockchain.IsSet() {
 		p, b := prefix+"blockchain", n.Blockchain.Value
@@ -347,7 +364,9 @@ func (n *NotificationData) check(c *checker, prefix string) {
 		if c.notNull(p+".to", b.To.presence) {
 			c.str(p+".to", b.To, ruleBase58Address)
 		}
+		refuse(p, "blockchain", b.Unknown, b)
 	}
+	refuse(strings.TrimSuffix(prefix, "."), "notification", n.Unknown, *n)
 }
 
 // Validate checks a signature validation request (SignatureValidationRequest).

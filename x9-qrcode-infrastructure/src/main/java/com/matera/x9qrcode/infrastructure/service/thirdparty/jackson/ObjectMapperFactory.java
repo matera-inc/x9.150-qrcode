@@ -19,7 +19,7 @@ import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.matera.x9qrcode.infrastructure.generated.dto.BillDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PatchBillUpdateDTO;
-import com.matera.x9qrcode.infrastructure.web.controller.validation.ClosedRailFields;
+import com.matera.x9qrcode.infrastructure.web.controller.validation.ClosedRequestFields;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
@@ -109,10 +109,10 @@ public final class ObjectMapperFactory {
         // every extension member under a "properties" object and silently breaking the contract.
         objectMapper.addMixIn(ProblemDetail.class, ProblemDetailJacksonMixin.class);
 
-        // The rails we generate (fednow, rtp, ach, solana) are closed (additionalProperties: false,
-        // ADR-0012 amendment of 2026-11-15): an unknown field inside one is noted rather than dropped,
-        // so a create or PATCH can refuse it by name. The payload-side types read with tolerance.
-        objectMapper.addHandler(new ClosedRailFields());
+        // What we generate is closed at every level (additionalProperties: false, INTERPRETATION I-16):
+        // an unknown field in a create, a PATCH or an outbound notification is noted rather than dropped,
+        // so it can be refused by its path. The payload-side types read with tolerance.
+        objectMapper.addHandler(new ClosedRequestFields());
 
         return objectMapper;
     }

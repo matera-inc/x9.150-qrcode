@@ -10,6 +10,11 @@ import com.matera.x9qrcode.app.usecase.sendpaymentnotification.PaymentPhase;
 import com.matera.x9qrcode.app.usecase.sendpaymentnotification.SendPaymentNotificationInput;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 import com.matera.x9qrcode.infrastructure.generated.dto.OutboundPaymentNotificationDTO;
+import com.matera.x9qrcode.infrastructure.generated.dto.OutboundPaymentNotificationDataDTO;
+import com.matera.x9qrcode.infrastructure.generated.dto.PaymentNotificationDataBlockchainDTO;
+import com.matera.x9qrcode.infrastructure.generated.dto.PaymentNotificationDataDTO;
+import com.matera.x9qrcode.infrastructure.generated.dto.PaymentNotificationDataPayerDTO;
+import com.matera.x9qrcode.infrastructure.generated.dto.PaymentNotificationDataPaymentDTO;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
@@ -26,9 +31,37 @@ public final class SendPaymentNotificationRequestMapper {
             phase,
             // No signer subject: this is the OUTBOUND path, where we are the sender rather than
             // verifying somebody else's signature. Only the data is borrowed from that mapper.
-            PaymentNotificationRequestMapper.map(request.getNotification(), null).paymentNotificationData(),
+            PaymentNotificationRequestMapper.map(asRead(request.getNotification()), null).paymentNotificationData(),
             endpoint(request.getEndpoint()),
             request.getCorrelationId());
+    }
+
+    /**
+     * The notification as the inbound mapper reads it. The outbound body has its own, closed,
+     * schema ({@code OutboundPaymentNotificationData}: what we generate refuses an unknown field,
+     * INTERPRETATION I-16); the members are the same.
+     */
+    private static PaymentNotificationDataDTO asRead(OutboundPaymentNotificationDataDTO notification) {
+        if (isNull(notification)) {
+            return null;
+        }
+        var payment = notification.getPayment();
+        var payer = notification.getPayer();
+        var blockchain = notification.getBlockchain();
+        return new PaymentNotificationDataDTO()
+            .payment(isNull(payment) ? null : new PaymentNotificationDataPaymentDTO()
+                .qrcodeId(payment.getQrcodeId())
+                .amount(payment.getAmount())
+                .tipAmount(payment.getTipAmount())
+                .currency(payment.getCurrency())
+                .network(payment.getNetwork())
+                .transactionId(payment.getTransactionId()))
+            .payer(isNull(payer) ? null : new PaymentNotificationDataPayerDTO().info(payer.getInfo()))
+            .expectedDate(notification.getExpectedDate())
+            .blockchain(isNull(blockchain) ? null : new PaymentNotificationDataBlockchainDTO()
+                .action(blockchain.getAction())
+                .from(blockchain.getFrom())
+                .to(blockchain.getTo()));
     }
 
     /**

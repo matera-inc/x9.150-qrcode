@@ -68,6 +68,28 @@ one phrase reads as something it never meant.
     `PayloadSolana`), so closing the request side cannot leak into the decoder.
   - **Integrity is not content.** A malformed EMV string, a payload whose signature does not
     verify, and a payload that is not the content issued for its location are still refused.
+- **2026-11-15, later the same day (owner decision): closed at every level, in both builds.** The
+  rails were only the first step. **Our own create and PATCH refuse an unknown field at every
+  level** — the top level, `creditor` and its `address`, `ultimateCreditor` and `account`, `bill`,
+  `order`, `invoice`, `invoicee`, `tip` and its `range`, `amountDue`, `adjustments`, `parameters`,
+  each discount, `lateFees`, each `additionalInformation` entry, `paymentNotification`, each payment
+  method, `editable` and its `range`, and the rails — and so does the body of an **outbound payment
+  notification** (`pre-payment`, `post-payment`), which this service signs and sends to a payee:
+  it is something we generate too. Every one of those objects is `additionalProperties: false` in
+  `openapi.yaml`; the only open object left on the request side is `networks`, which has to
+  receive an unknown network in order to refuse it by name. The refusal names the path and the
+  object's own fields, in the same words on both builds:
+  `creditor.address.county: is not a field of address, whose fields are line1, line2, city, state, postalCode and country`.
+  - **Reading another bank's payload is unchanged:** an unknown rail is carried intact, an
+    unknown field anywhere else is dropped. Every object the payload shared with the request side
+    now has its own open `Payload*` schema (`PayloadCreditor`, `PayloadAddress`,
+    `PayloadBillBase`, `PayloadInvoicee`, `PayloadTipRange`, `PayloadKeyValuePair`,
+    `PayloadPaymentMethodEditable`, `PayloadIntegerRange`), and a payee reading another bank's
+    payment notification reads `PaymentNotificationData`, which stays open; the outbound request
+    has its own closed copy, `OutboundPaymentNotificationData`.
+  - **One visible consequence:** a PATCH that restates `bill.amountDue.currency` (a field a PATCH
+    does not have, because it cannot change the currency) used to be accepted with the currency
+    dropped; it is now refused, naming `bill.amountDue.currency`.
 
 ## Decision
 

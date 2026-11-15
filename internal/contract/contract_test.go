@@ -28,6 +28,11 @@ func replace(t *testing.T, sample, old, with string) string {
 const pmAmount = `"amount": 1000,
      "editable"`
 
+// topX is the refusal of the "x" those cases leave at the top level to keep the body JSON: the
+// payment request is closed (I-16).
+const topX = "x: is not a field of the payment request, whose fields are validUntil, creditor, bill, " +
+	"locationId, unstructured, additionalInformation, paymentNotification and paymentMethods"
+
 // S9.2-AC2: a member of a request is read as Jackson reads the Java field. Each expected outcome
 // was taken from the Java build's answer to the same body.
 func TestScalarsAreReadAsJacksonReadsThem(t *testing.T) {
@@ -124,7 +129,7 @@ func TestViolationsAreJavas(t *testing.T) {
 		name, old, new string
 		want           []string
 	}{
-		{"required", `"MCC": "4900"`, `"x": 1`, []string{"creditor.MCC: must not be null"}},
+		{"required", `"MCC": "4900",`, ``, []string{"creditor.MCC: must not be null"}},
 		{"pattern and size", `"name": "Blackbox Co"`, `"name": "` + strings.Repeat("B", 51) + `"`,
 			[]string{`creditor.name: must match "^[\x20-\x7E]{1,50}$"`, "creditor.name: size must be between 0 and 50"}},
 		{"phone", `"phone": "+15552223333", "email": "party@example.com",
@@ -148,9 +153,9 @@ func TestViolationsAreJavas(t *testing.T) {
 		{"locationId dashed", `"locationId": "0123456789ABCDEF0123456789ABCDEF"`,
 			`"locationId": "01234567-89ab-cdef-0123-456789abcdef"`, []string{"locationId: size must be between 32 and 32"}},
 		{"paymentMethods empty", `"paymentMethods": [`, `"paymentMethods": [], "x": [`,
-			[]string{"paymentMethods: size must be between 1 and 2147483647"}},
+			[]string{"paymentMethods: size must be between 1 and 2147483647", topX}},
 		{"paymentMethods null", `"paymentMethods": [`, `"paymentMethods": null, "x": [`,
-			[]string{"paymentMethods: must not be null"}},
+			[]string{"paymentMethods: must not be null", topX}},
 		{"recipient", `"recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"`, `"walletAddress": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"`,
 			[]string{"paymentMethods[1].networks.solana.recipient: must not be null",
 				"paymentMethods[1].networks.solana.walletAddress: is not a field of solana, whose fields are recipient and memo"}},

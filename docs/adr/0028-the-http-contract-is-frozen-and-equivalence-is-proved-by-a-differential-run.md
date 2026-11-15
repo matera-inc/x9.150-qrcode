@@ -129,9 +129,12 @@ of them is `go_only`, or a strict expected failure on Java.
 | 5 | Any unexpected failure | Spring Boot's error body (only the signed notification answer uses `internal-error`) | **every 500 is the `internal-error` problem**, with no stack, SQL or internal detail | One shape for "our fault" | Story 9.2 |
 | 6 | A JSON request body over 1 MiB | read | **400 `malformed-json`** | The largest legitimate body is a few kilobytes; the cap bounds memory | Story 9.2 |
 | 7 | JSON edge cases Jackson lets through: a lone surrogate escape (`"\ud800"`), a date written as an array (`[2030,1,10]`) | read | **400 `malformed-json`** | Go's decoder is stricter; a body a strict parser refuses is not one a payer can rely on elsewhere | Story 9.2 |
-| 8 | An unknown field in `fednow`, `rtp` or `ach` on create or PATCH | ignored, 201 / 200 | **400, naming the field** | The bank rails are closed on what this service generates, as `solana` is (owner, 2026-11-15; [INTERPRETATION I-16](../../official-spec/INTERPRETATION.md)). Until the Java build refuses it too | this pull request |
 
-Numbers 1 and 2 are the intended differences above. Row 8 is a difference only until the Java
+Numbers 1 and 2 are the intended differences above. Row 8 (an unknown field in `fednow`, `rtp`
+or `ach` on create or PATCH: ignored by Java, refused by Go) left this list on 2026-11-15, when the
+Java build closed the bank rails too, and then every level of what it generates (INTERPRETATION
+I-16); the two builds now refuse the same unknown fields in the same words. Formerly: row 8 was a
+difference only until the Java
 build closes the bank rails as well; then it leaves this list.
 
 ## Alternatives rejected

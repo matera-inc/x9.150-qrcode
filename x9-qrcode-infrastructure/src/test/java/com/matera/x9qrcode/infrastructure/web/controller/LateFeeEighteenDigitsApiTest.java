@@ -47,6 +47,11 @@ class LateFeeEighteenDigitsApiTest extends AbstractIntegrationTest {
             """.formatted(DUE, amount, fixed);
     }
 
+    /** The bill as a PATCH restates it: a PATCH cannot change the currency, and does not carry it. */
+    private static String patchBill(long amount, long fixed) {
+        return bill(amount, fixed).replace("\"currency\": \"USDC\", ", "");
+    }
+
     private static String method(long amount) {
         return """
             { "currency": "USDC", "validUntil": "%s", "amount": %d,
@@ -153,7 +158,7 @@ class LateFeeEighteenDigitsApiTest extends AbstractIntegrationTest {
         assertRefusedNaming(laterValidUntil, "bill.amountDue.amount");
 
         MockMvcResponse largerFee = given().contentType("application/json")
-            .body("{ \"bill\": %s, \"paymentMethods\": [ %s ] }".formatted(bill(EIGHTEEN_NINES - FEE, 901), unchangedMethod))
+            .body("{ \"bill\": %s, \"paymentMethods\": [ %s ] }".formatted(patchBill(EIGHTEEN_NINES - FEE, 901), unchangedMethod))
             .when().patch(CREATE + "/" + id);
         assertRefusedNaming(largerFee, "bill.amountDue.amount");
 
