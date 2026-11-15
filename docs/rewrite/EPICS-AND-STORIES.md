@@ -2122,9 +2122,9 @@ live holder or another creditor keeps the location, with Java's 400; a refused c
 nothing. A `23505` after the re-runs is answered as a refused rebind (400).
 
 **S9.6-AC3.** **Given** a create without `locationId`
-**Then** the location takes the default the owner settles (see "Questions for the owner" of this
-epic's pull request: ADR-0024 says the QR Code's own id, ADR-0026 says a fresh UUIDv4); this
-criterion is not built until that answer is written here.
+**Then** the location is the QR Code's own id, as Java does (ADR-0024; ADR-0026 amended
+2026-11-15, owner), and the QR Code id is exactly 32 hex characters with no dashes, in requests and
+in answers, as X9.150 defines it; a dashed QR Code id is refused.
 
 **S9.6-AC4.** **Given** the public host
 **Then** it defaults to `x9-150.example.com`, Java's documented default (owner, 2026-11-15), so the
