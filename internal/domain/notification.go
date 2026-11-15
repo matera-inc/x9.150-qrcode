@@ -8,6 +8,7 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -180,10 +181,9 @@ func EventBodySource(stored []NotificationRecord) *NotificationRecord {
 	if len(stored) == 0 {
 		return nil
 	}
-	for i := len(stored) - 1; i >= 0; i-- {
-		if stored[i].Notification.HasTransactionID() {
-			found := stored[i]
-			return &found
+	for _, record := range slices.Backward(stored) {
+		if record.Notification.HasTransactionID() {
+			return &record
 		}
 	}
 	last := stored[len(stored)-1]

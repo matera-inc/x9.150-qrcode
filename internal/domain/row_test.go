@@ -273,11 +273,11 @@ func TestEventBodySource(t *testing.T) {
 		{"none stored: none, so the first payment method", nil, nil},
 		{"none stored, empty slice", []NotificationRecord{}, nil},
 		{"no transactionId anywhere: the last stored", []NotificationRecord{pre, contradicting}, &contradicting},
-		{"one post-commit, last: it", []NotificationRecord{pre, post("tx-2")}, ptr(post("tx-2"))},
+		{"one post-commit, last: it", []NotificationRecord{pre, post("tx-2")}, new(post("tx-2"))},
 		{"a contradictory NOT_SENT after the hash: the post-commit, not the NOT_SENT",
-			[]NotificationRecord{pre, post("tx-2"), contradicting}, ptr(post("tx-2"))},
-		{"two hashes: the latest", []NotificationRecord{post("tx-1"), pre, post("tx-2"), contradicting}, ptr(post("tx-2"))},
-		{"a blank transactionId is none", []NotificationRecord{post("tx-1"), blank}, ptr(post("tx-1"))},
+			[]NotificationRecord{pre, post("tx-2"), contradicting}, new(post("tx-2"))},
+		{"two hashes: the latest", []NotificationRecord{post("tx-1"), pre, post("tx-2"), contradicting}, new(post("tx-2"))},
+		{"a blank transactionId is none", []NotificationRecord{post("tx-1"), blank}, new(post("tx-1"))},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			got := EventBodySource(tt.stored)
@@ -289,10 +289,11 @@ func TestEventBodySource(t *testing.T) {
 
 	stored := []NotificationRecord{post("tx-2"), contradicting}
 	got := EventBodySource(stored)
+	if got == nil {
+		t.Fatal("EventBodySource: nil with notifications stored")
+	}
 	got.Notification.TransactionID = "changed"
 	if stored[0].Notification.TransactionID != "tx-2" {
 		t.Fatal("EventBodySource aliases the stored slice")
 	}
 }
-
-func ptr[T any](v T) *T { return &v }
