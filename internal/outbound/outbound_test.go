@@ -378,6 +378,37 @@ func TestTheContractIsCheckedBeforeSending(t *testing.T) {
 	}
 }
 
+// S10.6-AC1, INTERPRETATION I-16: what this service signs is closed at every level, so an unknown
+// member is refused by name before anything is sent, never dropped and sent without it.
+func TestAnUnknownMemberIsRefusedBeforeSending(t *testing.T) {
+	for _, at := range []string{"", "notification.", "notification.payment.", "notification.payer.", "notification.blockchain."} {
+		t.Run(at+"x9extra", func(t *testing.T) {
+			f := serve(t, 5*time.Second)
+			req := f.request(false)
+			target := req
+			for name := range strings.SplitSeq(strings.TrimSuffix(at, "."), ".") {
+				if name != "" {
+					target = target[name].(map[string]any)
+				}
+			}
+			target["x9extra"] = true
+
+			got := f.post(PrePaymentPath, req)
+
+			if got.status != http.StatusBadRequest || got.body["type"] != httpapi.TypeValidation {
+				t.Fatalf("status %d, want a 400 validation-error: %s", got.status, got.raw)
+			}
+			violations, _ := got.body["violations"].([]any)
+			if len(violations) != 1 || !strings.HasPrefix(violations[0].(string), at+"x9extra: ") {
+				t.Errorf("violations %v, want one naming %sx9extra", violations, at)
+			}
+			if n := len(f.payee.received()); n != 0 {
+				t.Errorf("%d deliveries, want none", n)
+			}
+		})
+	}
+}
+
 // S10.6-AC2: a redirect is not followed; it is the payee's answer, reported as such.
 func TestARedirectIsReportedNotFollowed(t *testing.T) {
 	for _, status := range []int{http.StatusFound, http.StatusTemporaryRedirect} {
