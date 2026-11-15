@@ -43,10 +43,17 @@ func (r *Reader) Notifications(ctx context.Context, id uuid.UUID) ([]domain.Noti
 // readOnly runs fn in a READ COMMITTED, read-only transaction on the read pool: isolation is set
 // explicitly on every transaction (ADR-0023), and reads never queue behind writers (ADR-0025).
 func (s *Store) readOnly(ctx context.Context, fn func(tx pgx.Tx) error) error {
-	return pgx.BeginTxFunc(ctx, s.read, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly}, fn)
+	return pgx.BeginTxFunc(ctx, s.read, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly},
+		func(tx pgx.Tx) error {
+			if err := setStatementTimeout(ctx, tx); err != nil {
+				return err
+			}
+			return fn(tx)
+		})
 }
 
-// Get reads a QR Code by id, for GET, on the read pool.
+// Get reads a QR Code by id, for GET, on the read pool: one row. A statement cancelled after
+// StatementTimeout is ErrUnavailable.
 func (s *Store) Get(ctx context.Context, id uuid.UUID) (QRCode, error) {
 	var q QRCode
 	err := s.readOnly(ctx, func(tx pgx.Tx) error {
@@ -54,7 +61,10 @@ func (s *Store) Get(ctx context.Context, id uuid.UUID) (QRCode, error) {
 		q, err = scanQRCode(tx.QueryRow(ctx, sqlSelectQRCode, id))
 		return err
 	})
-	return q, err
+	if err != nil {
+		return QRCode{}, answer(err)
+	}
+	return q, nil
 }
 
 // GetByLocation reads the QR Code holding a location, for the payload, on the read pool.
@@ -65,7 +75,10 @@ func (s *Store) GetByLocation(ctx context.Context, location uuid.UUID) (QRCode, 
 		q, err = scanQRCode(tx.QueryRow(ctx, sqlSelectQRCodeByLocation, location))
 		return err
 	})
-	return q, err
+	if err != nil {
+		return QRCode{}, answer(err)
+	}
+	return q, nil
 }
 
 // EventRow is a payment_event row as stored, column for column (docs/EVENTS-TABLE.md): codes and

@@ -26,6 +26,12 @@ const Attempts = 3
 // EventLockTimeout bounds how long an event transaction waits for a lock (ADR-0025).
 const EventLockTimeout = "2s"
 
+// StatementTimeout bounds every statement of every transaction this store runs, on both pools, so
+// that a stuck query cannot hang a request: past it, PostgreSQL cancels the statement (SQLSTATE
+// 57014) and the caller answers 503 (ErrUnavailable). It is set per transaction, as CheckSchema
+// sets it, so it holds whatever the role or the database configures.
+const StatementTimeout = "30s"
+
 // What a transition can fail with, besides a refusal of the domain (which is an answer, carried in
 // Result.Decision.Refusal, not an error).
 var (
@@ -224,6 +230,9 @@ func (s *Store) Run(ctx context.Context, script Script) (Result, error) {
 // the row the script decided on, for the busy answer.
 func (s *Store) attempt(ctx context.Context, n int, script Script) (res Result, seen domain.Status, err error) {
 	err = pgx.BeginTxFunc(ctx, s.write, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		if err := setStatementTimeout(ctx, tx); err != nil {
+			return err
+		}
 		now := s.clock.Now().UTC()
 		change, err := script(ctx, &Reader{tx: tx}, now)
 		if err != nil {
