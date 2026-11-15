@@ -154,13 +154,35 @@ type PaymentNotification struct {
 }
 
 // PaymentMethod is an item of paymentMethods, and PatchPaymentMethod (whose editable.range may be
-// absent).
+// absent). A key it does not declare is kept in Unknown, which is never written back: a create
+// ignores it, as Java does, and a PATCH refuses it only when ClosedPatchMembers says so.
 type PaymentMethod struct {
 	Currency   String           `json:"currency,omitzero"`
 	ValidUntil Timestamp        `json:"validUntil,omitzero"`
 	Amount     Long             `json:"amount,omitzero"`
 	Editable   Object[Editable] `json:"editable,omitzero"`
 	Networks   Object[Networks] `json:"networks,omitzero"`
+	Unknown    Members          `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom: the declared keys into their members, every
+// other key into Unknown.
+func (m *PaymentMethod) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	*m = PaymentMethod{}
+	if dec.PeekKind() == 'n' { // a null item reads as an empty method, as before Unknown was kept
+		_, err := dec.ReadToken()
+		return err
+	}
+	return readMembers(dec, &m.Unknown, map[string]any{
+		"currency": &m.Currency, "validUntil": &m.ValidUntil, "amount": &m.Amount,
+		"editable": &m.Editable, "networks": &m.Networks,
+	})
+}
+
+// MarshalJSONTo implements json.MarshalerTo: the declared members only.
+func (m PaymentMethod) MarshalJSONTo(enc *jsontext.Encoder) error {
+	type known PaymentMethod
+	return writeMembers(enc, known(m), nil)
 }
 
 // Editable is paymentMethods[].editable, and PatchEditable.
@@ -249,8 +271,15 @@ func (s Solana) MarshalJSONTo(enc *jsontext.Encoder) error {
 	return writeMembers(enc, known(s), s.Unknown)
 }
 
+// ClosedPatchMembers decides what a PATCH does with a key that neither its top level nor one of its
+// payment methods declares (creditor, status, a misspelt member): false drops it, as the Java build
+// does today and the black-box suite pins (X9-PATCH-420); true refuses it by name. The rails inside
+// networks are closed either way (INTERPRETATION I-9, I-16).
+const ClosedPatchMembers = false
+
 // PatchRequest is PatchPaymentRequestReplacement, the body of PATCH /api/v1/payment-request/{id}.
-// Present tells which members the PATCH carried; Null which it cleared.
+// Present tells which members the PATCH carried; Null which it cleared. A key it does not declare
+// is kept in Unknown (see ClosedPatchMembers).
 type PatchRequest struct {
 	LocationID            String              `json:"locationId,omitzero"`
 	ValidUntil            Timestamp           `json:"validUntil,omitzero"`
@@ -258,6 +287,24 @@ type PatchRequest struct {
 	Unstructured          String              `json:"unstructured,omitzero"`
 	AdditionalInformation List[KeyValuePair]  `json:"additionalInformation,omitzero"`
 	PaymentMethods        List[PaymentMethod] `json:"paymentMethods,omitzero"`
+	Unknown               Members             `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom: the six tags into their members, every other
+// key into Unknown.
+func (r *PatchRequest) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	*r = PatchRequest{}
+	return readMembers(dec, &r.Unknown, map[string]any{
+		"locationId": &r.LocationID, "validUntil": &r.ValidUntil, "bill": &r.Bill,
+		"unstructured": &r.Unstructured, "additionalInformation": &r.AdditionalInformation,
+		"paymentMethods": &r.PaymentMethods,
+	})
+}
+
+// MarshalJSONTo implements json.MarshalerTo: the declared members only.
+func (r PatchRequest) MarshalJSONTo(enc *jsontext.Encoder) error {
+	type known PatchRequest
+	return writeMembers(enc, known(r), nil)
 }
 
 // PatchBill is PatchBillUpdate: paymentTiming is required and has no default.

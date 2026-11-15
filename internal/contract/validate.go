@@ -273,7 +273,23 @@ func (r *PatchRequest) Validate() []string {
 	c.str("unstructured", r.Unstructured, rulePrintable)
 	checkKeyValues(c, "additionalInformation", r.AdditionalInformation)
 	checkPaymentMethods(c, r.PaymentMethods, true)
+	if ClosedPatchMembers {
+		checkUnknownPatchMembers(c, r)
+	}
 	return c.result()
+}
+
+// checkUnknownPatchMembers refuses, by name, every key of a PATCH that its top level or one of its
+// payment methods does not declare. Off today (ClosedPatchMembers).
+func checkUnknownPatchMembers(c *checker, r *PatchRequest) {
+	for _, name := range r.Unknown.Names() {
+		c.add(name, "is not a field of a PATCH, whose fields are locationId, validUntil, bill, unstructured, additionalInformation and paymentMethods")
+	}
+	for i, m := range r.PaymentMethods.Items {
+		for _, name := range m.Unknown.Names() {
+			c.add(item("paymentMethods", i)+"."+name, "is not a field of a payment method, whose fields are currency, validUntil, amount, editable and networks")
+		}
+	}
 }
 
 // Validate checks a status update (StatusUpdate).
