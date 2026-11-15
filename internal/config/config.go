@@ -27,6 +27,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/matera-inc/x9.150-qrcode/internal/billing"
 	"github.com/matera-inc/x9.150-qrcode/internal/emv"
 )
 
@@ -44,6 +45,7 @@ type Config struct {
 	Database        Database        `yaml:"database"`
 	Log             Log             `yaml:"log"`
 	Reservation     Reservation     `yaml:"reservation"`
+	Currency        Currency        `yaml:"currency"`
 	Testing         Testing         `yaml:"testing"`
 	Certificate     Certificate     `yaml:"certificate"`
 	Keystore        Keystore        `yaml:"keystore"`
@@ -121,6 +123,15 @@ type Log struct {
 // window; a negative value is invalid.
 type Reservation struct {
 	TTLSeconds int `yaml:"ttl-seconds"`
+}
+
+// Currency is where the currency configuration is read from (INTERPRETATION I-3): the Java build's
+// x9.currency.supported-currencies-location and x9.currency.pegged-currencies-location. Each is a
+// path (Spring's file: prefix is accepted and dropped); empty is the file bundled with the service,
+// the Java build's own. Both files are read, and refused if broken, at start.
+type Currency struct {
+	SupportedCurrenciesLocation string `yaml:"supported-currencies-location"`
+	PeggedCurrenciesLocation    string `yaml:"pegged-currencies-location"`
 }
 
 // Testing is the movable test clock (ADR-0033): off by default, and with it off nothing listens
@@ -239,6 +250,8 @@ var envVars = []envVar{
 	{"DATABASE_QUERY_EXEC_MODE", "database.query-exec-mode", setString(func(c *Config) *string { return &c.Database.QueryExecMode })},
 	{"X9_LOG_LEVEL", "log.level", setString(func(c *Config) *string { return &c.Log.Level })},
 	{"X9_RESERVATION_TTL_SECONDS", "reservation.ttl-seconds", setInt(func(c *Config) *int { return &c.Reservation.TTLSeconds })},
+	{"X9_CURRENCY_SUPPORTEDCURRENCIESLOCATION", "currency.supported-currencies-location", setString(func(c *Config) *string { return &c.Currency.SupportedCurrenciesLocation })},
+	{"X9_CURRENCY_PEGGEDCURRENCIESLOCATION", "currency.pegged-currencies-location", setString(func(c *Config) *string { return &c.Currency.PeggedCurrenciesLocation })},
 	{"X9_TESTING_CLOCKCONTROL", "testing.clock-control", setBool(func(c *Config) *bool { return &c.Testing.ClockControl })},
 	{"X9_TESTING_CLOCKLISTEN", "testing.clock-listen", setString(func(c *Config) *string { return &c.Testing.ClockListen })},
 	{"X9_CERTIFICATE_ENDPOINTTYPE", "certificate.endpoint-type", setString(func(c *Config) *string { return &c.Certificate.EndpointType })},
@@ -342,6 +355,8 @@ func Load(path string, env []string) (Config, error) {
 	errs = append(errs, refuseUnsupportedKeystores(vars)...)
 	cfg.Certificate.PrivateKeystore.Location = trimFileScheme(cfg.Certificate.PrivateKeystore.Location)
 	cfg.Certificate.Truststore.Location = trimFileScheme(cfg.Certificate.Truststore.Location)
+	cfg.Currency.SupportedCurrenciesLocation = trimFileScheme(cfg.Currency.SupportedCurrenciesLocation)
+	cfg.Currency.PeggedCurrenciesLocation = trimFileScheme(cfg.Currency.PeggedCurrenciesLocation)
 	errs = append(errs, cfg.validate()...)
 	if len(errs) > 0 {
 		return Config{}, fmt.Errorf("invalid configuration:\n%w", errors.Join(errs...))
@@ -581,12 +596,34 @@ func (c Config) validate() []error {
 	if c.PublicEndpoints.JWSTTLSeconds < 1 {
 		errs = append(errs, problem("public-endpoints.jws-ttl-seconds", "must be at least 1, got %d", c.PublicEndpoints.JWSTTLSeconds))
 	}
+	errs = append(errs, c.Currency.validate()...)
 	errs = append(errs, c.Certificate.validate()...)
 	if c.Keystore.Reload.Frequency < 1 {
 		errs = append(errs, problem("keystore.reload.frequency", "must be at least 1 (milliseconds), got %d", c.Keystore.Reload.Frequency))
 	}
 	if c.Testing.ClockControl {
 		errs = append(errs, c.Testing.validate(c.Server.Port)...)
+	}
+	return errs
+}
+
+// validate refuses a classpath: location, which only the Java build can resolve, and reads both
+// files, so that a missing or broken one stops the service at start, as it stops the Java build.
+func (c Currency) validate() []error {
+	var errs []error
+	for _, l := range []struct{ key, value string }{
+		{"currency.supported-currencies-location", c.SupportedCurrenciesLocation},
+		{"currency.pegged-currencies-location", c.PeggedCurrenciesLocation},
+	} {
+		if strings.HasPrefix(l.value, "classpath:") {
+			errs = append(errs, problem(l.key, "must be a path; leave it empty for the bundled file, got %q", l.value))
+		}
+	}
+	if len(errs) > 0 || (c.SupportedCurrenciesLocation == "" && c.PeggedCurrenciesLocation == "") {
+		return errs
+	}
+	if _, err := billing.LoadCurrencies(c.SupportedCurrenciesLocation, c.PeggedCurrenciesLocation); err != nil {
+		errs = append(errs, fmt.Errorf("currency: %w", err))
 	}
 	return errs
 }

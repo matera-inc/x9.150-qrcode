@@ -52,6 +52,14 @@ log:
 reservation:
   ttl-seconds: 90                # X9_RESERVATION_TTL_SECONDS. 0 = no window; negative is invalid.
 
+# The currencies this deployment accepts, and which may appear together (INTERPRETATION I-3): the Java
+# build's x9.currency.* keys and files. Empty: the files bundled with the service (USD, USDC and FRNT,
+# all in one dollar peg group). A path replaces one; each is strict JSON, read at start.
+currency:
+  supported-currencies-location: ""  # X9_CURRENCY_SUPPORTEDCURRENCIESLOCATION. {"supported": ["USD", …]};
+                                     # an empty list accepts every currency.
+  pegged-currencies-location: ""     # X9_CURRENCY_PEGGEDCURRENCIESLOCATION. {"groups": [["USD", "USDC"], …]}
+
 # The signing key and the truststore (ADR-0027, ADR-0031): the Java build's x9.certificate.* keys and
 # variables. A location is a path (Spring's file: prefix is accepted); left empty, the bundled DEMO
 # identity is used, as in Java: NON-PRODUCTION, its private key is public, and a WARN says so.
