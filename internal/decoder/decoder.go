@@ -21,8 +21,9 @@
 //     payload-unreachable carrying no address;
 //  4. a payload's JWS is verified by the deployment's one verifier (S10.2-AC1), and must carry in
 //     its header exactly the correlationId the request was sent under, the caller's or the one
-//     generated for it (ADR-0027, amendment of 2026-11-15); one that does not verify, or carries
-//     no correlationId or another one, is refused, and nothing of it is presented;
+//     generated for it (ADR-0027, amendment of 2026-11-15); one that does not verify is refused,
+//     and one that carries no correlationId or another one is refused in its own words, "QR Code
+//     is invalid (bad correlationId)" (owner, 2026-11-15); nothing of either is presented;
 //  5. the payload is read with tolerance (foreign.go, INTERPRETATION I-16): an unknown rail is
 //     carried intact, an unknown field is dropped, a currency this deployment does not settle is
 //     presented as written; it is never refused for what it adds.
@@ -66,6 +67,10 @@ const (
 	msgMalformed        = "The QR Code is malformed: %s."
 	msgNoPayloadURL     = "EMV QR Code does not contain a valid payload URL."
 	msgSignatureInvalid = "Payload JWS signature is invalid."
+	// msgBadCorrelationID answers a payload whose header does not carry exactly the correlationId
+	// the payload request went out under, none or another (owner, 2026-11-15; ADR-0027): trying
+	// again may succeed, and nothing in the caller's input can fix it.
+	msgBadCorrelationID = "QR Code is invalid (bad correlationId)"
 	// msgUnreadable answers a payload that verified and is not a JSON object: there is nothing in it
 	// to present. The Java build answers it with a 500.
 	msgUnreadable = "The payee's payload is not a JSON object, so this QR Code could not be decoded."
@@ -203,6 +208,9 @@ func (s *Service) decode(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		s.logger.WarnContext(r.Context(), "x9-qrcode payload did not verify", "host", target.Host,
 			"httpStatus", status, "problem", jws.ProblemOf(err), "err", err)
+		if jws.NotEchoed(jws.ProblemOf(err), body, correlationID) {
+			return httpapi.BusinessRule("", msgBadCorrelationID)
+		}
 		return httpapi.BusinessRule("", msgSignatureInvalid)
 	}
 

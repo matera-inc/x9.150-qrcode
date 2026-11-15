@@ -185,7 +185,7 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 
 	// A PSP paying somebody else's QR Code (Story 10.6): signed with the same signer, the payee's
 	// answer checked with the same verifier.
-	payer := outbound.New(keyStore, signer, verifier, logger, outbound.Config{})
+	payer := outbound.New(keyStore, signer, verifier, logger, businessClock.Now, outbound.Config{})
 	payer.Register(api)
 	defer payer.CloseIdleConnections()
 	emvDecoder.Register(api)

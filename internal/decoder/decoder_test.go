@@ -543,38 +543,51 @@ func TestNoAnswerIsUnreachable(t *testing.T) {
 // S10.7-AC2 and AC5: tolerance stops at integrity. A payload whose signature does not verify, one
 // that is not signed, and one signed under no correlationId or under another than the request was
 // sent under (the caller's, or the one generated when the caller gave none: ADR-0027, amendment of
-// 2026-11-15) are refused in the same words, and nothing of them is presented.
+// 2026-11-15) are refused, and nothing of them is presented. The last two are refused in their own
+// words, "QR Code is invalid (bad correlationId)" (owner, 2026-11-15): trying again may succeed, and
+// nothing in the caller's input can fix it. The verifier's verdict comes first: an altered payload
+// under another correlationId is a bad signature.
 func TestAPayloadThatDoesNotVerifyIsRefused(t *testing.T) {
-	const want = "Payload JWS signature is invalid."
+	const (
+		invalid = "Payload JWS signature is invalid."
+		badID   = "QR Code is invalid (bad correlationId)"
+	)
+	altered := func(f *fixture, correlationID func(r *http.Request) uuid.UUID) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			rec := httptest.NewRecorder()
+			f.sign(rec, foreignPayload, correlationID(r))
+			parts := strings.Split(rec.Body.String(), ".")
+			parts[1] = base64.RawURLEncoding.EncodeToString([]byte(strings.Replace(foreignPayload, "1250", "1", 1)))
+			_, _ = io.WriteString(w, strings.Join(parts, "."))
+		}
+	}
 	for _, tc := range []struct {
 		name   string
 		answer func(f *fixture) http.HandlerFunc
 		body   map[string]any
+		want   string
 	}{
 		{"altered", func(f *fixture) http.HandlerFunc {
-			return func(w http.ResponseWriter, r *http.Request) {
-				rec := httptest.NewRecorder()
-				f.sign(rec, foreignPayload, f.received(r).Header.CorrelationID)
-				parts := strings.Split(rec.Body.String(), ".")
-				parts[1] = base64.RawURLEncoding.EncodeToString([]byte(strings.Replace(foreignPayload, "1250", "1", 1)))
-				_, _ = io.WriteString(w, strings.Join(parts, "."))
-			}
-		}, nil},
+			return altered(f, func(r *http.Request) uuid.UUID { return f.received(r).Header.CorrelationID })
+		}, nil, invalid},
+		{"altered, under another correlationID", func(f *fixture) http.HandlerFunc {
+			return altered(f, func(*http.Request) uuid.UUID { return uuid.New() })
+		}, nil, invalid},
 		{"unsigned", func(*fixture) http.HandlerFunc {
 			return func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, foreignPayload) }
-		}, nil},
+		}, nil, invalid},
 		{"another correlationID than the caller's", func(f *fixture) http.HandlerFunc {
 			return func(w http.ResponseWriter, _ *http.Request) { f.sign(w, foreignPayload, uuid.New()) }
-		}, map[string]any{"correlationID": cid}},
+		}, map[string]any{"correlationID": cid}, badID},
 		{"another correlationID than the one generated", func(f *fixture) http.HandlerFunc {
 			return func(w http.ResponseWriter, _ *http.Request) { f.sign(w, foreignPayload, uuid.New()) }
-		}, nil},
+		}, nil, badID},
 		{"no correlationID, none given", func(f *fixture) http.HandlerFunc {
 			return func(w http.ResponseWriter, _ *http.Request) { f.signWithoutCorrelationID(w, foreignPayload) }
-		}, nil},
+		}, nil, badID},
 		{"no correlationID, the caller's given", func(f *fixture) http.HandlerFunc {
 			return func(w http.ResponseWriter, _ *http.Request) { f.signWithoutCorrelationID(w, foreignPayload) }
-		}, map[string]any{"correlationID": cid}},
+		}, map[string]any{"correlationID": cid}, badID},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := serve(t)
@@ -582,7 +595,7 @@ func TestAPayloadThatDoesNotVerifyIsRefused(t *testing.T) {
 			body := map[string]any{"qrCode": f.bankCode()}
 			maps.Copy(body, tc.body)
 			got := f.decode(body)
-			assertProblem(t, got, http.StatusBadRequest, httpapi.TypeBusinessRule, want)
+			assertProblem(t, got, http.StatusBadRequest, httpapi.TypeBusinessRule, tc.want)
 			if strings.Contains(got.raw, "0196cb82afab46f1bf8dfff2f9c8a540") {
 				t.Errorf("the payload leaked: %s", got.raw)
 			}

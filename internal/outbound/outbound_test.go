@@ -69,6 +69,37 @@ type fixture struct {
 	signer   *jws.Signer
 	verifier *jws.Verifier
 	store    *keys.Store
+	logs     *logBuffer
+}
+
+// logBuffer holds what the service logged, one JSON object a line.
+type logBuffer struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (b *logBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+// records are the lines logged with msg, decoded.
+func (b *logBuffer) records(t *testing.T, msg string) []map[string]any {
+	t.Helper()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var out []map[string]any
+	for line := range strings.Lines(b.buf.String()) {
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("a log line is not JSON: %q", line)
+		}
+		if rec["msg"] == msg {
+			out = append(out, rec)
+		}
+	}
+	return out
 }
 
 // serve runs the two routes, signing with the bundled demo key and trusting it, and a payee whose
@@ -81,7 +112,8 @@ func serve(t *testing.T, answerTimeout time.Duration) *fixture {
 // serveWith is serve with the delivery's whole configuration.
 func serveWith(t *testing.T, cfg Config) *fixture {
 	t.Helper()
-	logger := slog.New(slog.DiscardHandler)
+	logs := &logBuffer{}
+	logger := slog.New(slog.NewJSONHandler(logs, nil))
 	store, err := keys.Load(config.Certificate{}, logger)
 	if err != nil {
 		t.Fatal(err)
@@ -95,7 +127,7 @@ func serveWith(t *testing.T, cfg Config) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &fixture{t: t, signer: signer, verifier: verifier, store: store}
+	f := &fixture{t: t, signer: signer, verifier: verifier, store: store, logs: logs}
 
 	p := &payee{}
 	p.answer = func(w http.ResponseWriter, r *http.Request) { f.signedAnswer(w, r, http.StatusOK) }
@@ -112,7 +144,7 @@ func serveWith(t *testing.T, cfg Config) *fixture {
 	f.payee = p
 
 	api := httpapi.New(logger, clk.Now)
-	svc := New(store, signer, verifier, logger, cfg)
+	svc := New(store, signer, verifier, logger, clk.Now, cfg)
 	svc.Register(api)
 	srv := httptest.NewServer(api)
 	f.url = srv.URL
@@ -545,8 +577,10 @@ func assertUndeliverable(t *testing.T, got reply) {
 }
 
 // S10.6-AC3: the payee's answer is reported, never refused: a signed refusal is VERIFIED and not
-// accepted; an unsigned yes is still accepted; the correlationId is checked against the one sent,
-// the caller's or the one generated when the caller gave none (ADR-0027, amendment of 2026-11-15).
+// accepted; an unsigned yes is still accepted; a yes to the correlationId generated when the caller
+// gave none is VERIFIED. An answer under another correlationId, or none, is not reported but
+// refused or sent again (TestABadCorrelationIDBeforeTheMoneyMovesIs502 and
+// TestABadCorrelationIDAfterTheMoneyMovedIsSentOnceMore).
 func TestTheAnswerIsReported(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -568,12 +602,6 @@ func TestTheAnswerIsReported(t *testing.T) {
 		{"an empty yes", func(*fixture) http.HandlerFunc {
 			return func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }
 		}, map[string]any{"statusCode": 200.0, "accepted": true, "signature": "ABSENT", "signatureProblem": "ABSENT_BODY"}, false, false},
-		{"a yes to another notification", func(f *fixture) http.HandlerFunc {
-			return func(w http.ResponseWriter, _ *http.Request) { f.answerWith(w, uuid.New(), 200, 200) }
-		}, map[string]any{"statusCode": 200.0, "accepted": true, "signature": "INVALID", "signatureProblem": "CORRELATION_ID_MISMATCH"}, true, false},
-		{"a yes under another correlationId than the one generated", func(f *fixture) http.HandlerFunc {
-			return func(w http.ResponseWriter, _ *http.Request) { f.answerWith(w, uuid.MustParse(cid), 200, 200) }
-		}, map[string]any{"statusCode": 200.0, "accepted": true, "signature": "INVALID", "signatureProblem": "CORRELATION_ID_MISMATCH"}, true, true},
 		{"a yes to the one generated", func(f *fixture) http.HandlerFunc {
 			return func(w http.ResponseWriter, r *http.Request) { f.signedAnswer(w, r, http.StatusOK) }
 		}, map[string]any{"statusCode": 200.0, "accepted": true, "signature": "VERIFIED"}, true, true},

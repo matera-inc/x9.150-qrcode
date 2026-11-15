@@ -144,6 +144,18 @@ func NotificationUndeliverable() *Problem {
 		"The payee's answer was not received; the payee may have received the notification. Retrying is safe.", nil)
 }
 
+// DetailBadCorrelationID is the detail of the 502 a pre-commit notification gets when the payee's
+// answer does not carry exactly the correlationId it was sent under (owner, 2026-11-15; ADR-0027).
+const DetailBadCorrelationID = "failed to pay - payee is not responding (bad correlationId)"
+
+// NotificationBadCorrelationID is the 502 of a pre-commit notification whose answer carries no
+// correlationId, or another one: an answer this service cannot tie to the question, so no answer.
+// The type stays notification-undeliverable (ADR-0028 freezes the list); the detail says why.
+func NotificationBadCorrelationID() *Problem {
+	return newProblem(http.StatusBadGateway, "Notification Undeliverable", TypeNotificationUndeliverable,
+		DetailBadCorrelationID, nil)
+}
+
 // PayloadRefused relays a payee's refusal to release a payload, with the payee's own status.
 func PayloadRefused(upstreamStatus int, violations []string) *Problem {
 	return newProblem(upstreamStatus, "Payload Refused", TypePayloadRefused,
