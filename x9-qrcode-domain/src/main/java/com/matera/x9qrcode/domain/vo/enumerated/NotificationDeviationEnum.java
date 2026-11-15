@@ -7,7 +7,7 @@
 package com.matera.x9qrcode.domain.vo.enumerated;
 
 /**
- * How a payer departed from the protocol when it sent a notification that was still accepted.
+ * How a payer departed from the protocol when it sent a notification that was still recorded.
  *
  * <p><b>A closed list owned by ADR-0036.</b> A new code is added there first, never invented at a
  * call site. The codes travel on the events of the notification ({@code deviations}) and in the
@@ -28,6 +28,27 @@ public enum NotificationDeviationEnum {
      * {@code blockchain.action = PAYMENT_INITIATED}, yet the message carries a transaction hash: it
      * asks "may I pay?" while showing the money has already moved.
      */
-    ACTION_CONTRADICTS_HASH
+    ACTION_CONTRADICTS_HASH,
+
+    /**
+     * A post-commit named a rail ({@code payment.network}) that no payment method of this QR Code
+     * offers. Recorded, its hash published on a {@code payment.sent}, the status untouched, and the
+     * payer answered with a signed 400 (ADR-0036, amended 2026-11-15).
+     */
+    NOT_OFFERED_RAIL,
+
+    /**
+     * A post-commit named a currency ({@code payment.currency}) that no payment method of this QR
+     * Code offers. Treated as {@link #NOT_OFFERED_RAIL} is; both appear when both are true.
+     */
+    NOT_OFFERED_CURRENCY;
+
+    /**
+     * Whether this code makes the notification an error the payer is told about: it is recorded,
+     * but answered with a 400.
+     */
+    public boolean isNotOffered() {
+        return this == NOT_OFFERED_RAIL || this == NOT_OFFERED_CURRENCY;
+    }
 
 }

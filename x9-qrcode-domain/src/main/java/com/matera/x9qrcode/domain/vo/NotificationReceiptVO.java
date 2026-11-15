@@ -36,4 +36,12 @@ public record NotificationReceiptVO(QRCodeStatusEnum receivedInStatus, List<Noti
         return !deviations.isEmpty();
     }
 
+    /**
+     * The {@code NOT_OFFERED_*} codes: a rail or currency this QR Code does not offer. Non-empty
+     * means the notification was recorded but must be answered with a 400.
+     */
+    public List<NotificationDeviationEnum> notOffered() {
+        return deviations.stream().filter(NotificationDeviationEnum::isNotOffered).toList();
+    }
+
 }

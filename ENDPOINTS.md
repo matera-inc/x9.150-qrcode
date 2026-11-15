@@ -142,7 +142,11 @@ produced says the QR Code's status when the notification arrived, and, when the 
 protocol, lists `deviations`: `RECEIVED_IN_WRONG_STATUS` (a post-commit reached a QR Code that was
 not reserved by that payer: `ACTIVE`, held by another payer, `PAID` or `CANCELLED`) and
 `ACTION_CONTRADICTS_HASH` (a Solana `PAYMENT_INITIATED` carrying a hash). The hash is registered
-either way; a payment system may hold a deviating registration for review. More than one
+either way; a payment system may hold a deviating registration for review. Two more codes,
+`NOT_OFFERED_RAIL` and `NOT_OFFERED_CURRENCY`, mark a post-commit that named a rail or currency
+the QR Code does not offer: the payer was answered `400`, the QR Code did not change, and that
+`payment.sent` (published on every rail in this one case, bank rails included) is the only record
+of the call. Still schema `1.1`: codes are only added. More than one
 `payment.sent` for one QR Code is the signal of a duplicate payment
 ([ADR-0036](docs/adr/0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md)).
 

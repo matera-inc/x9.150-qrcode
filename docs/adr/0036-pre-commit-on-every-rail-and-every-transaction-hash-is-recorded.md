@@ -195,6 +195,8 @@ these fields only describe how it arrived.
 |---|---|
 | `RECEIVED_IN_WRONG_STATUS` | The post-commit reached a QR Code that was not `PAYMENT_INITIATED` held by this payer. `receivedInStatus` says which status it found. |
 | `ACTION_CONTRADICTS_HASH` | `blockchain.action = PAYMENT_INITIATED`, but the message carries a hash. |
+| `NOT_OFFERED_RAIL` | A post-commit named a rail no payment method of the QR Code offers (amended 2026-11-15, below). |
+| `NOT_OFFERED_CURRENCY` | A post-commit named a currency no payment method of the QR Code offers (amended 2026-11-15, below). |
 
 - **Both may appear together,** on every event of the transition (`payment.initiated` and
   `payment.sent` when a post-commit reserves an `ACTIVE` QR Code).
@@ -204,6 +206,40 @@ these fields only describe how it arrived.
 - **The codes are a closed list owned by this ADR.** A new code is added here, never invented at a
   call site.
 - The same codes are logged with the warning.
+
+### A rail or currency the QR Code does not offer
+
+> **Amended 2026-11-15 (owner).** A notification that names a rail (`payment.network`) or a
+> currency (`payment.currency`) that no payment method of the QR Code offers is an error, in both
+> phases. On a post-commit: *"It's an error — we record the call just in case, but we return an
+> error."*
+
+- **Each rail on its own.** A QR Code that publishes only `fednow` does not offer RTP or ACH. The
+  Java build used to group FedNow and RTP as "instant payments"; that grouping is gone. The rail is
+  matched case-insensitively, by name, as everywhere else; so is the currency.
+- **Pre-commit** (no `transactionId`): refused with a signed `400` naming the rail, the currency,
+  or both (`This QR Code does not offer the RTP rail.`, `… the EUR currency.`, `… the RTP rail nor
+  the EUR currency.`). Nothing is recorded. As for every pre-commit refusal, a holder's retry that
+  is refused this way releases its reservation.
+- **Post-commit** (`transactionId` present): the money may have moved, so the call is recorded
+  first, and then refused with the same signed `400`:
+  - the notification and its transaction id are recorded, with `receivedInStatus`, on one
+    `payment.sent` event carrying `NOT_OFFERED_RAIL` and/or `NOT_OFFERED_CURRENCY` (both when both
+    are true), beside any other code that applies (`RECEIVED_IN_WRONG_STATUS`,
+    `ACTION_CONTRADICTS_HASH`);
+  - that `payment.sent` is published **on every rail, bank rails included**. It is the exception to
+    "bank rails never publish `payment.sent`": the call is refused, so it leaves no other trace a
+    payment system can read;
+  - **nothing about the QR Code changes**: not its status, not the reservation or its holder, and
+    not the reservation's window (this hash does not stop it, because it was not accepted). The
+    QR Code's own notification of record stays the last accepted one.
+- `NOT_SENT` naming a rail or currency not offered is refused like a pre-commit: nothing has moved.
+- The question is whether *some* payment method offers the rail, and whether some offers the
+  currency. An offered rail and an offered currency that belong to different payment methods (USD on
+  FedNow beside USDC on Solana, notified as USD on Solana) are not "not offered": a pre-commit is
+  still refused by the acceptance gate, and a post-commit is registered as before.
+- The two codes join the closed list above. Codes are only ever added within a major version, so
+  the event's `schemaVersion` stays `1.1`.
 
 ### The reservation's window
 
@@ -279,6 +315,8 @@ Messages from a payer:
 | **`SENT` without a hash** (chain) | 400 | 400 | 400 | 400 |
 | **`NOT_SENT`** (chain: the payer gives it back) | 400; from the holder of a lapsed reservation: accepted, `payment.failed` | → `ACTIVE`, reservation cleared, `payment.failed`. Once a hash is registered: accepted, nothing changes, flagged `ACTION_CONTRADICTS_HASH` § | 409 | 400 |
 | **`NOT_SENT` with a `transactionId`** (chain) | As a post-commit (the evidence decides), also flagged `ACTION_CONTRADICTS_HASH` | same | same | same |
+| **Pre-commit on a rail or currency not offered** (amended 2026-11-15) | 400 naming it, nothing recorded | 400 naming it; the reservation is released, as for any refused retry | 409, nothing changes | 400, nothing changes |
+| **Post-commit on a rail or currency not offered** (amended 2026-11-15) | 400 naming it; recorded on `payment.sent` (every rail) flagged `NOT_OFFERED_RAIL` / `NOT_OFFERED_CURRENCY`; status, reservation and window unchanged | same | same | same |
 
 From the payment system (status-update API), and from time:
 

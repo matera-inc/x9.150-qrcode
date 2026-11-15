@@ -583,6 +583,21 @@ it is registered, flagged, and changes nothing, so the holder keeps the QR Code.
 - On a bank rail no `payment.sent` is published (the payment carries `QRCD`); the deviation is then
   in the `payment.initiated` event when there is one, and in the warning log otherwise.
 
+**A rail or currency the QR Code does not offer is an error, in both phases** (ADR-0036, amended
+2026-11-15 by the owner). §14.5 gives each rail its own object under `networks`, so a QR Code
+offers exactly the rails it publishes: one that publishes only `fednow` does not offer RTP, and the
+two are no longer grouped as "instant payments". The standard says nothing about a notification
+naming a rail or currency the QR Code never offered; this is our reading:
+
+- a **pre-commit** naming one is refused with a signed `400` naming the rail, the currency, or both,
+  and nothing is recorded;
+- a **post-commit** naming one is answered with the same signed `400`, but the money may have
+  moved, so the call is recorded first: one `payment.sent`, **on every rail, bank rails included**,
+  carries the notification, its `transactionId`, `receivedInStatus`, and `NOT_OFFERED_RAIL` and/or
+  `NOT_OFFERED_CURRENCY` in `deviations`. Nothing about the QR Code changes: not its status, not
+  the reservation, not the reservation's window. The new codes are additive; the event schema stays
+  `1.1`.
+
 **The holder, its retry, and the window** (Story 2.5):
 
 - **The same payer** means both notifications carry `payer.info`, the values are equal, and the

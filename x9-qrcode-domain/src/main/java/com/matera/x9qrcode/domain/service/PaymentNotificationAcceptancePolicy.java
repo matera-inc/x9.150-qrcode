@@ -16,7 +16,7 @@ import com.matera.x9qrcode.domain.vo.CryptoWalletPaymentAddressVO;
 import com.matera.x9qrcode.domain.vo.PaymentMethodVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationDataVO;
 import com.matera.x9qrcode.domain.vo.TipVO;
-import com.matera.x9qrcode.domain.vo.enumerated.NetworkEnum;
+import com.matera.x9qrcode.domain.vo.enumerated.NotificationDeviationEnum;
 
 import lombok.RequiredArgsConstructor;
 
@@ -103,14 +103,14 @@ public class PaymentNotificationAcceptancePolicy {
 
         List<PaymentMethodVO> methods = qrCode.getPaymentMethods();
 
-        // Case-insensitively, for the same reason the rail is: this is a third-party payer's
-        // message. The QR Code's own currency was held to one spelling when it was created; what a
-        // payer echoes back is not ours to police.
-        boolean currencyOffered = methods.stream().anyMatch(m -> m.currency().equalsIgnoreCase(notifiedCurrency));
+        // A rail or a currency no method offers, each rail on its own (FedNow is not RTP): refused,
+        // naming them, in the words a post-commit gets too (ADR-0036, amended 2026-11-15). The
+        // currency is compared case-insensitively, as the rail is: this is a third-party payer's
+        // message, and what it echoes back is not ours to police.
+        List<NotificationDeviationEnum> notOffered = NotOfferedPolicy.notOffered(methods, notification);
 
-        if (!currencyOffered) {
-            throw new BusinessRuleException("paymentNotification.data.payment.currency",
-                "This QR Code does not offer the %s currency.".formatted(notifiedCurrency));
+        if (!notOffered.isEmpty()) {
+            throw NotOfferedPolicy.refusal(notOffered, notification);
         }
 
         Optional<PaymentMethodVO> matched = methods.stream()

@@ -126,9 +126,10 @@ that is here must still be marked `GAP`.
 | `R-SM-42` | Two pre-commits that arrive together end with one winner and one 409. | `X9-HOLD-203`, `X9-HOLD-406` | `S2.4-AC2`, `S4.3-AC2`, `S4.3-AC3` |
 | `R-SM-43` | The same payer means `payer.info` present on both and equal, and the same certificate subject; without `payer.info` the sender is somebody else. | `X9-HOLD-001`, `X9-HOLD-002`, `X9-HOLD-003`, `X9-HOLD-004`, `X9-HOLD-305`, `X9-HOLD-306` | `S2.5-AC4` |
 | `R-SM-44` | `NOT_SENT` is keyed on the action, and is the only message by which a payer gives a reserved QR Code back. | `X9-HOLD-103`, `X9-HOLD-020`, `X9-HOLD-021`, `X9-HOLD-213` | `S2.4-AC5`, `S2.4-AC6` |
-| `R-SM-45` | `payment.sent` and `payment.failed` are published on chains only. | `X9-HOLD-112`, `X9-HOLD-131`, `X9-HOLD-205`, `X9-MAP-030` | `S2.4-AC2`, `S2.4-AC3`, `S2.5-AC2`, `S4.1-AC1`, `S4.1-AC3` |
+| `R-SM-45` | `payment.sent` and `payment.failed` are published on chains only, except the `payment.sent` that records a post-commit on a rail or currency not offered (R-SM-48). | `X9-HOLD-112`, `X9-HOLD-131`, `X9-HOLD-205`, `X9-MAP-030` | `S2.4-AC2`, `S2.4-AC3`, `S2.5-AC2`, `S4.1-AC1`, `S4.1-AC3` |
 | `R-SM-46` | There is no `txHash` field: `payment.transactionId` carries the reference of every rail. | `X9-HOLD-101`, `X9-EVT-503` | `S2.4-AC5`, `S3.4-AC1` |
 | `R-SM-47` | A PATCH that moves `validUntil` before the end of a running reservation cuts the reservation back to the new `validUntil`; it never lengthens one, and leaves alone a reservation that no longer lapses (a hash registered, or `ttl-seconds: 0`); past the new `validUntil` the QR Code reads `ACTIVE` (owner, 2026-11-15). | `X9-PATCH-044`, `X9-PATCH-045`, `X9-PATCH-053`, `X9-PATCH-515`, `row_test.go::TestCapReservation`, `patch_rules_test.go::TestPatchRulesAgainstPostgres` | — |
+| `R-SM-48` | A pre-commit on a rail or currency the QR Code does not offer is 400, nothing recorded; a post-commit is 400 too, recorded on one `payment.sent` flagged `NOT_OFFERED_RAIL` / `NOT_OFFERED_CURRENCY`, nothing about the QR Code changed (amended 2026-11-15). | `X9-HOLD-230`, `X9-HOLD-231`, `X9-HOLD-232`, `X9-HOLD-233`, `X9-RAIL-520`, `X9-RAIL-521` | — |
 
 ## ENDPOINTS.md
 
@@ -218,7 +219,7 @@ that is here must still be marked `GAP`.
 | `R-I11-09` | A `NOT_SENT` carrying a `transactionId` is a post-commit, flagged `ACTION_CONTRADICTS_HASH`. | `X9-HOLD-220`, `X9-MAP-044` | `S4.1-AC1`, `S4.1-AC3` |
 | `R-I11-10` | A notification that keeps losing a concurrent write answers 409 "busy", never 500. | `X9-HOLD-221` | — |
 | `R-I11-11` | Every event a notification produces carries `receivedInStatus` and, when the payer broke the protocol, `deviations`. | `X9-HOLD-207`, `X9-HOLD-209`, `X9-HOLD-210`, `X9-HOLD-211` | `S2.4-AC4`, `S2.4-AC5` |
-| `R-I11-12` | On a bank rail no `payment.sent` is published; the deviation is in `payment.initiated` when there is one. | `X9-HOLD-208`, `X9-HOLD-205`, `X9-HOLD-216` | `S2.4-AC2`, `S2.4-AC3`, `S2.4-AC4`, `S2.4-AC5`, `S2.4-AC7`, `S2.4-AC8` |
+| `R-I11-12` | On a bank rail no `payment.sent` is published (except to record a post-commit on a rail or currency not offered, R-I11-23); the deviation is in `payment.initiated` when there is one. | `X9-HOLD-208`, `X9-HOLD-205`, `X9-HOLD-216` | `S2.4-AC2`, `S2.4-AC3`, `S2.4-AC4`, `S2.4-AC5`, `S2.4-AC7`, `S2.4-AC8` |
 | `R-I11-13` | A payer without `payer.info` may win a pre-commit, but cannot retry it or release it (409), and its post-commit is flagged. | `X9-HOLD-306`, `X9-HOLD-132`, `X9-HOLD-133`, `X9-HOLD-134` | `S2.5-AC4` |
 | `R-I11-14` | The same certificate with a different `payer.info` is a different payer. | `X9-HOLD-305`, `X9-HOLD-002` | `S2.5-AC4` |
 | `R-I11-15` | A retry is judged again, and a refused retry releases the reservation (`payment.failed` on a chain). | `X9-HOLD-301`, `X9-HOLD-302`, `X9-HOLD-308`, `X9-MAP-023` | `S2.5-AC1`, `S2.5-AC2`, `S4.1-AC1`, `S4.1-AC3` |
@@ -228,6 +229,8 @@ that is here must still be marked `GAP`.
 | `R-I11-19` | `x9.reservation.ttl-seconds: 0` means no window; a negative value refuses to start. | `X9-HOLD-321`, `X9-HOLD-322`, `X9-HOLD-323`, `X9-HOLD-324` | `S2.5-AC2`, `S2.5-AC7` |
 | `R-I11-20` | A `PAYMENT_INITIATED` carrying a hash is kept as a post-commit, recorded as received, flagged `ACTION_CONTRADICTS_HASH`. | `X9-HOLD-209`, `X9-MAP-040` | `S2.4-AC5`, `S4.1-AC1`, `S4.1-AC3` |
 | `R-I11-21` | Every hash is registered, a second one included, and this service never marks a QR Code `PAID`. | `X9-HOLD-214`, `X9-HOLD-402` | `S2.4-AC6`, `S2.4-AC7`, `S4.3-AC2` |
+| `R-I11-22` | Each rail is offered on its own (FedNow is not RTP); a pre-commit naming a rail or currency the QR Code does not offer is a signed 400 naming it, nothing recorded. | `X9-RAIL-130`, `X9-RAIL-133`, `X9-HOLD-230`, `X9-RAIL-520`, `X9-CUR-520` | — |
+| `R-I11-23` | A post-commit naming a rail or currency not offered is a signed 400, recorded on one `payment.sent` on every rail with `NOT_OFFERED_RAIL` / `NOT_OFFERED_CURRENCY`, its `transactionId` and `receivedInStatus`; status, reservation and window unchanged; schema stays `1.1`. | `X9-HOLD-150`, `X9-HOLD-151`, `X9-HOLD-231`, `X9-HOLD-232`, `X9-RAIL-521`, `X9-CUR-521` | — |
 | `R-I12-01` | A yes is a compact JWS (`application/jose`) whose body is `{"statusCode": 200}`, echoing the notification's `correlationId`. | `X9-SIG-120`, `X9-SIG-121`, `X9-SIG-516` | `S2.3-AC1`, `S3.2-AC4`, `S3.2-AC6`, `S3.2-AC7` |
 | `R-I12-02` | A no keeps its HTTP status and is signed too, with `statusCode` and the error fields. | `X9-SIG-122`, `X9-SIG-123`, `X9-HOLD-405` | `S2.3-AC2`, `S4.3-AC2` |
 | `R-I12-03` | A notification that cannot be verified is refused, signed, under a fresh `correlationId`. | `X9-SIG-124`, `X9-SIG-522` | `S2.3-AC2`, `S3.2-AC7` |
@@ -424,7 +427,7 @@ rules the ADR states outside the table.
 | `R-ADR0036-17` | Each notification records the QR Code's effective status when it arrived, and the payee can list the flagged ones per payer. | `X9-HOLD-207`, `X9-HOLD-215`, `X9-HOLD-217` | `S2.4-AC4`, `S2.4-AC7`, `S2.4-AC8` |
 | `R-ADR0036-18` | A post-commit on a closed or held QR Code is registered and flagged; the status does not change. | `X9-HOLD-114`, `X9-HOLD-115`, `X9-HOLD-204`, `X9-HOLD-215` | `S2.4-AC2`, `S2.4-AC7` |
 | `R-ADR0036-19` | After another payer's post-commit, a pre-commit from that payer is still 409. | `X9-HOLD-111` | `S2.4-AC4` |
-| `R-ADR0036-20` | A bank rail never publishes `payment.sent`. | `X9-HOLD-116`, `X9-HOLD-205`, `X9-HOLD-206`, `X9-HOLD-216` | `S2.4-AC2`, `S2.4-AC3`, `S2.4-AC4`, `S2.4-AC7`, `S2.4-AC8` |
+| `R-ADR0036-20` | A bank rail never publishes `payment.sent`, except to record a post-commit on a rail or currency not offered (R-ADR0036-39, amended 2026-11-15). | `X9-HOLD-116`, `X9-HOLD-205`, `X9-HOLD-206`, `X9-HOLD-216` | `S2.4-AC2`, `S2.4-AC3`, `S2.4-AC4`, `S2.4-AC7`, `S2.4-AC8` |
 | `R-ADR0036-21` | `RECEIVED_IN_WRONG_STATUS` and `ACTION_CONTRADICTS_HASH` may appear together, on every event of the transition. | `X9-HOLD-118`, `X9-HOLD-120`, `X9-HOLD-211` | `S2.4-AC5` |
 | `R-ADR0036-22` | `deviations` is absent when the payer followed the rules. | `X9-HOLD-113`, `X9-MAP-032` | `S4.1-AC1`, `S4.1-AC3` |
 | `R-ADR0036-23` | The new fields are additive: `schemaVersion` is `1.1`. | `X9-EVT-050`, `X9-HOLD-207` | `S2.4-AC4`, `S4.4-AC2` |
@@ -441,6 +444,12 @@ rules the ADR states outside the table.
 | `R-ADR0036-34` | Every answer to a payer, refusals included, is a signed JWS. | `X9-HOLD-405` | `S4.3-AC2` |
 | `R-ADR0036-35` | `NOT_SENT`: the holder's releases with `payment.failed`, a lapsed reservation's included; 409 from someone else; 400 on `ACTIVE`, `PAID`, `CANCELLED`. | `X9-HOLD-122`, `X9-HOLD-123`, `X9-HOLD-124`, `X9-HOLD-125`, `X9-HOLD-316` | — |
 | `R-ADR0036-36` | `NOT_SENT` with a `transactionId` is a post-commit, flagged `ACTION_CONTRADICTS_HASH`. | `X9-HOLD-139`, `X9-HOLD-220`, `X9-MAP-044` | `S4.1-AC1`, `S4.1-AC3` |
+| `R-ADR0036-37` | Each rail is offered on its own: a QR Code publishing only `fednow` does not offer RTP or ACH (amended 2026-11-15). | `X9-RAIL-130`, `X9-RAIL-131`, `X9-RAIL-520` | — |
+| `R-ADR0036-38` | A pre-commit naming a rail or currency not offered is a signed 400 naming it, in the words a post-commit gets; nothing is recorded (amended 2026-11-15). | `X9-RAIL-132`, `X9-RAIL-133`, `X9-CUR-091`, `X9-HOLD-230`, `X9-RAIL-520`, `X9-CUR-520` | — |
+| `R-ADR0036-39` | A post-commit naming a rail or currency not offered is recorded on one `payment.sent`, on every rail, with its `transactionId`, `receivedInStatus` and `NOT_OFFERED_RAIL` / `NOT_OFFERED_CURRENCY`, then answered with a signed 400 (amended 2026-11-15). | `X9-HOLD-150`, `X9-HOLD-231`, `X9-HOLD-232`, `X9-RAIL-521`, `X9-CUR-521` | — |
+| `R-ADR0036-40` | Such a post-commit changes nothing about the QR Code: status, reservation, holder, window and the notification of record (amended 2026-11-15). | `X9-HOLD-150`, `X9-HOLD-151`, `X9-HOLD-153`, `X9-HOLD-232`, `X9-CUR-521` | — |
+| `R-ADR0036-41` | Both codes appear when both are true, beside any other code that applies; the schema stays `1.1` (amended 2026-11-15). | `X9-CUR-090`, `X9-HOLD-152`, `X9-HOLD-233`, `X9-RAIL-522` | — |
+| `R-ADR0036-42` | An offered rail and an offered currency on different payment methods are not "not offered": a post-commit is registered as before (amended 2026-11-15). | `X9-HOLD-154` | — |
 
 ## ADR-0027: EMV
 

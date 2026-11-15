@@ -12,6 +12,7 @@ import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 import com.matera.x9qrcode.domain.exception.QRCodePreconditionFailedException;
 import com.matera.x9qrcode.domain.exception.QRCodeStatusConflictException;
 import com.matera.x9qrcode.domain.generator.IdGenerator;
+import com.matera.x9qrcode.domain.service.NotOfferedPolicy;
 import com.matera.x9qrcode.domain.utils.DateTimeUtils;
 import com.matera.x9qrcode.domain.vo.AdditionalInformationVO;
 import com.matera.x9qrcode.domain.vo.BillVO;
@@ -843,6 +844,10 @@ public class QRCodeEntity {
      * <p><b>The Java document keeps only the latest notification</b>; every hash survives in the
      * event log, one {@code payment.sent} each. Two hashes for one QR Code are the payment system's
      * signal of a duplicate payment.
+     *
+     * <p><b>A rail or currency this QR Code does not offer</b> takes none of the paths above: see
+     * {@link #registerNotOffered}. The returned receipt's {@link NotificationReceiptVO#notOffered()}
+     * is then non-empty, and the caller must answer the payer with a 400.
      */
     public NotificationReceiptVO registerPostCommit(PaymentNotificationDataVO data, ReservationHolderVO sender) {
         this.qrCodeEntityValidator.validatePaymentNotification(data);
@@ -857,6 +862,13 @@ public class QRCodeEntity {
         if (data.actionContradictsHash()) {
             deviations.add(NotificationDeviationEnum.ACTION_CONTRADICTS_HASH);
         }
+
+        List<NotificationDeviationEnum> notOffered = NotOfferedPolicy.notOffered(this.paymentMethods, data);
+        if (!notOffered.isEmpty()) {
+            deviations.addAll(notOffered);
+            return this.registerNotOffered(data, new NotificationReceiptVO(receivedIn, deviations));
+        }
+
         NotificationReceiptVO receipt = new NotificationReceiptVO(receivedIn, deviations);
 
         this.recordNotification(data);
@@ -885,6 +897,29 @@ public class QRCodeEntity {
     }
 
     /**
+     * A post-commit naming a rail or currency this QR Code does not offer (ADR-0036, amended
+     * 2026-11-15 by the owner): "It's an error — we record the call just in case, but we return an
+     * error."
+     *
+     * <ul>
+     *   <li><b>Recorded:</b> one {@code payment.sent} carrying the notification as received, its
+     *       transaction id, {@code receivedInStatus}, and {@code NOT_OFFERED_RAIL} and/or
+     *       {@code NOT_OFFERED_CURRENCY} beside any other code. On every rail, bank rails included:
+     *       the event is where this build keeps a notification's hash and status at receipt, and
+     *       without it the call would leave no trace.</li>
+     *   <li><b>Nothing else changes:</b> the status, the reservation and its holder, its window
+     *       (the hash does not stop it), {@code revisedAt}, and the QR Code's own notification of
+     *       record, which stays the last <em>accepted</em> one.</li>
+     *   <li>The caller answers the payer with {@link NotOfferedPolicy#refusal}, the receipt's
+     *       {@link NotificationReceiptVO#notOffered()} being non-empty.</li>
+     * </ul>
+     */
+    private NotificationReceiptVO registerNotOffered(PaymentNotificationDataVO data, NotificationReceiptVO receipt) {
+        this.emit(PaymentEventTypeEnum.PAYMENT_SENT, null, receipt, data);
+        return receipt;
+    }
+
+    /**
      * {@code NOT_SENT}: the payer gives the QR Code back. Keyed on the action, because by its nature
      * it carries no transaction.
      *
@@ -894,6 +929,13 @@ public class QRCodeEntity {
      */
     public NotificationReceiptVO releaseByPayer(PaymentNotificationDataVO data, ReservationHolderVO sender) {
         this.qrCodeEntityValidator.validatePaymentNotification(data);
+
+        // Nothing moved, so nothing to record: a release on a rail or in a currency this QR Code
+        // does not offer is refused as a pre-commit would be.
+        List<NotificationDeviationEnum> notOffered = NotOfferedPolicy.notOffered(this.paymentMethods, data);
+        if (!notOffered.isEmpty()) {
+            throw NotOfferedPolicy.refusal(notOffered, data);
+        }
 
         QRCodeStatusEnum receivedIn = this.effectiveStatus();
 
@@ -961,9 +1003,16 @@ public class QRCodeEntity {
      *                the status-update API produced
      */
     private void emit(PaymentEventTypeEnum type, String reason, NotificationReceiptVO receipt) {
-        PaymentNotificationDataVO data =
-            nonNull(this.paymentNotification) ? this.paymentNotification.data() : null;
+        this.emit(type, reason, receipt,
+            nonNull(this.paymentNotification) ? this.paymentNotification.data() : null);
+    }
 
+    /**
+     * @param data the notification the event describes: the stored one, or one that was recorded
+     *             on its event only (a rail or currency not offered)
+     */
+    private void emit(PaymentEventTypeEnum type, String reason, NotificationReceiptVO receipt,
+                      PaymentNotificationDataVO data) {
         pendingEvents.add(new PaymentEvent(
             UUID.randomUUID(),
             type,

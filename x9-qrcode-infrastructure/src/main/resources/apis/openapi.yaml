@@ -699,6 +699,15 @@ paths:
         - **`NOT_SENT`** (chain): you give the QR Code back. A `NOT_SENT` carrying a
           `transactionId` is a post-commit, flagged `ACTION_CONTRADICTS_HASH`.
 
+        **A rail or a currency the QR Code does not offer is an error, in either phase** (ADR-0036,
+        amended 2026-11-15). Each rail stands on its own: a QR Code that publishes only `fednow`
+        does not offer RTP. A pre-commit naming one is refused with a signed `400` naming the rail
+        or currency, and nothing is recorded. A post-commit naming one gets the same signed `400`,
+        but the money may have moved, so the call is recorded first: one `payment.sent` event (on
+        every rail, bank rails included) carries your notification, its `transactionId`,
+        `receivedInStatus` and `NOT_OFFERED_RAIL` and/or `NOT_OFFERED_CURRENCY` in `deviations`.
+        The QR Code's status, reservation and reservation window do not change.
+
         **Once a hash is registered for the QR Code, no payer message changes its status**: a
         pre-commit, the holder's included, gets `409`, and the holder's `NOT_SENT` is accepted and
         changes nothing. Only the payment system ends the reservation.
@@ -1112,11 +1121,17 @@ components:
               `PAYMENT_INITIATED` held by this payer. `receivedInStatus` says which status it found.
             - `ACTION_CONTRADICTS_HASH`: `blockchain.action = PAYMENT_INITIATED`, but the message
               carries a transaction hash.
+            - `NOT_OFFERED_RAIL`: a post-commit named a rail (`network`) no payment method of the
+              QR Code offers. The payer was answered `400`; this `payment.sent` is the only record
+              of the call, on every rail, and the QR Code did not change.
+            - `NOT_OFFERED_CURRENCY`: the same, for a currency. Both appear when both are true.
 
-            A closed list owned by ADR-0036; ignore a code you do not know. Added in schema `1.1`.
+            A closed list owned by ADR-0036; ignore a code you do not know. Added in schema `1.1`;
+            `NOT_OFFERED_RAIL` and `NOT_OFFERED_CURRENCY` added 2026-11-15, still `1.1`, because
+            codes are only ever added within a major version.
           items:
             type: string
-            enum: [RECEIVED_IN_WRONG_STATUS, ACTION_CONTRADICTS_HASH]
+            enum: [RECEIVED_IN_WRONG_STATUS, ACTION_CONTRADICTS_HASH, NOT_OFFERED_RAIL, NOT_OFFERED_CURRENCY]
           example: ["RECEIVED_IN_WRONG_STATUS"]
         receivedInStatus:
           type: string

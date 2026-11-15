@@ -15,6 +15,7 @@ import com.matera.x9qrcode.app.usecase.paymentnotification.mapper.PaymentNotific
 import com.matera.x9qrcode.domain.entity.QRCodeEntity;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 import com.matera.x9qrcode.domain.exception.QRCodeStatusConflictException;
+import com.matera.x9qrcode.domain.service.NotOfferedPolicy;
 import com.matera.x9qrcode.domain.service.PaymentNotificationAcceptancePolicy;
 import com.matera.x9qrcode.domain.utils.DateTimeUtils;
 import com.matera.x9qrcode.domain.vo.ExpectedDateVO;
@@ -32,6 +33,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.time.Duration;
 
 import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * A payer's payment notification, applied by ADR-0036's "Every case, by message and status" matrix.
@@ -42,7 +44,9 @@ import static java.util.Objects.isNull;
  *       paying the same QR Code.</li>
  *   <li><b>Post-commit</b> ({@code transactionId} present), on every rail: the money has moved.
  *       Never refused for status reasons, never judged on amount or time; every hash is
- *       registered.</li>
+ *       registered. One exception: naming a rail or currency the QR Code does not offer is an
+ *       error, so the call is recorded on a flagged {@code payment.sent}, nothing else changes,
+ *       and the payer is answered 400 (ADR-0036, amended 2026-11-15).</li>
  *   <li><b>{@code NOT_SENT}</b>: the holder gives the QR Code back.</li>
  * </ul>
  *
@@ -84,10 +88,16 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
             QRCodeEntity qrCodeEntity = qrCodeRepository.findById(qrCodeId);
 
             try {
-                processPaymentNotification(qrCodeEntity, notificationDataDTO,
-                    paymentNotificationQRCodeInput.signerSubject());
+                BusinessRuleException refusedAfterRecording = processPaymentNotification(qrCodeEntity,
+                    notificationDataDTO, paymentNotificationQRCodeInput.signerSubject());
 
                 qrCodeRepository.save(qrCodeEntity);
+
+                // Recorded first, refused second: a post-commit on a rail or currency this QR Code
+                // does not offer is kept "just in case", and the payer is still told it was wrong.
+                if (nonNull(refusedAfterRecording)) {
+                    throw refusedAfterRecording;
+                }
 
                 return true;
             } catch (QRCodeConcurrentModificationException raceLost) {
@@ -104,8 +114,15 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
         }
     }
 
-    private void processPaymentNotification(QRCodeEntity qrCodeEntity, PaymentNotificationDataDTO notificationDataDTO,
-                                            String signerSubject) {
+    /**
+     * @return the refusal to answer with once the QR Code is saved, or null when the notification
+     *         was accepted. Only a post-commit naming a rail or currency this QR Code does not offer
+     *         is both recorded and refused (ADR-0036, amended 2026-11-15); every other refusal is
+     *         thrown before anything is recorded.
+     */
+    private BusinessRuleException processPaymentNotification(QRCodeEntity qrCodeEntity,
+                                                             PaymentNotificationDataDTO notificationDataDTO,
+                                                             String signerSubject) {
         PaymentNotificationDataVO data = new PaymentNotificationDataVO(
             PaymentNotificationPaymentMapper.map(notificationDataDTO.payment()),
             isNull(notificationDataDTO.payer()) ? null : new PaymentNotificationPayerVO(notificationDataDTO.payer().info()),
@@ -129,9 +146,18 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
         // has moved (ADR-0004, ADR-0036). blockchain.action decides only NOT_SENT.
         switch (data.phase()) {
             case PRE_COMMIT -> preCommit(qrCodeEntity, data, sender);
-            case POST_COMMIT -> warnOnDeviations(qrCodeEntity, sender, qrCodeEntity.registerPostCommit(data, sender));
+            case POST_COMMIT -> {
+                NotificationReceiptVO receipt = qrCodeEntity.registerPostCommit(data, sender);
+                warnOnDeviations(qrCodeEntity, sender, receipt);
+
+                if (!receipt.notOffered().isEmpty()) {
+                    return NotOfferedPolicy.refusal(receipt.notOffered(), data);
+                }
+            }
             case RELEASE -> warnOnDeviations(qrCodeEntity, sender, qrCodeEntity.releaseByPayer(data, sender));
         }
+
+        return null;
     }
 
     /**
@@ -167,6 +193,19 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
     private static void warnOnDeviations(QRCodeEntity qrCodeEntity, ReservationHolderVO sender,
                                          NotificationReceiptVO receipt) {
         if (!receipt.hasDeviations()) {
+            return;
+        }
+
+        if (!receipt.notOffered().isEmpty()) {
+            // A post-commit on a rail or in a currency this QR Code does not offer. The money may
+            // have moved, so the call is recorded on a flagged payment.sent, "just in case"; the
+            // QR Code is left as it was and the payer is answered 400 (ADR-0036, amended
+            // 2026-11-15).
+            log.warn("Post-commit on a rail or currency this QR Code does not offer: recorded on its "
+                    + "event, status unchanged, refused with 400. qrCodeId={} payerInfo={} signerSubject={} "
+                    + "receivedInStatus={} deviations={}",
+                qrCodeEntity.getId().value(), sender.payerInfo(), sender.signerSubject(),
+                receipt.receivedInStatus(), receipt.deviations());
             return;
         }
 
