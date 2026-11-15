@@ -1542,7 +1542,7 @@ components:
                     example: "$10 discount because you're paying 60 days before ${dueDate}"
             lateFees:
               type: object
-              description: "Late fee: fixed + perDay × days late, the days counted in 24-hour steps from dueDate. The fee stops growing at the QR Code's validUntil, so the bill amount and every payment-method amount plus the fee reached at validUntil must not exceed 999999999999999999 (18 digits, ADR-0005); otherwise the request is refused with 400 naming the amount field."
+              description: "Late fee: fixed + perDay × days late, the days counted in 24-hour steps from dueDate. The fee stops growing at the QR Code's validUntil, so the bill amount plus the fee reached at validUntil, and every payment-method amount as the payload would show it with that fee, must not exceed 999999999999999999 (18 digits, ADR-0005); otherwise the request is refused with 400 naming the amount field."
               required:
                 - fixed
                 - perDay
@@ -2475,7 +2475,7 @@ components:
           nullable: true
         lateFees:
           type: object
-          description: "Late fee: fixed + perDay × days late, the days counted in 24-hour steps from dueDate. The fee stops growing at the QR Code's validUntil, so the bill amount and every payment-method amount plus the fee reached at validUntil must not exceed 999999999999999999 (18 digits, ADR-0005); otherwise the request is refused with 400 naming the amount field."
+          description: "Late fee: fixed + perDay × days late, the days counted in 24-hour steps from dueDate. The fee stops growing at the QR Code's validUntil, so the bill amount plus the fee reached at validUntil, and every payment-method amount as the payload would show it with that fee, must not exceed 999999999999999999 (18 digits, ADR-0005); otherwise the request is refused with 400 naming the amount field."
           required:
             - fixed
             - perDay
