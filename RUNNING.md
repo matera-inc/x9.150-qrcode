@@ -236,8 +236,11 @@ the variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`.
   naming the key and its variable, all problems at once. Unknown keys are refused too.
 - **The public host defaults to Java's placeholder.** `X9_PUBLICENDPOINTS_HOST` (or
   `public-endpoints.host`) unset is `x9-150.example.com`, as in the Java build's default profile;
-  set it to your own host for real scans. Set to empty, it stops the service at start, as in Java.
-  It must be at most 37 characters, printable ASCII, no space.
+  set it to your own host for real scans. While it is the placeholder, start-up logs a `WARN`
+  saying that QR Codes printed with it cannot be scanned and naming `X9_PUBLICENDPOINTS_HOST`. Set
+  to empty, it stops the service at start, as in Java. It must be at most 37 characters, printable
+  ASCII, no space. The host is written into a QR Code's EMV string once, with its location, and
+  never recomputed: changing it later does not change a QR Code already printed.
 - **Nothing security-relevant has a default.** The database host, user, credential
   (`DATABASE_PASSWORD` or `DATABASE_PASSWORD_FILE`) and TLS mode (`DATABASE_SSLMODE`) must be
   given; `verify-full` also needs `DATABASE_SSLROOTCERT`.

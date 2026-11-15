@@ -14,8 +14,12 @@ fixed ones stay under **Fixed**, for the record.
 - **Severity:** Low — a biller re-pointing an expired printed code gets a 400 until MongoDB's TTL
   monitor deletes the holder, normally within about a minute of its `validUntil`.
 - **Pinned by:** `others/blackbox/tests/test_payment_requests_pinned.py::test_an_expired_active_holder_of_the_same_creditor_gives_up_its_location`
-  (`X9-LOC-421`), a strict expected failure.
+  (`X9-LOC-421`), a strict expected failure on Java and an ordinary test on Go.
 - **Area:** `QRCodeEntity.releaseLocation` (domain)
+- **Go build:** fixed. A create (Story 9.6) releases an expired `ACTIVE` holder of the same
+  creditor (`domain.HolderIsLive` checks `valid_until`); `internal/paymentrequest`'s
+  `AnExpiredActiveHolderGivesUpItsLocation` test proves it against PostgreSQL. `X9-LOC-421` joins
+  `go-required.txt` with the event stream (Story 10.1), which the test also reads.
 
 ### Steps to reproduce
 
