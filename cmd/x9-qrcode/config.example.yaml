@@ -64,8 +64,8 @@ certificate:
     private-key-password: ""     # X9_CERTIFICATE_PRIVATEKEYSTORE_PRIVATEKEYPASSWORD. Empty, or equal to
                                  #   the password: a PKCS#12 file has one password.
     alias: x9-private-keystore   # X9_CERTIFICATE_PRIVATEKEYSTORE_ALIAS. Names the keystore in logs.
-    enforced-alias: ""           # X9_CERTIFICATE_PRIVATEKEYSTORE_ENFORCEDALIAS. Accepted, not used: the
-                                 #   file must hold exactly one private key.
+    enforced-alias: ""           # X9_CERTIFICATE_PRIVATEKEYSTORE_ENFORCEDALIAS. Accepted, not checked (a WARN says so):
+                                 #   the file must hold exactly one private key.
   truststore:
     location: ""                 # X9_CERTIFICATE_TRUSTSTORE_LOCATION. Empty: the bundled demo truststore.
     type: ""                     # X9_CERTIFICATE_TRUSTSTORE_TYPE

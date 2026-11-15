@@ -138,6 +138,10 @@ func Load(cfg config.Certificate, logger *slog.Logger, opts ...Option) (*Store, 
 	s.current.Store(k)
 	s.loadedDigest = digest
 	s.logLoaded(false, k)
+	if alias := cfg.PrivateKeystore.EnforcedAlias; alias != "" {
+		logger.Warn("x9-qrcode does not check X9_CERTIFICATE_PRIVATEKEYSTORE_ENFORCEDALIAS: the Go build cannot select "+
+			"a keystore entry by name, so the keystore must hold exactly one private key", "enforcedAlias", alias)
+	}
 	return s, nil
 }
 

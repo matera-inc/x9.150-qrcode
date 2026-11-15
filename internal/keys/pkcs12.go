@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"strings"
 
 	gopkcs12 "software.sslmate.com/src/go-pkcs12"
 )
@@ -30,6 +31,9 @@ func (SSLMatePKCS12) DecodeKeystore(data []byte, password, keyPassword, _ string
 			"must be empty or equal to the password", privateKeystoreName)
 	}
 	key, leaf, chain, err := gopkcs12.DecodeChain(data, password)
+	if err != nil && strings.Contains(err.Error(), "expected exactly one key bag") {
+		return nil, nil, fmt.Errorf("%s: holds several private keys; %s: %w", privateKeystoreName, oneKeyPerFile, err)
+	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s: %w", privateKeystoreName, explain(err))
 	}
