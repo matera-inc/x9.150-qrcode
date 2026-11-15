@@ -77,7 +77,6 @@ that is here must still be marked `GAP`.
 
 | Rule | Why there is no test | Recommendation |
 |---|---|---|
-| `R-ADR0027-06` | In Java the JDK's OCSP checker gives these answers, and the suite's responder (`x9client.ocsp`) can only answer correctly. Go's `internal/pki` tests them in Story 8.3 (#143), not yet merged. | Name Go's tests here once #143 is merged; for Java, add modes to `x9client.ocsp.OcspResponder` that answer each way. |
 
 ## STATE-MACHINE.md
 
@@ -332,7 +331,7 @@ The rules both builds must agree on ("Certificate fetching" and "Revocation, par
 | `R-ADR0027-03` | A named CRL that answers with something that is not a CRL soft-fails as an unreachable one does: accepted alone or beside an unreachable OCSP responder; with a responder that answers, OCSP decides. | `X9-SIG-064`, `X9-SIG-065`, `X9-SIG-066`, `X9-SIG-067`, `X9-LOC-307`, `X9-LOC-311` | `S4.3-AC1` |
 | `R-ADR0027-04` | A CA-issued certificate naming no revocation source is refused. | `X9-SIG-059`, `X9-LOC-308` | `S4.3-AC1` |
 | `R-ADR0027-05` | A certificate a source reports as revoked is refused, by CRL or by OCSP. | `X9-SIG-053`, `X9-LOC-305`, `X9-LOC-306`, `X9-LOC-311` | `S4.3-AC1` |
-| `R-ADR0027-06` | These OCSP answers are refused, not soft-failed: an error status other than `tryLater` or `internalError`, a signature by an unauthorised responder, a delegated responder without `OCSPSigning`, an out-of-date answer, no answer for the certificate. | GAP | — |
+| `R-ADR0027-06` | These OCSP answers are refused, not soft-failed: an error status other than `tryLater` or `internalError`, a signature by an unauthorised responder, a delegated responder without `OCSPSigning`, an out-of-date answer, no answer for the certificate. | `X9-LOC-313`, `X9-LOC-314` | — |
 
 ## ADR-0035: the transition map
 

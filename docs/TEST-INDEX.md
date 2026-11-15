@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**780 tests documented** — every JUnit test and every black-box case.
+**782 tests documented** — every JUnit test and every black-box case.
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
 (STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036 and ADR-0027's EMV and JWS verification rules), the
@@ -465,6 +465,8 @@ The status-update matrix itself is `X9-MAP-010` to `-013` above.
 | `X9-LOC-310` | a PAID or CANCELLED QR Code serves no payload and says which | `test_payers.py` |
 | `X9-LOC-311` | a CRL that is not a CRL hands over to OCSP: good accepted, revoked refused, on both payer endpoints | `test_payers.py` |
 | `X9-LOC-312` | an `x5u` over plain http that only mentions the own host in its query is not fetched over http: `CERTIFICATE_UNAVAILABLE` (BUG-005) | `test_payers.py` |
+| `X9-LOC-313` | an OCSP answer ADR-0027 refuses is refused, not soft-failed, on both payer endpoints: `malformedRequest`, `sigRequired`, `unauthorized`; an unauthorised signer; a delegated responder without `OCSPSigning`; `nextUpdate` passed or `thisUpdate` in the future; no answer for the certificate | `test_payers.py` |
+| `X9-LOC-314` | controls of `X9-LOC-313`: `tryLater` and `internalError` soft-fail, and a delegated responder with `OCSPSigning` is relied on, on both payer endpoints | `test_payers.py` |
 | `X9-LOC-480` | a configured host of 38 characters stops the service at startup, naming the 37 limit; 37 starts | `X9PropertiesHostLengthTest.java` |
 | `X9-LOC-481` | a payload or JWK set on another host is fetched over `https`, whatever scheme was written | `DefaultQRCodeLocationServiceTest.java` |
 | `X9-LOC-482` | this deployment's own host is read internally, on its local port (the control for X9-LOC-481) | `DefaultQRCodeLocationServiceTest.java` |

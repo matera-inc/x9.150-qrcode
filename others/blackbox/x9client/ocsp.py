@@ -12,7 +12,10 @@ reachable or not, so every branch of the revocation check can be taken on purpos
 
 - no distribution point, the responder says **good**: accepted, on OCSP alone;
 - no distribution point, the responder says **revoked**: refused;
-- sources that exist but cannot be reached: the soft-fail case.
+- sources that exist but cannot be reached: the soft-fail case;
+- the responder answers, but with an answer ADR-0027 refuses (an error status other than
+  ``tryLater`` or ``internalError``, an unauthorised or unqualified signer, an out-of-date answer,
+  no answer for the certificate asked about): see :data:`MODES` and :meth:`OcspResponder.answer`.
 
 The responder signs with the test CA's own key, as an issuing CA's responder may (RFC 6960 §4.2.2.2),
 and answers both the GET (short requests, base64 in the path) and POST forms the JDK uses. The
@@ -31,12 +34,33 @@ import uuid
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.x509 import ocsp
-from cryptography.x509.oid import AuthorityInformationAccessOID
+from cryptography.x509.oid import AuthorityInformationAccessOID, ExtendedKeyUsageOID
 
 from x9client import jws
 
 # A port nothing listens on: a source that exists in the certificate and cannot be reached.
 UNREACHABLE = "http://127.0.0.1:9"
+
+# How the responder may answer for one certificate (:meth:`OcspResponder.answer`). ``None`` is the
+# normal answer: good, or revoked once :meth:`OcspResponder.revoke` was called.
+MODES = (
+    None,
+    # An unsuccessful response status (RFC 6960 §4.2.1), no signed body at all.
+    "malformedRequest", "internalError", "tryLater", "sigRequired", "unauthorized",
+    "unauthorised-signer",   # signed by a responder neither the issuer nor delegated by it
+    "delegated-no-eku",      # delegated by the issuer, but without the OCSPSigning key usage
+    "delegated",             # delegated by the issuer, with OCSPSigning: a valid answer
+    "next-update-passed",    # thisUpdate and nextUpdate both an hour or more in the past
+    "this-update-future",    # thisUpdate an hour in the future
+    "other-certificate",     # a good answer, for a serial that is not the one asked about
+)
+_STATUSES = {
+    "malformedRequest": ocsp.OCSPResponseStatus.MALFORMED_REQUEST,
+    "internalError": ocsp.OCSPResponseStatus.INTERNAL_ERROR,
+    "tryLater": ocsp.OCSPResponseStatus.TRY_LATER,
+    "sigRequired": ocsp.OCSPResponseStatus.SIG_REQUIRED,
+    "unauthorized": ocsp.OCSPResponseStatus.UNAUTHORIZED,
+}
 
 
 class OcspResponder:
@@ -48,6 +72,8 @@ class OcspResponder:
         self.path = f"/ocsp/{uuid.uuid4().hex}"
         self.known = {}                                  # serial -> certificate
         self.revoked = {}                                # serial -> when
+        self.modes = {}                                  # serial -> one of MODES
+        self._signers = {}                               # mode -> (key, certificate)
         self.queries = 0
         responder = self
 
@@ -90,6 +116,41 @@ class OcspResponder:
     def revoke(self, identity):
         self.revoked[identity.serial] = datetime.datetime.now(datetime.timezone.utc)
 
+    def answer(self, identity, mode):
+        """From now on, answer for ``identity`` as ``mode`` (one of :data:`MODES`)."""
+        if mode not in MODES:
+            raise ValueError(f"unknown OCSP mode {mode!r}; one of {MODES}")
+        self.modes[identity.serial] = mode
+
+    def _signer(self, mode):
+        """The key and certificate that sign an answer in ``mode``: the CA itself, or a responder
+        certificate made once for that mode."""
+        if mode not in ("unauthorised-signer", "delegated-no-eku", "delegated"):
+            return self.ca.key, None
+        if mode not in self._signers:
+            key = jws.new_key("rsa")
+            now = datetime.datetime.now(datetime.timezone.utc)
+            if mode == "unauthorised-signer":
+                # Issued by itself: in no chain to the test CA, so not authorised by it.
+                issuer_name, signing_key = jws._name("Blackbox Rogue OCSP Responder",
+                                                     "Example Org"), key
+            else:
+                issuer_name, signing_key = self.ca.certificate.subject, self.ca.key
+            builder = (x509.CertificateBuilder()
+                       .subject_name(jws._name(f"Blackbox OCSP Responder {mode}", "Example Org"))
+                       .issuer_name(issuer_name)
+                       .public_key(key.public_key()).serial_number(x509.random_serial_number())
+                       .not_valid_before(now - datetime.timedelta(days=1))
+                       .not_valid_after(now + datetime.timedelta(days=3650))
+                       .add_extension(x509.KeyUsage(True, False, False, False, False, False,
+                                                    False, False, False), critical=True)
+                       .add_extension(x509.OCSPNoCheck(), critical=False))
+            if mode != "delegated-no-eku":
+                builder = builder.add_extension(
+                    x509.ExtendedKeyUsage([ExtendedKeyUsageOID.OCSP_SIGNING]), critical=False)
+            self._signers[mode] = (key, builder.sign(signing_key, hashes.SHA256()))
+        return self._signers[mode]
+
     def respond(self, der):
         """The DER OCSP response to a DER OCSP request."""
         self.queries += 1
@@ -103,19 +164,40 @@ class OcspResponder:
             return ocsp.OCSPResponseBuilder.build_unsuccessful(
                 ocsp.OCSPResponseStatus.UNAUTHORIZED).public_bytes(serialization.Encoding.DER)
 
+        mode = self.modes.get(request.serial_number)
+        if mode in _STATUSES:
+            return ocsp.OCSPResponseBuilder.build_unsuccessful(
+                _STATUSES[mode]).public_bytes(serialization.Encoding.DER)
+
+        # The JDK checks an answer's validity interval against its own wall clock, not against
+        # the service's business clock, so the interval is the wall clock's too.
         now = datetime.datetime.now(datetime.timezone.utc)
+        this_update = now - datetime.timedelta(minutes=5)
+        next_update = now + datetime.timedelta(hours=1)
+        hour = datetime.timedelta(hours=1)
+        if mode == "next-update-passed":
+            this_update, next_update = now - 2 * hour, now - hour
+        elif mode == "this-update-future":
+            this_update, next_update = now + hour, now + 2 * hour
+        if mode == "other-certificate":
+            # The CA's own certificate has the same issuer hashes and another serial: a
+            # well-formed answer about a certificate nobody asked about.
+            certificate = self.ca.certificate
         revoked_at = self.revoked.get(request.serial_number)
+        key, responder_certificate = self._signer(mode)
         builder = ocsp.OCSPResponseBuilder().add_response(
             cert=certificate, issuer=self.ca.certificate, algorithm=request.hash_algorithm,
             cert_status=ocsp.OCSPCertStatus.REVOKED if revoked_at else ocsp.OCSPCertStatus.GOOD,
-            this_update=now - datetime.timedelta(minutes=5),
-            next_update=now + datetime.timedelta(hours=1),
+            this_update=this_update, next_update=next_update,
             revocation_time=revoked_at, revocation_reason=None,
-        ).responder_id(ocsp.OCSPResponderEncoding.HASH, self.ca.certificate)
+        ).responder_id(ocsp.OCSPResponderEncoding.HASH,
+                       responder_certificate or self.ca.certificate)
+        if responder_certificate is not None:
+            builder = builder.certificates([responder_certificate])
         for extension in request.extensions:
             if isinstance(extension.value, x509.OCSPNonce):
                 builder = builder.add_extension(extension.value, critical=False)
-        return builder.sign(self.ca.key, hashes.SHA256()).public_bytes(serialization.Encoding.DER)
+        return builder.sign(key, hashes.SHA256()).public_bytes(serialization.Encoding.DER)
 
 
 def issue(ca, name, cn, *, responder=None, ocsp_url=None, crl_url=None, kind="rsa",
