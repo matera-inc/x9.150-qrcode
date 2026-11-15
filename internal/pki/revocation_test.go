@@ -275,10 +275,11 @@ func TestCRLWithABadSignature(t *testing.T) {
 	}
 }
 
-// S8.3-AC2: what else the JDK forgives of a CRL, for a certificate whose only source it is. Not
-// found, too large and out of date are no CRL (soft-fail); a body that is not a CRL at all is a
-// CRLException, which SOFT_FAIL does not forgive. Pinned by the JDK's URICertStore and
-// DistributionPointFetcher; no Java test key.
+// S8.3-AC2: a CRL the certificate names but that cannot be used is no CRL, for a certificate whose
+// only source it is: not found, out of date, too large, and a body that is not a CRL at all all
+// soft-fail. The last is the owner's rule of 2026-11-15, "a named source that can't be read
+// soft-fails"; the JDK refuses it (a CRLException), and the Java build is being changed to match.
+// No Java test key yet.
 func TestCRLAnswers(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -290,7 +291,7 @@ func TestCRLAnswers(t *testing.T) {
 			return f.ca.crl(t, f.clock.Now().Add(-3*time.Hour), f.clock.Now().Add(-2*time.Hour))
 		}, true},
 		{"too large", func(_ *fixture, _ *testing.T) []byte { return make([]byte, 64<<10) }, true},
-		{"not a CRL", func(_ *fixture, _ *testing.T) []byte { return []byte("<html>maintenance</html>") }, false},
+		{"not a CRL", func(_ *fixture, _ *testing.T) []byte { return []byte("<html>maintenance</html>") }, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t)
@@ -318,6 +319,37 @@ func TestCRLAnswers(t *testing.T) {
 			}
 			if f.crls.count("/answer.crl") == 0 {
 				t.Fatal("the CRL was never fetched")
+			}
+		})
+	}
+}
+
+// S8.3-AC2: an unreadable CRL is no CRL, so a certificate that also names an OCSP responder falls
+// back to it exactly as when the CRL is unreachable: revoked refuses, good accepts (owner,
+// 2026-11-15).
+func TestUnreadableCRLFallsBackToOCSP(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		accept bool
+	}{
+		{"good", ocsp.Good, true},
+		{"revoked", ocsp.Revoked, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			leaf := f.ca.issue(t, "Payer Unreadable CRL", crlBase+"/unreadable.crl", ocspURL, f.clock.Now().Add(-time.Hour))
+			f.crls.set("/unreadable.crl", []byte("<html>maintenance</html>"))
+			f.ocsp.set(leaf, tc.status)
+			_, err := f.verify(t, leaf)
+			if f.ocsp.asked() == 0 {
+				t.Fatal("OCSP was not asked after an unreadable CRL")
+			}
+			if tc.accept && err != nil {
+				t.Fatal(err)
+			}
+			if !tc.accept {
+				wantProblem(t, err, UntrustedChain)
 			}
 		})
 	}
