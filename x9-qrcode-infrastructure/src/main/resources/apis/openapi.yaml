@@ -612,6 +612,13 @@ paths:
             - **The payee's service refused to release this payload, and said why.** `type` is
               `https://x9.matera.com/api/payload-refused` and `violations` carries its reason.
               Any other 4xx the payee answered with is relayed the same way.
+            - **The payload came back, and cannot be trusted.** `type` is
+              `https://x9.matera.com/api/business-rule-violation` and `violations` reads
+              `Payload JWS signature is invalid.`: its signature does not verify, its signer does
+              not chain to this deployment's truststore, or its JWS header does not carry exactly
+              the `correlationId` the payload request went out under (the `correlationID` given
+              here, or the one this service generated when none was). An answer under another
+              `correlationId`, or none, is not an answer to this request. Do not pay.
           content:
             application/problem+json:
               schema:
@@ -1527,7 +1534,10 @@ components:
         correlationID:
           type: string
           format: uuid
-          description: "Correlation ID to track the request."
+          description: |-
+            The `correlationId` the payload request is signed under. Generated if omitted. Either
+            way, the payee's payload must carry exactly this `correlationId` in its JWS header, or
+            it is refused.
           example: "123e4567-e89b-12d3-a456-426614174000"
 
     AmountDuePayloadResponse:
@@ -2336,7 +2346,11 @@ components:
         correlationId:
           type: string
           format: uuid
-          description: "Ties this call to the payer's own request. Generated if omitted."
+          description: |-
+            Ties this call to the payer's own request: the notification is signed under it. Generated
+            if omitted. Either way, the payee's answer must carry exactly this `correlationId` in its
+            JWS header; under another one, or none, it is reported `INVALID`
+            (`CORRELATION_ID_MISMATCH` or `BAD_HEADER`).
         notification:
           $ref: "#/components/schemas/OutboundPaymentNotificationData"
 

@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**877 tests documented** — every JUnit test and every black-box case.
+**883 tests documented** — every JUnit test and every black-box case.
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
 (STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036 and ADR-0027's EMV and JWS verification rules), the
@@ -537,11 +537,17 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-DEC-019` | an unknown field inside a rail we interpret is ignored; the known fields are presented, `protectionType` as written | `ForeignPayloadReadWithToleranceApiTest.java` |
 | `X9-DEC-020` | an unknown field on a payment method, on the creditor or at the top of the payload is ignored | `ForeignPayloadReadWithToleranceApiTest.java` |
 | `X9-DEC-021` | tolerance stops at integrity: the same foreign payload with a broken signature is refused | `ForeignPayloadReadWithToleranceApiTest.java` |
+| `X9-DEC-022` | without a caller's correlationID, the payload request goes out under a generated one, and a payload echoing it decodes | `DecoderPayloadEchoesOurCorrelationIdApiTest.java` |
+| `X9-DEC-023` | a payload under another correlationId than the request's is refused, the caller's or the generated one | `DecoderPayloadEchoesOurCorrelationIdApiTest.java` |
+| `X9-DEC-024` | a payload whose header carries no correlationId is refused, whether or not the caller gave one | `DecoderPayloadEchoesOurCorrelationIdApiTest.java` |
+| `X9-DEC-025` | the payload is verified against the correlationId the request was sent under, never against none | `DecoveEmvUseCaseTest.java` |
 | `X9-DEC-501` | another bank's payload, served over https and signed by its own key, with unknown rails, an unknown currency and unknown fields decodes (black box) | `test_tolerant_reading.py` |
 | `X9-DEC-502` | an unknown currency and an unknown rail reach the payer as the other bank wrote them | `test_tolerant_reading.py` |
 | `X9-DEC-503` | an unknown field inside a known rail of another bank's payload is ignored | `test_tolerant_reading.py` |
 | `X9-DEC-504` | an unknown field on a method, on the creditor or at the top of another bank's payload is ignored | `test_tolerant_reading.py` |
 | `X9-DEC-505` | another bank's payload signed by an untrusted CA, or altered after signing, is refused and nothing of it presented | `test_tolerant_reading.py` |
+| `X9-DEC-506` | another bank's payload under another correlationId than the request's is refused, with or without a caller's id (black box) | `test_tolerant_reading.py` |
+| `X9-DEC-507` | another bank's payload with no correlationId in its header is refused, with or without a caller's id (black box) | `test_tolerant_reading.py` |
 
 ## Editing a payment request
 

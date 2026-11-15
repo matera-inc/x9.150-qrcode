@@ -78,6 +78,28 @@ properties.
       took `1-2-3-4-5`;
     - a signed answer's body `statusCode` is a JSON **integer** within 32 bits (A.4.5 note);
       `200.5`, `200.0`, `2e2` or a larger integer is `STATUS_MISSING`. Java truncated any number.
+- **2026-11-15 (owner): every signed answer from another party must echo our correlationId.** In
+  the owner's words: "Always check that the payee's answer echoes our correlationId. No
+  correlationId, I can't trust the other side." Wherever this service reads a signed answer to a
+  request it sent, the answer's JWS header must carry **exactly** the `correlationId` that request
+  went out under: the caller's when it gave one, otherwise the one this service generated for it.
+  Missing or different, the answer is not trusted. Both builds, same rule:
+  - **the decoder's payload** (`POST /api/v1/qrcode-emv-decoder`): refused, 400
+    business-rule-violation, `Payload JWS signature is invalid.`, the words already used for a
+    payload whose signature does not verify, and nothing of it is presented. Before this, the
+    payload's id was compared only when the caller supplied a `correlationID`; when the service
+    generated one, any id passed;
+  - **the outbound payment notification's answer** (`POST /api/v1/payment-notification/
+    pre-payment` and `post-payment`): already compared every time, with a generated id as with the
+    caller's. It is reported, not refused, as Story 2.3 has it: `signature: INVALID` with
+    `signatureProblem` `CORRELATION_ID_MISMATCH` (another id) or `BAD_HEADER` (none), and the
+    payee's status and body passed through for the payer to judge.
+
+  No other place reads a signed answer from another party: the payload request, the inbound payment
+  notification and `POST /api/v1/signature/validate` verify what someone sent *us*, and are not
+  answers. A missing `correlationId` was already refused everywhere by step 3 (`crit` must name it,
+  and the header must carry it), so the new rule is the comparison. Pinned by `R-ADR0027-12` in
+  [RULE-COVERAGE](../RULE-COVERAGE.md).
 - **Fuzzing and corpus:** header parsing and `crit` handling are fuzzed, and a **golden corpus**
   produced by the Java build must give identical accept/reject results, **and the same
   `signatureProblem` code** (`others/blackbox/golden/`, Story 4.7). That includes two codes that
