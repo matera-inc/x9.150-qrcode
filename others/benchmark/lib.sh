@@ -124,6 +124,35 @@ deploy() {
     kn logs deployment/x9-qrcode -c app --tail=80 >&2 || true
     die "the app never became ready"
   }
+  reachable
+}
+
+# A rolled-out Deployment is not yet a reachable Service: the endpoints and the node's routing
+# follow a moment later. Without a warm-up (Go's default) k6 would start inside that moment and
+# its first request, or S2's setup(), would be refused. Wait until the Service answers from inside
+# the cluster, the way k6 will reach it; the probe pod is gone before anything is measured.
+reachable() {
+  kn delete pod x9-reach --ignore-not-found --wait=true >/dev/null 2>&1 || true
+  kn run x9-reach --image=python:3.13.9-slim --image-pull-policy=IfNotPresent --restart=Never \
+    --command -- python -c '
+import time, urllib.request
+deadline = time.time() + 120
+while True:
+    try:
+        for path in ("/actuator/health", "/pub/.well-known/jwks"):
+            urllib.request.urlopen("http://x9-qrcode:8080" + path, timeout=2).read()
+        break
+    except Exception:
+        if time.time() > deadline:
+            raise SystemExit("the Service never answered")
+        time.sleep(0.5)
+' >/dev/null
+  kn wait --for=jsonpath='{.status.phase}'=Succeeded pod/x9-reach --timeout=180s >/dev/null || {
+    kn logs pod/x9-reach >&2 || true
+    die "the app is ready but its Service does not answer inside the cluster"
+  }
+  kn delete pod x9-reach --wait=true >/dev/null
+  log "the Service answers inside the cluster"
 }
 
 db_name() { case "$1" in java-mongo) echo mongo ;; *) echo postgres ;; esac; }
