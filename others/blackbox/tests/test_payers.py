@@ -33,9 +33,11 @@ import collections
 import datetime
 import threading
 import time
+import urllib.parse
 import uuid
 
 import pytest
+from cryptography.hazmat.primitives import serialization
 
 from x9client import emv as emv_module
 from x9client import jws, ocsp, samples
@@ -257,28 +259,39 @@ class TestPayload:
                 signed(response, payee_certificate, business_now, 200)
         assert responder.queries > queries, "the service must have asked the OCSP responder"
 
+    # sources -> (the CRL the certificate names, the OCSP responder it names): each "unreachable"
+    # (on a port where nothing listens), "unreadable" (answers 200 with an HTML page, not a CRL),
+    # or None (not named).
+    SOFT_FAIL_SOURCES = {
+        "crl-and-ocsp-unreachable": ("unreachable", "unreachable"),
+        "ocsp-unreachable-no-crl": (None, "unreachable"),
+        "crl-unreachable-no-ocsp": ("unreachable", None),
+        "crl-unreadable-no-ocsp": ("unreadable", None),
+        "crl-unreadable-and-ocsp-unreachable": ("unreadable", "unreachable"),
+    }
+
     @pytest.mark.parametrize("endpoint", ["payload", "notification"])
-    @pytest.mark.parametrize("sources", [
-        "crl-and-ocsp-unreachable",
-        "ocsp-unreachable-no-crl",
-        "crl-unreachable-no-ocsp",
-    ])
+    @pytest.mark.parametrize("sources", list(SOFT_FAIL_SOURCES))
     def test_an_unreachable_revocation_source_soft_fails(self, api, issued, pki, business_now,
                                                          payee_certificate, endpoint, sources):
-        """X9-LOC-307 — when the revocation sources a certificate names cannot be reached, the
-        payer is accepted (soft-fail), on both payer endpoints.
+        """X9-LOC-307 — when the revocation sources a certificate names cannot be reached, or
+        cannot be read, the payer is accepted (soft-fail), on both payer endpoints.
 
         S4.3-AC1, unreachable revocation source (soft-fail). "Unreachable" is a source the
-        certificate names, on a port where nothing listens.
+        certificate names, on a port where nothing listens; "unreadable" a CRL distribution point
+        that answers 200 with an HTML error page instead of a CRL.
 
         Source: Ours. ADR-0027, "Revocation, parity with Java", step 4: soft-fail when neither
-          answers.
-        Why: A CA's CRL server being down must not stop every payment of every PSP it issued.
+          answers; a named source that cannot be read soft-fails like one that cannot be reached
+          (owner, 2026-11-15).
+        Why: A CA's CRL server being down must not stop every payment of every PSP it issued,
+          whether it refuses the connection or a proxy in front of it answers with an error page.
           (A certificate naming NO source is a different case, X9-LOC-308.)
         """
-        crl = unique(ocsp.UNREACHABLE + "/crl") if "crl-" in sources else None
-        ocsp_url = unique(ocsp.UNREACHABLE + "/ocsp") if "ocsp-unreachable" in sources or \
-            sources.startswith("crl-and-ocsp") else None
+        crl_kind, ocsp_kind = self.SOFT_FAIL_SOURCES[sources]
+        crl = {"unreachable": unique(ocsp.UNREACHABLE + "/crl"),
+               "unreadable": pki["crl"].unreadable_url(), None: None}[crl_kind]
+        ocsp_url = unique(ocsp.UNREACHABLE + "/ocsp") if ocsp_kind == "unreachable" else None
         identity = ocsp.issue(pki["ca"], f"soft-{uuid.uuid4().hex[:8]}", "Blackbox Payer Soft",
                               crl_url=crl, ocsp_url=ocsp_url)
         signer = jws.Signer(identity, now_ms=business_now)
@@ -288,6 +301,74 @@ class TestPayload:
             assert response.status == 200, f"soft-fail: the payload is served: {response}"
         else:
             signed(api.notify(issued["id"], signer=signer), payee_certificate, business_now, 200)
+
+    @pytest.mark.parametrize("endpoint", ["payload", "notification"])
+    @pytest.mark.parametrize("revoked", [False, True], ids=["good", "revoked"])
+    def test_ocsp_decides_when_the_crl_cannot_be_read(self, api, issued, pki, responder,
+                                                      business_now, payee_certificate, endpoint,
+                                                      revoked):
+        """X9-LOC-311 — a payer certificate whose CRL answers with something that is not a CRL
+        is checked by its OCSP responder, as when the CRL cannot be reached: "good" is accepted,
+        "revoked" refused, on both payer endpoints.
+
+        S4.3-AC1, revoked certificate (OCSP), behind an unreadable CRL.
+
+        Source: Ours. ADR-0027: PREFER_CRLS, and OCSP when no CRL is obtainable; an unreadable
+          CRL is not obtainable (owner, 2026-11-15).
+        Why: The limit of the soft-fail X9-LOC-307 adds: an unreadable CRL must hand over to
+          OCSP, never accept on its own, or a revoked PSP behind a broken CRL server would pay.
+        """
+        identity = ocsp.issue(pki["ca"], f"unreadable-{uuid.uuid4().hex[:8]}",
+                              "Blackbox Payer Unreadable CRL", responder=responder,
+                              crl_url=pki["crl"].unreadable_url())
+        if revoked:
+            responder.revoke(identity)
+        signer = jws.Signer(identity, now_ms=business_now)
+        queries = responder.queries
+
+        if endpoint == "payload":
+            response = fetch(api, issued["location"]["id"], issued["qrCode"], signer=signer)
+            if revoked:
+                assert_payload_refused(response, naming=SIGNATURE_REFUSED)
+            else:
+                assert response.status == 200, response
+        else:
+            response = api.notify(issued["id"], signer=signer)
+            if revoked:
+                body = signed(response, payee_certificate, business_now, 401)
+                assert body.get("signatureProblem") == "UNTRUSTED_CHAIN", body
+                assert api.status_of(issued["id"]) == "ACTIVE"
+            else:
+                signed(response, payee_certificate, business_now, 200)
+        assert responder.queries > queries, "the service must have asked the OCSP responder"
+
+    def test_an_x5u_that_only_mentions_the_own_host_is_not_fetched_over_http(
+            self, api, issued, pki, business_now, payee_certificate):
+        """X9-LOC-312 — an ``x5u`` on another host, over plain http, that mentions this
+        deployment's own host in its query string is not fetched over http: the signer's
+        certificate is unavailable and the notification is refused with
+        ``CERTIFICATE_UNAVAILABLE``.
+
+        Source: Ours. ADR-0027, "Certificate fetching": HTTPS only, except the deployment's own
+          host, which is a URL's host exactly, not a string anywhere in it (BUG-005).
+        Why: The URL is unauthenticated input. Read over plain http, anyone on the path could
+          hand the service a certificate of their choosing. The suite serves a genuine chain at
+          that URL over http: a service that fetched it would accept the payer.
+        """
+        own_host = urllib.parse.urlsplit(issued["location"]["endpoint"]).netloc
+        assert own_host, issued["location"]
+        payer = pki["a"]
+        chain = b"".join(c.public_bytes(serialization.Encoding.PEM) for c in payer.chain)
+        url, path = pki["crl"].publish(chain, "application/pem-certificate-chain",
+                                       query=f"h={own_host}")
+        signer = jws.Signer(payer, now_ms=business_now)
+        token = signer.sign(samples.notification(issued["id"]), x5c=False, extra={"x5u": url})
+
+        body = signed(api.send_notification(token), payee_certificate, business_now, 401)
+
+        assert body.get("signatureProblem") == "CERTIFICATE_UNAVAILABLE", body
+        assert pki["crl"].published_fetches[path] == 0, "the chain must not be fetched over http"
+        assert api.status_of(issued["id"]) == "ACTIVE"
 
     def test_a_certificate_naming_no_revocation_source_is_refused(self, api, issued, pki,
                                                                   business_now):

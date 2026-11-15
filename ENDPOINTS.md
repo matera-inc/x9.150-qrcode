@@ -188,8 +188,11 @@ env vars win over the mounted file (the public host is already wired this way).
 
 ## Talking to another deployment (HTTPS required)
 
-A payer normalises any host that is not its own to **`https`** before fetching a payload or a JWK
-set, so two instances cannot complete a payment over plain HTTP — see
+A payer normalises any host that is not its own to **`https`** before fetching a payload, a JWK
+set or a certificate chain. A URL is its own only when the URL's host, port included, is
+`x9.public-endpoints.host` (case-insensitive): a URL that merely mentions that host, in its query,
+its path or its user information, or as part of a longer host name, is another host's, and user
+information is dropped. So two instances cannot complete a payment over plain HTTP — see
 [`others/demo/README.md`](others/demo/README.md), which explains the rule, gives three ways to
 satisfy it (Spring's own TLS, an nginx in front, or a tunnel), and ships a script that plays a whole
 payment between two instances.

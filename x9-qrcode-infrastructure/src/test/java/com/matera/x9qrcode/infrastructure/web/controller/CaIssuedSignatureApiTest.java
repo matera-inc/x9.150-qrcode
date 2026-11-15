@@ -26,9 +26,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.context.TestPropertySource;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.KeyStore;
 import java.security.PrivateKey;
@@ -43,6 +46,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -91,6 +95,8 @@ class CaIssuedSignatureApiTest extends AbstractIntegrationTest {
     private static final long AMOUNT = 25_000L;
 
     private static HttpServer crlServer;
+    /** Requests the plain-http server above answered for an x5u chain. */
+    private static final AtomicInteger X5U_FETCHES = new AtomicInteger();
 
     @BeforeAll
     static void serveCrls() throws Exception {
@@ -107,6 +113,31 @@ class CaIssuedSignatureApiTest extends AbstractIntegrationTest {
                 }
             }
         });
+        // A CRL source that answers, 200, with an HTML error page instead of a CRL.
+        crlServer.createContext("/not-a-crl/", exchange -> {
+            byte[] page = "<html><body><h1>Service temporarily unavailable</h1></body></html>"
+                .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "text/html");
+            exchange.sendResponseHeaders(200, page.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(page);
+            }
+        });
+        // The RSA payer's chain, as PEM, over plain http: what an x5u header may point at.
+        crlServer.createContext("/x5u/", exchange -> {
+            X5U_FETCHES.incrementAndGet();
+            byte[] pem;
+            try {
+                pem = pemChain(Payer.load("x9-test-payer.p12", "x9-test-payer").chain());
+            } catch (Exception e) {
+                throw new IOException(e);
+            }
+            exchange.getResponseHeaders().add("Content-Type", "application/pem-certificate-chain");
+            exchange.sendResponseHeaders(200, pem.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(pem);
+            }
+        });
         crlServer.start();
     }
 
@@ -115,6 +146,18 @@ class CaIssuedSignatureApiTest extends AbstractIntegrationTest {
         if (crlServer != null) {
             crlServer.stop(0);
         }
+    }
+
+    private static byte[] pemChain(List<X509Certificate> chain) throws Exception {
+        StringBuilder pem = new StringBuilder();
+        java.util.Base64.Encoder mime =
+            java.util.Base64.getMimeEncoder(64, "\n".getBytes(StandardCharsets.US_ASCII));
+        for (X509Certificate certificate : chain) {
+            pem.append("-----BEGIN CERTIFICATE-----\n")
+               .append(mime.encodeToString(certificate.getEncoded()))
+               .append("\n-----END CERTIFICATE-----\n");
+        }
+        return pem.toString().getBytes(StandardCharsets.US_ASCII);
     }
 
     private static InputStream resource(String name) {
@@ -162,6 +205,14 @@ class CaIssuedSignatureApiTest extends AbstractIntegrationTest {
      * and the three critical headers X9.150 requires.
      */
     private String signAsPayer(Payer payer, String payload) throws Exception {
+        return signAsPayer(payer, payload, null);
+    }
+
+    /**
+     * As {@link #signAsPayer(Payer, String)}, but pointing at the chain with an {@code x5u} header
+     * instead of carrying it in {@code x5c}, when {@code x5u} is given.
+     */
+    private String signAsPayer(Payer payer, String payload, URI x5u) throws Exception {
         List<Base64> x5c = payer.chain().stream()
                 .map(certificate -> {
                     try {
@@ -180,11 +231,15 @@ class CaIssuedSignatureApiTest extends AbstractIntegrationTest {
         JWSHeader.Builder header = new JWSHeader.Builder(payer.algorithm())
                 .type(JOSEObjectType.JOSE)
                 .keyID("payer-key-1")
-                .x509CertChain(x5c)
                 .x509CertSHA256Thumbprint(sha256Thumbprint(payer.chain().getFirst()))
                 .criticalParams(Set.of("correlationId", "iat", "ttl"));
 
         critical.forEach(header::customParam);
+        if (x5u == null) {
+            header.x509CertChain(x5c);
+        } else {
+            header.x509CertURL(x5u);
+        }
 
         JWSObject jws = new JWSObject(header.build(), new Payload(payload));
         jws.sign(payer.signer());
@@ -499,6 +554,143 @@ class CaIssuedSignatureApiTest extends AbstractIntegrationTest {
 
         assertNotEquals(HttpStatus.OK.value(), response.statusCode(),
                 "a certificate with no revocation source must be refused: " + response.asString());
+        assertEquals("ACTIVE", statusOf(qrCodeId), "a refused notification must change nothing");
+    }
+
+    // ------------------------------- a CRL source that answers with something that is not a CRL
+    //
+    // The leaf names a distribution point on the test's own server, under /not-a-crl/, which
+    // answers 200 with an HTML error page. The JDK cannot parse it (CRLException), and SOFT_FAIL
+    // does not forgive that on its own. Owner, 2026-11-15: a named source that cannot be read
+    // soft-fails, as one that cannot be reached does (ADR-0027).
+
+    private MockMvcResponse fetchPayloadAs(Payer payer) throws Exception {
+        String created = given().contentType("application/json").body(createBody())
+                .when().post(CREATE)
+                .then().statusCode(HttpStatus.CREATED.value())
+                .extract().asString();
+        String locationId = io.restassured.path.json.JsonPath.from(created).getString("location.id");
+        String qrCodeB64 = io.restassured.path.json.JsonPath.from(created).getString("qrCodeB64");
+
+        return given().contentType(APPLICATION_JOSE)
+                .body(signAsPayer(payer, "{\"qrCodeContent\": \"%s\"}".formatted(qrCodeB64)))
+                .when().post("/pub/api/v1/loc/" + locationId);
+    }
+
+    /**
+     * <b>X9-SIG-064</b> — a payer whose only revocation source is a CRL that answers with something
+     * that is not a CRL is accepted (soft-fail).
+     *
+     * <p><b>Source:</b> Ours. ADR-0027, "Revocation, parity with Java": a source the certificate
+     * names but that cannot be read soft-fails, like one that cannot be reached (owner,
+     * 2026-11-15).
+     *
+     * <p><b>Why:</b> A CRL server behind a proxy that answers an outage with a 200 and an HTML page
+     * is down just as surely as one that refuses the connection. Refusing in one case and accepting
+     * in the other would make a payer's fate depend on how its CA's web server fails.
+     */
+    @Test
+    void aPayerWhoseOnlyCrlAnswersWithSomethingThatIsNotACrlIsAccepted() throws Exception {
+        String qrCodeId = createQRCode();
+
+        MockMvcResponse response = notifyAs(
+            Payer.load("x9-test-payer-crl-unreadable.p12", "x9-test-payer-crl-unreadable"), qrCodeId);
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode(),
+                "an unreadable CRL must soft-fail: " + response.asString());
+        assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
+    }
+
+    /**
+     * <b>X9-SIG-065</b> — the same payer can fetch the payload.
+     *
+     * <p><b>Source:</b> Ours, as X9-SIG-064.
+     *
+     * <p><b>Why:</b> The payload and notification endpoints verify separately; both are pinned. The
+     * leaf is the payload's own, with its own distribution point: within 30 seconds of a failed
+     * fetch the JDK does not fetch a URL again and answers "no CRL", which soft-fails, so a leaf
+     * shared with X9-SIG-064 would pass here whatever the code did.
+     */
+    @Test
+    void aPayerWhoseOnlyCrlAnswersWithSomethingThatIsNotACrlCanFetchThePayload() throws Exception {
+        MockMvcResponse response = fetchPayloadAs(
+            Payer.load("x9-test-payer-crl-unreadable-payload.p12", "x9-test-payer-crl-unreadable-payload"));
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode(),
+                "an unreadable CRL must soft-fail on the payload too: " + response.asString());
+    }
+
+    /**
+     * <b>X9-SIG-066</b> — a payer whose CRL answers with something that is not a CRL, and whose OCSP
+     * responder cannot be reached, is accepted (soft-fail), as when both are unreachable.
+     *
+     * <p><b>Source:</b> Ours. ADR-0027: the unreadable CRL is treated as an unreachable one, so the
+     * case is X9-SIG-058's.
+     *
+     * <p><b>Why:</b> With an OCSP responder named, the JDK falls back to it; the unreadable CRL's
+     * failure must still count as soft, or the fallback's own soft failure would not save it.
+     */
+    @Test
+    void aPayerWhoseCrlIsUnreadableAndOcspResponderUnreachableIsAccepted() throws Exception {
+        String qrCodeId = createQRCode();
+
+        MockMvcResponse response = notifyAs(Payer.load("x9-test-payer-crl-unreadable-ocsp-unreachable.p12",
+            "x9-test-payer-crl-unreadable-ocsp-unreachable"), qrCodeId);
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode(),
+                "an unreadable CRL and an unreachable OCSP responder must soft-fail: " + response.asString());
+        assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
+    }
+
+    /**
+     * <b>X9-SIG-067</b> — the same payer can fetch the payload.
+     *
+     * <p><b>Source:</b> Ours, as X9-SIG-066.
+     *
+     * <p><b>Why:</b> The payload and notification endpoints verify separately; both are pinned, each
+     * with its own leaf (see X9-SIG-065).
+     */
+    @Test
+    void aPayerWhoseCrlIsUnreadableAndOcspResponderUnreachableCanFetchThePayload() throws Exception {
+        MockMvcResponse response = fetchPayloadAs(Payer.load("x9-test-payer-crl-unreadable-ocsp-unreachable-payload.p12",
+            "x9-test-payer-crl-unreadable-ocsp-unreachable-payload"));
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode(),
+                "an unreadable CRL and an unreachable OCSP responder must soft-fail on the payload too: "
+                    + response.asString());
+    }
+
+    // ------------------------------------------- an x5u that only mentions this deployment's host
+
+    /**
+     * <b>X9-SIG-068</b> — an {@code x5u} on another host that mentions this deployment's host in its
+     * query string is fetched over {@code https} from that other host, never over plain
+     * {@code http}: the signer's certificate cannot be fetched, and the notification is refused with
+     * {@code CERTIFICATE_UNAVAILABLE}.
+     *
+     * <p><b>Source:</b> Ours. ADR-0027, "Certificate fetching": HTTPS only, except the deployment's
+     * own host. The deployment's host in the test profile is {@code x9-150.example.com}.
+     *
+     * <p><b>Why:</b> BUG-005. The own-host check was "the URL contains the public host", so this
+     * {@code x5u} was fetched over plain {@code http}, where anyone on the path could hand the
+     * service a certificate of their choosing. The server here serves a genuine chain over
+     * {@code http}: before the fix the payer was accepted from it; now it is never asked.
+     */
+    @Test
+    void anX5uThatOnlyMentionsTheOwnHostIsNotFetchedOverPlainHttp() throws Exception {
+        String qrCodeId = createQRCode();
+        int fetchesBefore = X5U_FETCHES.get();
+        URI x5u = URI.create("http://127.0.0.1:%d/x5u/chain.pem?h=x9-150.example.com".formatted(CRL_PORT));
+
+        MockMvcResponse response = given().contentType(APPLICATION_JOSE)
+                .body(signAsPayer(Payer.load("x9-test-payer.p12", "x9-test-payer"), notificationFor(qrCodeId), x5u))
+                .when().post(NOTIFY);
+
+        assertEquals(HttpStatus.UNAUTHORIZED.value(), response.statusCode(), response.asString());
+        assertEquals("CERTIFICATE_UNAVAILABLE",
+                JWSObject.parse(response.asString()).getPayload().toJSONObject().get("signatureProblem"),
+                response.asString());
+        assertEquals(fetchesBefore, X5U_FETCHES.get(), "the chain must not be fetched over plain http");
         assertEquals("ACTIVE", statusOf(qrCodeId), "a refused notification must change nothing");
     }
 

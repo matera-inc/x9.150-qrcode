@@ -16,6 +16,7 @@ Needs ``cryptography`` (pinned in requirements.txt). The standard library cannot
 or EC signature, and the refusal cases cannot be tested without one (ADR-0034).
 """
 import base64
+import collections
 import datetime
 import hashlib
 import http.server
@@ -241,10 +242,18 @@ class CrlServer:
       any free port is used.
 
     It serves the run's own CRL under a per-run path (the JVM caches a fetched CRL by URL), and the
-    bundled ``test-ca.crl`` and ``test-ca-revoked.crl`` at the root.
+    bundled ``test-ca.crl`` and ``test-ca-revoked.crl`` at the root. Two more things, for the cases
+    that need a server answering wrongly:
+
+    - :meth:`unreadable_url`: a distribution point that answers 200 with an HTML error page, not a
+      CRL (a source that is named and reached, but cannot be read);
+    - :meth:`publish`: any document at a path of its own, counting its fetches (an ``x5u`` chain
+      served over plain http, say).
     """
 
     BUNDLED = ("/test-ca.crl", "/test-ca-revoked.crl")
+    UNREADABLE = "/not-a-crl/"
+    NOT_A_CRL = b"<html><body><h1>Service temporarily unavailable</h1></body></html>"
 
     def __init__(self, ca, host=None, port=None, cert_dir=None):
         self.ca = ca
@@ -253,22 +262,31 @@ class CrlServer:
         bind_port = int(port if port is not None else os.environ.get("X9_SUITE_CRL_PORT", "0"))
         self.path = f"/crl/{uuid.uuid4().hex}.crl"
         self.fetches = 0
+        self.published = {}                         # path -> (content type, body)
+        self.published_fetches = collections.Counter()
         server = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):                       # noqa: N802 - http.server API
+                content_type = "application/pkix-crl"
                 if self.path in CrlServer.BUNDLED:
                     with open(os.path.join(server.cert_dir, self.path.lstrip("/")), "rb") as f:
                         body = f.read()
                 elif self.path == server.path:
                     server.fetches += 1
                     body = server.ca.crl()
+                elif self.path.startswith(CrlServer.UNREADABLE):
+                    content_type, body = "text/html", CrlServer.NOT_A_CRL
+                elif self.path.split("?", 1)[0] in server.published:
+                    path = self.path.split("?", 1)[0]
+                    server.published_fetches[path] += 1
+                    content_type, body = server.published[path]
                 else:
                     self.send_response(404)
                     self.end_headers()
                     return
                 self.send_response(200)
-                self.send_header("Content-Type", "application/pkix-crl")
+                self.send_header("Content-Type", content_type)
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
@@ -288,6 +306,19 @@ class CrlServer:
     @property
     def url(self):
         return f"http://{self.advertised_host}:{self.port}{self.path}"
+
+    def unreadable_url(self):
+        """A distribution point of its own (the JVM caches by URL) that answers 200 with HTML."""
+        return f"http://{self.advertised_host}:{self.port}{self.UNREADABLE}{uuid.uuid4().hex}.crl"
+
+    def publish(self, body, content_type, *, query=""):
+        """Serve ``body`` at a path of its own; returns ``(url, path)``. ``query`` is appended to
+        the URL (the server ignores it when matching). Fetches are counted in
+        ``published_fetches[path]``."""
+        path = f"/published/{uuid.uuid4().hex}"
+        self.published[path] = (content_type, body)
+        url = f"http://{self.advertised_host}:{self.port}{path}"
+        return (f"{url}?{query}" if query else url), path
 
     def close(self):
         self.httpd.shutdown()

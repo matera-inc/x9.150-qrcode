@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**760 tests documented** — every JUnit test and every black-box case.
+**769 tests documented** — every JUnit test and every black-box case.
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
 (STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map and ADR-0036), the
@@ -458,13 +458,17 @@ The status-update matrix itself is `X9-MAP-010` to `-013` above.
 | `X9-LOC-304` | a payload request failing any signature check is refused, 400, serving nothing | `test_payers.py` |
 | `X9-LOC-305` | a payer revoked on the CRL cannot fetch a payload | `test_payers.py` |
 | `X9-LOC-306` | with no CRL, OCSP decides: good accepted, revoked refused, on both payer endpoints | `test_payers.py` |
-| `X9-LOC-307` | an unreachable revocation source soft-fails: CRL and OCSP, OCSP only, or CRL only (BUG-003, fixed) | `test_payers.py` |
+| `X9-LOC-307` | an unreachable revocation source soft-fails: CRL and OCSP, OCSP only, or CRL only (BUG-003, fixed); so does a CRL that answers with something that is not a CRL, alone or with an unreachable OCSP responder | `test_payers.py` |
 | `X9-LOC-308` | a certificate naming no revocation source is refused | `test_payers.py` |
 | `X9-LOC-309` | an expired payment method is dropped from the payload and the others stay | `test_payers.py` |
 | `X9-LOC-310` | a PAID or CANCELLED QR Code serves no payload and says which | `test_payers.py` |
+| `X9-LOC-311` | a CRL that is not a CRL hands over to OCSP: good accepted, revoked refused, on both payer endpoints | `test_payers.py` |
+| `X9-LOC-312` | an `x5u` over plain http that only mentions the own host in its query is not fetched over http: `CERTIFICATE_UNAVAILABLE` (BUG-005) | `test_payers.py` |
 | `X9-LOC-480` | a configured host of 38 characters stops the service at startup, naming the 37 limit; 37 starts | `X9PropertiesHostLengthTest.java` |
 | `X9-LOC-481` | a payload or JWK set on another host is fetched over `https`, whatever scheme was written | `DefaultQRCodeLocationServiceTest.java` |
 | `X9-LOC-482` | this deployment's own host is read internally, on its local port (the control for X9-LOC-481) | `DefaultQRCodeLocationServiceTest.java` |
+| `X9-LOC-483` | a URL that only mentions the own host (query, path, user information, subdomain, suffix, other port) is another host's, fetched over `https` without user information (BUG-005) | `DefaultQRCodeLocationServiceTest.java` |
+| `X9-LOC-484` | the own host is recognised whatever its case, and with user information dropped (the control for X9-LOC-483) | `DefaultQRCodeLocationServiceTest.java` |
 | `X9-LOC-501` | a live QR Code keeps its location: another create cannot take it | `test_location_handover.py` |
 | `X9-LOC-502` | a CANCELLED QR Code's location goes to the taker, and the donor gets a new one | `test_location_handover.py` |
 | `X9-LOC-503` | the payload is a JWS that verifies against the payee's certificate | `test_payload.py` |
@@ -660,6 +664,11 @@ status is `X9-MAP-002`.
 | `X9-SIG-061` | a failure is logged as a failure | `RequestLoggerFilterStatusTest.java` |
 | `X9-SIG-062` | a success is still logged as a success | `RequestLoggerFilterStatusTest.java` |
 | `X9-SIG-063` | an exception escaping the chain is logged as a 500 | `RequestLoggerFilterStatusTest.java` |
+| `X9-SIG-064` | a payer whose only revocation source is a CRL answering with something that is not a CRL is accepted (soft-fail) | `CaIssuedSignatureApiTest.java` |
+| `X9-SIG-065` | the same case can fetch the payload | `CaIssuedSignatureApiTest.java` |
+| `X9-SIG-066` | a payer whose CRL is not a CRL and whose OCSP responder is unreachable is accepted (soft-fail) | `CaIssuedSignatureApiTest.java` |
+| `X9-SIG-067` | the same case can fetch the payload | `CaIssuedSignatureApiTest.java` |
+| `X9-SIG-068` | an `x5u` on another host that only mentions the own host is not fetched over plain http: `CERTIFICATE_UNAVAILABLE` (BUG-005) | `CaIssuedSignatureApiTest.java` |
 | `X9-SIG-070` | signing emits every X9 header | `JwsQRCodeSignatureServiceTest.java` |
 | `X9-SIG-071` | a signature we produced validates | `JwsQRCodeSignatureServiceTest.java` |
 | `X9-SIG-072` | a signed response carries its status code | `JwsQRCodeSignatureServiceTest.java` |

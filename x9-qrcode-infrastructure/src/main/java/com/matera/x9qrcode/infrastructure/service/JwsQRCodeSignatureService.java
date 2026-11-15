@@ -68,9 +68,11 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.SignatureException;
+import java.security.cert.CRLException;
 import java.security.cert.CertPath;
 import java.security.cert.CertPathValidator;
 import java.security.cert.CertPathValidatorException;
+import java.security.cert.CertStoreException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateException;
@@ -454,8 +456,16 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
                 pkixParameters.addCertPathChecker(pkixRevocationChecker);
             }
 
-            PKIXCertPathValidatorResult validatorResult =
-                (PKIXCertPathValidatorResult) certPathValidator.validate(certPath, pkixParameters);
+            PKIXCertPathValidatorResult validatorResult;
+            try {
+                validatorResult = (PKIXCertPathValidatorResult) certPathValidator.validate(certPath, pkixParameters);
+            } catch (CertPathValidatorException e) {
+                if (!pkixParameters.isRevocationEnabled() || !isUnreadableCrl(e)) {
+                    throw e;
+                }
+                validatorResult = validateAsIfTheCrlWereUnreachable(certPath, trustAnchorSet,
+                    externalCertificates.getFirst(), e);
+            }
 
             X509Certificate trustedRootCertificate = validatorResult.getTrustAnchor().getTrustedCert();
 
@@ -469,6 +479,71 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         } catch (NoSuchAlgorithmException | InvalidAlgorithmParameterException e) {
             throw new ServiceException("Unexpected error during external certificate chain validation: %s".formatted(e.getMessage()), e);
         }
+    }
+
+    /**
+     * Whether the revocation check failed because the end entity's CRL distribution point answered
+     * with something that is not a CRL (an HTML error page, say), rather than because a source said
+     * the certificate is revoked. The JDK reports that as a {@code CRLException} inside the
+     * {@code CertStoreException} of the fetch, with an unspecified reason, which {@code SOFT_FAIL}
+     * does not forgive; an unreachable distribution point is an {@code IOException} there, which it
+     * does.
+     */
+    private static boolean isUnreadableCrl(CertPathValidatorException e) {
+        if (e.getReason() == CertPathValidatorException.BasicReason.REVOKED) {
+            return false;
+        }
+        boolean fetching = false;
+        for (Throwable cause = e.getCause(); Objects.nonNull(cause); cause = cause.getCause()) {
+            if (cause instanceof CertStoreException) {
+                fetching = true;
+            } else if (fetching && cause instanceof CRLException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Owner, 2026-11-15 (ADR-0027, "Revocation, parity with Java"): a revocation source the
+     * certificate names but that cannot be <em>read</em> soft-fails, as one that cannot be reached
+     * does. So the chain is validated again as the JDK would have validated it had the CRL been
+     * unreachable:
+     *
+     * <ul>
+     *   <li>the end entity names no OCSP responder: the CRL was its only source, and an unreachable
+     *       one soft-fails ({@code NO_FALLBACK}, BUG-003), so the chain is validated without
+     *       revocation;</li>
+     *   <li>it names one: the JDK falls back to OCSP after an unreachable CRL, so OCSP decides
+     *       alone, still soft-failing when the responder cannot be reached, and refusing when it
+     *       reports the certificate revoked or gives an answer the JDK refuses.</li>
+     * </ul>
+     *
+     * <p>A CRL that is read and lists the certificate is never this case: it is {@code REVOKED}.
+     */
+    private PKIXCertPathValidatorResult validateAsIfTheCrlWereUnreachable(CertPath certPath,
+            Set<TrustAnchor> trustAnchors, X509Certificate endEntity, CertPathValidatorException unreadable)
+            throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, CertPathValidatorException {
+        CertPathValidator certPathValidator = CertPathValidator.getInstance(DEFAULT_PKIX_ALGORITHM);
+        PKIXParameters pkixParameters = new PKIXParameters(trustAnchors);
+
+        if (namesOcspResponder(endEntity)) {
+            PKIXRevocationChecker ocspOnly = (PKIXRevocationChecker) certPathValidator.getRevocationChecker();
+            ocspOnly.setOptions(EnumSet.of(
+                PKIXRevocationChecker.Option.ONLY_END_ENTITY,
+                PKIXRevocationChecker.Option.SOFT_FAIL,
+                PKIXRevocationChecker.Option.NO_FALLBACK));
+            pkixParameters.setRevocationEnabled(true);
+            pkixParameters.addCertPathChecker(ocspOnly);
+        } else {
+            pkixParameters.setRevocationEnabled(false);
+        }
+
+        log.warn("Soft-failing revocation: the CRL distribution point of {} answered with something that "
+                + "is not a CRL ({}); {}", endEntity.getSubjectX500Principal().getName(), unreadable.getMessage(),
+            namesOcspResponder(endEntity) ? "asking its OCSP responder instead" : "it names no other source");
+
+        return (PKIXCertPathValidatorResult) certPathValidator.validate(certPath, pkixParameters);
     }
 
     private static final String CRL_DISTRIBUTION_POINTS_OID = "2.5.29.31";

@@ -48,6 +48,49 @@ Java is to agree with the suite, make `releaseLocation` also accept `isExpired()
 
 ---
 
+## BUG-005 — A `jku` or `x5u` that merely mentions this deployment's host is fetched over plain HTTP
+
+- **Reported:** 2026-11-15
+- **Severity:** High — a payer message's `jku` or `x5u` is unauthenticated input. A URL on any
+  host that carries this deployment's public host anywhere in it was fetched over plain `http`,
+  so anyone on the network path could substitute the certificate the signature is checked with.
+  The chain was still validated against the truststore, which limits what a substitute could
+  prove, but ADR-0027's "HTTPS only, except the deployment's own host" did not hold.
+- **Fixed:** 2026-11-15 — the URL's host, port included, must equal `x9.public-endpoints.host`
+  (case-insensitive) to be read internally; every other URL is fetched over `https` from the host
+  it names, without its user information, as Go's fetcher (Story 8.3) does. Pinned by
+  `X9-LOC-483`, `X9-LOC-484` (`DefaultQRCodeLocationServiceTest`), `X9-SIG-068`
+  (`CaIssuedSignatureApiTest`) and `X9-LOC-312` (`others/blackbox/tests/test_payers.py`).
+- **Area:** `DefaultQRCodeLocationService.normalizeHost` (infrastructure layer), used for the
+  `jku`/`x5u` fetch and for the payload fetch alike.
+
+### Steps to reproduce
+
+1. Sign a payment notification with an `x5u` of `http://evil.example/chain.pem?h=<public host>`
+   (no `x5c`), where `evil.example` serves the signer's chain over plain `http`.
+2. Send it.
+
+### Expected
+
+ADR-0027, "Certificate fetching": the chain is fetched over `https` from `evil.example`. A server
+that speaks only plain `http` cannot answer, and the notification is refused with
+`CERTIFICATE_UNAVAILABLE`.
+
+### Actual (before the fix)
+
+The chain was fetched over plain `http` from `evil.example` (with the public host in its query
+replaced by `localhost:<port>`), and the payer was accepted. The same held for the public host in
+the path, as the user information (`http://<public host>@evil.example/`), as a subdomain
+(`<public host>.evil.example`) or as the end of a longer host name, which produced a broken URL
+instead.
+
+### Root cause
+
+`normalizeHost` asked whether the URL *string* contained the public host, then replaced every
+occurrence of it with `localhost:<port>` and forced `http`. It never parsed the host.
+
+---
+
 ## BUG-003 — An unreachable CRL is not soft-failed when the certificate names no OCSP responder
 
 - **Reported:** 2026-11-14 (Story 4.3, `X9-LOC-307`)
