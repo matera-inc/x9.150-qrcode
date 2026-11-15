@@ -105,7 +105,7 @@ x9-qrcode/
 ├── x9-qrcode-infrastructure/  # Spring Boot app: REST controllers, MongoDB, JWS, configuration
 ├── secrets/                   # Local secrets & real keystores — GIT-IGNORED (only samples committed)
 ├── official-spec/             # ANSI X9.150-2026 reference notes (the copyrighted standard — PDF & Markdown — is git-ignored)
-└── others/                    # helm/ (K8s charts) · scripts/ (k6, cert gen) · libs/ (vendored jars) · doc/
+└── others/                    # helm/ (K8s charts) · benchmark/ (k6 harness) · scripts/ (cert gen, CI) · libs/ (vendored jars) · doc/
 ```
 
 Inside each Java module:
@@ -250,40 +250,14 @@ Architecture, standard-alignment, and integration design notes:
 
 # Performance Testing (k6)
 
-A [k6](https://k6.io/) load test script is available for stress-testing the QR Code creation endpoint (`POST /api/v1/payment-request`).
+Load tests live in the benchmark harness, [`others/benchmark/`](others/benchmark/README.md). It runs
+the same k6 scenarios (S1 create, S2 the full payment cycle, S7 footprint) against either build, on
+Kubernetes, with fixed resource limits, and records every result. The single-script load test that
+used to live under `others/scripts/k6/` was retired: today's API refused every request it sent.
 
-- [k6 Load Test Script](others/scripts/k6/create-qrcodes-load-test.js)
-
-## Test Profile
-
-| Stage | Duration | Virtual Users |
-|-------|----------|---------------|
-| Ramp-up | 30s | 0 → 50 |
-| Ramp to peak | 30s | 50 → 200 |
-| Ramp to peak | 30s | 200 → 500 |
-| **Sustain** | **3m** | **500** |
-| Ramp-down | 30s | 500 → 0 |
-
-## Thresholds
-
-- **P95 latency** < 2 seconds
-- **Success rate** > 95%
-- **HTTP error rate** < 5%
-
-## Running the Test
-
-```bash
-# Default (localhost:8080, open unauthenticated API, with dashboard)
-k6 run --out web-dashboard others/scripts/k6/create-qrcodes-load-test.js --linger
-
-# With custom environment variables (e.g., for prefix)
-REPORT_PREFIX=mycustomprefix k6 run --out web-dashboard others/scripts/k6/create-qrcodes-load-test.js
-
-# Custom target URL
-k6 run --out web-dashboard -e BASE_URL="http://192.168.1.10:8080" others/scripts/k6/create-qrcodes-load-test.js --linger
-```
-
-Results are saved at `others/scripts/k6/results/` with timestamped filenames: `summary-YYYY-MM-DDTHH-mm-ss.json` and `summary-YYYY-MM-DDTHH-mm-ss.html`.
+Summaries and a SHA-256 checksum of every raw k6 output are committed; the compressed raw outputs
+are published on a GitHub release, one per benchmark campaign. The harness README says how to run a
+campaign, publish it and verify a download.
 
 
 # JWS Signature implementation

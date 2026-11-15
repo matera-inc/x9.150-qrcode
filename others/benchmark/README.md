@@ -10,7 +10,7 @@ an operator would run them. Signing and verification dominate the cost of a paym
 
 | Scenario | What runs | Script |
 |---|---|---|
-| **S1** | Create only, with the README's profile: ramp to 500 VUs, sustain 3 minutes, think time 1–3 s | [`k6/s1-create.js`](k6/s1-create.js) |
+| **S1** | Create only, with the `readme` profile: ramp to 500 VUs, sustain 3 minutes, think time 1–3 s | [`k6/s1-create.js`](k6/s1-create.js) |
 | **S2** | The full payment cycle per iteration: create → signed payload fetch → pre-commit → post-commit (Solana, with a `transactionId`) → status-update `PAID`. Same profile | [`k6/s2-cycle.js`](k6/s2-cycle.js) |
 | **S7** | Footprint: image size, cold start to `/actuator/health` UP, resting memory after 5 idle minutes | [`footprint.sh`](footprint.sh) |
 
@@ -20,10 +20,11 @@ Until then, each Go turn at S1 or S2 still deploys PostgreSQL, the Liquibase sch
 build, waits for them to become healthy, and records `durability.json` and `resources.json` beside
 a `NOT-RUN.txt`. That way the Go manifests are exercised on every campaign.
 
-S1 sends the README script's body (USD on FedNow) with two corrections. Today's API refuses
-`editable: {payerCanEdit: false}` and a FedNow method without a `protectionType`, so S1 drops
-`editable` and sends `protectionType: "plaintext"`. The README script itself still sends both and
-gets a 400 for every request.
+S1 sends the body of the load script the repository README used to carry (USD on FedNow), with two
+corrections. Today's API refuses `editable: {payerCanEdit: false}` and a FedNow method without a
+`protectionType`, so S1 drops `editable` and sends `protectionType: "plaintext"`. That script,
+formerly `others/scripts/k6/`, got a 400 for every request and was retired; this harness replaces
+it, and the `readme` profile keeps its load shape.
 
 ## Layout
 
@@ -33,6 +34,7 @@ others/benchmark/
 ├── prepare.sh           test-CA payers PKCS#12 → PKCS#8 + x5c for k6; CRL; truststores → build/ (git-ignored)
 ├── build-images.sh      x9-qrcode:git-<sha>, x9-qrcode-go:git-<sha>, x9-qrcode-liquibase:git-<sha>; never pushed
 ├── collect.sh           runs a campaign: J-G-J-G-J-G, S1/S2/S7, results/<build>/<campaign>-r<n>/
+├── package-raw.sh       a campaign's raw k6 output: compressed, SHA256SUMS per run, staged for its release
 ├── footprint.sh         S7 for one build
 ├── lib.sh               shared by collect.sh and footprint.sh
 ├── k6/                  s1-create.js, s2-cycle.js, lib/jws.js (WebCrypto signer and verifier), lib/x9.js,
@@ -110,15 +112,17 @@ capacity on one node, plus whatever the node's own system needs. The VM's size i
 
 ```
 results/<build>/<campaign>-r<n>/
+├── SHA256SUMS            the SHA-256 of every raw k6 output of this run, by its release asset name
 ├── environment.json      Kubernetes version; per node: architecture, kernel, OS image, runtime, CPU and
 │                         memory capacity; host CPU model, logical CPUs, memory, OS/arch; BENCH_VIRTUALISATION
 ├── images.json           app (and Liquibase) image: tag, ID, OCI revision and version, size; the harness's
 │                         own commit; profile, stages, overlay; position in the sequence
 ├── s1/ and s2/
 │   ├── summary.json      the full k6 summary: every metric, p50/p90/p95/p99, per step for S2
-│   ├── raw.ndjson.gz     k6's raw output, every sample
+│   ├── raw.ndjson.gz     k6's raw output, every sample: NOT committed (git-ignored), published on the release
 │   ├── k6.log, exit-code k6's console (99 = a threshold was crossed: recorded, not fatal)
-│   ├── warmup/, warmup.json   the excluded warm-up's own k6 output, its stages and duration
+│   ├── warmup/, warmup.json   the excluded warm-up's own k6 output (its raw.ndjson.gz is not committed
+│   │                     either), its stages and duration
 │   ├── pod-stats.csv     CPU (millicores) and memory (working set) of every container, every 5 s
 │   ├── durability.json   the database's own report of its write concern / synchronous_commit
 │   ├── db-after.json     on-disk size, document or row counts, connections, after the run
@@ -128,6 +132,70 @@ results/<build>/<campaign>-r<n>/
     ├── s7.json           image size (uncompressed, compressed), cold start ms, resting memory bytes
     └── idle-memory.csv   memory every 30 s while idle
 ```
+
+### 5. Publishing a campaign
+
+**What goes where.** The summaries (everything under `results/` except the raw k6 output) and each
+run's `SHA256SUMS` are committed to the repository. The raw k6 output, compressed, goes on a
+**GitHub release, one release per campaign**. `others/benchmark/.gitignore` keeps every
+`raw.ndjson` / `raw.ndjson.gz` and the staging folder `results/release/` out of git.
+
+collect.sh ends by running [`package-raw.sh`](package-raw.sh); run it again by hand after editing a
+run (`CAMPAIGN=<campaign> others/benchmark/package-raw.sh`, same `RESULTS_DIR`). For every run of
+the campaign it:
+
+1. refuses the whole campaign, before writing anything, if any file of a run (gzipped ones
+   included) holds an IPv4 address or this machine's host name;
+2. compresses any raw output k6 left uncompressed (`raw.ndjson` → `raw.ndjson.gz`);
+3. copies each raw file to `results/release/<campaign>/` under a name unique in the campaign,
+   `<build>_<campaign>-r<n>_<path>`, e.g. `java-mongo_2026-11-15T1200Z-r1_s2_warmup_raw.ndjson.gz`;
+4. writes `results/<build>/<campaign>-r<n>/SHA256SUMS`, one line per raw file, by that asset name.
+
+**Before anything leaves the machine, check the raw files yourself.** The repository and its
+releases are public, and results must never name the host. The automatic check covers IPv4
+addresses and this machine's own host name; it does not cover IPv6 addresses, other machines' names,
+the kube context's name or server, node names, user names or internal domains. Search the staged
+files for each of those you know of:
+
+```bash
+cd others/benchmark/results/release/<campaign>
+for f in *.gz; do gzip -dc "$f" | grep -HiE --label="$f" '<host>|<context>|<node>|<domain>|[0-9a-f]{1,4}(:[0-9a-f]{1,4}){3,7}' ; done
+grep -rIiE '<host>|<context>|<node>|<domain>' ../../java-mongo ../../go-postgres
+```
+
+Anything found: remove it from the run, then run `package-raw.sh` again (its checksums change with
+the file).
+
+**Commit the summaries**, by name, never `git add -A`:
+
+```bash
+git add others/benchmark/results/java-mongo/<campaign>-r* others/benchmark/results/go-postgres/<campaign>-r*
+git status --short others/benchmark/results   # no raw.ndjson*, no release/
+git commit -m "bench: campaign <campaign> summaries and checksums"
+```
+
+**Create the release** once that commit is on `main`, one per campaign, tagged `bench-<campaign>`:
+
+```bash
+gh release create "bench-<campaign>" \
+  --target <sha of the commit on main that holds the summaries> \
+  --title "Benchmark campaign <campaign>" \
+  --notes "Raw k6 output of campaign <campaign>. Summaries and SHA256SUMS: others/benchmark/results/*/<campaign>-r*/ at this tag." \
+  others/benchmark/results/release/<campaign>/*.gz
+```
+
+**Verify a download** against the committed checksums:
+
+```bash
+mkdir -p /tmp/bench-<campaign> && cd /tmp/bench-<campaign>
+gh release download "bench-<campaign>" --repo matera-inc/x9.150-qrcode
+for sums in <repo>/others/benchmark/results/*/<campaign>-r*/SHA256SUMS; do
+  shasum -a 256 -c "$sums"        # or: sha256sum -c "$sums"
+done
+```
+
+Every line must print `OK`. A missing or failed file means the download, or the release, is not the
+campaign the repository describes.
 
 ## Method notes
 
@@ -190,7 +258,8 @@ method as `others/scripts/go-image-smoke.sh`. It applies the same cgroup limits 
 any IP address. The environment is described by CPU model, architecture and virtualisation layers.
 k6 drops its `error` tag (which can carry an address) from raw samples, collect.sh redacts
 addresses in logs, and `scrub_check` fails the campaign if an IPv4 address is left anywhere in its
-results, compressed files included.
+results, compressed files included. package-raw.sh also refuses this machine's host name, and the
+operator checks the rest by hand before publishing (step 5).
 
 ## A smoke run on a small local cluster
 

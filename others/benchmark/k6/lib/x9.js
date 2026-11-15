@@ -11,14 +11,15 @@
 //   BASE_URL      the service, default http://localhost:8080 (in-cluster: http://x9-qrcode:8080)
 //   PROFILE       readme (default) | warmup | smoke — see PROFILES
 //   STAGES        overrides PROFILE: "30s:50,30s:200,30s:500,3m:500,30s:0"
-//   SLEEP_MIN_S / SLEEP_MAX_S   think time between iterations, default 1..3 s (the README script's)
+//   SLEEP_MIN_S / SLEEP_MAX_S   think time between iterations, default 1..3 s (the retired load script's)
 //   SUMMARY_PATH  where handleSummary writes the full k6 summary JSON, default summary.json
 
 import encoding from "k6/encoding";
 
 export const BASE_URL = (__ENV.BASE_URL || "http://localhost:8080").replace(/\/+$/, "");
 
-// The README's profile (S5.1-AC1): ramp to 500 VUs, sustain 3 minutes.
+// The `readme` profile (S5.1-AC1): the retired README load script's, ramp to 500 VUs, sustain 3
+// minutes.
 export const PROFILES = {
   readme: [
     { duration: "30s", target: 50 },
@@ -72,10 +73,10 @@ export function futureIso(seconds) {
   return new Date(Date.now() + seconds * 1000).toISOString();
 }
 
-// ─── S1: the README script's body (USD on FedNow), brought up to today's API ──────────────────
-// The README script sends `editable: {payerCanEdit: false}` and no FedNow `protectionType`; the
-// service now refuses both (400), so here `editable` is absent (the payer cannot edit) and
-// `protectionType` is "plaintext". Everything else is the README script's.
+// ─── S1: the retired README load script's body (USD on FedNow), brought up to today's API ─────
+// That script sent `editable: {payerCanEdit: false}` and no FedNow `protectionType`; the service
+// refuses both (400), so here `editable` is absent (the payer cannot edit) and `protectionType` is
+// "plaintext". Everything else is that script's.
 
 const MCCS = ["4900", "5411", "5812", "7011", "5541", "5912"];
 

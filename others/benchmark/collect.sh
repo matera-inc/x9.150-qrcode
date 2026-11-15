@@ -7,7 +7,9 @@
 # Runs a benchmark campaign (S5.1-AC5): the interleaved sequence J-G-J-G-J-G by default, each run
 # S1, S2 and S7, each scenario on a fresh namespace with an empty database volume, one system under
 # test at a time. Results go to results/<build>/<campaign>-r<n>/ with the raw k6 output, the image
-# tags (git-<sha>) and revisions, the versions and the resource settings.
+# tags (git-<sha>) and revisions, the versions and the resource settings. It ends with
+# package-raw.sh: each raw k6 output compressed, a SHA256SUMS per run, and the raw files staged for
+# the campaign's GitHub release (they are never committed; README, "Publishing a campaign").
 #
 #   KUBE_CONTEXT=<your context> others/benchmark/collect.sh
 #
@@ -148,4 +150,5 @@ find "$RESULTS" -name '*.log' -newer "$BENCH/build/payers.json" -exec \
 for build in $(printf '%s\n' "${builds[@]}" | sort -u); do
   for dir in "$RESULTS/$build/$CAMPAIGN"-r*; do scrub_check "$dir"; done
 done
+CAMPAIGN="$CAMPAIGN" RESULTS_DIR="$RESULTS" "$BENCH/package-raw.sh"
 log "campaign $CAMPAIGN done: ${RESULTS#$ROOT/}/<build>/$CAMPAIGN-r*"
