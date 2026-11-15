@@ -152,6 +152,27 @@ class TestPayee:
     def yes(self, question):
         return self.signed(question, 200)
 
+    def bad_correlation_id(self, times, *, missing=False, then=None):
+        """An answer function that signs a yes under the WRONG correlationId for the first ``times``
+        questions (another id, or none at all with ``missing``), then answers with ``then`` (a
+        right yes by default). ``bad_answers`` counts the wrong ones given (ADR-0027, owner
+        2026-11-15: before the money moves the service refuses such an answer; after, it sends the
+        notification once more under a new correlationId)."""
+        import uuid
+
+        self.bad_answers = 0
+        then = then or self.yes
+
+        def answer(question):
+            if self.bad_answers >= times:
+                return then(question)
+            self.bad_answers += 1
+            if missing:
+                return self.signed(question, 200, drop=("correlationId",),
+                                   crit=["iat", "ttl", "statusCode"])
+            return self.signed(question, 200, correlation_id=str(uuid.uuid4()))
+        return answer
+
 
 def _tls_context(identity):
     """A server TLS context presenting ``identity`` (a :class:`jws.Identity` with its chain)."""

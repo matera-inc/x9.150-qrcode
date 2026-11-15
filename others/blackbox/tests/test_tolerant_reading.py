@@ -164,19 +164,25 @@ def test_tolerance_stops_at_integrity(decode, pki, business_now):
         assert FOREIGN["id"] not in response.text, (case, response.body)
 
 
-REFUSED = "Payload JWS signature is invalid."
+# The decoder's refusal of a payload that does not carry our correlationId (owner, 2026-11-15):
+# trying again may succeed, and nothing in the caller's input can fix it.
+REFUSED = "QR Code is invalid (bad correlationId)"
+INVALID = "Payload JWS signature is invalid."
 
 
-def _refused(case, response):
+def _refused(case, response, words=REFUSED):
     assert response.status == 400, (case, response)
-    assert REFUSED in response.text, (case, response.body)
+    assert response.body.get("type") == "https://x9.matera.com/api/business-rule-violation", \
+        (case, response.body)
+    assert words in response.text, (case, response.body)
     assert FOREIGN["id"] not in response.text, (case, response.body)
 
 
 def test_a_payload_under_another_correlation_id_is_refused(decode, pki, business_now):
     """X9-DEC-506 — a payload validly signed by the other bank, under another correlationId than the
-    request was sent under, is refused: when the caller gave no ``correlationID`` (the service
-    generated one) as when it gave one. Nothing of it reaches the payer.
+    request was sent under, is refused, 400, "QR Code is invalid (bad correlationId)": when the
+    caller gave no ``correlationID`` (the service generated one) as when it gave one. Nothing of it
+    reaches the payer.
 
     Source: Ours. ADR-0027, amendment of 2026-11-15 (owner): "Always check that the payee's answer
       echoes our correlationId." ANSI X9.150-2026 §10.3.2 has the responder echo it. Before the
@@ -198,7 +204,8 @@ def test_a_payload_under_another_correlation_id_is_refused(decode, pki, business
 
 def test_a_payload_without_a_correlation_id_is_refused(decode, pki, business_now):
     """X9-DEC-507 — a payload validly signed by the other bank whose header carries no
-    ``correlationId`` (in ``crit`` or out of it) is refused, whether or not the caller gave one.
+    ``correlationId`` (in ``crit`` or out of it) is refused, 400, "QR Code is invalid (bad
+    correlationId)", whether or not the caller gave one.
 
     Source: Ours. ADR-0027, amendment of 2026-11-15 (owner): "No correlationId, I can't trust the
       other side." ANSI X9.150-2026 §10.7 step 3 requires the header.
@@ -213,3 +220,30 @@ def test_a_payload_without_a_correlation_id_is_refused(decode, pki, business_now
 
     _refused("generated", decode(FOREIGN, token=anonymous))
     _refused("the caller's", decode(FOREIGN, token=anonymous, correlation_id=uuid.uuid4()))
+
+
+def test_a_tampered_payload_under_another_correlation_id_is_a_bad_signature(decode, pki,
+                                                                           business_now):
+    """X9-DEC-508 — a payload altered after signing, under another correlationId than the request's,
+    is refused as a bad signature ("Payload JWS signature is invalid."), not as a bad correlationId.
+
+    Source: Ours. Owner, 2026-11-15 (ADR-0027): only a payload refused for its correlationId gets
+      "QR Code is invalid (bad correlationId)"; the verifier's verdict comes first, on both builds.
+    Why: The two refusals tell the payer different things: a bad correlationId may clear on another
+      try, a payload nobody signed will not.
+    """
+    import uuid
+
+    another = str(uuid.uuid4())
+
+    def tampered(_asked):
+        header, _, signature = jws.Signer(pki["payee"], now_ms=business_now) \
+            .sign(FOREIGN, correlation_id=another).split(".")
+        altered = copy.deepcopy(FOREIGN)
+        altered["paymentMethods"][0]["networks"]["ach"]["accountNumber"] = "9999999999"
+        return ".".join([header, jws.b64u_json(altered), signature])
+
+    response = decode(FOREIGN, token=tampered)
+
+    _refused("tampered", response, words=INVALID)
+    assert REFUSED not in response.text, response.body
