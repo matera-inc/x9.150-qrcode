@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**787 tests documented** — every JUnit test and every black-box case.
+**788 tests documented** — every JUnit test and every black-box case.
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
 (STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036 and ADR-0027's EMV and JWS verification rules), the
@@ -436,6 +436,7 @@ The status-update matrix itself is `X9-MAP-010` to `-013` above.
 | `X9-EVT-055` | a replay from an old cursor returns the same events, ids and bodies, so deduplication by `eventId` applies each once | `test_status_update_and_events.py` |
 | `X9-EVT-056` | `limit` 0 and 501 are refused with 400 naming `limit`; 1 and 500 are accepted | `test_status_update_and_events.py` |
 | `X9-EVT-057` | a read without `limit` returns 100 events and `hasMore` when more stand behind the cursor | `test_status_update_and_events.py` |
+| `X9-EVT-058` | Go only: a decimal cursor after the last event is a 409 "cursor ahead of log" carrying `lastSeq` (ADR-0031) | `test_status_update_and_events.py` |
 
 ## Locations and payload retrieval
 

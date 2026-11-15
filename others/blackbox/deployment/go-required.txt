@@ -13,3 +13,10 @@
 
 # Story 9.2: the deployment is ready.
 X9-LIFE-502
+
+# Story 10.1: the event stream reads the outbox. The keys that need a QR Code created or moved
+# (X9-EVT-050 to -052, -055, -057, X9-MAP-050, X9-LIFE-170 to -176) join with Stories 9.6 to 9.8.
+X9-EVT-053
+X9-EVT-054
+X9-EVT-056
+X9-EVT-058

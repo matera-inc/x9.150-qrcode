@@ -7,6 +7,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -119,6 +120,37 @@ func (s *Store) Events(ctx context.Context, after int64, limit int) ([]EventRow,
 		return nil, fmt.Errorf("reading events after %d: %w", after, err)
 	}
 	return out, nil
+}
+
+// LegacyCursor translates a cursor the Java build handed out, a ULID in upper case, to the seq a
+// read resumes strictly after (ADR-0026), on the read pool:
+//
+//   - the cursor of a migrated event resumes after that event;
+//   - a cursor that matches no row resumes at the first migrated event whose cursor is greater, so
+//     that event is the next one read;
+//   - a cursor greater than every migrated event's resumes after the last migrated event, which is
+//     the beginning of retained history when nothing was migrated.
+func (s *Store) LegacyCursor(ctx context.Context, cursor string) (int64, error) {
+	var seq int64
+	err := s.readOnly(ctx, func(tx pgx.Tx) error {
+		err := tx.QueryRow(ctx, sqlSelectLegacyCursor, cursor).Scan(&seq)
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		err = tx.QueryRow(ctx, sqlSelectNextLegacyCursor, cursor).Scan(&seq)
+		if err == nil {
+			seq--
+			return nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		return tx.QueryRow(ctx, sqlSelectLastLegacySeq).Scan(&seq)
+	})
+	if err != nil {
+		return 0, fmt.Errorf("translating the cursor %s: %w", cursor, err)
+	}
+	return seq, nil
 }
 
 // LastSeq is the highest seq handed out, 0 before the first event, on the read pool.

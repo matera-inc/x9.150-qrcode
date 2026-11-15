@@ -51,6 +51,9 @@ func TestPostgres(t *testing.T) {
 		{"ConcurrentPatchesLoseNoUpdate", testConcurrentPatchesLoseNoUpdate},
 		{"GaplessSeqInCommitOrder", testGaplessSeqInCommitOrder},
 		{"RollbackLeavesNoEventAndNoGap", testRollbackLeavesNoEventAndNoGap},
+		{"EventColumnsAreTheDocument", testEventColumnsAreTheDocument},
+		{"PlainSQLReader", testPlainSQLReader},
+		{"LegacyCursor", testLegacyCursor},
 		{"NoStatementIsSchemaQualified", testNoStatementIsSchemaQualified},
 	} {
 		e.reset()

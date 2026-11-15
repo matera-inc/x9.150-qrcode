@@ -44,6 +44,8 @@ const (
 	Owner    = "x9_qrcode_owner"
 	AppRole  = "x9_qrcode_app"
 	ReadOnly = "x9_qrcode_readonly"
+	// EventReader is the plain-SQL event reader of docs/EVENTS-TABLE.md (ADR-0037).
+	EventReader = "x9_qrcode_event_reader"
 )
 
 // DB is a running PostgreSQL with the schema applied.
