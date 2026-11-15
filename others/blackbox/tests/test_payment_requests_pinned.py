@@ -496,6 +496,50 @@ def test_a_patch_may_not_add_a_currency_to_a_single_currency_qr_code(api):
     assert_untouched(before, snap(api, qr))
 
 
+DUE_DATE_RULE = "bill.invoice.dueDate: must be before or equal to validUntil"
+METHOD_RULE = "paymentMethods[0].validUntil: must be before or equal than payment request validUntil"
+
+
+@pytest.mark.parametrize("case, named", [
+    ("valid-until-before-due-date", DUE_DATE_RULE),
+    ("valid-until-before-a-method", METHOD_RULE),
+    ("a-method-after-valid-until", METHOD_RULE),
+])
+def test_every_patch_is_held_to_the_cross_field_date_rules(api, case, named):
+    """X9-PATCH-426 — the create-time date rules hold on the merged state of every PATCH:
+    ``dueDate`` and every method's ``validUntil`` no later than the QR Code's. A PATCH moving only
+    one side of a pair past the other is 400 naming the field, and nothing moves, ETag included.
+
+    Source: Ours. The rules of X9-LIFE-421 and X9-LIFE-422; holding them on PATCH is the owner's
+      decision of 2026-11-14.
+    Why: ``dueDate ≤ validUntil`` used to run only when the bill was patched, so a PATCH of
+      ``validUntil`` alone left a QR Code that expires before its bill falls due: a state creation
+      refuses, reached by edit.
+    """
+    body = samples.payment_request()
+    body["paymentMethods"][0]["validUntil"] = "2030-06-30T00:00:00Z"
+    if case == "valid-until-before-due-date":
+        body["bill"]["invoice"] = {"number": "INV-1", "date": "2030-01-01",
+                                   "dueDate": "2030-12-30T23:59:59Z"}
+    created = api.post(PR, body=body)
+    assert created.status == 201, created
+    qr = created.body["id"]
+    before = snap(api, qr)
+    edit, etag = restated(api, qr)
+
+    if case == "valid-until-before-due-date":
+        edit["validUntil"] = "2030-12-01T00:00:00Z"
+    elif case == "valid-until-before-a-method":
+        edit["validUntil"] = "2030-06-01T00:00:00Z"
+    else:
+        edit["paymentMethods"][0]["validUntil"] = "2031-01-01T00:00:00Z"
+
+    response = patch(api, qr, edit, if_match=etag)
+
+    assert_refused(response, naming=named, status=400)
+    assert_untouched(before, snap(api, qr))
+
+
 def _move(api, qr, how):
     if how == "pre-commit":
         assert pre(api, qr)[0].status == 200

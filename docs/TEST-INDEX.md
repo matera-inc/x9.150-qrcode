@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**605 tests documented** — every test that carries a key. Some black-box cases and a few JUnit
+**608 tests documented** — every test that carries a key. Some black-box cases and a few JUnit
 classes (the test clock, the formula service) have no key yet;
 [RULE-COVERAGE.md](RULE-COVERAGE.md) names those as `File::function`.
 
@@ -471,6 +471,8 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-PATCH-023` | a patch that changes nothing is still refused | `PatchAmountOnlyApiTest.java` |
 | `X9-PATCH-030` | a payment request is edited | `QRCodesApisFlowTest.java` |
 | `X9-PATCH-031` | the edit is visible on a subsequent read | `QRCodesApisFlowTest.java` |
+| `X9-PATCH-040` | a PATCH of `validUntil` alone, to before the bill's `dueDate`, is refused naming `bill.invoice.dueDate`; nothing changes; exactly `dueDate` is accepted | `PatchCrossFieldDatesApiTest.java` |
+| `X9-PATCH-041` | a PATCH moving `validUntil` before a method's, or a method's after the QR Code's, is refused naming `paymentMethods[0].validUntil`; nothing changes | `PatchCrossFieldDatesApiTest.java` |
 
 ## Payment requests pinned: create, PATCH, ETag, rebind (Story 4.2)
 
@@ -501,6 +503,7 @@ status is `X9-MAP-002`.
 | `X9-PATCH-423` | restating the bill unchanged counts as a change: 200, revision moves (pinned, not endorsed) | `test_payment_requests_pinned.py` |
 | `X9-PATCH-424` | a patch may not add a currency to a single-currency QR Code | `test_payment_requests_pinned.py` |
 | `X9-PATCH-425` | no status move (pre-commit, status-update, release, PAID, CANCELLED) moves the revision | `test_payment_requests_pinned.py` |
+| `X9-PATCH-426` | every PATCH is held to the cross-field date rules on its merged state (`validUntil` before `dueDate`, before a method's, a method's after `validUntil`): 400 naming the field, nothing moves | `test_payment_requests_pinned.py` |
 | `X9-PATCH-430` | the ETag is `"<revision>-<STATUS>"` | `test_payment_requests_pinned.py` |
 | `X9-PATCH-431` | `If-Match` is accepted quoted, bare, `W/"…"` and `W/…`, on PATCH and status-update | `test_payment_requests_pinned.py` |
 | `X9-PATCH-432` | a stale revision is 412 and nothing moves | `test_payment_requests_pinned.py` |

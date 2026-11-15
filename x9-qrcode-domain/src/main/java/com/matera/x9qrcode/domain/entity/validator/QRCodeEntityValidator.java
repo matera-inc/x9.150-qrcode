@@ -208,6 +208,20 @@ public final class QRCodeEntityValidator {
         }
     }
 
+    /**
+     * The cross-field date rules of creation: the bill falls due, and every payment method lapses,
+     * no later than the QR Code's {@code validUntil}. Run by {@link #validate()} at creation and, on
+     * every PATCH, against the merged state, whichever side of a pair the PATCH moved.
+     */
+    public void validateDatesWithinValidUntil() {
+        validateInvoiceDueDate();
+
+        List<PaymentMethodVO> paymentMethods = this.entity.getPaymentMethods();
+
+        IntStream.range(0, paymentMethods.size())
+            .forEach(index -> validateIfPaymentMethodValidUntilIsBeforeOrEqualToPaymentRequest(paymentMethods.get(index), index));
+    }
+
     public void validatePaymentMethods() {
         List<PaymentMethodVO> paymentMethods = this.entity.getPaymentMethods();
 
