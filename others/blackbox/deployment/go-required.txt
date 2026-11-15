@@ -149,3 +149,26 @@ X9-TIME-017
 !tests/test_payers.py::TestPayload::test_an_unreachable_revocation_source_soft_fails[crl-unreadable-and-ocsp-unreachable-notification]
 !tests/test_payers.py::TestPayload::test_ocsp_decides_when_the_crl_cannot_be_read[good-notification]
 !tests/test_payers.py::TestPayload::test_ocsp_decides_when_the_crl_cannot_be_read[revoked-notification]
+
+# Story 10.6: a PSP pays somebody else's QR Code: the outbound pre-payment and post-payment.
+# X9-SIG-475's other cases (a question sent to /pub/api/v1/payment-notification) join with Story 10.4.
+tests/test_payee_answers.py
+X9-SIG-301
+X9-SIG-302
+X9-SIG-303
+X9-SIG-304
+X9-SIG-470
+X9-SIG-471
+X9-SIG-472
+X9-SIG-473
+X9-SIG-474
+tests/test_golden.py::test_java_gives_each_golden_jws_its_manifest_verdict[rsa-answer-
+tests/test_golden.py::test_java_gives_each_golden_jws_its_manifest_verdict[ec-answer-
+tests/test_golden.py::test_java_gives_each_golden_jws_its_manifest_verdict[revoked-answer-
+tests/test_golden.py::test_java_gives_each_golden_jws_its_manifest_verdict[untrusted-answer-
+tests/test_contract.py::test_the_unbroken_sample_is_accepted[pre-payment
+tests/test_contract.py::test_the_unbroken_sample_is_accepted[post-payment
+tests/test_contract.py::test_a_contract_constraint_is_refused[pre-payment:
+tests/test_contract.py::test_a_contract_constraint_is_refused[post-payment:
+tests/test_contract.py::test_a_numeric_bound_itself_is_not_refused[pre-payment:
+tests/test_contract.py::test_a_numeric_bound_itself_is_not_refused[post-payment:
