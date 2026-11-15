@@ -2347,8 +2347,9 @@ body
 `correlationId` and the requested ttl; a missing header is refused as Java refuses it.
 
 **S10.2-AC5.** **Given** `POST /api/v1/signature/validate`
-**Then** a valid JWS is a 200 carrying the `Correlation-Id` header, and an invalid one a 422 with
-Java's body.
+**Then** a valid JWS is a 200 carrying the `Correlation-Id` header, and an invalid one a **400**
+`business-rule-violation` with Java's body. (This criterion first said 422; the Java build has never
+answered 422 here, and `openapi.yaml` no longer lists it.)
 
 **S10.2-AC6.** **Given** the harness
 **Then** these keys are added and pass: `X9-SIG-507`; `test_contract.py`'s cases for `validate`.
@@ -2370,7 +2371,9 @@ INTERPRETATION I-13, I-14; `R-EP-02` to `-05`, `R-ADR0020-04`, `R-ADR0027-07`
 
 **S10.3-AC1.** **Given** a payload request (`application/jose`)
 **Then** it is verified by the verifier of S10.2-AC1, and a request that does not verify is a 400,
-not a 401, with Java's `signatureProblem`; an unknown location is a 400, not a 404, as Java answers.
+not a 401, with Java's one generic violation (`Invalid JWS signature for payment payload request.`)
+and no `signatureProblem` code, which goes to the log only (`X9-LOC-304`); an unknown location is a
+400, not a 404, as Java answers.
 
 **S10.3-AC2.** **Given** the signed `qrCodeContent`
 **Then** it must decode to exactly the stored `emv_content`, byte for byte; malformed EMV is refused
@@ -2421,8 +2424,9 @@ under a fresh `correlationId`; once it verifies, the answer echoes its `correlat
 **Then** these are refused before any transition, with Java's status and field: an unknown QR Code
 (404); a QR Code created without `paymentNotification`, or with `kind: EXTERNAL` (ADR-0006); a
 network or currency the QR Code does not offer, matched whatever the case and echoed as sent (I-1,
-I-4); `blockchain` data on a bank rail; ACH without `payer.info` or `expectedDate`; an unknown field
-in `solana`; an amount past 18 digits (ADR-0005; signed bodies included).
+I-4); `blockchain` data on a bank rail; ACH without `payer.info` or `expectedDate`; an amount past
+18 digits (ADR-0005; signed bodies included). (A notification carries no `solana` object, so there
+is no unknown `solana` field to refuse here; that rule belongs to create and PATCH.)
 
 **S10.4-AC4.** **Given** a refusal
 **Then** it is logged with the payer's certificate subject and `payer.info` and the reason, so a
