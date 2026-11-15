@@ -2130,6 +2130,8 @@ in answers, as X9.150 defines it; a dashed QR Code id is refused.
 **Then** it defaults to `x9-150.example.com`, Java's documented default (owner, 2026-11-15), so the
 image starts with no host configured; a host over 37 characters, or with a character outside
 printable ASCII or a space, still stops the service at startup (`R-EP-25`, `R-ADR0027-08`).
+While the host is the placeholder `x9-150.example.com`, startup logs a `WARN` saying QR Codes
+printed with it cannot be scanned and naming `X9_PUBLICENDPOINTS_HOST` (owner, 2026-11-15).
 `emv_content` is written only with `location_id` and never recomputed.
 
 **S9.6-AC5.** **Given** `GET /api/v1/payment-request/{id}`
