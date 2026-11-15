@@ -207,8 +207,10 @@ def other_bank(api, pki, business_now):
     bank = peer_module.TestPayee(pki["payee"], now_ms=business_now,
                                  tls=pki["ca"].issue_tls_server("Blackbox Other Bank", host))
     signer = jws.Signer(pki["payee"], now_ms=business_now)
+    # Signed under the request's correlationId, as every answer must be (ADR-0027, 2026-11-15).
     bank.answer = lambda question: peer_module.Answer(
-        200, signer.sign({"id": "probe", "paymentMethods": []}))
+        200, signer.sign({"id": "probe", "paymentMethods": []},
+                         correlation_id=question.correlation_id))
     created = api.create_qr_detailed().body
     probe = api.post("/api/v1/qrcode-emv-decoder", body={
         "qrCode": emv.with_location(created["qrCode"], bank.location("A" * 32))})
