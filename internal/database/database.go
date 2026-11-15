@@ -34,7 +34,7 @@ const ApplicationName = "x9-qrcode"
 // ExpectedChangeset is the id of the last changeset in db/changelog that this binary was written
 // for. A test keeps it equal to the changelog's last changeset, so adding a changeset without
 // moving this constant fails the build.
-const ExpectedChangeset = "0002-12-default-privileges"
+const ExpectedChangeset = "0003-01-qr-code-hash-registered"
 
 const (
 	// idleTimeout releases an idle connection back to the bank's database (ADR-0032).

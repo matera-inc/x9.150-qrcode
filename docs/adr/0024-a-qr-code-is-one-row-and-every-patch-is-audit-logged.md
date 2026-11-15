@@ -54,10 +54,12 @@ minutes or days, and nobody reads it "as of" an instant.
 
 | Table | Holds | Mutable? |
 |---|---|---|
-| `qr_code` | `id`; **`location_id`** (unique across all rows); `emv_content`; `valid_until`; `status_code`, `revision`, `lock_version`; the reservation (`reserved_until`, `reserved_by_payer_info`, `reserved_by_signer_subject`); payment details (`end_to_end_id`, `payment_network`); **`request_json`**; `created_at`, `revised_at` | conditional `UPDATE` only |
+| `qr_code` | `id`; **`location_id`** (unique across all rows); `emv_content`; `valid_until`; `status_code`, `revision`, `lock_version`; the reservation (`reserved_until`, `reserved_by_payer_info`, `reserved_by_signer_subject`, `hash_registered`); payment details (`end_to_end_id`, `payment_network`); **`request_json`**; `created_at`, `revised_at` | conditional `UPDATE` only |
 | `qr_code_audit_log` | PK `(qr_code_id, revision)`, where `revision` is the number **before** the increment; `changed_at`; `changed_fields`; `previous_values` (JSON holding only those tags, with their previous values) | append-only |
 | `qr_code_notification` | `id` (UUIDv7, gives the order); `qr_code_id`; `received_at`; the columns transitions decide on (phase, network, currency, transaction id, payer info, signer subject); **`notification_json`** (the parsed notification exactly as accepted, so optional fields stay absent rather than becoming 0); the raw compact JWS when there is one | append-only |
 | `payment_event`, `event_sequence`, `payment_event_legacy_cursor` | [0025](0025-a-transition-is-one-transaction-and-its-event-is-in-it.md), [0026](0026-identifiers-and-the-event-cursor.md) | append-only |
+
+*`hash_registered` was added on 2026-11-15 (changeset 0003, Story 9.5). It is true once a transaction hash is registered for the current reservation ([0036](0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md)). A reservation stopped by a hash and one taken with `x9.reservation.ttl-seconds: 0` both carry the "no lapse" stamp in `reserved_until`, yet behave differently, so the stamp alone cannot say which one it is.*
 
 **Column ownership.** Each column has exactly one owner:
 
