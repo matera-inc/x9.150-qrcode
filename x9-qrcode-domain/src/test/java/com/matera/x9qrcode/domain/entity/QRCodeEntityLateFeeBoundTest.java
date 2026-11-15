@@ -156,8 +156,8 @@ class QRCodeEntityLateFeeBoundTest extends AbstractTest {
 
     /**
      * <b>X9-AMT-115</b> — every payment method's amount is bounded too, as the payload would show
-     * it: {@code amount + largest fee}, and the fee pro-rated to the method; refused naming
-     * {@code paymentMethods[i].amount}.
+     * it, the bill's ratio {@code m × (B + largest fee) / B} rounded half up, and only so; refused
+     * naming {@code paymentMethods[i].amount}.
      *
      * <p><b>Source:</b> ANSI X9.150-2026 §14.3 — maximum length 18. Conformance; the bound is ours
      * (ADR-0005).
