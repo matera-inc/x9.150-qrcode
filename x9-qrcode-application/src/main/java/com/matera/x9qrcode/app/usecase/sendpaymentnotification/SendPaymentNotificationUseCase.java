@@ -79,7 +79,7 @@ public class SendPaymentNotificationUseCase
         if (isBlank(transactionId)) {
             log.warn("Pre-commit answer refused: bad correlationId. qrcodeId={} correlationIdSent={} "
                     + "correlationIdAnswered={} problem={}",
-                qrcodeId, sent, answered(first), first.signatureProblem());
+                printable(qrcodeId), sent, printable(answered(first)), first.signatureProblem());
             throw new NotificationUndeliverableException(
                 "The payee's answer to a pre-commit notification does not carry the correlationId sent",
                 NotificationUndeliverableException.DETAIL_BAD_CORRELATION_ID);
@@ -112,7 +112,7 @@ public class SendPaymentNotificationUseCase
                                UUID retrySent, String retryAnswered, OutboundNotificationResult retry) {
         log.warn("{} qrcodeId={} transactionId={} correlationIdsSent=[{}, {}] correlationIdsAnswered=[{}, {}] "
                 + "problems=[{}, {}] at={}",
-            UNTIED_ANSWERS, qrcodeId, transactionId, firstSent, retrySent,
+            UNTIED_ANSWERS, printable(qrcodeId), printable(transactionId), firstSent, retrySent,
             printable(firstAnswered), printable(retryAnswered),
             first.signatureProblem(), isNull(retry) ? "" : retry.signatureProblem(),
             DateTimeUtils.nowUTC().toInstant());
@@ -134,7 +134,7 @@ public class SendPaymentNotificationUseCase
 
     /** What the other party wrote, made safe for one log line: no control characters. */
     private static String printable(String written) {
-        return written.replaceAll("\\p{Cntrl}", "?");
+        return isNull(written) ? null : written.replaceAll("\\p{Cntrl}", "?");
     }
 
     /**
