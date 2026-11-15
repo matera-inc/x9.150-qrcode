@@ -163,6 +163,11 @@ curl -s -X DELETE localhost:8099/test/clock                          # back to r
   business clock.
 - Request logging, the event-drain lease and long-poll waits measure real durations and keep the
   real clock.
+- **Both builds serve it the same way.** The Go build (`internal/testclock`) takes the same
+  variables, routes, bodies, units, header and guard. Its guard accepts every certificate bundled
+  with its private key in this repository, by fingerprint compiled into the binary; that includes
+  four test-CA leaves (`x9-test-payer-no-revocation`, `-crl-unreachable`, `-ocsp-unreachable` and
+  `-both-unreachable`) that the Java build's list predates.
 
 ## Multi-arch images (arm64 + amd64) & publishing
 

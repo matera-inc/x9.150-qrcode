@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -112,10 +113,14 @@ type Reservation struct {
 	TTLSeconds int `yaml:"ttl-seconds"`
 }
 
-// Testing holds the movable test clock's switch (ADR-0033). It is always off in this build: the
-// listener and its certificate guard need the signing keys.
+// Testing is the movable test clock (ADR-0033): off by default, and with it off nothing listens
+// on ClockListen.
 type Testing struct {
+	// ClockControl turns /test/clock on. Start-up then refuses any signing certificate that is not
+	// one bundled with this repository (internal/testclock).
 	ClockControl bool `yaml:"clock-control"`
+	// ClockListen is the host:port of the clock's own listener; never the API port.
+	ClockListen string `yaml:"clock-listen"`
 }
 
 // Certificate is where the signing key and the truststore are read from (ADR-0027, ADR-0031). Its
@@ -180,6 +185,7 @@ func defaults() Config {
 		Database:    Database{Port: 5432, Schema: "x9_qrcode", PoolWrites: 8, PoolReads: 4},
 		Log:         Log{Level: "info"},
 		Reservation: Reservation{TTLSeconds: 90},
+		Testing:     Testing{ClockListen: "127.0.0.1:8099"},
 		Keystore:    Keystore{Reload: KeystoreReload{Frequency: 30000}},
 	}
 }
@@ -210,6 +216,7 @@ var envVars = []envVar{
 	{"X9_LOG_LEVEL", "log.level", setString(func(c *Config) *string { return &c.Log.Level })},
 	{"X9_RESERVATION_TTL_SECONDS", "reservation.ttl-seconds", setInt(func(c *Config) *int { return &c.Reservation.TTLSeconds })},
 	{"X9_TESTING_CLOCKCONTROL", "testing.clock-control", setBool(func(c *Config) *bool { return &c.Testing.ClockControl })},
+	{"X9_TESTING_CLOCKLISTEN", "testing.clock-listen", setString(func(c *Config) *string { return &c.Testing.ClockListen })},
 	{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION", "certificate.private-keystore.location", setString(func(c *Config) *string { return &c.Certificate.PrivateKeystore.Location })},
 	{"X9_CERTIFICATE_PRIVATEKEYSTORE_TYPE", "certificate.private-keystore.type", setString(func(c *Config) *string { return &c.Certificate.PrivateKeystore.Type })},
 	{"X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD", "certificate.private-keystore.password", setString(func(c *Config) *string { return &c.Certificate.PrivateKeystore.Password })},
@@ -547,10 +554,24 @@ func (c Config) validate() []error {
 		errs = append(errs, problem("keystore.reload.frequency", "must be at least 1 (milliseconds), got %d", c.Keystore.Reload.Frequency))
 	}
 	if c.Testing.ClockControl {
-		errs = append(errs, problem("testing.clock-control",
-			"the movable test clock is not available in this build yet: its listener and certificate guard need the signing keys (ADR-0033)"))
+		errs = append(errs, c.Testing.validate(c.Server.Port)...)
 	}
 	return errs
+}
+
+// validate checks the clock listener's address, only when the clock is on, as the Java build does:
+// host:port, with a host, and never the API port (ADR-0033).
+func (t Testing) validate(apiPort int) []error {
+	host, portText, err := net.SplitHostPort(t.ClockListen)
+	port, portErr := strconv.Atoi(portText)
+	if err != nil || host == "" || portErr != nil || port < 0 || port > 65535 {
+		return []error{problem("testing.clock-listen", "must be host:port, e.g. 127.0.0.1:8099; got %q", t.ClockListen)}
+	}
+	if port != 0 && port == apiPort {
+		return []error{problem("testing.clock-listen",
+			"%q must not be the API port %d: /test/clock is never served on the API port", t.ClockListen, apiPort)}
+	}
+	return nil
 }
 
 var keystoreTypes = map[string]bool{"": true, "JKS": true, "PKCS12": true, "PEM": true}

@@ -85,3 +85,51 @@ func TestSetNow(t *testing.T) {
 		}
 	})
 }
+
+// S8.6-AC1: straight after SetNow(at) the clock reads at or a little after, never before, so an
+// edge test that puts the clock at E + 1 ms is judged after E. It runs on the real clock, whose
+// sub-millisecond part is what a truncating offset would lose.
+func TestSetNowNeverReadsEarlier(t *testing.T) {
+	c := New(AllowOffset())
+	at := time.Date(2031, 12, 31, 23, 59, 59, 999_000_000, time.UTC)
+	for range 2000 {
+		if err := c.SetNow(at); err != nil {
+			t.Fatal(err)
+		}
+		if now := c.Now(); now.Before(at) || now.Sub(at) > time.Second {
+			t.Fatalf("Now = %v straight after SetNow(%v)", now, at)
+		}
+	}
+}
+
+// S8.6-AC1: the offset is bounded to about a century either way, as in Java; a refused offset
+// leaves the clock where it was.
+func TestOffsetIsBounded(t *testing.T) {
+	c := New(AllowOffset())
+	limit := MaxOffset.Milliseconds()
+	if limit != 3_155_760_000_000 {
+		t.Fatalf("MaxOffset = %d ms, want Java's 3155760000000", limit)
+	}
+	for _, ms := range []int64{limit, -limit} {
+		if err := c.SetOffsetMillis(ms); err != nil || c.OffsetMillis() != ms {
+			t.Fatalf("SetOffsetMillis(%d): err %v, offset %d", ms, err, c.OffsetMillis())
+		}
+	}
+	if err := c.SetOffsetMillis(-1001); err != nil {
+		t.Fatal(err)
+	}
+	for _, ms := range []int64{limit + 1, -limit - 1} {
+		if err := c.SetOffsetMillis(ms); !errors.Is(err, ErrOffsetOutOfRange) {
+			t.Fatalf("SetOffsetMillis(%d) err = %v, want ErrOffsetOutOfRange", ms, err)
+		}
+	}
+	if err := c.SetNow(time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)); !errors.Is(err, ErrOffsetOutOfRange) {
+		t.Fatalf("SetNow far away: err = %v", err)
+	}
+	if c.OffsetMillis() != -1001 {
+		t.Fatalf("a refused offset moved the clock: %d", c.OffsetMillis())
+	}
+	if ErrOffsetOutOfRange.Error() != "the offset must be within ±3155760000000 milliseconds" {
+		t.Fatalf("message %q differs from Java's", ErrOffsetOutOfRange)
+	}
+}

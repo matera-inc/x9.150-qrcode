@@ -79,5 +79,8 @@ keystore:
                                  # good keys in use, and the error is logged.
 
 testing:
-  clock-control: false           # X9_TESTING_CLOCKCONTROL. Must stay false in this build: the movable
-                                 # test clock (ADR-0033) arrives with the signing keys.
+  clock-control: false           # X9_TESTING_CLOCKCONTROL. The movable test clock (ADR-0033), for test
+                                 # deployments only: start-up refuses it unless the signing certificate
+                                 # is one bundled with this repository (its private key is public).
+  clock-listen: 127.0.0.1:8099   # X9_TESTING_CLOCKLISTEN. host:port of /test/clock's own listener;
+                                 # never the API port. Read only when clock-control is true.
