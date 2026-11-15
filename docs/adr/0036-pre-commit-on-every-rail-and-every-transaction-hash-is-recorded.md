@@ -196,7 +196,7 @@ these fields only describe how it arrived.
 | `RECEIVED_IN_WRONG_STATUS` | The post-commit reached a QR Code that was not `PAYMENT_INITIATED` held by this payer. `receivedInStatus` says which status it found. |
 | `ACTION_CONTRADICTS_HASH` | `blockchain.action = PAYMENT_INITIATED`, but the message carries a hash. |
 | `NOT_OFFERED_RAIL` | A post-commit named a rail no payment method of the QR Code offers (amended 2026-11-15, below). |
-| `NOT_OFFERED_CURRENCY` | A post-commit named a currency no payment method of the QR Code offers (amended 2026-11-15, below). |
+| `NOT_OFFERED_CURRENCY` | A post-commit named a currency no payment method of the QR Code offers, or one offered only on another rail (amended 2026-11-15, below). |
 
 - **Both may appear together,** on every event of the transition (`payment.initiated` and
   `payment.sent` when a post-commit reserves an `ACTIVE` QR Code).
@@ -234,10 +234,19 @@ these fields only describe how it arrived.
     not the reservation's window (this hash does not stop it, because it was not accepted). The
     QR Code's own notification of record stays the last accepted one.
 - `NOT_SENT` naming a rail or currency not offered is refused like a pre-commit: nothing has moved.
-- The question is whether *some* payment method offers the rail, and whether some offers the
-  currency. An offered rail and an offered currency that belong to different payment methods (USD on
-  FedNow beside USDC on Solana, notified as USD on Solana) are not "not offered": a pre-commit is
-  still refused by the acceptance gate, and a post-commit is registered as before.
+- **The rail and the currency on one payment method** (owner decision, 2026-11-15, second part).
+  A rail and a currency that are each offered, but not on the same payment method, are not offered
+  either: with USD on FedNow beside USDC on Solana, a notification of USD on Solana is not offered.
+  The rail is offered and the currency is not offered on it, so the code is `NOT_OFFERED_CURRENCY`,
+  and the refusal names both, as the payer spelled them: `This QR Code does not offer the USD
+  currency on the Solana rail.` A pre-commit is refused with it and nothing is recorded; a
+  post-commit is recorded on a flagged `payment.sent` and refused exactly as above; a `NOT_SENT` is
+  refused like a pre-commit. Matching stays case-insensitive. The messages above are kept for the
+  plain cases: a rail no method offers, a currency no method offers, or both. This replaces the
+  first version of this amendment, under which such a post-commit was registered as an ordinary one.
+- **A bank rail publishing `payment.sent` for a refused post-commit is confirmed** by the owner
+  (2026-11-15) as the one exception to "bank rails never publish `payment.sent`": the event is the
+  only record of a call that was refused.
 - The two codes join the closed list above. Codes are only ever added within a major version, so
   the event's `schemaVersion` stays `1.1`.
 

@@ -1138,21 +1138,27 @@ class QRCodeEntityNotificationMatrixTest extends AbstractTest {
 
         /**
          * <b>X9-HOLD-154</b> — an offered rail and an offered currency on separate payment methods
-         * are not "not offered": the post-commit is registered as before.
+         * are not offered together: the post-commit earns {@code NOT_OFFERED_CURRENCY}, is recorded on
+         * a flagged {@code payment.sent}, and changes nothing about the QR Code.
          *
-         * <p><b>Source:</b> Ours. ADR-0036, amended 2026-11-15 (owner): the rule names a rail or a
-         * currency the QR Code does not offer.
+         * <p><b>Source:</b> Ours. Owner decision of 2026-11-15, amending ADR-0036: the rail is
+         * offered, the currency is not offered on it.
          *
-         * <p><b>Why:</b> The amendment must not quietly refuse more than it says.
+         * <p><b>Why:</b> Until that decision this post-commit was registered as an ordinary one,
+         * holding the QR Code on a currency it never offered on that rail.
          */
         @Test
-        void anOfferedRailAndAnOfferedCurrencyOnDifferentMethodsAreRegisteredAsBefore() {
+        void anOfferedRailAndAnOfferedCurrencyOnDifferentMethodsAreNotOffered() {
             QRCodeEntity qrCode = qrCode();
 
             NotificationReceiptVO receipt = qrCode.registerPostCommit(bank("FedNow", "USDC", E2E, A), A);
 
-            assertTrue(receipt.notOffered().isEmpty());
-            assertEquals(QRCodeStatusEnum.PAYMENT_INITIATED, qrCode.getStatus());
+            assertEquals(List.of(NotificationDeviationEnum.NOT_OFFERED_CURRENCY), receipt.notOffered());
+            assertEquals(QRCodeStatusEnum.ACTIVE, qrCode.getStatus());
+            assertEquals(List.of(PaymentEventTypeEnum.PAYMENT_SENT), types(qrCode));
+            assertEquals(List.of(NotificationDeviationEnum.RECEIVED_IN_WRONG_STATUS,
+                NotificationDeviationEnum.NOT_OFFERED_CURRENCY), last(qrCode).deviations());
+            assertEquals(QRCodeStatusEnum.ACTIVE, last(qrCode).receivedInStatus());
         }
     }
 

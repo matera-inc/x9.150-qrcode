@@ -241,7 +241,7 @@ closed list owned by ADR-0036; a new one is added there first.
 | `RECEIVED_IN_WRONG_STATUS` | A post-commit reached a QR Code that was not `PAYMENT_INITIATED` held by this payer. `received_in_status_code` says which status it found |
 | `ACTION_CONTRADICTS_HASH` | The payer declared `blockchain.action = PAYMENT_INITIATED` (a request for permission) while sending a transaction hash (proof the money already moved) |
 | `NOT_OFFERED_RAIL` | A post-commit named a rail (`network`) that no payment method of the QR Code offers. The payer was answered 400 and the QR Code did not change; this `payment.sent` is the only record of the call |
-| `NOT_OFFERED_CURRENCY` | The same, for a currency no payment method of the QR Code offers |
+| `NOT_OFFERED_CURRENCY` | The same, for a currency no payment method of the QR Code offers, or one offered only on another rail (USD on Solana when only USDC is offered there) |
 
 - Codes may appear together (`RECEIVED_IN_WRONG_STATUS,ACTION_CONTRADICTS_HASH`), and on every
   event of the transition (both `payment.initiated` and `payment.sent` when a post-commit reserves an

@@ -586,8 +586,11 @@ it is registered, flagged, and changes nothing, so the holder keeps the QR Code.
 **A rail or currency the QR Code does not offer is an error, in both phases** (ADR-0036, amended
 2026-11-15 by the owner). §14.5 gives each rail its own object under `networks`, so a QR Code
 offers exactly the rails it publishes: one that publishes only `fednow` does not offer RTP, and the
-two are no longer grouped as "instant payments". The standard says nothing about a notification
-naming a rail or currency the QR Code never offered; this is our reading:
+two are no longer grouped as "instant payments". A rail and a currency are offered together only
+when one payment method offers both: with USD on FedNow beside USDC on Solana, USD on Solana is
+not offered (owner decision, 2026-11-15), and counts as `NOT_OFFERED_CURRENCY`, refused as `This QR
+Code does not offer the USD currency on the Solana rail.` The standard says nothing about a
+notification naming a rail or currency the QR Code never offered; this is our reading:
 
 - a **pre-commit** naming one is refused with a signed `400` naming the rail, the currency, or both,
   and nothing is recorded;

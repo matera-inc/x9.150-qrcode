@@ -934,7 +934,7 @@ public class QRCodeEntity {
         // does not offer is refused as a pre-commit would be.
         List<NotificationDeviationEnum> notOffered = NotOfferedPolicy.notOffered(this.paymentMethods, data);
         if (!notOffered.isEmpty()) {
-            throw NotOfferedPolicy.refusal(notOffered, data);
+            throw NotOfferedPolicy.refusal(this.paymentMethods, notOffered, data);
         }
 
         QRCodeStatusEnum receivedIn = this.effectiveStatus();
