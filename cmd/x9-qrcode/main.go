@@ -149,6 +149,7 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	events := eventstream.New(st)
 	events.Register(api)
 	paymentrequest.New(st, currencies, cfg.PublicEndpoints.Host, businessClock.Now).Register(api)
+	paymentrequest.NewStatusUpdates(st, time.Duration(cfg.Reservation.TTLSeconds)*time.Second).Register(api)
 	srv := newServer(cfg.Server.Port, httplog.Middleware(logger, testclock.OffsetHeader(businessClock, api)))
 	// On SIGTERM, parked long-polls answer with their current page instead of holding the drain (ADR-0031).
 	srv.RegisterOnShutdown(events.Stop)
