@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**853 tests documented** — every JUnit test and every black-box case.
+**873 tests documented** — every JUnit test and every black-box case.
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
 (STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036 and ADR-0027's EMV and JWS verification rules), the
@@ -141,6 +141,10 @@ single most important thing this index exists for.
 | `X9-CUR-063` | a supported currency in the wrong case is refused at creation | `SupportedCurrencyApiTest.java` |
 | `X9-CUR-070` | peg groups load from strict JSON as upper-cased sets | `CurrencyConfigurationTest.java` |
 | `X9-CUR-080` | of several repeated currencies, the first in request order is named | `QRCodeEntityDuplicateCurrencyTest.java` |
+| `X9-CUR-090` | a currency no payment method offers earns `NOT_OFFERED_CURRENCY`; with an unoffered rail too, both codes, rail first | `NotOfferedPolicyTest.java` |
+| `X9-CUR-091` | the acceptance gate refuses a pre-commit naming an unoffered rail and currency with both names | `NotOfferedPolicyTest.java` |
+| `X9-CUR-520` | a pre-commit in a currency the QR Code does not offer is a signed 400 naming it (with the rail too when both); nothing recorded | `test_payers.py` |
+| `X9-CUR-521` | the holder's post-commit in an unoffered currency is a signed 400, recorded on a `payment.sent` flagged `NOT_OFFERED_CURRENCY`; the reservation untouched, no hash registered | `test_payers.py` |
 | `X9-CUR-501` | a currency outside supported-currencies.json is refused at create, naming it, with no id | `test_create_refusals.py` |
 
 ## The event stream
@@ -324,6 +328,11 @@ Only the party that announced a payment may re-announce it, report it, or give i
 | `X9-HOLD-138` | after a hash, the holder's NOT_SENT is accepted, flagged ACTION_CONTRADICTS_HASH, and changes nothing | `QRCodeEntityNotificationMatrixTest.java` |
 | `X9-HOLD-139` | a NOT_SENT carrying a transaction id is a post-commit, flagged ACTION_CONTRADICTS_HASH | `QRCodeEntityNotificationMatrixTest.java` |
 | `X9-HOLD-140` | the status-update API's revert clears the registered hash with the reservation | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-150` | a bank-rail post-commit on an unoffered rail (RTP beside FedNow) is recorded on a flagged `payment.sent` and changes nothing | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-151` | the holder's post-commit in an unoffered currency is recorded and flagged; the reservation and its window are left alone | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-152` | a post-commit offering neither rail nor currency carries both codes; a closed QR Code stays closed | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-153` | another payer's post-commit on an unoffered rail does not stop the holder's window | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-154` | an offered rail and an offered currency on different payment methods are registered as before | `QRCodeEntityNotificationMatrixTest.java` |
 | `X9-HOLD-130` | a refused retry from the holder releases the reservation, with payment.failed on a chain | `QRCodeEntityNotificationMatrixTest.java` |
 | `X9-HOLD-131` | a refused retry on a bank rail releases the reservation without an event | `QRCodeEntityNotificationMatrixTest.java` |
 | `X9-HOLD-132` | a holder without payer.info cannot retry: 409 | `QRCodeEntityNotificationMatrixTest.java` |
@@ -353,6 +362,10 @@ Only the party that announced a payment may re-announce it, report it, or give i
 | `X9-HOLD-219` | after a hash, the holder's retried pre-commit is a 409 and does not release | `PreCommitOnEveryRailApiTest.java` |
 | `X9-HOLD-220` | a NOT_SENT carrying a transaction id is a post-commit: registered, flagged ACTION_CONTRADICTS_HASH | `PreCommitOnEveryRailApiTest.java` |
 | `X9-HOLD-221` | losing the save race after every re-run answers 409 busy with the current status, never 500 | `PaymentNotificationRaceExhaustedTest.java` |
+| `X9-HOLD-230` | a pre-commit on an unoffered rail (RTP on FedNow-only included) or currency is a signed 400 naming it; nothing recorded | `NotOfferedNotificationApiTest.java` |
+| `X9-HOLD-231` | a post-commit on an unoffered rail is a signed 400, recorded on a `payment.sent` flagged `NOT_OFFERED_RAIL`; the QR Code stays `ACTIVE` | `NotOfferedNotificationApiTest.java` |
+| `X9-HOLD-232` | the holder's post-commit in an unoffered currency is a signed 400, recorded flagged; the holder may still retry | `NotOfferedNotificationApiTest.java` |
+| `X9-HOLD-233` | a post-commit offering neither carries both codes, and a `PAID` QR Code stays `PAID` | `NotOfferedNotificationApiTest.java` |
 | `X9-HOLD-301` | the holder's retry is judged again at the payee's clock, and its refusal frees the QR Code | `HolderRetryAndIdentityApiTest.java` |
 | `X9-HOLD-302` | after a refused retry on a bank rail, the same payer may pre-commit again with the right amount | `HolderRetryAndIdentityApiTest.java` |
 | `X9-HOLD-303` | a refused pre-commit from a non-holder, or on an ACTIVE QR Code, changes nothing | `HolderRetryAndIdentityApiTest.java` |
@@ -693,6 +706,10 @@ status is `X9-MAP-002`.
 | `X9-RAIL-110` | the full create-and-settle flow works on every interpreted rail | `QRCodesApisFlowTest.java` |
 | `X9-RAIL-111` | a payment notification is accepted on every interpreted rail | `QRCodesApisFlowTest.java` |
 | `X9-RAIL-120` | `paymentMethods` sent as a bare object is refused with 400 and no id | `test_create_refusals.py` |
+| `X9-RAIL-130` | each bank rail is offered on its own: a QR Code publishing one does not offer the other two | `NotOfferedPolicyTest.java` |
+| `X9-RAIL-131` | the published rail in the published currency earns no code, whatever the case | `NotOfferedPolicyTest.java` |
+| `X9-RAIL-132` | the refusal names the rail, the currency, or both, in the field it is about | `NotOfferedPolicyTest.java` |
+| `X9-RAIL-133` | the acceptance gate refuses a pre-commit on an unoffered rail, RTP on FedNow-only included | `NotOfferedPolicyTest.java` |
 | `X9-RAIL-501` | a network this deployment does not interpret is refused at create, naming it, with no id | `test_create_refusals.py` |
 | `X9-RAIL-502` | an unknown field inside `solana` is refused at create, naming its path, with no id | `test_create_refusals.py` |
 | `X9-RAIL-503` | an unknown field inside `solana` is refused on PATCH, naming its path, and the ETag does not move | `test_create_refusals.py` |
@@ -702,6 +719,9 @@ status is `X9-MAP-002`.
 | `X9-RAIL-507` | an unknown field at any level of a create is refused in the same words on both builds, with no id | `test_closed_requests.py` |
 | `X9-RAIL-508` | an unknown field at any level of a PATCH is refused in the same words on both builds; the ETag and revision do not move | `test_closed_requests.py` |
 | `X9-RAIL-509` | an unknown field at any level of an outbound payment notification is refused in the same words on both builds | `test_closed_requests.py` |
+| `X9-RAIL-520` | a pre-commit on a rail the QR Code does not offer is a signed 400 naming it, each rail on its own; nothing recorded | `test_payers.py` |
+| `X9-RAIL-521` | a post-commit on an unoffered rail (RTP on FedNow-only) is a signed 400; one `payment.sent` records it flagged `NOT_OFFERED_RAIL`, the QR Code unchanged | `test_payers.py` |
+| `X9-RAIL-522` | a post-commit offering neither rail nor currency is a signed 400 naming both; its `payment.sent` carries both codes, a `PAID` QR Code stays `PAID` | `test_payers.py` |
 
 ## Signatures, keys and problem details
 

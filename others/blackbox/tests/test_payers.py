@@ -19,6 +19,7 @@ this module adds what was missing, and the table says where the rest lives:
 | E: wrong amount | ``X9-AMT-001``, ``X9-AMT-002`` |
 | E: tip outside its range; tip on top of the bill (ADR-0017) | ``X9-TIP-104``; ``X9-TIP-101``, ``X9-TIP-102`` |
 | E: unoffered currency | ``X9-CUR-001`` |
+| E: rail or currency not offered, pre- and post-commit (ADR-0036, amended 2026-11-15) | ``X9-RAIL-520`` to ``-522``, ``X9-CUR-520``, ``X9-CUR-521`` (``TestNotOffered``) |
 | E: destination not on the QR Code | ``X9-RAIL-001`` |
 | E: second payer → 409 | ``X9-HOLD-011``, ``X9-MAP-024`` |
 | E: holder re-announces (refresh, no event) | ``X9-MAP-021``, ``X9-HOLD-010``, ``X9-HOLD-012`` |
@@ -864,3 +865,164 @@ class TestPayerSideEndpoints:
         else:
             assert_refused(response, naming="payment.transactionId", status=400)
             assert peer.received == [], "refused before sending"
+
+
+# ------------------------------------------------------------------ a rail or currency not offered
+
+NOT_OFFERED_E2E = "E2E-BLACKBOX-NOT-OFFERED-1"
+RIWS = "RECEIVED_IN_WRONG_STATUS"
+
+
+def exactly(events, qr, count, *, settle=2.0, timeout=60.0):
+    """Every event for ``qr``, once ``count`` have appeared and a settle has passed, so an event
+    that should not exist has had its chance to appear too."""
+    if count:
+        events.for_qr(qr, until=lambda es: len(es) >= count, timeout=timeout)
+    time.sleep(settle)
+    return [e for e in events.read_all()[0] if e.get("qrCodeId") == qr]
+
+
+def fednow_only(api):
+    return api.create_qr(**RAILS["fednow"]["create"])
+
+
+def snapshot(api, qr):
+    response = api.qr(qr)
+    body = response.body
+    return {"status": body.get("status"), "revision": body.get("revision"),
+            "revisedAt": body.get("revisedAt"),
+            "paymentNotification": body.get("paymentNotification"), "etag": response.etag}
+
+
+class TestNotOffered:
+    """ADR-0036, amended 2026-11-15 (owner): a notification naming a rail or a currency the QR
+    Code does not offer. A pre-commit is refused, nothing recorded. A post-commit is "an error —
+    we record the call just in case, but we return an error": a signed 400, one ``payment.sent``
+    carrying ``NOT_OFFERED_RAIL`` and/or ``NOT_OFFERED_CURRENCY``, and the QR Code unchanged."""
+
+    @pytest.mark.parametrize("published, notified", [
+        ("fednow", "rtp"), ("fednow", "ach"), ("rtp", "fednow"), ("ach", "fednow")])
+    def test_a_pre_commit_on_a_rail_the_qr_code_does_not_offer_is_refused(
+            self, api, events, payee_certificate, business_now, published, notified):
+        """X9-RAIL-520 — a pre-commit on a rail the QR Code does not offer is a signed 400 naming
+        the rail, each rail on its own (RTP on a FedNow-only QR Code included); nothing recorded.
+
+        Source: Ours. ADR-0036, amended 2026-11-15 (owner). ANSI X9.150-2026 §14.5 gives each
+          rail its own object.
+        Why: A pre-commit asks "may I pay this way?" before money moves; a way the biller never
+          published is a no. Java grouped FedNow and RTP as "instant payments".
+        """
+        qr = api.create_qr(**RAILS[published]["create"])
+        notify = RAILS[notified]["notify"]
+        before = snapshot(api, qr)
+
+        body = signed(api.notify(qr, **notify), payee_certificate, business_now, 400)
+
+        assert f"does not offer the {notify['network']} rail" in str(body), body
+        assert snapshot(api, qr) == before
+        assert exactly(events, qr, 0) == []
+
+    def test_a_pre_commit_in_a_currency_the_qr_code_does_not_offer_is_refused(
+            self, api, events, payee_certificate, business_now):
+        """X9-CUR-520 — a pre-commit in a currency the QR Code does not offer is a signed 400 naming
+        the currency, and with an unoffered rail too, naming both; nothing recorded.
+
+        Source: Ours. ADR-0036, amended 2026-11-15 (owner).
+        Why: The payer must be told every part of its message that was wrong, in the words a
+          post-commit gets too.
+        """
+        qr = fednow_only(api)
+        before = snapshot(api, qr)
+
+        currency = signed(api.notify(qr, **{**RAILS["fednow"]["notify"], "currency": "EUR"}),
+                          payee_certificate, business_now, 400)
+        both = signed(api.notify(qr, **{**RAILS["rtp"]["notify"], "currency": "EUR"}),
+                      payee_certificate, business_now, 400)
+
+        assert "does not offer the EUR currency" in str(currency), currency
+        assert "does not offer the rtp rail nor the EUR currency" in str(both), both
+        assert snapshot(api, qr) == before
+        assert exactly(events, qr, 0) == []
+
+    def test_a_post_commit_on_a_rail_the_qr_code_does_not_offer_is_recorded_and_refused(
+            self, api, events, payee_certificate, business_now):
+        """X9-RAIL-521 — a post-commit on a rail the QR Code does not offer (RTP on FedNow-only) is
+        a signed 400 naming the rail; one payment.sent records it, flagged NOT_OFFERED_RAIL, with
+        its reference and receivedInStatus; the QR Code is unchanged and still open.
+
+        Source: Ours. ADR-0036, amended 2026-11-15 (owner): "It's an error — we record the call
+          just in case, but we return an error."
+        Why: The money may have moved, so the payment system needs the reference; the payer
+          needs to hear it was wrong; and the QR Code must not be reserved by a payment on a rail
+          the biller never published.
+        """
+        qr = fednow_only(api)
+        before = snapshot(api, qr)
+
+        body = signed(api.notify(qr, transaction_id=NOT_OFFERED_E2E, **RAILS["rtp"]["notify"]),
+                      payee_certificate, business_now, 400)
+
+        assert "does not offer the rtp rail" in str(body), body
+        assert snapshot(api, qr) == before, "nothing about the QR Code changes"
+        sent, = exactly(events, qr, 1)
+        assert sent["type"] == "payment.sent", sent
+        assert sent["transactionId"] == NOT_OFFERED_E2E, sent
+        assert sent["network"] == "rtp", sent
+        assert sent["receivedInStatus"] == "ACTIVE", sent
+        assert sorted(sent["deviations"]) == sorted([RIWS, "NOT_OFFERED_RAIL"]), sent
+        assert sent["schemaVersion"] == "1.1", sent
+        signed(api.notify(qr, payer_info="honest@example.com", **RAILS["fednow"]["notify"]),
+               payee_certificate, business_now, 200)
+
+    def test_the_holders_post_commit_in_a_currency_not_offered_is_recorded_and_refused(
+            self, api, events, payee_certificate, business_now):
+        """X9-CUR-521 — the holder's post-commit in a currency the QR Code does not offer is a
+        signed 400 naming the currency; one payment.sent records its hash, flagged
+        NOT_OFFERED_CURRENCY; the reservation is not touched and no hash is registered against it.
+
+        Source: Ours. ADR-0036, amended 2026-11-15 (owner).
+        Why: Java checked the currency only at the pre-commit gate, so this report registered its
+          hash and froze the reservation as if the QR Code had been paid.
+        """
+        qr = api.create_qr()
+        signed(api.notify(qr), payee_certificate, business_now, 200)
+        before = snapshot(api, qr)
+
+        body = signed(api.notify(qr, currency="EUR", action="SENT", transaction_id=TX_HASH),
+                      payee_certificate, business_now, 400)
+
+        assert "does not offer the EUR currency" in str(body), body
+        assert snapshot(api, qr) == before
+        initiated, sent = exactly(events, qr, 2)
+        assert (initiated["type"], sent["type"]) == ("payment.initiated", "payment.sent")
+        assert sent["transactionId"] == TX_HASH, sent
+        assert sent["currency"] == "EUR", sent
+        assert sent["receivedInStatus"] == "PAYMENT_INITIATED", sent
+        assert sent["deviations"] == ["NOT_OFFERED_CURRENCY"], sent
+        signed(api.notify(qr), payee_certificate, business_now, 200)  # no hash registered: a retry
+
+    def test_a_post_commit_offering_neither_carries_both_codes_and_a_paid_qr_code_stays_paid(
+            self, api, events, payee_certificate, business_now):
+        """X9-RAIL-522 — a post-commit naming neither an offered rail nor an offered currency is a
+        signed 400 naming both; its payment.sent carries both codes, and a PAID QR Code stays PAID.
+
+        Source: Ours. ADR-0036, amended 2026-11-15 (owner).
+        Why: The payment system decides what to do with the money from the codes, so it must be
+          told everything that was wrong; a closed QR Code never reopens.
+        """
+        qr = fednow_only(api)
+        assert api.mark_paid(qr, network="fednow").status == 200
+        exactly(events, qr, 1)
+        before = snapshot(api, qr)
+
+        body = signed(api.notify(qr, action="SENT", transaction_id=TX_HASH),
+                      payee_certificate, business_now, 400)
+
+        assert "does not offer the Solana rail nor the USDC currency" in str(body), body
+        assert snapshot(api, qr) == before
+        cleared, sent = exactly(events, qr, 2)
+        assert (cleared["type"], sent["type"]) == ("payment.cleared", "payment.sent")
+        assert sent["transactionId"] == TX_HASH, sent
+        assert sent["receivedInStatus"] == "PAID", sent
+        assert sorted(sent["deviations"]) == sorted(
+            [RIWS, "NOT_OFFERED_RAIL", "NOT_OFFERED_CURRENCY"]), sent

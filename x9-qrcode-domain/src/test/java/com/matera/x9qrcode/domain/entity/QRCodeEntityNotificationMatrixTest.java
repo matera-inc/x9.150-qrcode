@@ -18,6 +18,7 @@ import com.matera.x9qrcode.domain.vo.BlockchainVO;
 import com.matera.x9qrcode.domain.vo.CryptoWalletPaymentAddressVO;
 import com.matera.x9qrcode.domain.vo.CurrencyAmountVO;
 import com.matera.x9qrcode.domain.vo.DescriptionVO;
+import com.matera.x9qrcode.domain.vo.ExpectedDateVO;
 import com.matera.x9qrcode.domain.vo.NetworksVO;
 import com.matera.x9qrcode.domain.vo.NotificationReceiptVO;
 import com.matera.x9qrcode.domain.vo.PaymentDetailsVO;
@@ -994,6 +995,164 @@ class QRCodeEntityNotificationMatrixTest extends AbstractTest {
             preCommit(refused, solana(ActionEnum.PAYMENT_INITIATED, null, A), A, Duration.ZERO);
             refused.refuseRetriedPreCommit(solana(ActionEnum.PAYMENT_INITIATED, null, A), "refused");
             assertEquals(QRCodeStatusEnum.ACTIVE, refused.effectiveStatus());
+        }
+    }
+
+    // ------------------------------------------------------- a rail or currency not offered
+
+    /**
+     * ADR-0036, amended 2026-11-15 (owner): a post-commit naming a rail or currency this QR Code
+     * does not offer is an error, but the call is recorded "just in case". The pre-commit refusal
+     * is the acceptance gate's ({@code NotOfferedPolicyTest}).
+     */
+    @Nested
+    class NotOffered {
+
+        private static PaymentNotificationDataVO bank(String network, String currency, String e2e,
+                                                      ReservationHolderVO from) {
+            return new PaymentNotificationDataVO(
+                new PaymentNotificationPaymentVO(new AmountVO(1_000L), null, currency, network, e2e),
+                from.payerInfo() == null ? null : new PaymentNotificationPayerVO(from.payerInfo()),
+                new ExpectedDateVO(NOW.plusDays(1)),
+                null);
+        }
+
+        private static PaymentNotificationDataVO solanaIn(String currency, String hash, ReservationHolderVO from) {
+            return new PaymentNotificationDataVO(
+                new PaymentNotificationPaymentVO(new AmountVO(1_000L), null, currency, "solana", hash),
+                new PaymentNotificationPayerVO(from.payerInfo()),
+                null,
+                new BlockchainVO(ActionEnum.SENT, new CryptoWalletPaymentAddressVO(PAYER_WALLET),
+                    new CryptoWalletPaymentAddressVO(WALLET)));
+        }
+
+        /**
+         * <b>X9-HOLD-150</b> — a bank-rail post-commit on a rail the QR Code does not offer, RTP
+         * beside FedNow included, is recorded on a flagged payment.sent and changes nothing.
+         *
+         * <p><b>Source:</b> Ours. ADR-0036, amended 2026-11-15 (owner).
+         *
+         * <p><b>Why:</b> Java grouped FedNow and RTP, so an RTP report on a FedNow-only QR Code
+         * reserved it; and a report on ACH was refused and its reference lost. The money may have
+         * moved, so the reference is kept, but nothing about the QR Code changes for it.
+         */
+        @Test
+        void aPostCommitOnAnUnofferedRailIsRecordedAndChangesNothing() {
+            QRCodeEntity qrCode = qrCode();
+            OffsetDateTime revisedAt = qrCode.getRevisedAt();
+
+            NotificationReceiptVO receipt = qrCode.registerPostCommit(bank("RTP", "USD", E2E, A), A);
+
+            assertEquals(List.of(NotificationDeviationEnum.NOT_OFFERED_RAIL), receipt.notOffered());
+            assertEquals(QRCodeStatusEnum.ACTIVE, qrCode.getStatus(), "no reservation is taken");
+            assertNull(qrCode.getReservedBy());
+            assertEquals(revisedAt, qrCode.getRevisedAt(), "nothing about the QR Code changed");
+            assertNull(qrCode.getPaymentNotification().data(), "a refused report is not the QR Code's notification");
+
+            assertEquals(List.of(PaymentEventTypeEnum.PAYMENT_SENT), types(qrCode),
+                "registered on payment.sent, on a bank rail too");
+            PaymentEvent sent = last(qrCode);
+            assertEquals(E2E, sent.transactionId());
+            assertEquals("RTP", sent.network());
+            assertEquals(QRCodeStatusEnum.ACTIVE, sent.receivedInStatus());
+            assertEquals(List.of(NotificationDeviationEnum.RECEIVED_IN_WRONG_STATUS,
+                NotificationDeviationEnum.NOT_OFFERED_RAIL), sent.deviations());
+        }
+
+        /**
+         * <b>X9-HOLD-151</b> — the holder's post-commit in a currency the QR Code does not offer is
+         * recorded and flagged; the reservation is not touched and its window does not stop.
+         *
+         * <p><b>Source:</b> Ours. ADR-0036, amended 2026-11-15 (owner).
+         *
+         * <p><b>Why:</b> Currency was checked only at the pre-commit gate, so this report was taken
+         * as the payment of the QR Code. It is not one: the QR Code stays as it was.
+         */
+        @Test
+        void theHoldersPostCommitInAnUnofferedCurrencyLeavesTheReservationAlone() {
+            QRCodeEntity qrCode = heldBy(qrCode(), A);
+            OffsetDateTime window = qrCode.getInitiatedExpiresAt();
+            PaymentNotificationDataVO held = qrCode.getPaymentNotification().data();
+
+            NotificationReceiptVO receipt = qrCode.registerPostCommit(solanaIn("EUR", HASH_1, A), A);
+
+            assertEquals(List.of(NotificationDeviationEnum.NOT_OFFERED_CURRENCY), receipt.notOffered());
+            assertEquals(QRCodeStatusEnum.PAYMENT_INITIATED, qrCode.effectiveStatus());
+            assertTrue(qrCode.isHeldBy(A));
+            assertEquals(window, qrCode.getInitiatedExpiresAt(), "the window is not stopped");
+            assertFalse(qrCode.isWindowStopped());
+            assertEquals(held, qrCode.getPaymentNotification().data());
+
+            PaymentEvent sent = last(qrCode);
+            assertEquals(PaymentEventTypeEnum.PAYMENT_SENT, sent.type());
+            assertEquals(HASH_1, sent.transactionId());
+            assertEquals("EUR", sent.currency());
+            assertEquals(QRCodeStatusEnum.PAYMENT_INITIATED, sent.receivedInStatus());
+            assertEquals(List.of(NotificationDeviationEnum.NOT_OFFERED_CURRENCY), sent.deviations());
+        }
+
+        /**
+         * <b>X9-HOLD-152</b> — a post-commit naming neither an offered rail nor an offered currency
+         * carries both codes; on a closed QR Code nothing reopens.
+         *
+         * <p><b>Source:</b> Ours. ADR-0036, amended 2026-11-15 (owner).
+         *
+         * <p><b>Why:</b> The payment system needs every fault to decide what to do with the money.
+         */
+        @Test
+        void bothCodesWhenNeitherIsOfferedAndAClosedQRCodeStaysClosed() {
+            QRCodeEntity paid = qrCode();
+            paid.pay(new PaymentDetailsVO(E2E, "fednow"));
+
+            NotificationReceiptVO receipt = paid.registerPostCommit(bank("ACH", "EUR", E2E, A), A);
+
+            assertEquals(List.of(NotificationDeviationEnum.NOT_OFFERED_RAIL,
+                NotificationDeviationEnum.NOT_OFFERED_CURRENCY), receipt.notOffered());
+            assertEquals(QRCodeStatusEnum.PAID, paid.getStatus());
+            assertEquals(List.of(NotificationDeviationEnum.RECEIVED_IN_WRONG_STATUS,
+                NotificationDeviationEnum.NOT_OFFERED_RAIL, NotificationDeviationEnum.NOT_OFFERED_CURRENCY),
+                last(paid).deviations());
+            assertEquals(QRCodeStatusEnum.PAID, last(paid).receivedInStatus());
+        }
+
+        /**
+         * <b>X9-HOLD-153</b> — another payer's post-commit on an unoffered rail leaves the holder's
+         * reservation and window as they were.
+         *
+         * <p><b>Source:</b> Ours. ADR-0036, amended 2026-11-15 (owner).
+         *
+         * <p><b>Why:</b> A registered hash normally stops the window; a refused one must not, or a
+         * report the payee said no to would keep the QR Code out of circulation for good.
+         */
+        @Test
+        void anotherPayersPostCommitOnAnUnofferedRailDoesNotStopTheWindow() {
+            QRCodeEntity qrCode = heldBy(qrCode(), A);
+
+            qrCode.registerPostCommit(bank("RTP", "USD", E2E, B), B);
+
+            assertTrue(qrCode.isHeldBy(A));
+            assertFalse(qrCode.isWindowStopped());
+            assertEquals(List.of(PaymentEventTypeEnum.PAYMENT_INITIATED, PaymentEventTypeEnum.PAYMENT_SENT),
+                types(qrCode));
+        }
+
+        /**
+         * <b>X9-HOLD-154</b> — an offered rail and an offered currency on separate payment methods
+         * are not "not offered": the post-commit is registered as before.
+         *
+         * <p><b>Source:</b> Ours. ADR-0036, amended 2026-11-15 (owner): the rule names a rail or a
+         * currency the QR Code does not offer.
+         *
+         * <p><b>Why:</b> The amendment must not quietly refuse more than it says.
+         */
+        @Test
+        void anOfferedRailAndAnOfferedCurrencyOnDifferentMethodsAreRegisteredAsBefore() {
+            QRCodeEntity qrCode = qrCode();
+
+            NotificationReceiptVO receipt = qrCode.registerPostCommit(bank("FedNow", "USDC", E2E, A), A);
+
+            assertTrue(receipt.notOffered().isEmpty());
+            assertEquals(QRCodeStatusEnum.PAYMENT_INITIATED, qrCode.getStatus());
         }
     }
 

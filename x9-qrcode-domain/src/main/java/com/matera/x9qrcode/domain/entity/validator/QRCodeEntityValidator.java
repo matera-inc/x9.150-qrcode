@@ -325,6 +325,12 @@ public final class QRCodeEntityValidator {
         }
     }
 
+    /**
+     * Whether the notification is well formed for the rail it names. Not whether this QR Code
+     * offers that rail: that is {@code NotOfferedPolicy}'s question, and its answer differs by phase
+     * (ADR-0036, amended 2026-11-15): a pre-commit is refused, a post-commit is recorded and
+     * refused.
+     */
     private void validatePaymentNotificationNetwork(PaymentNotificationDataVO newPaymentNotification) {
         // A switch EXPRESSION, deliberately. The statement form this replaced did not force a case
         // per rail, so adding Solana to the enum silently dropped its notifications through
@@ -333,7 +339,7 @@ public final class QRCodeEntityValidator {
         newPaymentNotification.payment().interpretedRail().ifPresentOrElse(
             rail -> {
                 Runnable validation = switch (rail) {
-                    case FEDNOW, RTP -> () -> validatePaymentNotificationFromInstantPayments(newPaymentNotification);
+                    case FEDNOW, RTP -> () -> validatePaymentNotificationFromBankRail(newPaymentNotification);
                     case ACH -> () -> validatePaymentNotificationFromACH(newPaymentNotification);
                     case SOLANA -> () -> validatePaymentNotificationFromBlockchain(newPaymentNotification);
                 };
@@ -345,49 +351,20 @@ public final class QRCodeEntityValidator {
 
     /**
      * FedNow and RTP. The End-to-End ID is no longer required: without it the notification is a
-     * pre-commit, which is what gives these rails a reservation at all (ADR-0036, S2.4-AC1).
+     * pre-commit, which is what gives these rails a reservation at all (ADR-0036, S2.4-AC1). Each
+     * rail is offered on its own; the two are no longer grouped as "instant payments".
      */
-    private void validatePaymentNotificationFromInstantPayments(PaymentNotificationDataVO newPaymentNotification) {
-        List<PaymentMethodVO> paymentMethods = this.entity.getPaymentMethods();
-        boolean networkFounded = false;
-
+    private void validatePaymentNotificationFromBankRail(PaymentNotificationDataVO newPaymentNotification) {
         if (nonNull(newPaymentNotification.blockchain())) {
             throw new BusinessRuleException("paymentNotification.data.blockchain",
                 "Blockchain data must not be informed for Instant Payments.");
         }
-
-        for (PaymentMethodVO paymentMethod : paymentMethods) {
-            if (nonNull(paymentMethod.networks().fedNow()) || nonNull(paymentMethod.networks().rtp())) {
-                networkFounded = true;
-                break;
-            }
-        }
-
-        if (!networkFounded) {
-            throw new BusinessRuleException("paymentNotification.data.payment.network",
-                "This QRCode does not support Instant Payment networks.");
-        }
     }
 
     private void validatePaymentNotificationFromACH(PaymentNotificationDataVO newPaymentNotification) {
-        List<PaymentMethodVO> paymentMethods = this.entity.getPaymentMethods();
-        boolean networkFounded = false;
-
         if (nonNull(newPaymentNotification.blockchain())) {
             throw new BusinessRuleException("paymentNotification.data.blockchain",
                 "Blockchain data must not be informed for ACH payments.");
-        }
-
-        for (PaymentMethodVO paymentMethod : paymentMethods) {
-            if (nonNull(paymentMethod.networks().ach())) {
-                networkFounded = true;
-                break;
-            }
-        }
-
-        if (!networkFounded) {
-            throw new BusinessRuleException("paymentNotification.data.payment.network",
-                "This QRCode does not support ACH network.");
         }
 
         if (isNull(newPaymentNotification.payer()) || StringUtils.isBlank(newPaymentNotification.payer().info())) {
@@ -400,25 +377,6 @@ public final class QRCodeEntityValidator {
     }
 
     private void validatePaymentNotificationFromBlockchain(PaymentNotificationDataVO newPaymentNotification) {
-        List<PaymentMethodVO> paymentMethods = this.entity.getPaymentMethods();
-        boolean networkFounded = false;
-
-        String notifiedNetwork = newPaymentNotification.payment().network();
-
-        for (PaymentMethodVO paymentMethod : paymentMethods) {
-            // The rail actually notified, not merely "some blockchain": a QR offering Solana does not
-            // thereby accept a Bitcoin payment.
-            if (paymentMethod.networks().supports(notifiedNetwork)) {
-                networkFounded = true;
-                break;
-            }
-        }
-
-        if (!networkFounded) {
-            throw new BusinessRuleException("paymentNotification.data.payment.network",
-                "This QRCode does not support the %s network.".formatted(notifiedNetwork));
-        }
-
         if (isNull(newPaymentNotification.blockchain())) {
             throw new BusinessRuleException("paymentNotification.data.blockchain",
                 "Blockchain data is required for blockchain payment notifications.");

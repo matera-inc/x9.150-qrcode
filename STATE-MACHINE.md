@@ -200,6 +200,15 @@ Messages from a payer:
 | **`SENT` without a hash** (chain) | 400 | 400 | 400 | 400 |
 | **`NOT_SENT`** (chain: the payer gives it back) | 400; from the holder of a lapsed reservation: accepted, `payment.failed` | → `ACTIVE`, reservation cleared, `payment.failed`. Once a hash is registered: accepted, nothing changes, flagged `ACTION_CONTRADICTS_HASH` (in the warning; no event) § | 409 | 400 |
 | **`NOT_SENT` with a `transactionId`** (chain) | As a post-commit (the evidence decides), also flagged `ACTION_CONTRADICTS_HASH` | same | same | same |
+| **Pre-commit on a rail or currency not offered** † | 400 naming it, nothing recorded | 400 naming it; → `ACTIVE`, reservation cleared, as for any refused retry | 409, nothing changes | 400, nothing changes |
+| **Post-commit on a rail or currency not offered** † | 400 naming it; recorded on one `payment.sent` (every rail, bank rails included) flagged `NOT_OFFERED_RAIL` and/or `NOT_OFFERED_CURRENCY`; status, reservation and window unchanged | same | same | same |
+
+† **A rail or currency the QR Code does not offer is an error** (ADR-0036, amended 2026-11-15
+by the owner). Each rail stands on its own: a QR Code publishing only `fednow` does not offer
+RTP. A pre-commit naming one is refused and nothing is recorded. A post-commit naming one is
+recorded "just in case", since the money may have moved, and still answered with the same signed
+400: its notification, transaction id and `receivedInStatus` travel on a `payment.sent`, and
+nothing about the QR Code changes, not even the reservation's window.
 
 From the payment system (status-update API), and from time:
 
@@ -233,8 +242,9 @@ re-runs answers 409 "busy" with the current status, never 500.
 **`deviations`** (on the events, and in the warning logged for the payer):
 `RECEIVED_IN_WRONG_STATUS` when a post-commit reached a QR Code that was not
 `PAYMENT_INITIATED` held by this payer; `ACTION_CONTRADICTS_HASH` when
-`blockchain.action = PAYMENT_INITIATED` carries a hash. Absent when the payer
-followed the rules. The Java document keeps only the latest notification; every
+`blockchain.action = PAYMENT_INITIATED` carries a hash; `NOT_OFFERED_RAIL` and
+`NOT_OFFERED_CURRENCY` when a post-commit named a rail or currency no payment method
+offers (†). Absent when the payer followed the rules. The Java document keeps only the latest notification; every
 hash survives in the event log as its own `payment.sent`, and two hashes for one QR
 Code are the payment system's signal of a duplicate payment.
 

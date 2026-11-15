@@ -240,10 +240,18 @@ closed list owned by ADR-0036; a new one is added there first.
 |---|---|
 | `RECEIVED_IN_WRONG_STATUS` | A post-commit reached a QR Code that was not `PAYMENT_INITIATED` held by this payer. `received_in_status_code` says which status it found |
 | `ACTION_CONTRADICTS_HASH` | The payer declared `blockchain.action = PAYMENT_INITIATED` (a request for permission) while sending a transaction hash (proof the money already moved) |
+| `NOT_OFFERED_RAIL` | A post-commit named a rail (`network`) that no payment method of the QR Code offers. The payer was answered 400 and the QR Code did not change; this `payment.sent` is the only record of the call |
+| `NOT_OFFERED_CURRENCY` | The same, for a currency no payment method of the QR Code offers |
 
-- Both codes may appear together (`RECEIVED_IN_WRONG_STATUS,ACTION_CONTRADICTS_HASH`), and on every
+- Codes may appear together (`RECEIVED_IN_WRONG_STATUS,ACTION_CONTRADICTS_HASH`), and on every
   event of the transition (both `payment.initiated` and `payment.sent` when a post-commit reserves an
   `ACTIVE` QR Code).
+- `NOT_OFFERED_RAIL` and `NOT_OFFERED_CURRENCY` (added 2026-11-15, ADR-0036 amendment) appear only
+  on a `payment.sent`, which in that case is written **on every rail, bank rails included**, and
+  only when the payer was refused: read such a row as "a payer says it paid this QR Code in a way
+  it never offered", never as a registration of the payment. Both appear when both are true, after
+  any other code (`RECEIVED_IN_WRONG_STATUS,NOT_OFFERED_RAIL,NOT_OFFERED_CURRENCY`). They are
+  additive codes, so `schema_version` stays `1.1`.
 - `''` means the payer followed the rules. On the HTTP API the field is then absent, never an empty
   list.
 
