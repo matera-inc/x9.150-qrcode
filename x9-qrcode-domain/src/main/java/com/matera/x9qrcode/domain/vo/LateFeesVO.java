@@ -17,6 +17,9 @@ public record LateFeesVO(
     String explanation
 ) {
 
+    /** The late fees' path in a payment request body. */
+    private static final String FIELD = "bill.amountDue.adjustments.parameters.lateFees";
+
     public LateFeesVO {
         if (isNull(fixed)) {
             throw new ValueObjectRuleException("Fixed late fee must not be null.");
@@ -30,12 +33,13 @@ public record LateFeesVO(
             throw new ValueObjectRuleException("Late fee explanation must not be null or blank.");
         }
 
+        // One rule, one kind of refusal, each naming its own field (owner decision 2026-11-15).
         if (fixed < 0) {
-            throw new ValueObjectRuleException("Fixed late fee must be greater than 0.");
+            throw new BusinessRuleException(FIELD + ".fixed", "must be greater than or equal to 0");
         }
 
         if (perDay < 0) {
-            throw new BusinessRuleException("Per day late fee must be greater than 0.");
+            throw new BusinessRuleException(FIELD + ".perDay", "must be greater than or equal to 0");
         }
 
         AmountVO.requireAtMost18Digits(fixed);

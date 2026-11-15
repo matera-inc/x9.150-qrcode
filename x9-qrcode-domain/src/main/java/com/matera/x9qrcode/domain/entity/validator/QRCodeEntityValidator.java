@@ -29,6 +29,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.math.BigInteger;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -225,7 +226,10 @@ public final class QRCodeEntityValidator {
     public void validatePaymentMethods() {
         List<PaymentMethodVO> paymentMethods = this.entity.getPaymentMethods();
 
-        paymentMethods.stream().collect(Collectors.groupingBy(PaymentMethodVO::currency, Collectors.counting()))
+        // Insertion-ordered: of several repeated currencies the first in request order is named, not
+        // whichever a HashMap happened to iterate first (owner decision 2026-11-15).
+        paymentMethods.stream()
+            .collect(Collectors.groupingBy(PaymentMethodVO::currency, LinkedHashMap::new, Collectors.counting()))
             .forEach((currency, count) -> {
                 if (count > 1) {
                     throw new BusinessRuleException("paymentMethods", "must not contain duplicated currency: %s".formatted(currency));
