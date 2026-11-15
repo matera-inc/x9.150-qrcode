@@ -3,14 +3,15 @@
 // Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
 // based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
 
-// Package paymentrequest is a biller's API on a QR Code: create it, and read it back (Story 9.6),
-// answered as the Java build answers (ADR-0028).
+// Package paymentrequest is a biller's API on a QR Code: create it, read it back (Story 9.6) and
+// edit it (Story 9.7), answered as the Java build answers (ADR-0028).
 //
 // A create is read into the contract's type, checked by the contract (internal/contract), then by
 // the business rules (internal/billing) in Java's order, and written in one transaction
 // (internal/store): a holder of the requested location gives it up first when it may (ADR-0024),
 // then the QR Code is inserted with its EMV string. No event is written (X9-MAP-001). A GET reads
-// one row and composes the answer from its columns and its request_json.
+// one row and composes the answer from its columns and its request_json. A PATCH (patch.go) is
+// merged into request_json, checked on the merged result, and written with its audit row.
 package paymentrequest
 
 import (
@@ -51,6 +52,7 @@ func New(st *store.Store, currencies *billing.Currencies, host string, now func(
 func (s *Service) Register(api *httpapi.API) {
 	api.Handle("POST /api/v1/payment-request", s.create)
 	api.Handle("GET /api/v1/payment-request/{id}", s.get)
+	api.Handle("PATCH /api/v1/payment-request/{id}", s.patch)
 }
 
 // create is POST /api/v1/payment-request (S9.6-AC1 to AC3).
@@ -113,7 +115,7 @@ func (s *Service) decideCreate(ctx context.Context, rd *store.Reader, now time.T
 		case err != nil:
 			return store.Change{}, err
 		default:
-			if release, err = s.release(holder, req.Creditor, now); err != nil {
+			if release, err = s.release(holder, req.Creditor, now, msgCreditorChanged); err != nil {
 				return store.Change{}, err
 			}
 		}
@@ -137,11 +139,13 @@ func (s *Service) decideCreate(ctx context.Context, rd *store.Reader, now time.T
 	return store.Change{Release: release, Decision: d, EMVContent: content}, nil
 }
 
-// release decides whether holder gives its location up to a create by creditor: only to the same
-// creditor, and only when it is not live (ADR-0024; an expired ACTIVE holder is not live, which
-// Java does not see, BUG-004). It moves to a fresh location with its new EMV string; its revision
-// does not move and nothing is emitted (X9-MAP-050).
-func (s *Service) release(holder store.QRCode, creditor contract.Object[contract.Creditor], now time.Time) (*store.Release, error) {
+// release decides whether holder gives its location up to a create or a PATCH by creditor: only to
+// the same creditor, refused with otherCreditor otherwise, and only when it is not live (ADR-0024;
+// an expired ACTIVE holder is not live, which Java does not see, BUG-004). It moves to a fresh
+// location with its new EMV string; its revision does not move and nothing is emitted (X9-MAP-050).
+func (s *Service) release(holder store.QRCode, creditor contract.Object[contract.Creditor], now time.Time,
+	otherCreditor string,
+) (*store.Release, error) {
 	held, err := readRequest(holder.RequestJSON)
 	if err != nil {
 		return nil, err
@@ -151,7 +155,7 @@ func (s *Service) release(holder store.QRCode, creditor contract.Object[contract
 		return nil, err
 	}
 	if !same {
-		return nil, httpapi.BusinessRule("", msgCreditorChanged)
+		return nil, httpapi.BusinessRule("", otherCreditor)
 	}
 	fresh, err := store.NewLocationID()
 	if err != nil {
