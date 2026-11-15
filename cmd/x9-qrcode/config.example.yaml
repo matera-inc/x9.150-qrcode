@@ -19,6 +19,11 @@ server:
   shutdown-delay-seconds: 5      # X9_SERVER_SHUTDOWNDELAYSECONDS. Readiness is DOWN this long
                                  # after SIGTERM before new connections are refused.
 
+public-endpoints:
+  host: x9-150.example.com       # X9_PUBLICENDPOINTS_HOST. The public host, no scheme, written into
+                                 # every QR Code's location URL. At most 37 characters, or the URL
+                                 # would not fit EMV tag 26: a longer host is refused at start.
+
 database:
   host: postgres.example.com     # DATABASE_HOST            REQUIRED
   port: 5432                     # DATABASE_PORT

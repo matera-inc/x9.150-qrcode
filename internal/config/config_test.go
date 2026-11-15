@@ -158,6 +158,32 @@ func TestInvalidValues(t *testing.T) {
 	}
 }
 
+// S8.1-AC4: a public host longer than 37 characters stops the service at start, naming the limit,
+// as the Java build does (X9PropertiesHostLengthTest); 37 characters start. The variable is the
+// Java build's.
+func TestPublicHostLongerThan37IsRefused(t *testing.T) {
+	host37 := strings.Repeat("a", 37-len(".example.com")) + ".example.com"
+	cfg, err := Load("", append(complete(), "X9_PUBLICENDPOINTS_HOST="+host37))
+	if err != nil {
+		t.Fatalf("a 37-character host: %v", err)
+	}
+	if cfg.PublicEndpoints.Host != host37 {
+		t.Fatalf("public-endpoints.host = %q", cfg.PublicEndpoints.Host)
+	}
+	_, err = Load("", append(complete(), "X9_PUBLICENDPOINTS_HOST=a"+host37))
+	want := "public-endpoints.host (X9_PUBLICENDPOINTS_HOST): must be at most 37 characters"
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("a 38-character host: err = %v, want it to contain %q", err, want)
+	}
+	path := writeFile(t, "x9.yaml", "public-endpoints:\n  host: a"+host37+"\n")
+	if _, err := Load(path, complete()); err == nil || !strings.Contains(err.Error(), "37") {
+		t.Fatalf("a 38-character host in the file: err = %v, want the limit 37 named", err)
+	}
+	if _, err := Load("", append(complete(), "X9_PUBLICENDPOINTS_HOST=x9 example")); err == nil {
+		t.Fatal("a host with a space started")
+	}
+}
+
 func TestPasswordFile(t *testing.T) {
 	path := writeFile(t, "password", "secret\n")
 	cfg, err := Load("", append(without(complete(), "DATABASE_PASSWORD"), "DATABASE_PASSWORD_FILE="+path))
