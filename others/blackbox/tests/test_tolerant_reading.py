@@ -44,16 +44,28 @@ FOREIGN = {
 
 @pytest.fixture
 def decode(api, other_bank, pki, business_now):
-    """Decode ``payload`` as served by the other bank, signed by ``signer`` (the bank's own key by
-    default). Returns the decoder's Response."""
+    """Decode ``payload`` as served by the other bank, signed by its own key under the correlationId
+    of the request it answers, as every answer must be (ADR-0027, amendment of 2026-11-15).
+
+    ``token``, when given, is a function of the request's correlationId returning the whole answer
+    instead (a tampered one). ``correlation_id`` is the caller's, sent as ``correlationID``; without
+    it the service generates one. Returns the decoder's Response."""
     signer = jws.Signer(pki["payee"], now_ms=business_now)
     qr_code = emv.with_location(api.create_qr_detailed().body["qrCode"], other_bank.location(LOCATION))
 
-    def run(payload, token=None):
+    def run(payload, token=None, correlation_id=None):
         from x9client import peer as peer_module
-        body = token if token is not None else signer.sign(payload)
-        other_bank.reset(lambda question: peer_module.Answer(200, body))
-        return api.post("/api/v1/qrcode-emv-decoder", body={"qrCode": qr_code})
+
+        def answer(question):
+            asked = question.correlation_id
+            body = token(asked) if token is not None else signer.sign(payload, correlation_id=asked)
+            return peer_module.Answer(200, body)
+
+        other_bank.reset(answer)
+        request = {"qrCode": qr_code}
+        if correlation_id is not None:
+            request["correlationID"] = str(correlation_id)
+        return api.post("/api/v1/qrcode-emv-decoder", body=request)
 
     return run
 
@@ -135,15 +147,69 @@ def test_tolerance_stops_at_integrity(decode, pki, business_now):
     Why: Unknown content is safe to read only because the issuer's signature attests it. A
       payload whose signature fails is nobody's. (A malformed EMV string is X9-DEC-016.)
     """
-    untrusted = jws.Signer(pki["untrusted"], now_ms=business_now).sign(FOREIGN)
-    header, payload, signature = jws.Signer(pki["payee"], now_ms=business_now).sign(FOREIGN) \
-        .split(".")
-    altered = copy.deepcopy(FOREIGN)
-    altered["paymentMethods"][0]["networks"]["ach"]["accountNumber"] = "9999999999"
-    tampered = ".".join([header, jws.b64u_json(altered), signature])
+    def untrusted(asked):
+        return jws.Signer(pki["untrusted"], now_ms=business_now).sign(FOREIGN, correlation_id=asked)
+
+    def tampered(asked):
+        header, _, signature = jws.Signer(pki["payee"], now_ms=business_now) \
+            .sign(FOREIGN, correlation_id=asked).split(".")
+        altered = copy.deepcopy(FOREIGN)
+        altered["paymentMethods"][0]["networks"]["ach"]["accountNumber"] = "9999999999"
+        return ".".join([header, jws.b64u_json(altered), signature])
 
     for case, token in (("untrusted CA", untrusted), ("altered payload", tampered)):
         response = decode(FOREIGN, token=token)
 
         assert 400 <= response.status < 500, (case, response)
         assert FOREIGN["id"] not in response.text, (case, response.body)
+
+
+REFUSED = "Payload JWS signature is invalid."
+
+
+def _refused(case, response):
+    assert response.status == 400, (case, response)
+    assert REFUSED in response.text, (case, response.body)
+    assert FOREIGN["id"] not in response.text, (case, response.body)
+
+
+def test_a_payload_under_another_correlation_id_is_refused(decode, pki, business_now):
+    """X9-DEC-506 — a payload validly signed by the other bank, under another correlationId than the
+    request was sent under, is refused: when the caller gave no ``correlationID`` (the service
+    generated one) as when it gave one. Nothing of it reaches the payer.
+
+    Source: Ours. ADR-0027, amendment of 2026-11-15 (owner): "Always check that the payee's answer
+      echoes our correlationId." ANSI X9.150-2026 §10.3.2 has the responder echo it. Before the
+      amendment, the id was compared only when the caller gave one.
+    Why: A good signature proves who wrote the payload, not that it answers our request: under
+      another id it is a replay, or the payee's answer to someone else.
+    """
+    import uuid
+
+    signer = jws.Signer(pki["payee"], now_ms=business_now)
+    another = str(uuid.uuid4())
+
+    def elsewhere(_asked):
+        return signer.sign(FOREIGN, correlation_id=another)
+
+    _refused("generated", decode(FOREIGN, token=elsewhere))
+    _refused("the caller's", decode(FOREIGN, token=elsewhere, correlation_id=uuid.uuid4()))
+
+
+def test_a_payload_without_a_correlation_id_is_refused(decode, pki, business_now):
+    """X9-DEC-507 — a payload validly signed by the other bank whose header carries no
+    ``correlationId`` (in ``crit`` or out of it) is refused, whether or not the caller gave one.
+
+    Source: Ours. ADR-0027, amendment of 2026-11-15 (owner): "No correlationId, I can't trust the
+      other side." ANSI X9.150-2026 §10.7 step 3 requires the header.
+    Why: An answer that names no request cannot be tied to ours, however good its signature.
+    """
+    import uuid
+
+    signer = jws.Signer(pki["payee"], now_ms=business_now)
+
+    def anonymous(_asked):
+        return signer.sign(FOREIGN, drop=("correlationId",), crit=["iat", "ttl"])
+
+    _refused("generated", decode(FOREIGN, token=anonymous))
+    _refused("the caller's", decode(FOREIGN, token=anonymous, correlation_id=uuid.uuid4()))
