@@ -13,7 +13,9 @@
 //     except for a self-signed end entity, which has no authority to ask;
 //  2. the trust anchor's issuer must contain the configured issuer name (case-insensitive;
 //     x9.certificate.issuer-name, "X9" by default) and be the subject of a trusted certificate;
-//  3. the certificate the header's x5t#S256 names is picked from the chain;
+//  3. the header's x5t#S256 must be the thumbprint of the end-entity certificate, the first of
+//     the chain (ANSI X9.150-2026 §10.7 step 7). Java accepts any certificate of the chain and
+//     verifies with the one it names; that is not reproduced (Story 8.5, questions for the owner);
 //  4. that certificate must be within its validity period and, when it states a key usage,
 //     allow digitalSignature.
 //
@@ -171,7 +173,8 @@ func NewVerifier(cfg Config) (*Verifier, error) {
 
 // Signer is a certificate the Verifier trusts.
 type Signer struct {
-	// Certificate is the one the header's x5t#S256 names: the key the signature is checked with.
+	// Certificate is the end entity, which the header's x5t#S256 names: the key the signature is
+	// checked with.
 	Certificate *x509.Certificate
 	// Subject is Certificate's subject in RFC 2253 form ("CN=…,O=…,C=…"), as Java prints it.
 	Subject string
@@ -323,15 +326,22 @@ func Thumbprint(cert *x509.Certificate) string {
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
-// byThumbprint is Java's validateAndExtractCertificateByThumbprint: the first certificate of the
-// chain whose thumbprint is exactly the header's string.
+// byThumbprint is Java's validateAndExtractCertificateByThumbprint, held to the standard: x5t#S256
+// is "the SHA-256 thumbprint of the end-entity certificate" (ANSI X9.150-2026 §10.3.1), so it must
+// be exactly the thumbprint of the chain's first certificate. Java picks any certificate of the
+// chain whose thumbprint matches, a CA certificate included, and verifies the signature with that
+// certificate's key; Go refuses it, with the code Java gives a thumbprint that matches nothing.
 func byThumbprint(chain []*x509.Certificate, x5tS256 *string) (*x509.Certificate, error) {
 	if x5tS256 == nil {
 		return nil, refuse(BadHeader, nil, "the header has no x5t#S256 (certificate thumbprint)")
 	}
-	for _, c := range chain {
-		if Thumbprint(c) == *x5tS256 {
-			return c, nil
+	if len(chain) > 0 && Thumbprint(chain[0]) == *x5tS256 {
+		return chain[0], nil
+	}
+	for i, c := range chain {
+		if i > 0 && Thumbprint(c) == *x5tS256 {
+			return nil, refuse(UntrustedChain, nil,
+				"the thumbprint %s names certificate %d of the chain, not the end entity", *x5tS256, i)
 		}
 	}
 	return nil, refuse(UntrustedChain, nil, "no certificate of the chain matches the thumbprint %s", *x5tS256)

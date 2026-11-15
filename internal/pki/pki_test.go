@@ -232,6 +232,62 @@ func TestThumbprint(t *testing.T) {
 	wantProblem(t, err, UntrustedChain)
 }
 
+// Story 8.5: x5t#S256 names the end-entity certificate (ANSI X9.150-2026 §10.3.1, §10.7 step 7).
+// Java takes any certificate of the chain whose thumbprint matches and verifies with that one's
+// key; with a CA whose key usage allows digitalSignature, it would accept the CA as the signer. Go
+// refuses it.
+func TestThumbprintNamesTheEndEntity(t *testing.T) {
+	f := newFixture(t)
+	newKey := func() *ecdsa.PrivateKey {
+		k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return k
+	}
+	parse := func(der []byte, err error) *x509.Certificate {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, err := x509.ParseCertificate(der)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	caKey, leafKey := newKey(), newKey()
+	caName := pkix.Name{CommonName: "X9 Signing Test CA", Organization: []string{"Example"}}
+	caTmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(7),
+		Subject:               caName,
+		NotBefore:             f.clock.Now().Add(-time.Hour),
+		NotAfter:              f.clock.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+	ca := parse(x509.CreateCertificate(rand.Reader, caTmpl, caTmpl, &caKey.PublicKey, caKey))
+	leaf := parse(x509.CreateCertificate(rand.Reader, &x509.Certificate{
+		SerialNumber: big.NewInt(8),
+		Subject:      pkix.Name{CommonName: "Test Payer", Organization: []string{"Example"}},
+		NotBefore:    f.clock.Now().Add(-time.Hour),
+		NotAfter:     f.clock.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		// Unreachable on the test network: soft-fails.
+		CRLDistributionPoints: []string{"http://unreachable.example/ca.crl"},
+	}, ca, &leafKey.PublicKey, caKey))
+
+	v := f.newVerifier(t, DefaultIssuerName, ca)
+	chain := []*x509.Certificate{leaf, ca}
+	got, err := v.Verify(t.Context(), chain, thumb(leaf))
+	if err != nil || !got.Certificate.Equal(leaf) {
+		t.Fatalf("the end entity: %v", err)
+	}
+	_, err = v.Verify(t.Context(), chain, thumb(ca))
+	wantProblem(t, err, UntrustedChain)
+}
+
 // S8.3-AC1: a certificate is judged at the verifier's clock: the golden signers expire in 2046.
 func TestValidity(t *testing.T) {
 	f := newFixture(t)
