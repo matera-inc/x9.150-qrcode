@@ -471,12 +471,13 @@ func TestSignedAnswer(t *testing.T) {
 	}
 }
 
-// S8.4-AC1: the configuration's defaults are Java's: PS512, jku, 300 s; and the service's own
-// signing key (the bundled demo identity, RSA) can sign with them.
+// S8.4-AC1: the configuration's defaults are Java's: PS512, jku, 300 s, and the public host
+// x9-150.example.com when none is set; and the service's own signing key (the bundled demo
+// identity, RSA) can sign with them.
 func TestConfigFromDefaults(t *testing.T) {
 	cfg, err := config.Load("", []string{
 		"DATABASE_HOST=db.example.com", "DATABASE_NAME=bank", "DATABASE_USER=app",
-		"DATABASE_PASSWORD=secret", "DATABASE_SSLMODE=require", "X9_PUBLICENDPOINTS_HOST=x9-150.example.com",
+		"DATABASE_PASSWORD=secret", "DATABASE_SSLMODE=require",
 	})
 	if err != nil {
 		t.Fatal(err)

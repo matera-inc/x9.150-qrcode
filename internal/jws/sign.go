@@ -104,7 +104,9 @@ type Config struct {
 	// Publication is how the certificate is named. Empty is PublishJWKSet.
 	Publication Publication
 	// Host is the public host that jku and x5u point to, as configured for the QR Codes'
-	// location URLs. Without a scheme, https:// is prefixed, as the Java build does.
+	// location URLs. Without a scheme, https:// is prefixed, as the Java build does. The service's
+	// configuration always has one (config.DefaultPublicHost when unset); New still refuses a jku
+	// or x5u publication without one, for a Config built by hand.
 	Host string
 	// TTL is the ttl of a message that does not set its own. Zero is DefaultTTL.
 	TTL time.Duration
