@@ -13,6 +13,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -174,6 +175,51 @@ func TestRunRefusesAnAlgorithmTheKeyCannotProduce(t *testing.T) {
 	if err == nil || !errors.Is(err, jws.ErrKey) || !strings.Contains(err.Error(), "X9_CERTIFICATE_JWKALGORITHM") ||
 		!strings.Contains(err.Error(), "ES256 needs an EC key, the key is RSA") {
 		t.Fatalf("err = %v, want a refusal naming X9_CERTIFICATE_JWKALGORITHM and the RSA demo key", err)
+	}
+}
+
+// S9.6-AC4: with no public host the service starts on the placeholder, and a WARN says that QR
+// Codes printed with it cannot be scanned, naming X9_PUBLICENDPOINTS_HOST; a real host gives no
+// such line. An algorithm the key cannot produce stops each run right after the line is due, so
+// the database is never reached.
+func TestRunWarnsOfThePlaceholderHost(t *testing.T) {
+	base := []string{
+		"DATABASE_HOST=127.0.0.1", "DATABASE_PORT=1", "DATABASE_NAME=bank", "DATABASE_USER=app", "DATABASE_PASSWORD=pw",
+		"DATABASE_SSLMODE=disable", "X9_CERTIFICATE_JWKALGORITHM=ES256",
+	}
+	for _, tc := range []struct {
+		name string
+		env  []string
+		warn bool
+	}{
+		{"placeholder", base, true},
+		{"a real host", append(slices.Clone(base), "X9_PUBLICENDPOINTS_HOST=pay.bank.example"), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out syncBuffer
+			if err := run(t.Context(), nil, tc.env, &out); !errors.Is(err, jws.ErrKey) {
+				t.Fatalf("err = %v, want the key refusal that ends the run", err)
+			}
+			var warned bool
+			sc := bufio.NewScanner(strings.NewReader(out.String()))
+			for sc.Scan() {
+				var line map[string]any
+				if err := json.Unmarshal(sc.Bytes(), &line); err != nil {
+					t.Fatalf("a log line is not JSON: %q", sc.Text())
+				}
+				msg, _ := line["msg"].(string)
+				if strings.Contains(msg, "cannot be scanned") {
+					warned = true
+					if line["level"] != "WARN" || !strings.Contains(msg, "X9_PUBLICENDPOINTS_HOST") ||
+						line["host"] != "x9-150.example.com" {
+						t.Errorf("the placeholder warning: %s", sc.Text())
+					}
+				}
+			}
+			if warned != tc.warn {
+				t.Fatalf("warned = %v, want %v:\n%s", warned, tc.warn, out.String())
+			}
+		})
 	}
 }
 

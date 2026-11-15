@@ -162,6 +162,14 @@ func InternalError() *Problem {
 		"An unexpected error occurred while processing the request.", nil)
 }
 
+// Unavailable is the 503 of a statement that ran out of time (ADR-0025: SQLSTATE 57014, never
+// re-run). Nothing was written; the caller may retry. The Java build has no such answer, so it
+// keeps the closed set of problem types and is written as an internal-error with its own status.
+func Unavailable() *Problem {
+	return newProblem(http.StatusServiceUnavailable, "Service Unavailable", TypeInternalError,
+		"The database did not answer in time, so nothing was written. Retry.", nil)
+}
+
 func nonNil(s []string) []string {
 	if s == nil {
 		return []string{}
