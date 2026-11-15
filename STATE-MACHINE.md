@@ -276,6 +276,12 @@ Trace Number for ACH, and the on-chain transaction hash for Solana.
 - Guards: `x9-qrcode-domain/.../entity/validator/QRCodeEntityValidator.java`
 - Notification dispatch: `x9-qrcode-application/.../usecase/paymentnotification/PaymentNotificationQRCodeUseCase.java`; the phase: `PaymentNotificationDataVO.phase`
 - Transaction ID field: ANSI X9.150-2026 §2.5
+- Go build: `internal/domain` decides every transition of this page, with one `now` per decision
+  and no database or HTTP code: `EffectiveStatus`, `ETag`, `Create`, `Patch`, `UpdateStatus`,
+  `Notify` (`PreCommit`, `PostCommit`, `Release`), `ReleaseLocation`, and `BuildEvent`, the only
+  code that builds a payment event. Its table test has a case for every row of ADR-0035's map and
+  every cell of ADR-0036's matrix. One difference from Java, following ADR-0024: a QR Code whose
+  `validUntil` has passed gives its location up, whatever its status (BUG-004).
 
 ---
 
