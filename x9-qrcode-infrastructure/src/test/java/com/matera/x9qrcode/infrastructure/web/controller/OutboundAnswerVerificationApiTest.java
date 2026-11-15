@@ -16,6 +16,7 @@ import com.matera.x9qrcode.infrastructure.AbstractIntegrationTest;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.JWSObject;
 import com.nimbusds.jose.JWSSigner;
+import com.nimbusds.jose.Payload;
 import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.util.Base64URL;
 import com.sun.net.httpserver.HttpExchange;
@@ -405,6 +406,32 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
     }
 
     /**
+     * <b>X9-SIG-153</b> — a signed body whose {@code statusCode} is a number but not an integer
+     * ({@code 200.5}, {@code 200.0}, {@code 2e2}), or an integer beyond 32 bits, is INVALID,
+     * {@code STATUS_MISSING}, though the HTTP status is 200 and the header says 200.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 A.4.5 note (the body is {@code {"statusCode": integer}}).
+     * Conformance.
+     *
+     * <p><b>Why:</b> Java read any JSON number and truncated it, so {@code 200.5} was reported as a
+     * VERIFIED 200: a signed body the standard does not define was taken as the payee's decision,
+     * and a {@code 4294967496} wrapped round to 200. Go's {@code CheckAnswer} refuses all four, as
+     * Java now does.
+     */
+    @Test
+    void aSignedBodyWhoseStatusCodeIsNotAnIntegerIsInvalid() {
+        for (String statusCode : new String[] {"200.5", "200.0", "2e2", "4294967496"}) {
+            answering.set(received -> new Answer(200, resigned(signed(200, correlationIdOf(received)),
+                header -> header, "{\"statusCode\":" + statusCode + "}")));
+
+            MockMvcResponse response = notifyPayee();
+
+            assertReported(response, 200, true, "INVALID");
+            assertProblem(response, "STATUS_MISSING");
+        }
+    }
+
+    /**
      * <b>X9-SIG-143</b> — a correctly signed answer with an unknown {@code crit} header, or without a
      * {@code correlationId} header, is INVALID, {@code BAD_HEADER}.
      *
@@ -449,9 +476,15 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
 
     /** The same payload, under a rewritten header, signed again with this deployment's key. */
     private static String resigned(String jws, UnaryOperator<JWSHeader> rewrite) {
+        return resigned(jws, rewrite, null);
+    }
+
+    /** As {@link #resigned(String, UnaryOperator)}, with the body replaced by {@code body} when given. */
+    private static String resigned(String jws, UnaryOperator<JWSHeader> rewrite, String body) {
         try {
             JWSObject original = JWSObject.parse(jws);
-            JWSObject rewritten = new JWSObject(rewrite.apply(original.getHeader()), original.getPayload());
+            JWSObject rewritten = new JWSObject(rewrite.apply(original.getHeader()),
+                body == null ? original.getPayload() : new Payload(body));
             rewritten.sign(keys.retrieveSigner());
             return rewritten.serialize();
         } catch (Exception e) {

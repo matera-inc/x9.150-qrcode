@@ -36,6 +36,7 @@ import java.security.MessageDigest;
 import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.ECPrivateKey;
 import java.security.interfaces.RSAPrivateKey;
@@ -213,7 +214,16 @@ class CaIssuedSignatureApiTest extends AbstractIntegrationTest {
      * instead of carrying it in {@code x5c}, when {@code x5u} is given.
      */
     private String signAsPayer(Payer payer, String payload, URI x5u) throws Exception {
-        List<Base64> x5c = payer.chain().stream()
+        return signAs(payer, payer.chain(), payer.chain().getFirst(), payload, x5u);
+    }
+
+    /**
+     * Signs {@code payload} with {@code payer}'s key, carrying {@code chain} in {@code x5c} (or
+     * pointing at it with {@code x5u}, when given) and naming {@code named} in {@code x5t#S256}.
+     */
+    private String signAs(Payer payer, List<X509Certificate> chain, X509Certificate named,
+                          String payload, URI x5u) throws Exception {
+        List<Base64> x5c = chain.stream()
                 .map(certificate -> {
                     try {
                         return Base64.encode(certificate.getEncoded());
@@ -231,7 +241,7 @@ class CaIssuedSignatureApiTest extends AbstractIntegrationTest {
         JWSHeader.Builder header = new JWSHeader.Builder(payer.algorithm())
                 .type(JOSEObjectType.JOSE)
                 .keyID("payer-key-1")
-                .x509CertSHA256Thumbprint(sha256Thumbprint(payer.chain().getFirst()))
+                .x509CertSHA256Thumbprint(sha256Thumbprint(named))
                 .criticalParams(Set.of("correlationId", "iat", "ttl"));
 
         critical.forEach(header::customParam);
@@ -346,6 +356,44 @@ class CaIssuedSignatureApiTest extends AbstractIntegrationTest {
     }
 
     // ------------------------------------------------------------------------------- refused
+
+    /**
+     * <b>X9-SIG-069</b> — a token whose {@code x5t#S256} names a CA certificate of its chain, not
+     * the end entity, is refused with {@code UNTRUSTED_CHAIN}, though that CA's key signed it and
+     * its key usage allows {@code digitalSignature}.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §10.3.1 ({@code x5t#S256} is "the SHA-256 thumbprint of
+     * the end-entity certificate") and §10.7 step 7. Conformance. ADR-0027, verification step 4.
+     *
+     * <p><b>Why:</b> BUG-006. Java picked whichever certificate of the chain matched the thumbprint
+     * and verified the signature with that certificate's key. A CA whose key usage allows
+     * {@code digitalSignature} could then sign a message as itself while presenting a payer's leaf
+     * as the end entity: the chain, the trusted issuer and the key usage all passed. Here the chain
+     * is the trusted payer's leaf and the test CA re-issued to itself with {@code digitalSignature}
+     * ({@code x9-test-ca-digital-signature.pem}: same name, same key), the token is signed with the
+     * test CA's key, and the thumbprint names the CA. Go's {@code internal/pki} refuses the same
+     * token with the same code.
+     */
+    @Test
+    void aThumbprintNamingACaOfTheChainIsRefused() throws Exception {
+        String qrCodeId = createQRCode();
+        Payer ca = Payer.load("x9-test-ca.p12", "x9-test-ca");
+        X509Certificate caThatMaySign;
+        try (InputStream pem = resource("x9-test-ca-digital-signature.pem")) {
+            caThatMaySign = (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(pem);
+        }
+        X509Certificate payerLeaf = Payer.load("x9-test-payer.p12", "x9-test-payer").chain().getFirst();
+
+        MockMvcResponse response = given().contentType(APPLICATION_JOSE)
+                .body(signAs(ca, List.of(payerLeaf, caThatMaySign), caThatMaySign, notificationFor(qrCodeId), null))
+                .when().post(NOTIFY);
+
+        assertEquals(HttpStatus.UNAUTHORIZED.value(), response.statusCode(), response.asString());
+        assertEquals("UNTRUSTED_CHAIN",
+                JWSObject.parse(response.asString()).getPayload().toJSONObject().get("signatureProblem"),
+                response.asString());
+        assertEquals("ACTIVE", statusOf(qrCodeId), "a refused notification must change nothing");
+    }
 
     /**
      * <b>X9-SIG-052</b> — a payer from an untrusted CA is refused.

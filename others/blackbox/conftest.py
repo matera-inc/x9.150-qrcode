@@ -131,7 +131,7 @@ def payer_b(pki, business_now):
 
 @pytest.fixture(scope="session")
 def tamperer(pki, payer_a):
-    return jws.Tamperer(payer_a, pki["untrusted"])
+    return jws.Tamperer(payer_a, pki["untrusted"], pki["ca"])
 
 
 @pytest.fixture(scope="session")

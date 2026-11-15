@@ -149,7 +149,12 @@ public class RestClientOutboundNotificationService implements QRCodeOutboundNoti
             return null;
         }
 
-        if (isNull(payload) || !(payload.get(STATUS_CODE) instanceof Number number)) {
+        // The body is {"statusCode": integer} (ANSI X9.150-2026 A.4.5 note). The JSON parser reads a
+        // number written as an integer into a Long and anything else (200.5, 200.0, 2e2) into a
+        // Double: only an integer that fits 32 bits is a status code. Truncating would report 200.5
+        // as a verified 200, and 4294967496 as one too. Go's CheckAnswer gives the same answer.
+        if (isNull(payload) || !(payload.get(STATUS_CODE) instanceof Long number)
+            || number < Integer.MIN_VALUE || number > Integer.MAX_VALUE) {
             return null;
         }
 

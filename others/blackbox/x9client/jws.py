@@ -212,6 +212,22 @@ class CertificateAuthority:
         certificate = builder.sign(self.key, hashes.SHA512())
         return Identity(name, key, certificate, [certificate, self.certificate])
 
+    def allowed_to_sign(self):
+        """This CA re-issued to itself, same name and same key, with ``digitalSignature`` added to
+        its key usage: a CA that may sign. Chained under the original it validates, so a token it
+        signs as itself passes every check but one: ``x5t#S256`` must name the end entity (ANSI
+        X9.150-2026 §10.3.1, §10.7 step 7; BUG-006)."""
+        now = datetime.datetime.now(datetime.timezone.utc)
+        return (x509.CertificateBuilder()
+                .subject_name(self.certificate.subject).issuer_name(self.certificate.subject)
+                .public_key(self.key.public_key()).serial_number(x509.random_serial_number())
+                .not_valid_before(now - datetime.timedelta(days=1))
+                .not_valid_after(now + datetime.timedelta(days=3650))
+                .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+                .add_extension(x509.KeyUsage(True, False, False, False, False, True, True,
+                                             False, False), critical=True)
+                .sign(self.key, hashes.SHA512()))
+
     def revoke(self, identity):
         self.revoked[identity.serial] = datetime.datetime.now(datetime.timezone.utc)
 
@@ -388,11 +404,14 @@ class Tamperer:
         "missing_x5c": "BAD_HEADER",
         "altered_payload": "BAD_SIGNATURE",
         "alg_none": "ALG_NONE",
+        "x5t_names_the_ca": "UNTRUSTED_CHAIN",
+        "correlation_id_not_canonical": "BAD_HEADER",
     }
 
-    def __init__(self, signer, untrusted_identity):
+    def __init__(self, signer, untrusted_identity, ca):
         self.signer = signer
         self.untrusted = untrusted_identity
+        self.ca = ca
 
     def token(self, case, payload, **header_args):
         """The ``case`` token for ``payload``. ``header_args`` (``correlation_id``, ``crit``,
@@ -438,6 +457,19 @@ class Tamperer:
         else:
             altered["x9blackbox"] = "altered"
         return f"{header}.{b64u_json(altered)}.{signature}"
+
+    def x5t_names_the_ca(self, payload, **h):
+        """Signed by the issuing CA's own key, re-issued with ``digitalSignature``; ``x5c`` is the
+        signer's leaf then that CA, and ``x5t#S256`` names the CA, not the end entity (BUG-006)."""
+        ca_certificate = self.ca.allowed_to_sign()
+        as_the_ca = Identity("ca-as-signer", self.ca.key, ca_certificate,
+                             [self.signer.identity.certificate, ca_certificate])
+        return Signer(as_the_ca, self.signer.now_ms).sign(payload, **h)
+
+    def correlation_id_not_canonical(self, payload, **h):
+        """``1-2-3-4-5``: what ``UUID.fromString`` reads as a UUID, and the canonical 8-4-4-4-12
+        form is not (ANSI X9.150-2026 §10.7 step 3.1)."""
+        return self.signer.sign(payload, **{**h, "correlation_id": "1-2-3-4-5"})
 
     @staticmethod
     def alg_none(payload, **_):

@@ -24,6 +24,7 @@ using only `keytool` (plus `bc` for one hex→decimal conversion) if you ever ne
 | `x9-test-payer-crl-unreadable-payload.p12` | The same, its own distribution point, for the payload endpoint |
 | `x9-test-payer-crl-unreadable-ocsp-unreachable.p12` | That CRL, plus an OCSP responder on `127.0.0.1:1` |
 | `x9-test-payer-crl-unreadable-ocsp-unreachable-payload.p12` | The same, its own distribution point, for the payload endpoint |
+| `x9-test-ca-digital-signature.pem` | The Test Root CA re-issued to itself (same name, same key) with `digitalSignature` in its key usage: a CA allowed to sign, for `X9-SIG-069` (BUG-006). Step 9 of the script, issued from the committed CA |
 | `x9-test-untrusted-ca.p12` | A CA in **no** truststore |
 | `x9-test-untrusted-payer.p12` | Leaf from that unknown issuer |
 | `x9-test-truststore.jks` | Holds **only** the Test Root CA |
