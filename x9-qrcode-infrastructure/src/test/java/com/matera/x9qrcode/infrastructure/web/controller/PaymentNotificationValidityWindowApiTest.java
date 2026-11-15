@@ -205,7 +205,9 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * S2.6-AC1 — the discounted amount is advertised until exactly E = dueDate − daysBefore, not
+     * <b>X9-AMT-518</b> — over HTTP, the discount is advertised until exactly the instant it stops applying.
+     *
+     * <p>S2.6-AC1 — the discounted amount is advertised until exactly E = dueDate − daysBefore, not
      * 23:59:59 of E's day. The due date carries a time of day so the two cannot coincide.
      */
     @Test
@@ -220,7 +222,9 @@ class PaymentNotificationValidityWindowApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * S2.6-AC1 — capped: when the only payment method lapses before E, the discount is advertised
+     * <b>X9-AMT-519</b> — over HTTP, the advertised discount edge is capped by the payment method's validUntil.
+     *
+     * <p>S2.6-AC1 — capped: when the only payment method lapses before E, the discount is advertised
      * no later than that method's validUntil.
      */
     @Test

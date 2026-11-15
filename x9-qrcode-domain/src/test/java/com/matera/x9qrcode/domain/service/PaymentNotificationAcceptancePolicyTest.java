@@ -282,7 +282,9 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
     // ------------------------------------------- the payee's clock decides (Story 1.3)
 
     /**
-     * S1.3-AC1 — a discount quoted before its window closed is refused once the request reaches the
+     * <b>X9-AMT-512</b> — a discount fetched before its window closed is refused when the request arrives after it.
+     *
+     * <p>S1.3-AC1 — a discount quoted before its window closed is refused once the request reaches the
      * payee after it, and the face amount is then accepted.
      *
      * <p><b>Why:</b> {@code at} is the payee's clock at receipt. What the payer's clock said when it
@@ -306,7 +308,9 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
     }
 
     /**
-     * S1.3-AC2 — a payer whose clock runs behind still sees a request arriving after validUntil (on
+     * <b>X9-AMT-513</b> — a request arriving after validUntil on the payee's clock is refused.
+     *
+     * <p>S1.3-AC2 — a payer whose clock runs behind still sees a request arriving after validUntil (on
      * the payee's clock) refused on {@code validUntil}.
      */
     @Test
@@ -320,7 +324,11 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
         assertEquals("validUntil", exception.field());
     }
 
-    /** S1.3-AC3 — validUntil is inclusive: a request arriving at exactly that instant is accepted. */
+    /**
+     * <b>X9-AMT-514</b> — a request arriving at exactly validUntil is accepted.
+     *
+     * <p>S1.3-AC3 — validUntil is inclusive: a request arriving at exactly that instant is accepted.
+     */
     @Test
     void aRequestArrivingAtExactlyValidUntilIsAccepted() {
         QRCodeEntity qrCode = qrCode();
@@ -329,7 +337,11 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
         assertDoesNotThrow(() -> policy.accept(qrCode, notificationOf(FACE + LATE_FEE), qrCode.getValidUntil()));
     }
 
-    /** S1.3-AC4 — at exactly dueDate the full amount is owed, with no late fee and no exception. */
+    /**
+     * <b>X9-AMT-515</b> — a request arriving at exactly the due date owes the full amount.
+     *
+     * <p>S1.3-AC4 — at exactly dueDate the full amount is owed, with no late fee and no exception.
+     */
     @Test
     void aRequestArrivingAtExactlyTheDueDateOwesTheFullAmount() {
         assertDoesNotThrow(() -> policy.accept(qrCode(), notificationOf(FACE), DUE_DATE));
@@ -343,7 +355,9 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
     // ---------------------------- the payee honours what it signed (Story 2.6)
 
     /**
-     * S2.6-AC1 — a pre-commit with the discounted amount is accepted at exactly E, the instant the
+     * <b>X9-AMT-516</b> — the discounted amount is accepted at its advertised edge and refused 1 ms after.
+     *
+     * <p>S2.6-AC1 — a pre-commit with the discounted amount is accepted at exactly E, the instant the
      * discount was advertised until, and refused 1 ms later, when the face amount is still accepted.
      */
     @Test
@@ -361,7 +375,9 @@ class PaymentNotificationAcceptancePolicyTest extends AbstractTest {
     }
 
     /**
-     * S2.6-AC2 — k days late, a pre-commit with the fee advertised until dueDate + k × 24 h is
+     * <b>X9-AMT-517</b> — the late-fee amount is accepted at its advertised boundary and refused 1 ms after.
+     *
+     * <p>S2.6-AC2 — k days late, a pre-commit with the fee advertised until dueDate + k × 24 h is
      * accepted at that instant and refused 1 ms later, when one more day is owed.
      */
     @Test

@@ -44,14 +44,18 @@ def _patch(api, qr, methods):
 
 
 def test_naming_every_currency_changes_every_currency(api, two_currency_qr):
-    """S3.4-AC1, section 10 — the supported edit."""
+    """X9-PATCH-506 — a PATCH naming every currency changes every currency.
+
+    S3.4-AC1, section 10 — the supported edit."""
     status, body = _patch(api, two_currency_qr, [_method("USD", REDUCED), _method("USDC", REDUCED)])
     assert status == 200, body
     assert _amounts(api, two_currency_qr) == {"USD": REDUCED, "USDC": REDUCED}
 
 
 def test_omitting_a_currency_is_refused_naming_it_and_nothing_moves(api, two_currency_qr):
-    """S3.4-AC1, section 10 — one debt must not end up with two prices."""
+    """X9-PATCH-507 — a PATCH omitting a currency is refused naming it, and nothing moves.
+
+    S3.4-AC1, section 10 — one debt must not end up with two prices."""
     before, etag = _amounts(api, two_currency_qr), api.qr(two_currency_qr).etag
 
     status, body = _patch(api, two_currency_qr, [_method("USD", REDUCED)])
@@ -62,7 +66,10 @@ def test_omitting_a_currency_is_refused_naming_it_and_nothing_moves(api, two_cur
 
 
 def test_a_currency_it_does_not_offer_is_refused_naming_it_and_nothing_moves(api, two_currency_qr):
-    """S3.4-AC1, section 10 — a patch may change an amount, never add a currency."""
+    """X9-PATCH-508 — a PATCH adding a currency the QR Code does not offer is refused naming it, and
+    nothing moves.
+
+    S3.4-AC1, section 10 — a patch may change an amount, never add a currency."""
     before = _amounts(api, two_currency_qr)
 
     status, body = _patch(api, two_currency_qr, [_method("USD", REDUCED), _method("USDC", REDUCED),
@@ -73,7 +80,9 @@ def test_a_currency_it_does_not_offer_is_refused_naming_it_and_nothing_moves(api
 
 
 def test_a_patch_naming_only_an_unknown_currency_is_refused_not_a_silent_200(api, two_currency_qr):
-    """S3.4-AC1, section 10 — the case that used to be a no-op answered 200, revision and all."""
+    """X9-PATCH-509 — a PATCH naming only an unknown currency is refused, not a silent 200.
+
+    S3.4-AC1, section 10 — the case that used to be a no-op answered 200, revision and all."""
     etag = api.qr(two_currency_qr).etag
 
     status, body = _patch(api, two_currency_qr, [_method("FRNT", REDUCED)])

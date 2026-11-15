@@ -98,7 +98,7 @@ others/blackbox/
 │   ├── samples.py     request bodies a scenario starts from
 │   └── checks.py      assert_refused: refused, and for the right reason
 ├── tests/             the scenarios
-├── contract.py        generates a refusal case per maxLength/minLength/pattern/required in openapi.yaml
+├── contract.py        a refusal case per maxLength/minLength/pattern/required/maximum/minimum, and the edge of each bound
 ├── contract-known-gaps.yaml   constraints the service does not enforce today, each with its reason
 ├── deployment/        the truststore a deployment under test runs with, and how it is built
 ├── golden/            JWS and EMV fixtures exported from Java, with their verdicts (Story 4.7)

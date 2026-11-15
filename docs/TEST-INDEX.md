@@ -6,9 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**620 tests documented** — every test that carries a key. Some black-box cases and a few JUnit
-classes (the test clock, the formula service) have no key yet;
-[RULE-COVERAGE.md](RULE-COVERAGE.md) names those as `File::function`.
+**760 tests documented** — every JUnit test and every black-box case.
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
 (STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map and ADR-0036), the
@@ -87,6 +85,26 @@ single most important thing this index exists for.
 | `X9-AMT-124` | at creation, the bill plus its largest late fee is bounded at 18 nines, refused naming the field | `LateFeeEighteenDigitsApiTest.java` |
 | `X9-AMT-125` | at creation, each payment method is bounded with the largest late fee, refused naming the field | `LateFeeEighteenDigitsApiTest.java` |
 | `X9-AMT-126` | a PATCH with a later validUntil, a larger fee or a larger amount past the bound is refused, revision unmoved | `LateFeeEighteenDigitsApiTest.java` |
+| `X9-AMT-520` | a bill with no late-fee adjustment is not bounded by the 18-digit late-fee rule, at any amount | `QRCodeEntityLateFeeBoundTest.java` |
+| `X9-AMT-501` | a payment at exactly the due date is on time: the full amount, no late fee | `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java` |
+| `X9-AMT-502` | the due date is on time with no discount configured too | `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java` |
+| `X9-AMT-503` | 1 ms before the due date is the full amount when no discount covers it | `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java` |
+| `X9-AMT-504` | 1 ms after the due date the first day's late fee is owed | `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java` |
+| `X9-AMT-505` | a discount is advertised until exactly the instant it stops applying | `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java` |
+| `X9-AMT-506` | a discount applies at its edge and not 1 ms after | `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java` |
+| `X9-AMT-507` | of several discounts the largest eligible is served, until its own edge | `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java` |
+| `X9-AMT-508` | the largest eligible discount wins even when a smaller one would last longer | `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java` |
+| `X9-AMT-509` | a late fee is advertised until the next 24-hour boundary from the due date | `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java` |
+| `X9-AMT-510` | a late fee applies at its boundary and rises 1 ms after | `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java` |
+| `X9-AMT-511` | the advertised validUntil is capped by whatever ends sooner | `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java` |
+| `X9-AMT-512` | a discount fetched before its window closed is refused when the request arrives after it | `PaymentNotificationAcceptancePolicyTest.java` |
+| `X9-AMT-513` | a request arriving after validUntil on the payee's clock is refused | `PaymentNotificationAcceptancePolicyTest.java` |
+| `X9-AMT-514` | a request arriving at exactly validUntil is accepted | `PaymentNotificationAcceptancePolicyTest.java` |
+| `X9-AMT-515` | a request arriving at exactly the due date owes the full amount | `PaymentNotificationAcceptancePolicyTest.java` |
+| `X9-AMT-516` | the discounted amount is accepted at its advertised edge and refused 1 ms after | `PaymentNotificationAcceptancePolicyTest.java` |
+| `X9-AMT-517` | the late-fee amount is accepted at its advertised boundary and refused 1 ms after | `PaymentNotificationAcceptancePolicyTest.java` |
+| `X9-AMT-518` | over HTTP, the discount is advertised until exactly the instant it stops applying | `PaymentNotificationValidityWindowApiTest.java` |
+| `X9-AMT-519` | over HTTP, the advertised discount edge is capped by the payment method's validUntil | `PaymentNotificationValidityWindowApiTest.java` |
 
 ## Currencies
 
@@ -120,6 +138,7 @@ single most important thing this index exists for.
 | `X9-CUR-062` | a currency no supported rail settles is refused | `SupportedCurrencyApiTest.java` |
 | `X9-CUR-063` | a supported currency in the wrong case is refused at creation | `SupportedCurrencyApiTest.java` |
 | `X9-CUR-070` | peg groups load from strict JSON as upper-cased sets | `CurrencyConfigurationTest.java` |
+| `X9-CUR-501` | a currency outside supported-currencies.json is refused at create, naming it, with no id | `test_create_refusals.py` |
 
 ## The event stream
 
@@ -137,6 +156,10 @@ single most important thing this index exists for.
 | `X9-EVT-021` | both the announced and the reported amount reach the consumer | `PaymentEventLogContractTest.java` |
 | `X9-EVT-030` | the payment event carries the tip the payer reported | `test_payment_notification.py` |
 | `X9-EVT-031` | an event for a payment with no tip reports no tip | `test_payment_notification.py` |
+| `X9-EVT-501` | payment.initiated then payment.sent are published in order; a refusal publishes nothing | `test_two_phase.py` |
+| `X9-EVT-502` | every event has its own eventId | `test_two_phase.py` |
+| `X9-EVT-503` | payment.sent carries the transaction hash the payer reported | `test_two_phase.py` |
+| `X9-EVT-504` | reading on from the cursor returns none of the events already read | `test_two_phase.py` |
 
 ## Lifecycle, status and delivery
 
@@ -234,6 +257,13 @@ single most important thing this index exists for.
 | `X9-LIFE-141` | an explicit null bill.paymentTiming on create is refused | `DefaultedBillFieldsApiTest.java` |
 | `X9-LIFE-142` | a status-update PAYMENT_INITIATED after the reservation lapsed reserves the QR Code again, with payment.initiated | `StatusUpdateAfterLapsedReservationApiTest.java` |
 | `X9-LIFE-143` | a repeated status-update PAYMENT_INITIATED while the reservation is live is still a no-op | `StatusUpdateAfterLapsedReservationApiTest.java` |
+| `X9-LIFE-504` | the control of the contract cases: each operation's unbroken sample is accepted | `test_contract.py` |
+| `X9-LIFE-505` | every length, pattern, required and numeric bound in openapi.yaml is refused: 400, the field's path, nothing changed | `test_contract.py` |
+| `X9-LIFE-501` | a GET of an id nobody issued is 404 | `test_create_refusals.py` |
+| `X9-LIFE-506` | a create refused for its currency leaves the store exactly as it was | `test_database.py` |
+| `X9-LIFE-507` | a notification refused for its amount stores nothing and publishes nothing | `test_database.py` |
+| `X9-LIFE-502` | the deployment under test reports health or readiness UP | `test_deployment.py` |
+| `X9-LIFE-503` | status-update PAID is accepted, and a PAID QR Code stays PAID | `test_settlement.py` |
 
 ### Who holds a reservation
 
@@ -345,6 +375,9 @@ Only the party that announced a payment may re-announce it, report it, or give i
 | `X9-HOLD-405` | every answer to a payer is signed, refusals included, statusCode equal to the HTTP status | `test_payers.py` |
 | `X9-HOLD-406` | 32 concurrent pre-commits: exactly one 200, 31 signed 409s, one payment.initiated | `test_payers.py` |
 | `X9-HOLD-407` | an ACH notification without `payer.info` (no payer, or no info) or without `expectedDate` is refused, signed, and reserves nothing | `test_payers.py` |
+| `X9-HOLD-501` | a pre-commit is accepted and the QR Code is PAYMENT_INITIATED | `test_two_phase.py` |
+| `X9-HOLD-502` | a second payer, on its own key, is refused with 409 while the QR Code is reserved | `test_two_phase.py` |
+| `X9-HOLD-503` | a post-commit is accepted and does not mark the QR Code PAID | `test_two_phase.py` |
 
 ## The transition map (ADR-0035)
 
@@ -432,6 +465,18 @@ The status-update matrix itself is `X9-MAP-010` to `-013` above.
 | `X9-LOC-480` | a configured host of 38 characters stops the service at startup, naming the 37 limit; 37 starts | `X9PropertiesHostLengthTest.java` |
 | `X9-LOC-481` | a payload or JWK set on another host is fetched over `https`, whatever scheme was written | `DefaultQRCodeLocationServiceTest.java` |
 | `X9-LOC-482` | this deployment's own host is read internally, on its local port (the control for X9-LOC-481) | `DefaultQRCodeLocationServiceTest.java` |
+| `X9-LOC-501` | a live QR Code keeps its location: another create cannot take it | `test_location_handover.py` |
+| `X9-LOC-502` | a CANCELLED QR Code's location goes to the taker, and the donor gets a new one | `test_location_handover.py` |
+| `X9-LOC-503` | the payload is a JWS that verifies against the payee's certificate | `test_payload.py` |
+| `X9-LOC-504` | the payload states the amount, the currency and the Solana recipient that were created | `test_payload.py` |
+| `X9-LOC-505` | the payload names the notification endpoint | `test_payload.py` |
+| `X9-LOC-506` | an unsigned payload request is refused with 400 and serves nothing | `test_payload.py` |
+| `X9-LOC-507` | a QR Code's id is 32 upper-case hex characters | `test_qr_code.py` |
+| `X9-LOC-508` | the EMV string is well formed: format indicator 01, honest TLV lengths, a valid CRC | `test_qr_code.py` |
+| `X9-LOC-509` | the org.x9 template carries the loc URL naming this QR Code, within 99 characters | `test_qr_code.py` |
+| `X9-LOC-510` | qrCodeB64 decodes to the EMV string, byte for byte | `test_qr_code.py` |
+| `X9-LOC-511` | the advertised location endpoint is https and ends with the location id | `test_qr_code.py` |
+| `X9-LOC-512` | a new QR Code reads back ACTIVE with its Solana recipient | `test_qr_code.py` |
 
 ### What the payer is told when a decode is refused
 
@@ -480,6 +525,15 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-PATCH-040` | a PATCH of `validUntil` alone, to before the bill's `dueDate`, is refused naming `bill.invoice.dueDate`; nothing changes; exactly `dueDate` is accepted | `PatchCrossFieldDatesApiTest.java` |
 | `X9-PATCH-041` | a PATCH moving `validUntil` before a method's, or a method's after the QR Code's, is refused naming `paymentMethods[0].validUntil`; nothing changes | `PatchCrossFieldDatesApiTest.java` |
 | `X9-PATCH-440` | `lockVersion` is in no answer: create, GET, PATCH, or the signed payload | `test_conditional_requests.py` |
+| `X9-PATCH-501` | a GET serves an ETag | `test_conditional_requests.py` |
+| `X9-PATCH-502` | a stale If-Match on PATCH is 412, and neither the amount nor the ETag moves | `test_conditional_requests.py` |
+| `X9-PATCH-503` | a stale If-Match on status-update is 412, and the QR Code stays ACTIVE | `test_conditional_requests.py` |
+| `X9-PATCH-504` | a repeated additionalInformation label is not collapsed | `test_conditional_requests.py` |
+| `X9-PATCH-505` | a status change through status-update is not a new revision | `test_conditional_requests.py` |
+| `X9-PATCH-506` | a PATCH naming every currency changes every currency | `test_patch_currencies.py` |
+| `X9-PATCH-507` | a PATCH omitting a currency is refused naming it, and nothing moves | `test_patch_currencies.py` |
+| `X9-PATCH-508` | a PATCH adding a currency the QR Code does not offer is refused naming it, and nothing moves | `test_patch_currencies.py` |
+| `X9-PATCH-509` | a PATCH naming only an unknown currency is refused, not a silent 200 | `test_patch_currencies.py` |
 
 ## Payment requests pinned: create, PATCH, ETag, rebind (Story 4.2)
 
@@ -572,6 +626,7 @@ status is `X9-MAP-002`.
 | `X9-RAIL-110` | the full create-and-settle flow works on every interpreted rail | `QRCodesApisFlowTest.java` |
 | `X9-RAIL-111` | a payment notification is accepted on every interpreted rail | `QRCodesApisFlowTest.java` |
 | `X9-RAIL-120` | `paymentMethods` sent as a bare object is refused with 400 and no id | `test_create_refusals.py` |
+| `X9-RAIL-501` | a network this deployment does not interpret is refused at create, naming it, with no id | `test_create_refusals.py` |
 
 ## Signatures, keys and problem details
 
@@ -654,6 +709,31 @@ status is `X9-MAP-002`.
 | `X9-SIG-302` | an unreachable payee is 502, with no verdict | `test_payers.py` |
 | `X9-SIG-303` | a pre-payment carrying a transactionId is refused before sending | `test_payers.py` |
 | `X9-SIG-304` | a post-payment SENT needs a transactionId; NOT_SENT without one is delivered | `test_payers.py` |
+| `X9-SIG-501` | the test payee holds the service's signed outbound question byte for byte, under the caller's correlationId | `test_payee_answers.py` |
+| `X9-SIG-502` | each of the payee's answers (cases 1-8, 11-16) is reported for what it is: signature, signatureProblem, statusCode, accepted | `test_payee_answers.py` |
+| `X9-SIG-503` | an answer signed by an untrusted or a revoked certificate is INVALID, UNTRUSTED_CHAIN | `test_payee_answers.py` |
+| `X9-SIG-504` | a payee that hangs up without answering is 502, and nothing changes here | `test_payee_answers.py` |
+| `X9-SIG-505` | a payee answering after the 15 s timeout is 502 | `test_payee_answers.py` |
+| `X9-SIG-506` | each tampered payee answer is reported INVALID with the service's fixed code | `test_payee_answers.py` |
+| `X9-SIG-507` | the JWK set is served, each key with its x5c chain | `test_public_metadata.py` |
+| `X9-SIG-508` | a test payer's token carries the X9.150 profile: ms iat/ttl, correlationId, crit, x5c, x5t#S256 | `test_signatures.py` |
+| `X9-SIG-509` | both test-CA payers, RSA and EC, are accepted on their own keys | `test_signatures.py` |
+| `X9-SIG-510` | each tampered payer notification is refused with its fixed code, and changes nothing | `test_signatures.py` |
+| `X9-SIG-511` | the control of X9-SIG-510: the same message, signed honestly, is accepted | `test_signatures.py` |
+| `X9-SIG-512` | a payer certificate revoked on the test CA's CRL is refused | `test_signatures.py` |
+| `X9-SIG-513` | another payer's announcement, on its own key and with the same payer.info, is a 409 | `test_signatures.py` |
+| `X9-SIG-514` | another payer's NOT_SENT is a 409, and the holder keeps the reservation | `test_signatures.py` |
+| `X9-SIG-515` | another payer's post-commit is registered and changes nothing else | `test_signatures.py` |
+| `X9-SIG-516` | a yes is a JWS signed by the payee that answers this question's correlationId | `test_signatures.py` |
+| `X9-SIG-517` | a signed no for a wrong amount: 400, the question echoed, the field named | `test_signatures.py` |
+| `X9-SIG-518` | a signed no for an unknown QR Code: 404 | `test_signatures.py` |
+| `X9-SIG-519` | a signed no when another payer holds the reservation: 409 | `test_signatures.py` |
+| `X9-SIG-520` | a signed no for a pre-commit on a CANCELLED QR Code: 400 | `test_signatures.py` |
+| `X9-SIG-521` | a signed no for a pre-commit after validUntil by the payee's clock: 400 | `test_signatures.py` |
+| `X9-SIG-522` | an unverifiable question gets a signed 401 under a fresh correlationId | `test_signatures.py` |
+| `X9-SIG-523` | an unreadable question (not a JWS, or empty) is still answered signed, under a fresh correlationId | `test_signatures.py` |
+| `X9-SIG-524` | the same signed question sent twice is answered twice (today's behaviour, pinned) | `test_signatures.py` |
+| `X9-SIG-525` | an EC payer issued by a trusted CA, carrying x5c, is accepted | `CaIssuedSignatureApiTest.java` |
 
 ## Time edges (the test clock)
 
@@ -681,6 +761,47 @@ judged within the 2 s before it; "1 ms after" is exact.
 | `X9-TIME-020` | a past `dateForPayment` does not bring back an expired payment method; the methods shown are chosen at the instant the fee is computed | `PayloadPricingInstantApiTest.java` |
 | `X9-TIME-021` | a future `dateForPayment` still chooses the payment methods valid on that day | `PayloadPricingInstantApiTest.java` |
 | `X9-TIME-018` | a post-commit 1 ms after `validUntil` is accepted, signed, and registered with its hash | `test_time_edges.py` |
+| `X9-TIME-501` | the test clock moves, reads back and resets, and every answer carries `X-Test-Clock-Offset` while it is moved | `test_clock.py` |
+| `X9-TIME-502` | on the test clock, a payload stops being served once the clock passes `validUntil` (X9-LIFE-126 without sleeping) | `test_clock.py` |
+| `X9-TIME-511` | with no offset, business time is real time | `BusinessClockTest.java` |
+| `X9-TIME-512` | DateTimeUtils.nowUTC() includes the offset | `BusinessClockTest.java` |
+| `X9-TIME-513` | a shifted clock keeps ticking: it is never frozen | `BusinessClockTest.java` |
+| `X9-TIME-514` | reset restores real time | `BusinessClockTest.java` |
+| `X9-TIME-515` | setting `at` shifts the clock to that instant | `BusinessClockTest.java` |
+| `X9-TIME-516` | `at` keeps its milliseconds, and the clock never reads earlier than it | `BusinessClockTest.java` |
+| `X9-TIME-517` | setting E + 1 ms makes every later read after E | `BusinessClockTest.java` |
+| `X9-TIME-518` | an instant finer than a millisecond is refused | `BusinessClockTest.java` |
+| `X9-TIME-519` | an instant too far away is refused | `BusinessClockTest.java` |
+| `X9-TIME-520` | an absurd offset is refused | `BusinessClockTest.java` |
+| `X9-TIME-521` | the default dateForPayment of a payload read is business time | `BusinessClockReadsTest.java` |
+| `X9-TIME-522` | an explicit dateForPayment is not touched by the offset | `BusinessClockReadsTest.java` |
+| `X9-TIME-523` | every certificate bundled with this repository satisfies the test-clock guard | `TestClockCertificateGuardTest.java` |
+| `X9-TIME-524` | the compiled-in list is exactly the bundled certificates | `TestClockCertificateGuardTest.java` |
+| `X9-TIME-525` | a certificate that is not bundled is refused by the guard | `TestClockCertificateGuardTest.java` |
+| `X9-TIME-526` | no certificate at all is refused by the guard | `TestClockCertificateGuardTest.java` |
+| `X9-TIME-527` | with the clock on and a certificate that is not bundled, the application refuses to start | `TestClockCertificateGuardTest.java` |
+| `X9-TIME-528` | with the clock off, no clock exists, whatever the certificate | `TestClockCertificateGuardTest.java` |
+| `X9-TIME-529` | with the clock on and the demo certificate, the clock listener starts | `TestClockCertificateGuardTest.java` |
+| `X9-TIME-530` | the clock listener may not be the API port | `TestClockCertificateGuardTest.java` |
+| `X9-TIME-531` | GET, PUT and DELETE /test/clock are served on the clock listener | `TestClockControlApiTest.java` |
+| `X9-TIME-532` | the clock is never on the API port, even with the flag on | `TestClockControlApiTest.java` |
+| `X9-TIME-533` | a JWS signed under the offset carries the shifted iat | `TestClockControlApiTest.java` |
+| `X9-TIME-534` | verification reads the shifted clock: a JWS expired in business time is refused | `TestClockControlApiTest.java` |
+| `X9-TIME-535` | every API answer carries X-Test-Clock-Offset until the offset is deleted | `TestClockControlApiTest.java` |
+| `X9-TIME-536` | on the clock, a pre-commit is accepted before an edge and refused 1 ms after it | `TestClockControlApiTest.java` |
+| `X9-TIME-537` | with the clock off, nothing listens on the clock address | `TestClockDisabledApiTest.java` |
+| `X9-TIME-538` | with the clock off, /test/clock on the API port is 404 for every method, and the clock does not move | `TestClockDisabledApiTest.java` |
+| `X9-TIME-539` | starting the clock listener logs a WARN | `TestClockServerTest.java` |
+| `X9-TIME-540` | the clock server refuses to start with a certificate that is not bundled | `TestClockServerTest.java` |
+| `X9-TIME-541` | PUT an offset in seconds, GET it back, DELETE it | `TestClockServerTest.java` |
+| `X9-TIME-542` | PUT `at` moves the clock to that instant | `TestClockServerTest.java` |
+| `X9-TIME-543` | the offset can be set in milliseconds | `TestClockServerTest.java` |
+| `X9-TIME-544` | PUT `at` keeps its milliseconds, and the clock never reads earlier | `TestClockServerTest.java` |
+| `X9-TIME-545` | a bad PUT is refused and leaves the clock where it was | `TestClockServerTest.java` |
+| `X9-TIME-546` | other methods and paths are refused | `TestClockServerTest.java` |
+| `X9-TIME-547` | a real certificate swapped in at runtime stops the clock moving | `TestClockServerTest.java` |
+| `X9-TIME-548` | stopping the clock server resets the clock | `TestClockServerTest.java` |
+| `X9-TIME-549` | clock listen addresses are parsed | `TestClockServerTest.java` |
 
 ## Golden sets (Story 4.7)
 
@@ -741,3 +862,28 @@ and against the running Java build.
 | `X9-TIP-132` | a PATCH tip without allowed allows tips | `DefaultedBillFieldsApiTest.java` |
 | `X9-TIP-133` | an explicit null tip.allowed on PATCH is refused | `DefaultedBillFieldsApiTest.java` |
 | `X9-TIP-140` | tip percentages are taken in the notified currency (a USD bill paid through a USDC method) | `PaymentNotificationTipPolicyTest.java` |
+| `X9-TIP-501` | each tip form (none, refused, a range only) can be created | `test_tip_offers.py` |
+| `X9-TIP-502` | a tip offer with neither a range nor presets is refused at create | `test_tip_offers.py` |
+| `X9-TIP-503` | omitting the tip block is stored as tips refused | `test_tip_offers.py` |
+| `X9-TIP-504` | the bill plus a tip is accepted | `test_tip_offers.py` |
+| `X9-TIP-505` | a wrong tip is refused naming the tip, and reserves nothing | `test_tip_offers.py` |
+| `X9-TIP-506` | a tip matching no preset is accepted when no range is published | `test_tip_offers.py` |
+
+## The black-box suite itself
+
+The suite's own tooling: its client, its generators and the checks that keep it honest. These
+prove nothing about the service; they prove the suite can be trusted to.
+
+| Key | What it proves | Where |
+|---|---|---|
+| `X9-SUITE-510` | a constraint added to the contract gets its generated case; every kind is generated; no known gap is stale | `test_contract.py` |
+| `X9-SUITE-501` | no black-box test signs as a payer through the service under test | `test_signatures.py` |
+| `X9-SUITE-502` | every X9-MAP key in ADR-0035's map has a test in test_transition_map.py | `test_transition_map.py` |
+| `X9-SUITE-503` | the suite's CRC-16/CCITT-FALSE gives the published check value | `test_x9client.py` |
+| `X9-SUITE-504` | the suite's EMV decoder reads TLVs one template down and checks the CRC | `test_x9client.py` |
+| `X9-SUITE-505` | the suite's EMV decoder refuses a length running past the end | `test_x9client.py` |
+| `X9-SUITE-506` | the suite's HTTP client reads the status, the body, the ETag and problem+json | `test_x9client.py` |
+| `X9-SUITE-507` | the suite's HTTP client reports nothing listening as status 0, not an exception | `test_x9client.py` |
+| `X9-SUITE-508` | without X9_DATABASE_URL the suite has no inspector and states why | `test_x9client.py` |
+| `X9-SUITE-509` | a database URL of an unknown scheme is a stated reason, not a crash | `test_x9client.py` |
+| `X9-SUITE-511` | a clock nobody serves is reported unavailable, with the message the fixture skips on | `test_x9client.py` |

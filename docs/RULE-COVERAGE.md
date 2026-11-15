@@ -18,6 +18,8 @@ Each row is one rule.
   `File::function`. `GAP` means no test proves the rule today. `NOT BUILT (ADR-0006)` means the
   ADR decided it and nothing was ever built, so there is nothing to observe; the ADR is named so
   the row says where the decision lives.
+  [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md)); every test has one. `GAP` means no test proves the
+  rule today.
 - **Proves** lists the acceptance criteria (`S4.2-AC1`, defined in
   [EPICS-AND-STORIES.md](rewrite/EPICS-AND-STORIES.md)) that those tests cite. `—` means the tests
   were written before criteria had IDs and cite none.
@@ -62,7 +64,8 @@ day Java changes: `X9-LOC-421` (BUG-004). It pins ADR-0024, which is outside thi
   cites;
 - a source has no row: STATE-MACHINE, ENDPOINTS, an entry of INTERPRETATION, an ADR from 0004 to
   0021, ADR-0036, or a key of ADR-0035's map;
-- a rule under [Gaps](#gaps) now has a test (remove it from the list).
+- a rule under [Gaps](#gaps) now has a test (remove it from the list);
+- a black-box case or a JUnit test carries no key.
 
 **When you add a rule to one of these documents,** add its row here with the next free number and
 name its test. **When you write the test for a gap,** put the test in the row and delete the gap.
@@ -95,7 +98,7 @@ None today.
 | `R-SM-12` | Reactivation (`ACTIVE`) is allowed from `PAYMENT_INITIATED` only. | `X9-MAP-013`, `X9-LIFE-055` | `S4.1-AC1`, `S4.1-AC3` |
 | `R-SM-13` | A status-update `PAYMENT_INITIATED` on an `ACTIVE` QR Code (effective status) takes an unattributed reservation. | `X9-MAP-010`, `X9-LIFE-050`, `X9-LIFE-173`, `X9-LIFE-142` | `S4.1-AC1`, `S4.1-AC3`, `S4.4-AC1` |
 | `R-SM-14` | A status-update `PAYMENT_INITIATED` may not carry settlement details. | `X9-LIFE-025`, `X9-LIFE-056` | — |
-| `R-SM-15` | Only the payment system marks a QR Code `PAID`, through the status-update API; no payer message does. | `X9-HOLD-402`, `X9-HOLD-214`, `X9-RAIL-101`, `test_settlement.py::test_only_status_update_marks_paid_and_a_paid_qr_code_stays_paid` | `S2.4-AC4`, `S2.4-AC6`, `S2.4-AC7`, `S3.4-AC1`, `S4.3-AC2` |
+| `R-SM-15` | Only the payment system marks a QR Code `PAID`, through the status-update API; no payer message does. | `X9-HOLD-402`, `X9-HOLD-214`, `X9-RAIL-101`, `X9-LIFE-503` | `S2.4-AC4`, `S2.4-AC6`, `S2.4-AC7`, `S3.4-AC1`, `S4.3-AC2` |
 | `R-SM-16` | A notification must name a rail the QR Code offers. | `X9-RAIL-030`, `X9-RAIL-102` | — |
 | `R-SM-17` | `blockchain` data is refused on a bank rail. | `X9-RAIL-002` | — |
 | `R-SM-18` | An ACH notification must carry `payer.info` and `expectedDate`. | `X9-HOLD-407` | — |
@@ -120,35 +123,35 @@ None today.
 | `R-SM-37` | Every event a notification produces carries `receivedInStatus`. | `X9-HOLD-207`, `X9-MAP-033`, `X9-HOLD-215` | `S2.4-AC4`, `S2.4-AC7`, `S4.1-AC1`, `S4.1-AC3` |
 | `R-SM-38` | `deviations` lists `RECEIVED_IN_WRONG_STATUS` and `ACTION_CONTRADICTS_HASH`, and is absent when the payer followed the rules. | `X9-HOLD-113`, `X9-HOLD-118`, `X9-HOLD-119`, `X9-HOLD-120` | `S2.4-AC5` |
 | `R-SM-39` | Every hash survives in the event log as its own `payment.sent`. | `X9-HOLD-117`, `X9-HOLD-214` | `S2.4-AC6`, `S2.4-AC7` |
-| `R-SM-40` | Past `validUntil`, a pre-commit is refused by the payee's clock (400). | `X9-TIME-006`, `test_signatures.py::test_a_pre_commit_after_valid_until` | `S1.3-AC3`, `S3.2-AC7`, `S4.5-AC1` |
+| `R-SM-40` | Past `validUntil`, a pre-commit is refused by the payee's clock (400). | `X9-TIME-006`, `X9-SIG-521` | `S1.3-AC3`, `S3.2-AC7`, `S4.5-AC1` |
 | `R-SM-41` | Past `validUntil`, a post-commit is still accepted and registered. | `X9-TIME-018` | — |
 | `R-SM-42` | Two pre-commits that arrive together end with one winner and one 409. | `X9-HOLD-203`, `X9-HOLD-406` | `S2.4-AC2`, `S4.3-AC2`, `S4.3-AC3` |
 | `R-SM-43` | The same payer means `payer.info` present on both and equal, and the same certificate subject; without `payer.info` the sender is somebody else. | `X9-HOLD-001`, `X9-HOLD-002`, `X9-HOLD-003`, `X9-HOLD-004`, `X9-HOLD-305`, `X9-HOLD-306` | `S2.5-AC4` |
 | `R-SM-44` | `NOT_SENT` is keyed on the action, and is the only message by which a payer gives a reserved QR Code back. | `X9-HOLD-103`, `X9-HOLD-020`, `X9-HOLD-021`, `X9-HOLD-213` | `S2.4-AC5`, `S2.4-AC6` |
 | `R-SM-45` | `payment.sent` and `payment.failed` are published on chains only. | `X9-HOLD-112`, `X9-HOLD-131`, `X9-HOLD-205`, `X9-MAP-030` | `S2.4-AC2`, `S2.4-AC3`, `S2.5-AC2`, `S4.1-AC1`, `S4.1-AC3` |
-| `R-SM-46` | There is no `txHash` field: `payment.transactionId` carries the reference of every rail. | `X9-HOLD-101`, `test_two_phase.py::test_payment_sent_carries_the_hash` | `S2.4-AC5`, `S3.4-AC1` |
+| `R-SM-46` | There is no `txHash` field: `payment.transactionId` carries the reference of every rail. | `X9-HOLD-101`, `X9-EVT-503` | `S2.4-AC5`, `S3.4-AC1` |
 
 ## ENDPOINTS.md
 
 | Rule | What it says | Tests | Proves |
 |---|---|---|---|
 | `R-EP-01` | The API has no built-in authentication: management and public endpoints answer without credentials. | `X9-LIFE-100`, `X9-EVT-001` | — |
-| `R-EP-02` | The loc URL is in the QR string, in EMV tag 26 under the GUI `org.x9`, and is built from the configured host. | `X9-LOC-030`, `test_qr_code.py::test_the_x9_template_carries_the_location_url_within_99_characters`, `test_qr_code.py::test_the_location_endpoint_is_https_and_names_the_location` | `S3.4-AC1` |
-| `R-EP-03` | `POST /pub/api/v1/loc/{id}` answers a signed request with the JWS-signed payload. | `X9-LOC-041`, `X9-LOC-303`, `X9-LOC-304`, `test_payload.py::test_the_payload_is_a_jws_signed_by_the_payee` | `S3.4-AC1`, `S4.3-AC1` |
-| `R-EP-04` | The notification URL travels in the signed payload (`paymentNotification.endpoint`). | `test_payload.py::test_the_payload_says_where_to_send_the_notification` | `S3.4-AC1` |
+| `R-EP-02` | The loc URL is in the QR string, in EMV tag 26 under the GUI `org.x9`, and is built from the configured host. | `X9-LOC-030`, `X9-LOC-509`, `X9-LOC-511` | `S3.4-AC1` |
+| `R-EP-03` | `POST /pub/api/v1/loc/{id}` answers a signed request with the JWS-signed payload. | `X9-LOC-041`, `X9-LOC-303`, `X9-LOC-304`, `X9-LOC-503` | `S3.4-AC1`, `S4.3-AC1` |
+| `R-EP-04` | The notification URL travels in the signed payload (`paymentNotification.endpoint`). | `X9-LOC-505` | `S3.4-AC1` |
 | `R-EP-05` | A creditor-supplied `paymentNotification.endpoint` is the notification URL of that QR Code. | `X9-HOLD-404`, `X9-LIFE-046` | `S4.3-AC2` |
-| `R-EP-06` | `GET /pub/.well-known/jwks` serves the public signing keys. | `X9-SIG-076`, `X9-SIG-042`, `test_public_metadata.py::test_the_jwk_set_is_served_with_a_certificate_chain` | `S3.4-AC1` |
+| `R-EP-06` | `GET /pub/.well-known/jwks` serves the public signing keys. | `X9-SIG-076`, `X9-SIG-042`, `X9-SIG-507` | `S3.4-AC1` |
 | `R-EP-07` | `GET /pub/.well-known/certificate/{pemFileName}` serves the signing certificate. | `X9-SIG-075`, `X9-SIG-041` | — |
 | `R-EP-08` | The payment-request endpoints create, read, patch and change the status of a QR Code. | `X9-LIFE-100`, `X9-PATCH-030`, `X9-PATCH-031`, `X9-LIFE-102`, `X9-LIFE-103` | — |
 | `R-EP-09` | The decoder reads an EMV string, fetches the payee's signed payload and verifies it. | `X9-SIG-100`, `X9-DEC-003` | — |
 | `R-EP-10` | The payer-side endpoints compose, sign and deliver a notification to the payee. | `X9-LIFE-070`, `X9-LIFE-075`, `X9-SIG-030`, `X9-SIG-301`, `X9-SIG-304` | `S4.3-AC3` |
 | `R-EP-11` | The signature endpoints generate a JWS and validate one. | `X9-SIG-101`, `X9-SIG-071` | — |
-| `R-EP-12` | `/test/clock` is never on the API port; it exists only in a test deployment, on its own listener. | `TestClockControlApiTest.java::theClockIsNeverOnTheApiPort`, `TestClockControlApiTest.java::theClockIsServedOnItsOwnListener`, `TestClockDisabledApiTest.java::theApiPortAnswers404`, `TestClockDisabledApiTest.java::nothingListensOnTheClockAddress` | `S2.1-AC1`, `S2.1-AC3`, `S2.1-AC4` |
-| `R-EP-13` | Events: `after` resumes after the cursor, with no gap and no repeat; without it the read starts at the beginning. | `X9-EVT-051`, `X9-EVT-055`, `X9-EVT-002`, `test_two_phase.py::test_the_cursor_advances_and_does_not_repeat` | `S3.4-AC1`, `S4.4-AC2` |
+| `R-EP-12` | `/test/clock` is never on the API port; it exists only in a test deployment, on its own listener. | `X9-TIME-532`, `X9-TIME-531`, `X9-TIME-538`, `X9-TIME-537` | `S2.1-AC1`, `S2.1-AC3`, `S2.1-AC4` |
+| `R-EP-13` | Events: `after` resumes after the cursor, with no gap and no repeat; without it the read starts at the beginning. | `X9-EVT-051`, `X9-EVT-055`, `X9-EVT-002`, `X9-EVT-504` | `S3.4-AC1`, `S4.4-AC2` |
 | `R-EP-14` | Events: `limit` is 1 to 500, 100 by default. | `X9-EVT-056`, `X9-EVT-057` | — |
 | `R-EP-15` | Events: `wait` holds an empty read open, 0 to 30 seconds, 0 by default; above 30 is refused with 400 naming `wait`. | `X9-EVT-054`, `X9-EVT-053` | `S4.4-AC2` |
 | `R-EP-16` | Events: `hasMore` says a page was cut at `limit`; a read past the end is empty with no `nextCursor`. | `X9-EVT-052` | `S4.4-AC2` |
-| `R-EP-17` | Events: `eventId` is stable across reads, so a consumer deduplicates by it. | `X9-EVT-055`, `X9-EVT-002`, `test_two_phase.py::test_every_event_has_its_own_event_id` | `S3.4-AC1`, `S4.4-AC2` |
+| `R-EP-17` | Events: `eventId` is stable across reads, so a consumer deduplicates by it. | `X9-EVT-055`, `X9-EVT-002`, `X9-EVT-502` | `S3.4-AC1`, `S4.4-AC2` |
 | `R-EP-18` | `payment.sent` is not "paid": only `payment.cleared`, emitted by a status-update, says funds arrived. | `X9-MAP-011`, `X9-HOLD-402`, `X9-EVT-001` | `S4.1-AC1`, `S4.1-AC3`, `S4.3-AC2` |
 | `R-EP-19` | Events from a payer's notification carry `receivedInStatus` and, when the payer broke the protocol, `deviations`; `schemaVersion` is `1.1`. | `X9-HOLD-207`, `X9-HOLD-209`, `X9-EVT-050` | `S2.4-AC4`, `S2.4-AC5`, `S4.4-AC2` |
 | `R-EP-20` | More than one `payment.sent` for one QR Code is published, never merged. | `X9-HOLD-117`, `X9-HOLD-214` | `S2.4-AC6`, `S2.4-AC7` |
@@ -171,8 +174,8 @@ None today.
 | `R-I1-05` | The notified network is stored and echoed back as sent. | `X9-RAIL-071`, `X9-HOLD-401` | `S4.3-AC2` |
 | `R-I1-06` | Leniency about case is not leniency about the rail, the currency or the amount. | `X9-RAIL-072`, `X9-CUR-051`, `X9-AMT-070` | — |
 | `R-I2-01` | Only `fednow`, `rtp`, `ach` and `solana` are interpreted. | `X9-RAIL-010`, `X9-RAIL-014`, `X9-RAIL-110` | — |
-| `R-I2-02` | Any other network is refused at creation, 400, naming it; it is never dropped silently. | `X9-RAIL-052`, `X9-RAIL-053`, `X9-RAIL-420`, `test_create_refusals.py::test_an_uninterpreted_network_is_refused_naming_it` | `S3.4-AC1`, `S4.2-AC1` |
-| `R-I3-01` | Only a currency on the allow list (`supported-currencies.json`) is accepted at creation; another is refused by name. | `X9-CUR-010`, `X9-CUR-013`, `X9-CUR-060`, `X9-CUR-061`, `X9-CUR-062`, `X9-CUR-420`, `test_create_refusals.py::test_an_unsupported_currency_is_refused_naming_it` | `S3.4-AC1`, `S4.2-AC1` |
+| `R-I2-02` | Any other network is refused at creation, 400, naming it; it is never dropped silently. | `X9-RAIL-052`, `X9-RAIL-053`, `X9-RAIL-420`, `X9-RAIL-501` | `S3.4-AC1`, `S4.2-AC1` |
+| `R-I3-01` | Only a currency on the allow list (`supported-currencies.json`) is accepted at creation; another is refused by name. | `X9-CUR-010`, `X9-CUR-013`, `X9-CUR-060`, `X9-CUR-061`, `X9-CUR-062`, `X9-CUR-420`, `X9-CUR-501` | `S3.4-AC1`, `S4.2-AC1` |
 | `R-I3-02` | An empty allow list turns the check off. | `X9-CUR-016`, `X9-CUR-017` | — |
 | `R-I3-03` | No currency is implied: a payment method without a currency does not take the bill's. | `X9-CUR-421` | `S4.2-AC1` |
 | `R-I3-04` | Currencies on one request must share a peg group. | `X9-CUR-020`, `X9-CUR-022`, `X9-CUR-023`, `X9-CUR-024`, `X9-CUR-027`, `X9-CUR-422` | `S4.2-AC1` |
@@ -180,7 +183,7 @@ None today.
 | `R-I5-01` | `paymentMethods` is an array; a bare object is refused. | `X9-RAIL-120` | — |
 | `R-I5-02` | One `paymentMethods` entry carries every rail that settles its currency. | `X9-RAIL-110`, `X9-RAIL-111` | — |
 | `R-I6-01` | A bank account number is 4 to 17 digits or letters; anything else is refused. | `X9-RAIL-080`, `X9-RAIL-081` | — |
-| `R-I7-01` | A payer signing with an RSA key or an EC key is verified, from the `alg` it presents. | `X9-SIG-050`, `X9-SIG-054`, `test_signatures.py::test_each_payer_is_accepted_on_its_own_key` | `S3.2-AC1`, `S3.2-AC2` |
+| `R-I7-01` | A payer signing with an RSA key or an EC key is verified, from the `alg` it presents. | `X9-SIG-050`, `X9-SIG-054`, `X9-SIG-509` | `S3.2-AC1`, `S3.2-AC2` |
 | `R-I7-02` | This service signs with the key it is given, EC or RSA. | `X9-SIG-040`, `X9-SIG-041`, `X9-SIG-090`, `X9-SIG-091` | — |
 | `R-I7-03` | A configured `alg` the key cannot produce fails at startup, naming both. | `X9-SIG-092`, `X9-SIG-093` | — |
 | `R-I8-01` | A Solana `recipient` is 32 to 44 Base58 characters: a 43-character address is accepted. | `X9-RAIL-045`, `X9-RAIL-046`, `X9-RAIL-043` | — |
@@ -191,12 +194,12 @@ None today.
 | `R-I10-01` | `payment.amount` is the total, tip included; `amount − tipAmount` is what is judged against the bill. | `X9-TIP-001`, `X9-TIP-002`, `X9-TIP-101`, `X9-TIP-102` | — |
 | `R-I10-02` | A tip on a bill that does not allow tips is refused. | `X9-TIP-005`, `X9-TIP-103` | — |
 | `R-I10-03` | A tip outside the published range is refused. | `X9-TIP-007`, `X9-TIP-008`, `X9-TIP-009`, `X9-TIP-104` | — |
-| `R-I10-04` | Presets do not bind: a bill with presets and no range accepts any positive tip. | `X9-TIP-011`, `X9-TIP-012`, `X9-TIP-109`, `X9-TIP-421`, `test_tip_offers.py::test_a_tip_matching_no_preset_is_accepted_when_no_range_is_published` | `S3.4-AC1`, `S4.2-AC1` |
-| `R-I10-05` | A tip offer must carry a range or presets: `{"allowed": true}` alone is refused at creation. | `X9-TIP-420`, `test_tip_offers.py::test_a_tip_offer_with_neither_range_nor_presets_is_refused` | `S3.4-AC1`, `S4.2-AC1` |
+| `R-I10-04` | Presets do not bind: a bill with presets and no range accepts any positive tip. | `X9-TIP-011`, `X9-TIP-012`, `X9-TIP-109`, `X9-TIP-421`, `X9-TIP-506` | `S3.4-AC1`, `S4.2-AC1` |
+| `R-I10-05` | A tip offer must carry a range or presets: `{"allowed": true}` alone is refused at creation. | `X9-TIP-420`, `X9-TIP-502` | `S3.4-AC1`, `S4.2-AC1` |
 | `R-I10-06` | The tip percentage is of what is being paid (`amount − tipAmount`), also on an editable amount. | `X9-TIP-013`, `X9-TIP-110`, `X9-TIP-111` | — |
 | `R-I10-07` | A tip may miss its bound by one minor unit, not by two. | `X9-TIP-014`, `X9-TIP-015`, `X9-TIP-112`, `X9-TIP-113` | — |
 | `R-I10-08` | Tip percentages are taken in the notified currency, not the bill's. | `X9-TIP-140` | — |
-| `R-I10-09` | `presets` has no minimum size: a bill with no tip block, with tips refused, or with a range only can be created. | `X9-TIP-121`, `X9-TIP-122`, `test_tip_offers.py::test_each_tip_form_can_be_created` | `S3.4-AC1` |
+| `R-I10-09` | `presets` has no minimum size: a bill with no tip block, with tips refused, or with a range only can be created. | `X9-TIP-121`, `X9-TIP-122`, `X9-TIP-501` | `S3.4-AC1` |
 | `R-I10-10` | A tip of zero, a negative tip, and a tip larger than the transfer are refused. | `X9-TIP-105`, `X9-TIP-106`, `X9-TIP-004`, `X9-TIP-108` | — |
 | `R-I11-01` | A notification without a `transactionId` is a pre-commit; with one, a post-commit. | `X9-HOLD-101`, `X9-HOLD-102` | `S2.4-AC1`, `S2.4-AC5` |
 | `R-I11-02` | A pre-commit is judged by the payee's clock and reserves the QR Code, on every rail. | `X9-HOLD-201`, `X9-MAP-020` | `S2.4-AC1`, `S2.4-AC2`, `S2.5-AC5`, `S4.1-AC1`, `S4.1-AC3` |
@@ -219,25 +222,25 @@ None today.
 | `R-I11-19` | `x9.reservation.ttl-seconds: 0` means no window; a negative value refuses to start. | `X9-HOLD-321`, `X9-HOLD-322`, `X9-HOLD-323`, `X9-HOLD-324` | `S2.5-AC2`, `S2.5-AC7` |
 | `R-I11-20` | A `PAYMENT_INITIATED` carrying a hash is kept as a post-commit, recorded as received, flagged `ACTION_CONTRADICTS_HASH`. | `X9-HOLD-209`, `X9-MAP-040` | `S2.4-AC5`, `S4.1-AC1`, `S4.1-AC3` |
 | `R-I11-21` | Every hash is registered, a second one included, and this service never marks a QR Code `PAID`. | `X9-HOLD-214`, `X9-HOLD-402` | `S2.4-AC6`, `S2.4-AC7`, `S4.3-AC2` |
-| `R-I12-01` | A yes is a compact JWS (`application/jose`) whose body is `{"statusCode": 200}`, echoing the notification's `correlationId`. | `X9-SIG-120`, `X9-SIG-121`, `test_signatures.py::test_a_yes_is_signed_by_the_payee_and_answers_this_question` | `S2.3-AC1`, `S3.2-AC4`, `S3.2-AC6`, `S3.2-AC7` |
+| `R-I12-01` | A yes is a compact JWS (`application/jose`) whose body is `{"statusCode": 200}`, echoing the notification's `correlationId`. | `X9-SIG-120`, `X9-SIG-121`, `X9-SIG-516` | `S2.3-AC1`, `S3.2-AC4`, `S3.2-AC6`, `S3.2-AC7` |
 | `R-I12-02` | A no keeps its HTTP status and is signed too, with `statusCode` and the error fields. | `X9-SIG-122`, `X9-SIG-123`, `X9-HOLD-405` | `S2.3-AC2`, `S4.3-AC2` |
-| `R-I12-03` | A notification that cannot be verified is refused, signed, under a fresh `correlationId`. | `X9-SIG-124`, `test_signatures.py::test_an_unverifiable_question_gets_a_fresh_correlation_id` | `S2.3-AC2`, `S3.2-AC7` |
+| `R-I12-03` | A notification that cannot be verified is refused, signed, under a fresh `correlationId`. | `X9-SIG-124`, `X9-SIG-522` | `S2.3-AC2`, `S3.2-AC7` |
 | `R-I12-04` | A signed response carries `statusCode` in its header. | `X9-SIG-072` | — |
-| `R-I12-05` | Every answer from the endpoint is signed, also a 400 or 415 refused before the controller and an unmapped 500. | `X9-SIG-146`, `X9-SIG-147`, `X9-SIG-148`, `X9-SIG-149`, `test_signatures.py::test_an_unreadable_question_is_still_answered_signed` | `S3.2-AC7` |
-| `R-I12-06` | Sending for a payer, the service checks the payee's answer and reports `signature` as `VERIFIED`, `ABSENT` or `INVALID`. | `X9-SIG-130`, `X9-SIG-131`, `X9-SIG-133`, `X9-SIG-134`, `X9-SIG-136`, `X9-SIG-137`, `test_payee_answers.py::test_the_service_reports_each_answer_for_what_it_is` | `S2.3-AC6`, `S3.5-AC2`, `S3.5-AC3` |
-| `R-I12-07` | When the answer is not verified, `signatureProblem` is a fixed code from a closed list. | `X9-SIG-135`, `X9-SIG-142`, `X9-SIG-143`, `test_payee_answers.py::test_every_tampered_answer_is_named_by_its_fixed_code` | `S3.2-AC2` |
+| `R-I12-05` | Every answer from the endpoint is signed, also a 400 or 415 refused before the controller and an unmapped 500. | `X9-SIG-146`, `X9-SIG-147`, `X9-SIG-148`, `X9-SIG-149`, `X9-SIG-523` | `S3.2-AC7` |
+| `R-I12-06` | Sending for a payer, the service checks the payee's answer and reports `signature` as `VERIFIED`, `ABSENT` or `INVALID`. | `X9-SIG-130`, `X9-SIG-131`, `X9-SIG-133`, `X9-SIG-134`, `X9-SIG-136`, `X9-SIG-137`, `X9-SIG-502` | `S2.3-AC6`, `S3.5-AC2`, `S3.5-AC3` |
+| `R-I12-07` | When the answer is not verified, `signatureProblem` is a fixed code from a closed list. | `X9-SIG-135`, `X9-SIG-142`, `X9-SIG-143`, `X9-SIG-506` | `S3.2-AC2` |
 | `R-I12-08` | It reports and never refuses: a 200 that is not verified is an unsigned yes. | `X9-SIG-132`, `X9-SIG-136`, `X9-SIG-138` | `S2.3-AC6` |
 | `R-I12-09` | A JWS whose `iat + ttl` has passed is refused (`EXPIRED`). | `X9-SIG-141`, `X9-TIME-011` | `S4.5-AC1` |
 | `R-I12-10` | A JWS whose `iat` is ahead of our clock by more than the skew is refused (`FUTURE_IAT`), in questions and in answers. | `X9-SIG-140`, `X9-SIG-144`, `X9-SIG-145` | — |
 | `R-I12-11` | The answer is signed with `typ: JOSE`. | `X9-SIG-151` | — |
 | `R-I13-01` | The payee's clock at receipt decides whether a pre-commit is still valid and which amount is owed. | `X9-TIME-016`, `X9-HOLD-201`, `X9-HOLD-308` | `S1.3-AC2`, `S2.4-AC1`, `S2.4-AC2`, `S2.5-AC1`, `S2.5-AC2`, `S4.5-AC2` |
-| `R-I13-02` | A pre-commit the payee's clock refuses is a 400 on the amount or on `validUntil`. | `X9-AMT-042`, `X9-AMT-044`, `X9-LIFE-041`, `test_signatures.py::test_a_pre_commit_after_valid_until` | `S3.2-AC7` |
-| `R-I13-03` | A pre-commit is accepted up to `validUntil` and refused one millisecond after. | `X9-TIME-006`, `TestClockControlApiTest.java::aPreCommitIsAcceptedBeforeTheEdgeAndRefusedOneMillisecondAfter` | `S1.3-AC3`, `S4.5-AC1` |
-| `R-I13-04` | At exactly `dueDate` the full amount is owed with no late fee; the first day's fee applies one millisecond later. | `X9-TIME-004`, `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java::aPaymentAtExactlyTheDueDateIsOnTimeForTheFullAmount`, `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java::oneMillisecondAfterTheDueDateTheLateFeeApplies` | `S1.3-AC4`, `S2.6-AC1`, `S4.5-AC1` |
-| `R-I14-01` | A discount is served, advertised and accepted up to its edge E, and refused one millisecond after; the face amount is still accepted. | `X9-TIME-001`, `X9-TIME-003`, `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java::aDiscountAppliesAtItsEdgeAndNotOneMillisecondAfter` | `S1.3-AC1`, `S2.6-AC1`, `S2.6-AC3`, `S2.6-AC4`, `S4.5-AC1` |
-| `R-I14-02` | Of several discounts the largest eligible one is served, until its own edge. | `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java::ofSeveralDiscountsTheLargestEligibleIsServedUntilItsOwnEdge` | `S2.6-AC3` |
-| `R-I14-03` | A late fee rises every 24 hours from `dueDate`, and its `validUntil` is the next boundary. | `X9-TIME-005`, `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java::aLateFeeAppliesAtItsBoundaryAndRisesOneMillisecondAfter` | `S2.6-AC1`, `S2.6-AC2`, `S4.5-AC1` |
-| `R-I14-04` | An adjusted amount's `validUntil` is never later than the QR Code's. | `X9-TIME-005`, `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java::theAdvertisedValidUntilIsCappedByAnEarlierEnd` | `S2.6-AC1`, `S2.6-AC2`, `S4.5-AC1` |
+| `R-I13-02` | A pre-commit the payee's clock refuses is a 400 on the amount or on `validUntil`. | `X9-AMT-042`, `X9-AMT-044`, `X9-LIFE-041`, `X9-SIG-521` | `S3.2-AC7` |
+| `R-I13-03` | A pre-commit is accepted up to `validUntil` and refused one millisecond after. | `X9-TIME-006`, `X9-TIME-536` | `S1.3-AC3`, `S4.5-AC1` |
+| `R-I13-04` | At exactly `dueDate` the full amount is owed with no late fee; the first day's fee applies one millisecond later. | `X9-TIME-004`, `X9-AMT-501`, `X9-AMT-504` | `S1.3-AC4`, `S2.6-AC1`, `S4.5-AC1` |
+| `R-I14-01` | A discount is served, advertised and accepted up to its edge E, and refused one millisecond after; the face amount is still accepted. | `X9-TIME-001`, `X9-TIME-003`, `X9-AMT-506` | `S1.3-AC1`, `S2.6-AC1`, `S2.6-AC3`, `S2.6-AC4`, `S4.5-AC1` |
+| `R-I14-02` | Of several discounts the largest eligible one is served, until its own edge. | `X9-AMT-507` | `S2.6-AC3` |
+| `R-I14-03` | A late fee rises every 24 hours from `dueDate`, and its `validUntil` is the next boundary. | `X9-TIME-005`, `X9-AMT-510` | `S2.6-AC1`, `S2.6-AC2`, `S4.5-AC1` |
+| `R-I14-04` | An adjusted amount's `validUntil` is never later than the QR Code's. | `X9-TIME-005`, `X9-AMT-511` | `S2.6-AC1`, `S2.6-AC2`, `S4.5-AC1` |
 | `R-I14-05` | The payload is priced at one instant, the later of `dateForPayment` and now, and shows only the payment methods valid at that instant; a past `dateForPayment` never brings back an expired method. | `X9-TIME-017`, `X9-TIME-020`, `X9-TIME-021` | — |
 
 ## ADRs 0004 to 0021
@@ -258,9 +261,9 @@ the ADR that changed it.
 | `R-ADR0006-02` | `kind: DEFAULT` accepts and records notifications. | `X9-LIFE-040`, `X9-LIFE-104` | — |
 | `R-ADR0006-03` | `kind: EXTERNAL` names the creditor's own endpoint, and a notification sent here is refused. | `X9-LIFE-046`, `X9-HOLD-404` | `S4.3-AC2` |
 | `R-ADR0006-04` | `mode: APPROVE` asks the biller to approve a payment (two-phase approval, ADR-0003). | NOT BUILT (ADR-0006) | — |
-| `R-ADR0007-01` | A payer's certificate must chain to the truststore and not be revoked. | `X9-SIG-052`, `X9-SIG-053`, `X9-LOC-305`, `test_signatures.py::test_a_revoked_payer_certificate_is_refused` | `S3.2-AC2`, `S4.3-AC1` |
+| `R-ADR0007-01` | A payer's certificate must chain to the truststore and not be revoked. | `X9-SIG-052`, `X9-SIG-053`, `X9-LOC-305`, `X9-SIG-512` | `S3.2-AC2`, `S4.3-AC1` |
 | `R-ADR0007-02` | `allowed-issuers` narrows the accepted issuers, and `allow-self-signed` admits a self-signed certificate. | NOT BUILT (ADR-0007) | — |
-| `R-ADR0007-03` | Every payer holding a certificate from a trusted CA is accepted: there is no list of payers. | `X9-SIG-050`, `X9-SIG-054`, `test_signatures.py::test_each_payer_is_accepted_on_its_own_key` | `S3.2-AC1`, `S3.2-AC2` |
+| `R-ADR0007-03` | Every payer holding a certificate from a trusted CA is accepted: there is no list of payers. | `X9-SIG-050`, `X9-SIG-054`, `X9-SIG-509` | `S3.2-AC1`, `S3.2-AC2` |
 | `R-ADR0008-01` | A status-update `PAYMENT_INITIATED` reserves the QR Code, with no biller vote. | `X9-LIFE-050`, `X9-LIFE-051`, `X9-MAP-010` | `S4.1-AC1`, `S4.1-AC3` |
 | `R-ADR0008-02` | On a `PAID` or `CANCELLED` QR Code it is refused with 409 (on a held one it is a retry, ADR-0020). | `X9-MAP-010`, `X9-LIFE-053`, `X9-LIFE-054` | `S4.1-AC1`, `S4.1-AC3` |
 | `R-ADR0009-01` | There is no tenant: the events API returns everything the deployment holds. | `X9-EVT-050` | `S4.4-AC2` |
@@ -285,8 +288,8 @@ the ADR that changed it.
 | `R-ADR0015-02` | A pre-payment carrying a `transactionId` is refused before it is sent. | `X9-LIFE-073`, `X9-SIG-303` | `S4.3-AC3` |
 | `R-ADR0015-03` | A post-payment without a `transactionId` is refused before it is sent. | `X9-LIFE-074`, `X9-SIG-304` | `S4.3-AC3` |
 | `R-ADR0015-04` | The payee's refusal comes back as 200 with `accepted: false` and the payee's body. | `X9-LIFE-071`, `X9-SIG-301` | `S4.3-AC3` |
-| `R-ADR0015-05` | An unreachable payee is 502. | `X9-LIFE-072`, `X9-SIG-302`, `test_payee_answers.py::test_a_payee_that_hangs_up_without_answering_is_502` | `S3.5-AC2`, `S4.3-AC3` |
-| `R-ADR0015-06` | The call has timeouts: a payee answering after 15 seconds is 502. | `X9-LIFE-076`, `X9-LIFE-077`, `test_payee_answers.py::test_a_payee_answering_after_the_timeout_is_502` | `S3.5-AC2` |
+| `R-ADR0015-05` | An unreachable payee is 502. | `X9-LIFE-072`, `X9-SIG-302`, `X9-SIG-504` | `S3.5-AC2`, `S4.3-AC3` |
+| `R-ADR0015-06` | The call has timeouts: a payee answering after 15 seconds is 502. | `X9-LIFE-076`, `X9-LIFE-077`, `X9-SIG-505` | `S3.5-AC2` |
 | `R-ADR0015-07` | Redirects are not followed. | `X9-SIG-150` | — |
 | `R-ADR0015-08` | A relative notification endpoint is refused. | `X9-SIG-033` | — |
 | `R-ADR0016-01` | `revision` moves only on a PATCH that changes data; no status change moves it. | `X9-PATCH-010`, `X9-PATCH-011`, `X9-PATCH-012`, `X9-PATCH-013`, `X9-PATCH-425` | `S4.2-AC2`, `S4.2-AC3` |
@@ -296,10 +299,10 @@ the ADR that changed it.
 | `R-ADR0017-02` | A tip is accepted only when the bill allows one, it is inside the range, and it is not larger than the transfer. | `X9-TIP-005`, `X9-TIP-007`, `X9-TIP-008`, `X9-TIP-009`, `X9-TIP-004`, `X9-TIP-010` | — |
 | `R-ADR0017-03` | Presets do not bind; a bill with presets and no range accepts any positive tip. | `X9-TIP-011`, `X9-TIP-012` | — |
 | `R-ADR0017-04` | `presets` has no minimum size. | `X9-TIP-121`, `X9-TIP-122` | — |
-| `R-ADR0018-01` | A PATCH naming every currency the QR Code offers is accepted, in any order. | `X9-PATCH-001`, `X9-PATCH-002`, `test_patch_currencies.py::test_naming_every_currency_changes_every_currency` | `S3.4-AC1` |
-| `R-ADR0018-02` | A PATCH naming a currency the QR Code does not offer is refused, 400, naming it: a PATCH never adds a currency. | `X9-PATCH-003`, `X9-PATCH-005`, `X9-PATCH-424`, `test_patch_currencies.py::test_a_currency_it_does_not_offer_is_refused_naming_it_and_nothing_moves` | `S3.4-AC1`, `S4.2-AC2` |
-| `R-ADR0018-03` | A PATCH leaving out a currency the QR Code offers is refused, 400, naming it. | `X9-PATCH-004`, `test_patch_currencies.py::test_omitting_a_currency_is_refused_naming_it_and_nothing_moves` | `S3.4-AC1` |
-| `R-ADR0018-04` | A refused PATCH writes nothing: the revision and the ETag do not move. | `test_patch_currencies.py::test_a_patch_naming_only_an_unknown_currency_is_refused_not_a_silent_200`, `X9-PATCH-422` | `S3.4-AC1`, `S4.2-AC2` |
+| `R-ADR0018-01` | A PATCH naming every currency the QR Code offers is accepted, in any order. | `X9-PATCH-001`, `X9-PATCH-002`, `X9-PATCH-506` | `S3.4-AC1` |
+| `R-ADR0018-02` | A PATCH naming a currency the QR Code does not offer is refused, 400, naming it: a PATCH never adds a currency. | `X9-PATCH-003`, `X9-PATCH-005`, `X9-PATCH-424`, `X9-PATCH-508` | `S3.4-AC1`, `S4.2-AC2` |
+| `R-ADR0018-03` | A PATCH leaving out a currency the QR Code offers is refused, 400, naming it. | `X9-PATCH-004`, `X9-PATCH-507` | `S3.4-AC1` |
+| `R-ADR0018-04` | A refused PATCH writes nothing: the revision and the ETag do not move. | `X9-PATCH-509`, `X9-PATCH-422` | `S3.4-AC1`, `S4.2-AC2` |
 | `R-ADR0019-01` | The reservation's end is stamped at `min(now + ttl, validUntil)`: the window never outlives the QR Code. | `X9-LIFE-115`, `X9-TIME-010` | `S4.5-AC1` |
 | `R-ADR0019-02` | The stamp is cleared when the reservation ends. | `X9-LIFE-116` | — |
 | `R-ADR0019-03` | A reservation past its stamp reads `ACTIVE`; the stored status is left alone and nothing sweeps. | `X9-LIFE-110`, `X9-LIFE-111`, `X9-LIFE-112`, `X9-MAP-051` | `S4.1-AC1`, `S4.1-AC3` |
@@ -352,7 +355,7 @@ rules the ADR states outside the table.
 | `R-MAP-051` | A reservation lapse: reads `ACTIVE` on read only, no event; never once a hash is registered, nor with `ttl-seconds: 0`. | `X9-MAP-051`, `X9-LIFE-111`, `X9-HOLD-126`, `X9-HOLD-135` | `S2.5-AC6`, `S2.5-AC7`, `S4.1-AC1`, `S4.1-AC3` |
 | `R-ADR0035-01` | A status-update to the status already held (stored and effective): 200, nothing written, no event. | `X9-MAP-010`, `X9-MAP-011`, `X9-MAP-012`, `X9-MAP-013`, `X9-LIFE-127` | `S4.1-AC1`, `S4.1-AC3` |
 | `R-ADR0035-02` | An event's body comes from the last stored notification; with none, from the first payment method and the payment details. | `X9-MAP-011`, `X9-MAP-032`, `X9-LIFE-171` | `S4.1-AC1`, `S4.1-AC3`, `S4.4-AC1` |
-| `R-ADR0035-03` | A notification is stored before its event is built, so `payment.sent` carries the hash it reports. | `X9-MAP-032`, `test_two_phase.py::test_payment_sent_carries_the_hash` | `S3.4-AC1`, `S4.1-AC1`, `S4.1-AC3` |
+| `R-ADR0035-03` | A notification is stored before its event is built, so `payment.sent` carries the hash it reports. | `X9-MAP-032`, `X9-EVT-503` | `S3.4-AC1`, `S4.1-AC1`, `S4.1-AC3` |
 | `R-ADR0035-04` | Every transition sets `revisedAt`; only PATCH moves `revision`. | `X9-LIFE-021`, `X9-PATCH-425` | `S4.2-AC2`, `S4.2-AC3` |
 
 ## ADR-0036, amendments included

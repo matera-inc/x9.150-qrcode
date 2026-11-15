@@ -4,7 +4,9 @@
 
 
 def test_the_deployment_is_ready(api):
-    """S3.4-AC1, section 0 — health is UP, or at least readiness is.
+    """X9-LIFE-502 — the deployment under test reports health or readiness UP.
+
+    S3.4-AC1, section 0 — health is UP, or at least readiness is.
 
     Why the fallback: on Kubernetes the Kubernetes health indicator can drag the aggregate
     ``/actuator/health`` to DOWN while the application serves perfectly well (it stays

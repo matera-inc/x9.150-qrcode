@@ -59,7 +59,10 @@ def assert_untouched(api, events, qr):
 @pytest.mark.parametrize("post", [False, True], ids=["pre-payment", "post-payment"])
 def test_the_test_payee_captures_the_exact_jws_it_received(api, peer, payee_certificate,
                                                            business_now, post):
-    """S3.5-AC1 — the payee holds the service's signed question, byte for byte: it verifies
+    """X9-SIG-501 — the test payee holds the service's signed outbound question byte for byte, under
+    the caller's correlationId.
+
+    S3.5-AC1 — the payee holds the service's signed question, byte for byte: it verifies
     against the service's certificate, carries the correlationId the caller chose, and says what
     the caller asked it to say."""
     qr = api.create_qr()
@@ -155,7 +158,10 @@ CASES = {
 
 @pytest.mark.parametrize("case", sorted(CASES))
 def test_the_service_reports_each_answer_for_what_it_is(api, peer, events, case):
-    """S3.5-AC2 (cases 1-8 and 11-16), S3.5-AC3 — statusCode, accepted, signature,
+    """X9-SIG-502 — each of the payee's answers (cases 1-8, 11-16) is reported for what it is:
+    signature, signatureProblem, statusCode, accepted.
+
+    S3.5-AC2 (cases 1-8 and 11-16), S3.5-AC3 — statusCode, accepted, signature,
     signatureProblem; and the QR Code untouched."""
     factory, signature, problem, status_code, accepted = CASES[case]
     answer = factory(peer)
@@ -180,7 +186,10 @@ def test_the_service_reports_each_answer_for_what_it_is(api, peer, events, case)
                                        ("10-revoked-certificate", "payee_revoked")])
 def test_an_answer_signed_by_a_certificate_it_must_not_trust_is_invalid(api, peer, pki, events,
                                                                         business_now, case, who):
-    """S3.5-AC2 cases 9 and 10, S3.5-AC4 — a certificate from a CA nobody trusts, and one the
+    """X9-SIG-503 — an answer signed by an untrusted or a revoked certificate is INVALID,
+    UNTRUSTED_CHAIN.
+
+    S3.5-AC2 cases 9 and 10, S3.5-AC4 — a certificate from a CA nobody trusts, and one the
     test CA revoked on the CRL this suite serves: INVALID, UNTRUSTED_CHAIN."""
     signer = jws.Signer(pki[who], now_ms=business_now)
     peer.answer = lambda question: peer.signed(question, 200, signer=signer)
@@ -196,7 +205,9 @@ def test_an_answer_signed_by_a_certificate_it_must_not_trust_is_invalid(api, pee
 
 
 def test_a_payee_that_hangs_up_without_answering_is_502(api, peer, events):
-    """S3.5-AC2 case 17 — no answer at all: the payee reads the notification and closes the
+    """X9-SIG-504 — a payee that hangs up without answering is 502, and nothing changes here.
+
+    S3.5-AC2 case 17 — no answer at all: the payee reads the notification and closes the
     connection. 502, a delivery to retry, and nothing changed here."""
     peer.answer = lambda question: peer_module.Answer(0, hang_up=True)
 
@@ -208,7 +219,9 @@ def test_a_payee_that_hangs_up_without_answering_is_502(api, peer, events):
 
 
 def test_a_payee_answering_after_the_timeout_is_502(api, peer, events):
-    """S3.5-AC2 case 17 — an answer that arrives after the 15 s timeout: 502. (Java once handed
+    """X9-SIG-505 — a payee answering after the 15 s timeout is 502.
+
+    S3.5-AC2 case 17 — an answer that arrives after the 15 s timeout: 502. (Java once handed
     this call its shared, @Primary client, which has no timeout, and reported a 20 s answer as an
     ordinary 200.)"""
     peer.answer = lambda question: peer_module.Answer(200, peer.yes(question).body, delay=20)
@@ -251,7 +264,9 @@ def test_a_redirect_from_the_payee_is_not_followed(api, peer, events, redirect):
 
 @pytest.mark.parametrize("case", sorted(jws.Tamperer.CASES))
 def test_every_tampered_answer_is_named_by_its_fixed_code(api, peer, pki, events, case):
-    """S3.2-AC2's reasons, named: each of the tamperer's defects, in a payee's answer, gets the
+    """X9-SIG-506 — each tampered payee answer is reported INVALID with the service's fixed code.
+
+    S3.2-AC2's reasons, named: each of the tamperer's defects, in a payee's answer, gets the
     service's fixed code. (A payer's tampered question gets the same code in its signed 401:
     ``test_signatures``.)"""
     tamperer = jws.Tamperer(peer.signer, pki["untrusted"])

@@ -85,7 +85,11 @@ class TestClockControlApiTest extends AbstractIntegrationTest {
         return signed.body();
     }
 
-    /** S2.1-AC1: GET/PUT/DELETE /test/clock are served on the clock listener. */
+    /**
+     * <b>X9-TIME-531</b> — GET, PUT and DELETE /test/clock are served on the clock listener.
+     *
+     * <p>S2.1-AC1: GET/PUT/DELETE /test/clock are served on the clock listener.
+     */
     @Test
     void theClockIsServedOnItsOwnListener() throws Exception {
         assertNotEquals(apiPort, testClockServer.port());
@@ -97,7 +101,11 @@ class TestClockControlApiTest extends AbstractIntegrationTest {
         assertEquals(0, BusinessClock.offsetMillis());
     }
 
-    /** S2.1-AC1: never on the API port — even with the flag on. */
+    /**
+     * <b>X9-TIME-532</b> — the clock is never on the API port, even with the flag on.
+     *
+     * <p>S2.1-AC1: never on the API port — even with the flag on.
+     */
     @Test
     void theClockIsNeverOnTheApiPort() throws Exception {
         assertEquals(404, api("GET", "/test/clock", null).statusCode());
@@ -106,7 +114,11 @@ class TestClockControlApiTest extends AbstractIntegrationTest {
         assertEquals(0, BusinessClock.offsetMillis(), "a request on the API port must not move the clock");
     }
 
-    /** S2.1-AC4: a JWS signed under the offset carries an iat that includes it. */
+    /**
+     * <b>X9-TIME-533</b> — a JWS signed under the offset carries the shifted iat.
+     *
+     * <p>S2.1-AC4: a JWS signed under the offset carries an iat that includes it.
+     */
     @Test
     void aJwsSignedUnderTheOffsetCarriesTheShiftedIat() throws Exception {
         clock("PUT", "{\"offsetSeconds\": " + 24 * ONE_HOUR + "}");
@@ -117,7 +129,11 @@ class TestClockControlApiTest extends AbstractIntegrationTest {
         assertTrue(Math.abs(iat - expected) < 5_000, "iat must be real time plus one day; off by " + (iat - expected) + " ms");
     }
 
-    /** S2.1-AC4: verification reads the shifted clock too — a JWS whose iat + ttl has passed in business time is expired. */
+    /**
+     * <b>X9-TIME-534</b> — verification reads the shifted clock: a JWS expired in business time is refused.
+     *
+     * <p>S2.1-AC4: verification reads the shifted clock too — a JWS whose iat + ttl has passed in business time is expired.
+     */
     @Test
     void verificationUsesTheShiftedClock() throws Exception {
         String jws = sign();
@@ -134,7 +150,11 @@ class TestClockControlApiTest extends AbstractIntegrationTest {
         assertEquals(200, api("POST", "/api/v1/signature/validate", validate).statusCode());
     }
 
-    /** S2.1-AC5: with a non-zero offset every API response carries X-Test-Clock-Offset, in milliseconds; DELETE removes it. */
+    /**
+     * <b>X9-TIME-535</b> — every API answer carries X-Test-Clock-Offset until the offset is deleted.
+     *
+     * <p>S2.1-AC5: with a non-zero offset every API response carries X-Test-Clock-Offset, in milliseconds; DELETE removes it.
+     */
     @Test
     void everyApiResponseCarriesTheOffsetUntilDeleted() throws Exception {
         assertTrue(api("GET", "/pub/.well-known/jwks", null).headers().firstValue(TestClockOffsetHeaderFilter.HEADER).isEmpty());
@@ -210,7 +230,9 @@ class TestClockControlApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Story 2.1 follow-up (for Story 2.6's edge tests, S2.6-AC1/AC2 and plan T1/T3/T6): an edge E is
+     * <b>X9-TIME-536</b> — on the clock, a pre-commit is accepted before an edge and refused 1 ms after it.
+     *
+     * <p>Story 2.1 follow-up (for Story 2.6's edge tests, S2.6-AC1/AC2 and plan T1/T3/T6): an edge E is
      * reachable over {@code /test/clock} to the millisecond. A payment method valid until E takes a
      * pre-commit just before E and refuses one at E + 1 ms.
      *

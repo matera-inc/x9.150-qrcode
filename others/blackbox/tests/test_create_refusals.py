@@ -6,14 +6,20 @@ from x9client.checks import assert_refused
 
 
 def test_an_unsupported_currency_is_refused_naming_it(api):
-    """S3.4-AC1, section 6 — EUR is not in supported-currencies.json: 400 naming EUR, no id."""
+    """X9-CUR-501 — a currency outside supported-currencies.json is refused at create, naming it,
+    with no id.
+
+    S3.4-AC1, section 6 — EUR is not in supported-currencies.json: 400 naming EUR, no id."""
     response = api.create_qr_detailed(currency="EUR")
     assert_refused(response, naming="EUR", status=400)
     assert "id" not in response.body
 
 
 def test_an_uninterpreted_network_is_refused_naming_it(api):
-    """S3.4-AC1, section 6 — tron is not interpreted (ADR-0012): 400 naming it, no id."""
+    """X9-RAIL-501 — a network this deployment does not interpret is refused at create, naming it,
+    with no id.
+
+    S3.4-AC1, section 6 — tron is not interpreted (ADR-0012): 400 naming it, no id."""
     response = api.create_qr_detailed(networks={"tron": {"walletAddress": "TXYZ"}})
     assert response.status == 400, response
     assert "tron" in response.text.lower(), response.body
@@ -21,7 +27,9 @@ def test_an_uninterpreted_network_is_refused_naming_it(api):
 
 
 def test_an_unknown_qr_code_is_404(api):
-    """S3.4-AC1, section 6 — an id nobody issued."""
+    """X9-LIFE-501 — a GET of an id nobody issued is 404.
+
+    S3.4-AC1, section 6 — an id nobody issued."""
     assert api.qr("0" * 32).status == 404
 
 

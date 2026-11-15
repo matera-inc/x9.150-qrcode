@@ -32,7 +32,11 @@ class BusinessClockReadsTest {
         BusinessClock.reset();
     }
 
-    /** S2.1-AC4: RetrieveQRCodePayloadInput reads the shifted clock when no date is given. */
+    /**
+     * <b>X9-TIME-521</b> — the default dateForPayment of a payload read is business time.
+     *
+     * <p>S2.1-AC4: RetrieveQRCodePayloadInput reads the shifted clock when no date is given.
+     */
     @Test
     void theDefaultDateForPaymentIsBusinessTime() {
         BusinessClock.setOffsetMillis(Duration.ofDays(400).toMillis());
@@ -44,6 +48,7 @@ class BusinessClockReadsTest {
         assertEquals(ZoneOffset.UTC, dateForPayment.getOffset());
     }
 
+    /** <b>X9-TIME-522</b> — an explicit dateForPayment is not touched by the offset. */
     @Test
     void anExplicitDateIsNotTouched() {
         BusinessClock.setOffsetMillis(Duration.ofDays(400).toMillis());

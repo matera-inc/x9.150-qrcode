@@ -49,7 +49,10 @@ def answer(api, payee_certificate, business_now, token, *, question_correlation_
 class TestTheProfile:
 
     def test_a_payer_token_carries_the_x9150_profile(self, payer_a, payer_b):
-        """S3.2-AC1 — ms iat/ttl, correlationId, crit, x5c, x5t#S256, for both payers.
+        """X9-SIG-508 — a test payer's token carries the X9.150 profile: ms iat/ttl, correlationId,
+        crit, x5c, x5t#S256.
+
+        S3.2-AC1 — ms iat/ttl, correlationId, crit, x5c, x5t#S256, for both payers.
 
         Why: the suite's own signer is the first thing to be wrong in a way that hides everything
     else. A and B must also be different parties, or the holder tests below prove nothing.
@@ -68,7 +71,9 @@ class TestTheProfile:
 
     @pytest.mark.parametrize("who", ["payer_a", "payer_b"])
     def test_each_payer_is_accepted_on_its_own_key(self, api, request, who):
-        """S3.2-AC1 — the deployment accepts both test-CA payers, RSA and EC."""
+        """X9-SIG-509 — both test-CA payers, RSA and EC, are accepted on their own keys.
+
+        S3.2-AC1 — the deployment accepts both test-CA payers, RSA and EC."""
         signer = request.getfixturevalue(who)
         qr = api.create_qr()
 
@@ -86,7 +91,10 @@ class TestTamperedQuestions:
     @pytest.mark.parametrize("case", sorted(jws.Tamperer.CASES))
     def test_a_tampered_notification_is_refused_and_changes_nothing(
             self, api, tamperer, payee_certificate, business_now, events, case):
-        """S3.2-AC2 — wrong key, untrusted CA, expired iat + ttl, iat in the future, missing or
+        """X9-SIG-510 — each tampered payer notification is refused with its fixed code, and changes
+        nothing.
+
+        S3.2-AC2 — wrong key, untrusted CA, expired iat + ttl, iat in the future, missing or
         unknown crit, missing x5c, altered payload, alg none: each refused, nothing changes.
 
         Why: these are the signatures the service under test would never produce, which is why
@@ -113,13 +121,17 @@ class TestTamperedQuestions:
         assert events.none_for(qr, wait=0) == [], "and publishes nothing"
 
     def test_the_untampered_control_is_accepted(self, api, payer_a):
-        """S3.2-AC2 — the control: the same message, signed honestly, is accepted."""
+        """X9-SIG-511 — the control of X9-SIG-510: the same message, signed honestly, is accepted.
+
+        S3.2-AC2 — the control: the same message, signed honestly, is accepted."""
         qr = api.create_qr()
         status, body = api.send_notification(payer_a.sign(api_notification(qr)))
         assert status == 200, f"{status} {body}"
 
     def test_a_revoked_payer_certificate_is_refused(self, api, pki, business_now):
-        """S3.2-AC2 — a certificate the test CA revoked on its CRL is refused.
+        """X9-SIG-512 — a payer certificate revoked on the test CA's CRL is refused.
+
+        S3.2-AC2 — a certificate the test CA revoked on its CRL is refused.
 
         The service fetches the CRL from this suite, so this also proves the CRL is reachable
         and read, not merely tolerated when absent.
@@ -148,7 +160,10 @@ class TestTwoPayers:
     INFO = "same-person@example.com"
 
     def test_another_payers_announcement_is_a_conflict(self, api, payer_a, payer_b, events):
-        """S3.2-AC3 — A holds; B, on its own key and with the SAME payer.info, announces: 409.
+        """X9-SIG-513 — another payer's announcement, on its own key and with the same payer.info,
+        is a 409.
+
+        S3.2-AC3 — A holds; B, on its own key and with the SAME payer.info, announces: 409.
 
         Why: two customers of two PSPs can share an e-mail address. The certificate is the part
     of the identity the sender did not choose, so the same payer.info under another certificate
@@ -165,7 +180,9 @@ class TestTwoPayers:
         assert len(initiated) == 1 and initiated[0].get("payerInfo") == self.INFO
 
     def test_another_payer_cannot_give_the_reservation_back(self, api, payer_a, payer_b):
-        """S3.2-AC3 — A holds; B's NOT_SENT on its own key: 409, and A keeps it."""
+        """X9-SIG-514 — another payer's NOT_SENT is a 409, and the holder keeps the reservation.
+
+        S3.2-AC3 — A holds; B's NOT_SENT on its own key: 409, and A keeps it."""
         qr = api.create_qr()
         api.notify(qr, signer=payer_a, payer_info=self.INFO)
 
@@ -176,7 +193,9 @@ class TestTwoPayers:
 
     def test_another_payers_report_is_registered_and_changes_nothing(self, api, payer_a, payer_b,
                                                                     events):
-        """S3.2-AC3, as ADR-0036 settles it — A holds; B reports a hash on its own key.
+        """X9-SIG-515 — another payer's post-commit is registered and changes nothing else.
+
+        S3.2-AC3, as ADR-0036 settles it — A holds; B reports a hash on its own key.
 
         The story asks for 409 here. ADR-0036 (accepted the same day) says a post-commit on a QR
     Code held by another payer is accepted, registered and flagged, and the holder keeps it,
@@ -201,7 +220,9 @@ class TestTwoPayers:
 @pytest.mark.serial
 def test_a_yes_is_signed_by_the_payee_and_answers_this_question(api, clock, payer_a,
                                                                  payee_certificate):
-    """S3.2-AC4, S3.2-AC6 — 200, application/jose, a JWS whose body is exactly
+    """X9-SIG-516 — a yes is a JWS signed by the payee that answers this question's correlationId.
+
+    S3.2-AC4, S3.2-AC6 — 200, application/jose, a JWS whose body is exactly
     ``{"statusCode": 200}``, verified against the payee's certificate, echoing the question's
     correlationId, with ``iat`` the test clock's instant within 1 s.
 
@@ -239,7 +260,9 @@ class TestASignedNo:
         return body
 
     def test_a_wrong_amount(self, api, payer_a, payee_certificate, business_now):
-        """S3.2-AC7 — 400, amount: the signed no echoes the question and names the field."""
+        """X9-SIG-517 — a signed no for a wrong amount: 400, the question echoed, the field named.
+
+        S3.2-AC7 — 400, amount: the signed no echoes the question and names the field."""
         qr = api.create_qr()
         token = payer_a.sign(api_notification_with(qr, amount=BILL + 1))
         body = self._refusal(api, payee_certificate, business_now, token, 400,
@@ -247,13 +270,17 @@ class TestASignedNo:
         assert "payment.amount" in str(body.get("violations")), body
 
     def test_an_unknown_qr_code(self, api, payer_a, payee_certificate, business_now):
-        """S3.2-AC7 — 404, unknown QR Code."""
+        """X9-SIG-518 — a signed no for an unknown QR Code: 404.
+
+        S3.2-AC7 — 404, unknown QR Code."""
         token = payer_a.sign(api_notification_with("0" * 32))
         self._refusal(api, payee_certificate, business_now, token, 404,
                       payer_a.last_correlation_id)
 
     def test_another_holder(self, api, payer_a, payer_b, payee_certificate, business_now):
-        """S3.2-AC7 — 409, another payer holds the reservation."""
+        """X9-SIG-519 — a signed no when another payer holds the reservation: 409.
+
+        S3.2-AC7 — 409, another payer holds the reservation."""
         qr = api.create_qr()
         api.notify(qr, signer=payer_a, payer_info="holder@example.com")
         token = payer_b.sign(api_notification_with(qr, payer_info="other@example.com"))
@@ -261,7 +288,9 @@ class TestASignedNo:
                       payer_b.last_correlation_id)
 
     def test_a_cancelled_qr_code(self, api, payer_a, payee_certificate, business_now):
-        """S3.2-AC7 — 400, a pre-commit on a CANCELLED QR Code."""
+        """X9-SIG-520 — a signed no for a pre-commit on a CANCELLED QR Code: 400.
+
+        S3.2-AC7 — 400, a pre-commit on a CANCELLED QR Code."""
         qr = api.create_qr()
         api.set_status(qr, "CANCELLED")
         token = payer_a.sign(api_notification_with(qr))
@@ -270,7 +299,9 @@ class TestASignedNo:
 
     @pytest.mark.serial
     def test_a_pre_commit_after_valid_until(self, api, clock, payer_a, payee_certificate):
-        """S3.2-AC7 — 400, the QR Code's validUntil has passed by the payee's clock."""
+        """X9-SIG-521 — a signed no for a pre-commit after validUntil by the payee's clock: 400.
+
+        S3.2-AC7 — 400, the QR Code's validUntil has passed by the payee's clock."""
         valid_until = (datetime.datetime.now(datetime.timezone.utc)
                        + datetime.timedelta(hours=1)).replace(microsecond=0)
         qr = api.create_qr(valid_until=valid_until.strftime("%Y-%m-%dT%H:%M:%SZ"))
@@ -284,7 +315,9 @@ class TestASignedNo:
     @pytest.mark.parametrize("case", ["wrong_key", "alg_none"])
     def test_an_unverifiable_question_gets_a_fresh_correlation_id(
             self, api, tamperer, payee_certificate, business_now, case):
-        """S3.2-AC7 — 401: signed, but under a fresh correlationId (none was verified)."""
+        """X9-SIG-522 — an unverifiable question gets a signed 401 under a fresh correlationId.
+
+        S3.2-AC7 — 401: signed, but under a fresh correlationId (none was verified)."""
         qr = api.create_qr()
         token = tamperer.token(case, api_notification(qr))
         question_id = jws.parse(token)[0].get("correlationId")
@@ -297,7 +330,10 @@ class TestASignedNo:
     @pytest.mark.parametrize("raw, status", [("not-a-jws", 401), ("", 400)])
     def test_an_unreadable_question_is_still_answered_signed(
             self, api, payee_certificate, business_now, raw, status):
-        """S3.2-AC7 — not a JWS (401), an empty body (400): signed, fresh correlationId."""
+        """X9-SIG-523 — an unreadable question (not a JWS, or empty) is still answered signed, under
+        a fresh correlationId.
+
+        S3.2-AC7 — not a JWS (401), an empty body (400): signed, fresh correlationId."""
         response, header, body = answer(api, payee_certificate, business_now, raw)
         assert response.status == status and body["statusCode"] == status, body
         if status == 401:
@@ -314,7 +350,10 @@ def api_notification_with(qr, **kwargs):
 
 def test_the_same_signed_question_twice_is_answered_twice(api, payer_a, payee_certificate,
                                                           business_now, events):
-    """S3.2-AC8 — the same JWS (same correlationId) sent twice: today's answer, pinned.
+    """X9-SIG-524 — the same signed question sent twice is answered twice (today's behaviour,
+    pinned).
+
+    S3.2-AC8 — the same JWS (same correlationId) sent twice: today's answer, pinned.
 
     Java accepts it twice: the second is the holder's retry (ADR-0021), judged again, and it adds
     no event. Each answer echoes the question's correlationId. Refusing replays would be a
@@ -336,7 +375,9 @@ def test_the_same_signed_question_twice_is_answered_twice(api, payer_a, payee_ce
 # ------------------------------------------------------------------ S3.2-AC5
 
 def test_no_test_signs_through_the_service_under_test():
-    """S3.2-AC5 — nothing in the suite calls /api/v1/signature/generate to sign as a payer.
+    """X9-SUITE-501 — no black-box test signs as a payer through the service under test.
+
+    S3.2-AC5 — nothing in the suite calls /api/v1/signature/generate to sign as a payer.
 
     ``golden/export.py`` is not a test and is the one exception: it exports what Java signs
     (Story 4.7), so there Java signing is the point.

@@ -23,12 +23,16 @@ def _qr_with_repeated_labels(api):
 
 
 def test_get_serves_an_etag(api):
-    """S3.4-AC1, section 8 — the token a conditional request echoes."""
+    """X9-PATCH-501 — a GET serves an ETag.
+
+    S3.4-AC1, section 8 — the token a conditional request echoes."""
     assert api.qr(api.create_qr()).etag, "GET must serve an ETag"
 
 
 def test_if_match_is_enforced_on_patch_and_nothing_moves(api):
-    """S3.4-AC1, section 8 — a stale If-Match on PATCH: 412, amount and ETag unchanged."""
+    """X9-PATCH-502 — a stale If-Match on PATCH is 412, and neither the amount nor the ETag moves.
+
+    S3.4-AC1, section 8 — a stale If-Match on PATCH: 412, amount and ETag unchanged."""
     qr = api.create_qr()
     before = api.qr(qr)
 
@@ -42,7 +46,9 @@ def test_if_match_is_enforced_on_patch_and_nothing_moves(api):
 
 
 def test_if_match_is_enforced_on_status_update_and_nothing_moves(api):
-    """S3.4-AC1, section 8 — a stale If-Match on status-update: 412, still ACTIVE."""
+    """X9-PATCH-503 — a stale If-Match on status-update is 412, and the QR Code stays ACTIVE.
+
+    S3.4-AC1, section 8 — a stale If-Match on status-update: 412, still ACTIVE."""
     qr = api.create_qr()
 
     status, _ = api.status_update(qr, {"status": "CANCELLED"}, if_match=STALE)
@@ -52,13 +58,17 @@ def test_if_match_is_enforced_on_status_update_and_nothing_moves(api):
 
 
 def test_a_repeated_additional_information_label_is_not_collapsed(api):
-    """S3.4-AC1, section 8 — both lines survive: they explain the amount to the payer."""
+    """X9-PATCH-504 — a repeated additionalInformation label is not collapsed.
+
+    S3.4-AC1, section 8 — both lines survive: they explain the amount to the payer."""
     entries = api.qr(_qr_with_repeated_labels(api)).body.get("additionalInformation") or []
     assert len(entries) == 2, f"{len(entries)} of 2 survived"
 
 
 def test_a_status_change_is_not_a_new_revision(api):
-    """S3.4-AC1, section 8 — PAYMENT_INITIATED through status-update keeps the revision: a
+    """X9-PATCH-505 — a status change through status-update is not a new revision.
+
+    S3.4-AC1, section 8 — PAYMENT_INITIATED through status-update keeps the revision: a
     status is not a version of the request."""
     qr = api.create_qr()
     before = api.qr(qr).body["revision"]

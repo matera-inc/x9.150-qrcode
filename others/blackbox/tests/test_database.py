@@ -10,7 +10,9 @@ from x9client.samples import BILL
 
 
 def test_a_refused_create_writes_no_qr_code(api, db):
-    """S3.1-AC3 — a create refused for its currency leaves the store exactly as it was."""
+    """X9-LIFE-506 — a create refused for its currency leaves the store exactly as it was.
+
+    S3.1-AC3 — a create refused for its currency leaves the store exactly as it was."""
     before = db.qr_count()
 
     response = api.create_qr_detailed(currency="EUR")
@@ -20,7 +22,9 @@ def test_a_refused_create_writes_no_qr_code(api, db):
 
 
 def test_a_refused_notification_writes_no_event(api, db, events):
-    """S3.1-AC3 — a notification refused for its amount publishes nothing, and stores nothing."""
+    """X9-LIFE-507 — a notification refused for its amount stores nothing and publishes nothing.
+
+    S3.1-AC3 — a notification refused for its amount publishes nothing, and stores nothing."""
     qr = api.create_qr()
     assert db.qr_exists(qr), "the inspector must see the QR Code the API created"
 

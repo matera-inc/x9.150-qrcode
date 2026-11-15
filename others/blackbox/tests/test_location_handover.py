@@ -34,7 +34,9 @@ def three(api):
 
 
 def test_a_live_qr_code_keeps_its_location(api, three):
-    """S3.4-AC1, section 11 — the donor is still payable, so its location is not up for grabs."""
+    """X9-LOC-501 — a live QR Code keeps its location: another create cannot take it.
+
+    S3.4-AC1, section 11 — the donor is still payable, so its location is not up for grabs."""
     donor, taker, _ = three
     donated = _location(api, donor)
 
@@ -46,7 +48,9 @@ def test_a_live_qr_code_keeps_its_location(api, three):
 
 def test_a_cancelled_qr_codes_location_goes_to_the_taker_and_the_donor_gets_a_new_one(
         api, three, payee_certificate, business_now):
-    """S3.4-AC1, section 11 — after the donor is CANCELLED: the taker holds the location, the
+    """X9-LOC-502 — a CANCELLED QR Code's location goes to the taker, and the donor gets a new one.
+
+    S3.4-AC1, section 11 — after the donor is CANCELLED: the taker holds the location, the
     donor holds a fresh one (THE BUG THAT SHIPPED: released, and given to nobody), the printed
     code resolves to the taker, and the bystander's location never moved."""
     donor, taker, bystander = three

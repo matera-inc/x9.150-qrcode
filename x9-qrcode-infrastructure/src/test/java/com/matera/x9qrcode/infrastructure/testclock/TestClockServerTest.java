@@ -55,7 +55,11 @@ class TestClockServerTest {
         return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
     }
 
-    /** S2.1-AC1: a WARN is logged when the clock listener starts. */
+    /**
+     * <b>X9-TIME-539</b> — starting the clock listener logs a WARN.
+     *
+     * <p>S2.1-AC1: a WARN is logged when the clock listener starts.
+     */
     @Test
     @ExtendWith(OutputCaptureExtension.class)
     void startingLogsAWarning(CapturedOutput output) throws Exception {
@@ -64,7 +68,11 @@ class TestClockServerTest {
         assertThat(output.getAll()).contains("WARN").contains("TEST CLOCK CONTROL IS ON");
     }
 
-    /** S2.1-AC2: the server itself refuses to start with a certificate that is not bundled. */
+    /**
+     * <b>X9-TIME-540</b> — the clock server refuses to start with a certificate that is not bundled.
+     *
+     * <p>S2.1-AC2: the server itself refuses to start with a certificate that is not bundled.
+     */
     @Test
     void theServerRefusesToStartWithARealCertificate() throws Exception {
         X509Certificate fresh = TestClockCertificateGuardTest.freshCertificate();
@@ -74,6 +82,7 @@ class TestClockServerTest {
         assertEquals(false, server.isRunning());
     }
 
+    /** <b>X9-TIME-541</b> — PUT an offset in seconds, GET it back, DELETE it. */
     @Test
     void putOffsetSecondsThenGetThenDelete() throws Exception {
         start(TestClockCertificateGuardTest.demoCertificate());
@@ -95,6 +104,7 @@ class TestClockServerTest {
         assertEquals(0, BusinessClock.offsetMillis());
     }
 
+    /** <b>X9-TIME-542</b> — PUT {@code at} moves the clock to that instant. */
     @Test
     void putAtMovesTheClockToThatInstant() throws Exception {
         start(TestClockCertificateGuardTest.demoCertificate());
@@ -106,7 +116,11 @@ class TestClockServerTest {
         assertThat(Duration.between(Instant.parse("2031-12-31T23:59:50Z"), now).abs()).isLessThan(Duration.ofSeconds(2));
     }
 
-    /** Story 2.1 follow-up: the offset is in milliseconds, and can be set in milliseconds. */
+    /**
+     * <b>X9-TIME-543</b> — the offset can be set in milliseconds.
+     *
+     * <p>Story 2.1 follow-up: the offset is in milliseconds, and can be set in milliseconds.
+     */
     @Test
     void putOffsetMillis() throws Exception {
         start(TestClockCertificateGuardTest.demoCertificate());
@@ -118,7 +132,11 @@ class TestClockServerTest {
         assertEquals(-1001, BusinessClock.offsetMillis());
     }
 
-    /** Story 2.1 follow-up: {@code at} keeps its milliseconds; the clock never reads earlier than it. */
+    /**
+     * <b>X9-TIME-544</b> — PUT {@code at} keeps its milliseconds, and the clock never reads earlier.
+     *
+     * <p>Story 2.1 follow-up: {@code at} keeps its milliseconds; the clock never reads earlier than it.
+     */
     @Test
     void putAtKeepsMilliseconds() throws Exception {
         start(TestClockCertificateGuardTest.demoCertificate());
@@ -132,6 +150,7 @@ class TestClockServerTest {
         assertThat(Duration.between(at, now)).isLessThan(Duration.ofMillis(500));
     }
 
+    /** <b>X9-TIME-545</b> — a bad PUT is refused and leaves the clock where it was. */
     @Test
     void aBadPutIsRefusedAndLeavesTheClockAlone() throws Exception {
         start(TestClockCertificateGuardTest.demoCertificate());
@@ -151,6 +170,7 @@ class TestClockServerTest {
         assertEquals(0, BusinessClock.offsetMillis());
     }
 
+    /** <b>X9-TIME-546</b> — other methods and paths are refused. */
     @Test
     void otherMethodsAndPathsAreRefused() throws Exception {
         start(TestClockCertificateGuardTest.demoCertificate());
@@ -159,7 +179,11 @@ class TestClockServerTest {
         assertEquals(404, send("GET", "/test/clock/extra", null).statusCode());
     }
 
-    /** The keystore can be reloaded at runtime: a real certificate swapped in later stops the clock moving. */
+    /**
+     * <b>X9-TIME-547</b> — a real certificate swapped in at runtime stops the clock moving.
+     *
+     * <p>The keystore can be reloaded at runtime: a real certificate swapped in later stops the clock moving.
+     */
     @Test
     void aCertificateSwappedForARealOneStopsTheClockMoving() throws Exception {
         AtomicReference<X509Certificate> current = new AtomicReference<>(TestClockCertificateGuardTest.demoCertificate());
@@ -172,6 +196,7 @@ class TestClockServerTest {
         assertEquals(0, BusinessClock.offsetMillis());
     }
 
+    /** <b>X9-TIME-548</b> — stopping the clock server resets the clock. */
     @Test
     void stoppingResetsTheClock() throws Exception {
         start(TestClockCertificateGuardTest.demoCertificate());
@@ -183,6 +208,7 @@ class TestClockServerTest {
         assertEquals(0, BusinessClock.offsetMillis());
     }
 
+    /** <b>X9-TIME-549</b> — clock listen addresses are parsed. */
     @Test
     void listenAddressesAreParsed() {
         assertEquals(8099, TestClockServer.parse("127.0.0.1:8099").getPort());
