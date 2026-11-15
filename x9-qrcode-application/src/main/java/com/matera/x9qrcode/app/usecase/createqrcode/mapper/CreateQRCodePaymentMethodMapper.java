@@ -88,7 +88,8 @@ public final class CreateQRCodePaymentMethodMapper {
 
         return new BankPaymentAddressVO(
             input.routingNumber(),
-            input.accountNumber()
+            input.accountNumber(),
+            input.protectionType()
         );
     }
 

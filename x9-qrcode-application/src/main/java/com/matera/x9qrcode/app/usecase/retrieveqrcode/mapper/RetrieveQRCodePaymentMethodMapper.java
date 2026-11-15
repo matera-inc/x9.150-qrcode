@@ -87,7 +87,8 @@ public class RetrieveQRCodePaymentMethodMapper {
 
         return new BankPaymentAddressDTO(
             output.routingNumber(),
-            output.accountNumber()
+            output.accountNumber(),
+            output.protectionType()
         );
     }
 

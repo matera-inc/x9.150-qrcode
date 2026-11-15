@@ -9,6 +9,12 @@ code (INTERPRETATION I-12). To test that check, the payee has to be able to answ
 answer can be wrong. This one does: it runs in the suite's process, on its own test-CA identity,
 captures the exact JWS it received, and answers with whatever the test told it to.
 
+Started with ``tls``, the same server is another bank's payload host: the service fetches a
+payload location over https from whatever host the scanned EMV names, so a peer that answers
+``/pub/api/v1/loc/{id}`` with a signed payload is how the decoder is tested against a payload this
+service did not issue. The service must trust the issuing CA for TLS (the black-box deployment
+adds the test CA through ``SSL_CERT_DIR``).
+
 The service must be able to reach it: ``X9_SUITE_HOST`` (default ``127.0.0.1``) is this process's
 address as the SERVICE sees it, as for the CRL server in ``x9client.jws``.
 """
@@ -60,7 +66,7 @@ class TestPayee:
 
     __test__ = False                                   # not a pytest test class
 
-    def __init__(self, identity, now_ms, host=None, port=None):
+    def __init__(self, identity, now_ms, host=None, port=None, tls=None):
         self.identity = identity
         self.signer = jws.Signer(identity, now_ms=now_ms)
         self.advertised_host = host or os.environ.get("X9_SUITE_HOST", "127.0.0.1")
@@ -104,11 +110,18 @@ class TestPayee:
         self.httpd = socketserver.ThreadingTCPServer(("0.0.0.0", bind_port), Handler)
         self.httpd.daemon_threads = True
         self.port = self.httpd.server_address[1]
+        if tls is not None:
+            self.httpd.socket = _tls_context(tls).wrap_socket(self.httpd.socket, server_side=True)
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
 
     @property
     def endpoint(self):
         return f"http://{self.advertised_host}:{self.port}{PATH}"
+
+    def location(self, location_id):
+        """A payload location on this peer, as an EMV string carries it: host and path, no scheme
+        (the service fetches it over https, so the peer must have been started with ``tls``)."""
+        return f"{self.advertised_host}:{self.port}/pub/api/v1/loc/{location_id}"
 
     def close(self):
         self.httpd.shutdown()
@@ -134,6 +147,27 @@ class TestPayee:
 
     def yes(self, question):
         return self.signed(question, 200)
+
+
+def _tls_context(identity):
+    """A server TLS context presenting ``identity`` (a :class:`jws.Identity` with its chain)."""
+    import ssl
+    import tempfile
+    from cryptography.hazmat.primitives import serialization
+
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    with tempfile.TemporaryDirectory() as directory:
+        chain = os.path.join(directory, "chain.pem")
+        key = os.path.join(directory, "key.pem")
+        with open(chain, "wb") as f:
+            for certificate in identity.chain:
+                f.write(certificate.public_bytes(serialization.Encoding.PEM))
+        with open(key, "wb") as f:
+            f.write(identity.key.private_bytes(serialization.Encoding.PEM,
+                                               serialization.PrivateFormat.PKCS8,
+                                               serialization.NoEncryption()))
+        context.load_cert_chain(chain, key)
+    return context
 
 
 def outbound(phase, *, endpoint, qr_id, correlation_id=None, transaction_id=None,

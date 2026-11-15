@@ -8,7 +8,7 @@ came from. Here it is verified against the payee's certificate, not merely decod
 import pytest
 
 from x9client import jws
-from x9client.samples import BILL, RECIPIENT
+from x9client.samples import BILL, FEDNOW, RECIPIENT
 
 
 @pytest.fixture(scope="module")
@@ -58,3 +58,31 @@ def test_an_unsigned_payload_request_is_refused_and_serves_nothing(api, fetched)
 
     assert response.status == 400, response
     assert RECIPIENT not in response.text, "a refused request must not carry the bank details"
+
+
+@pytest.mark.parametrize("protection_type", ["tokenized", "encrypted", "plaintext"])
+def test_protection_type_is_read_back_as_sent(api, payee_certificate, business_now,
+                                              protection_type):
+    """X9-RAIL-506 — ``protectionType`` is read back as it was sent, on ``fednow``, ``rtp`` and
+    ``ach``, from GET and from the signed payload, for each allowed value.
+
+    Source: ANSI X9.150-2026 §14.5.x.3: the protection type is a value the payee sets, from an
+      enum.
+    Why: The Java build answered ``tokenized`` whatever was sent (found by Story 9.6), so a payee
+      that sent a plaintext account number signed a payload claiming it was tokenized.
+    """
+    bank = dict(FEDNOW, protectionType=protection_type)
+    created = api.create_qr_detailed(currency="USD",
+                                     networks={"fednow": bank, "rtp": bank, "ach": bank})
+    assert created.status == 201, created
+
+    read = api.qr(created.body["id"])
+    response = api.fetch_payload(created.body["location"]["id"], created.body["qrCode"])
+    assert response.status == 200, response
+    _, claims = jws.verify(response.text, payee_certificate, now_ms=business_now)
+
+    for rail in ("fednow", "rtp", "ach"):
+        assert read.body["paymentMethods"][0]["networks"][rail]["protectionType"] == \
+            protection_type, (rail, read.body)
+        assert claims["paymentMethods"][0]["networks"][rail]["protectionType"] == \
+            protection_type, (rail, claims)

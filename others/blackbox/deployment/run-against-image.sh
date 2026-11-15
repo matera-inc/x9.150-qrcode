@@ -81,6 +81,7 @@ cp "$ROOT/x9-qrcode-infrastructure/src/main/resources/apis/openapi.yaml" \
 mkdir -p "$STAGE/runner/docs/adr"
 cp "$ROOT"/docs/adr/0035-*.md "$STAGE/runner/docs/adr/"
 cp "$HERE/$TRUSTSTORE" "$STAGE/under-test/"
+cp "$HERE/x9-test-ca.pem" "$STAGE/under-test/"
 
 echo "== building $X9_UNDER_TEST_IMAGE from $X9_IMAGE"
 docker build -q -t "$X9_UNDER_TEST_IMAGE" --build-arg "X9_IMAGE=$X9_IMAGE" \

@@ -1195,7 +1195,7 @@ components:
           description: "Optional URL that indicates where payment status notification information should be sent (likely Payee's PSP)"
           example: "https://paymentNotification.com/paymentNotificationOrder14525"
         paymentMethods:
-          $ref: "#/components/schemas/PaymentMethods"
+          $ref: "#/components/schemas/PayloadPaymentMethods"
           description: "Details of the payment amount and methods."
       description: |
         Cross-field validations (enforced in business logic):
@@ -1647,15 +1647,111 @@ components:
         amount:
           $ref: "#/components/schemas/Amount"
         editable:
-          type: object
-          required:
-            - range
-          properties:
-            range:
-              $ref: "#/components/schemas/IntegerRange"
-          description: "Present only when the payer can edit the amount. Per ANSI X9.150 §14.4, the presence of this object indicates the amount is editable; when present, `range` is mandatory (§14.4.1)."
+          $ref: "#/components/schemas/PaymentMethodEditable"
         networks:
           $ref: "#/components/schemas/NetworksSimple"
+
+    PaymentMethodEditable:
+      type: object
+      required:
+        - range
+      properties:
+        range:
+          $ref: "#/components/schemas/IntegerRange"
+      description: "Present only when the payer can edit the amount. Per ANSI X9.150 §14.4, the presence of this object indicates the amount is editable; when present, `range` is mandatory (§14.4.1)."
+
+    # -----------------------------------------------------------------------------------------
+    # THE PAYLOAD SIDE: what a payer reads, from this deployment or from another bank's.
+    #
+    # `PaymentPayloadResponse` (the location's payload, and what the EMV decoder answers) uses
+    # these, not the request-side schemas above, because the two directions get opposite rules
+    # (ADR-0012, amendment of 2026-11-15):
+    #
+    #   WHAT WE GENERATE is closed. `FedNow`, `RTP`, `ACH` and `Solana` are
+    #   `additionalProperties: false`, and an unknown field inside one is refused on create and
+    #   PATCH, by its path.
+    #
+    #   WHAT WE READ is tolerant. A payload issued by another bank may offer a rail we do not
+    #   interpret, a currency this deployment does not settle, or a field we have never heard of.
+    #   None of those is an error when decoding: the payload is parsed, what we know is
+    #   presented, an unknown network is carried intact (INTERPRETATION I-9), and an unknown
+    #   field elsewhere is ignored. So nothing below says `additionalProperties: false`.
+    #
+    # The shapes are the same; only the openness differs. Integrity is not tolerated: a
+    # malformed EMV string, a bad signature or a content mismatch is still refused.
+    # -----------------------------------------------------------------------------------------
+    PayloadPaymentMethods:
+      type: array
+      items:
+        $ref: "#/components/schemas/PayloadPaymentMethod"
+      description: |-
+        The payment methods of a payload, as a payer reads them: the shape of `PaymentMethods`,
+        read with tolerance. A payload issued by another bank may offer a rail this service does
+        not interpret, a currency this deployment does not settle, or a field this service does
+        not know; none of those makes the decode fail. Known rails are presented, an unknown
+        network is carried intact, and an unknown field elsewhere is ignored.
+
+    PayloadPaymentMethod:
+      type: object
+      required:
+        - currency
+        - validUntil
+        - amount
+        - networks
+      properties:
+        currency:
+          # Any currency the issuer wrote: not limited to `supported-currencies.json`, which
+          # governs only what this deployment generates.
+          $ref: "#/components/schemas/CurrencyCode"
+        validUntil:
+          type: string
+          format: date-time
+          description: "UTC timestamp until which the currency option is valid."
+          example: "2030-05-10T23:59:59Z"
+        amount:
+          $ref: "#/components/schemas/Amount"
+        editable:
+          $ref: "#/components/schemas/PaymentMethodEditable"
+        networks:
+          $ref: "#/components/schemas/PayloadNetworks"
+
+    PayloadNetworks:
+      type: object
+      description: |-
+        The networks of one payment method, as a payer reads them. The rails this service
+        interprets are typed; any other network is carried intact, keys and values unchanged
+        (INTERPRETATION I-9).
+      properties:
+        fednow:
+          $ref: "#/components/schemas/PayloadFedNow"
+        rtp:
+          $ref: "#/components/schemas/PayloadRTP"
+        ach:
+          $ref: "#/components/schemas/PayloadACH"
+        solana:
+          $ref: "#/components/schemas/PayloadSolana"
+      additionalProperties: true
+
+    PayloadFedNow:
+      allOf:
+        - $ref: "#/components/schemas/BankAddress"
+
+    PayloadRTP:
+      allOf:
+        - $ref: "#/components/schemas/BankAddress"
+
+    PayloadACH:
+      allOf:
+        - $ref: "#/components/schemas/BankAddress"
+
+    PayloadSolana:
+      type: object
+      description: "A Solana payment method as a payer reads it: `Solana`, without closing it."
+      properties:
+        recipient:
+          $ref: "#/components/schemas/SolanaRecipient"
+        memo:
+          $ref: "#/components/schemas/SolanaMemo"
 
     NetworksSimple:
       type: object
@@ -1693,40 +1789,37 @@ components:
         solana:
           $ref: "#/components/schemas/Solana"
       # ---------------------------------------------------------------------------------------
-      # THIS IS THE ONE OPAQUE POINT IN THE PAYLOAD. Nowhere else may carry fields we do not
-      # understand: `Solana` is `additionalProperties: false`, and every other payload object
-      # declares its fields exhaustively. A stray `creditor` in the middle of a payment method is
-      # not carried, because X9.150 defines that structure and an unknown key there is a defect,
-      # not an extension.
+      # This is the request side: what a biller asks us to GENERATE (create, and the GET that
+      # reads it back). The payer's side, a payload we READ, is `PayloadNetworks`, further down.
       #
-      # Open HERE for two different reasons, one per direction of the transaction:
+      # The rails inside are closed: `FedNow`, `RTP`, `ACH` and `Solana` are
+      # `additionalProperties: false`, and an unknown field in one is refused by its path
+      # (ADR-0012, amendment of 2026-11-15).
       #
-      #   AS ISSUER, the object must be able to RECEIVE an unsupported network in order to refuse
-      #   it BY NAME (ADR-0012). Closing it would make Jackson drop the key in silence, and the
-      #   biller would never learn that the rail they published is not understood.
-      #
-      #   AS PAYER-SIDE TRANSPORT, a payload we decode for somebody else must survive intact,
-      #   including the rails we cannot read. We do not own that payload and are not validating a
-      #   payment against it; the software that asked us to decode it may understand that rail
-      #   perfectly well and pay it. §14.5 says as much by deferring each network's contents to
-      #   its own documentation.
-      #
-      # So the inner JSON of an unknown network is carried byte-for-byte, keys and values
-      # unchanged. See official-spec/INTERPRETATION.md I-9.
+      # This object itself is open for one reason: it must be able to RECEIVE an unsupported
+      # network in order to refuse it BY NAME (ADR-0012). Closing it would make Jackson drop the
+      # key in silence, and the biller would never learn that the rail they published is not
+      # understood. See official-spec/INTERPRETATION.md I-9.
       # ---------------------------------------------------------------------------------------
       additionalProperties: true
 
+    # The bank rails, as we GENERATE them: closed. An unknown field inside one is refused on
+    # create and PATCH, naming its path (ADR-0012, amendment of 2026-11-15). The payload side
+    # reads the same shape through `PayloadFedNow`, `PayloadRTP` and `PayloadACH`, which are open.
     RTP:
       allOf:
         - $ref: "#/components/schemas/BankAddress"
+      additionalProperties: false
 
     FedNow:
       allOf:
         - $ref: "#/components/schemas/BankAddress"
+      additionalProperties: false
 
     ACH:
       allOf:
         - $ref: "#/components/schemas/BankAddress"
+      additionalProperties: false
 
 
 
@@ -1759,7 +1852,7 @@ components:
             (0-9) AND/OR (A-Z, a-z), and Nacha's ACH Entry Detail Record defines DFI Account Number as 17
             positions alphanumeric. The standard's own Annex A example uses `ACME00112233445`. Send uppercase
             by preference and never treat case as distinguishing two accounts. Full rationale:
-            official-spec/ACCOUNT-NUMBERS-US.md. Always tokenized here (see `protectionType`)."
+            official-spec/ACCOUNT-NUMBERS-US.md. How it is protected is stated by `protectionType`."
           example: "1234567890"
         protectionType:
           $ref: "#/components/schemas/ProtectionTypeEnum"
@@ -1771,7 +1864,7 @@ components:
         - tokenized
         - encrypted
         - plaintext
-      description: "How the bank account number is protected for the bank rails (FedNow, RTP, ACH), per ANSI X9.150-2026 (Protection Type, §14.5.x): `tokenized`, `encrypted`, or `plaintext`. This implementation always secures account numbers by tokenization and therefore always emits `tokenized`. Applies only to bank networks — not to card or blockchain payment methods."
+      description: "How the bank account number is protected for the bank rails (FedNow, RTP, ACH), per ANSI X9.150-2026 (Protection Type, §14.5.x): `tokenized`, `encrypted`, or `plaintext`. The payee sets it; this service stores the value sent and returns it as sent, from GET and in the signed payload (it neither tokenizes nor encrypts anything itself). Applies only to bank networks — not to card or blockchain payment methods."
       example: "tokenized"
 
     Solana:
@@ -1796,9 +1889,9 @@ components:
           $ref: "#/components/schemas/SolanaRecipient"
         memo:
           $ref: "#/components/schemas/SolanaMemo"
-      # Closed, unlike the `networks` object that contains it. Opacity applies to rails we do NOT
-      # interpret; this one we do, on a published embedding, so an unknown field inside it is a
-      # mistake worth reporting rather than a payload to carry.
+      # Closed, unlike the `networks` object that contains it: this is the request side, what we
+      # GENERATE, and an unknown field inside a rail we interpret is a mistake worth reporting.
+      # A payload we READ uses `PayloadSolana`, which is open (ADR-0012, amendment of 2026-11-15).
       additionalProperties: false
 
     SolanaRecipient:
@@ -2624,9 +2717,9 @@ components:
           allOf:
             - $ref: "#/components/schemas/Solana"
           nullable: true
-      # Open for the same reasons as NetworksSimple, and equally the only opaque point on a patch:
-      # an unsupported network must be receivable in order to be refused BY NAME rather than dropped
-      # in silence. See the note on NetworksSimple.
+      # Open for the same reason as NetworksSimple: an unsupported network must be receivable in
+      # order to be refused BY NAME rather than dropped in silence. The rails inside it are closed,
+      # as on create. See the note on NetworksSimple.
       additionalProperties: true
 
     PatchPaymentMethod:

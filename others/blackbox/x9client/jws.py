@@ -212,6 +212,25 @@ class CertificateAuthority:
         certificate = builder.sign(self.key, hashes.SHA512())
         return Identity(name, key, certificate, [certificate, self.certificate])
 
+    def issue_tls_server(self, name, ip):
+        """A TLS server certificate for the IP address ``ip``, signed by this CA: what another
+        bank's payload host presents when this service fetches a payload from it over https."""
+        import ipaddress
+        key = new_key("ec")
+        now = datetime.datetime.now(datetime.timezone.utc)
+        certificate = (x509.CertificateBuilder()
+                       .subject_name(_name(name, "Example Other Bank"))
+                       .issuer_name(self.certificate.subject)
+                       .public_key(key.public_key()).serial_number(x509.random_serial_number())
+                       .not_valid_before(now - datetime.timedelta(days=1))
+                       .not_valid_after(now + datetime.timedelta(days=30))
+                       .add_extension(x509.SubjectAlternativeName(
+                           [x509.IPAddress(ipaddress.ip_address(ip))]), critical=False)
+                       .add_extension(x509.ExtendedKeyUsage(
+                           [x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
+                       .sign(self.key, hashes.SHA512()))
+        return Identity(name, key, certificate, [certificate, self.certificate])
+
     def allowed_to_sign(self):
         """This CA re-issued to itself, same name and same key, with ``digitalSignature`` added to
         its key usage: a CA that may sign. Chained under the original it validates, so a token it

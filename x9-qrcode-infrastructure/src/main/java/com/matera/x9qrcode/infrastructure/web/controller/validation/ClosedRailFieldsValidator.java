@@ -20,16 +20,17 @@ import org.springframework.web.bind.annotation.InitBinder;
 import static java.util.Objects.nonNull;
 
 /**
- * Refuses an unknown field inside {@code solana} on create and on PATCH, beside the body's other
- * violations (INTERPRETATION I-9, rule {@code R-I9-03}).
+ * Refuses an unknown field inside a rail we generate ({@code fednow}, {@code rtp}, {@code ach},
+ * {@code solana}) on create and on PATCH, beside the body's other violations (ADR-0012, amendment of
+ * 2026-11-15; INTERPRETATION I-9, rule {@code R-I9-03}). A payload we read is never checked here.
  *
- * <p>The fields themselves are found by {@link ClosedSolanaFields} while the body is read. This adds
+ * <p>The fields themselves are found by {@link ClosedRailFields} while the body is read. This adds
  * each as a field error to the same binding result bean validation fills, so the refusal is the usual
  * 400 whose {@code violations} name every problem at once — for example
  * {@code paymentMethods[0].networks.solana.x: is not a field of solana, whose fields are recipient and memo}.
  */
 @ControllerAdvice
-public class ClosedSolanaFieldsValidator implements Validator {
+public class ClosedRailFieldsValidator implements Validator {
 
     @InitBinder
     public void register(WebDataBinder binder) {
@@ -50,8 +51,8 @@ public class ClosedSolanaFieldsValidator implements Validator {
         if (!(errors instanceof BindingResult result)) {
             return;
         }
-        for (String field : ClosedSolanaFields.recorded()) {
-            result.addError(new FieldError(result.getObjectName(), field, ClosedSolanaFields.MESSAGE));
+        for (ClosedRailFields.Violation violation : ClosedRailFields.recorded()) {
+            result.addError(new FieldError(result.getObjectName(), violation.path(), violation.message()));
         }
     }
 

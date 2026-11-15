@@ -290,15 +290,15 @@ public final class PatchQRCodeRequestMapper {
         }
 
         if (bankPaymentAddress instanceof FedNowDTO fedNowDTO) {
-            return PartialInput.of(new BankPaymentAddressDTO(fedNowDTO.getRoutingNumber(), fedNowDTO.getAccountNumber()));
+            return PartialInput.of(new BankPaymentAddressDTO(fedNowDTO.getRoutingNumber(), fedNowDTO.getAccountNumber(), protectionTypeOf(fedNowDTO.getProtectionType())));
         }
 
         if (bankPaymentAddress instanceof RTPDTO rtpDTO) {
-            return PartialInput.of(new BankPaymentAddressDTO(rtpDTO.getRoutingNumber(), rtpDTO.getAccountNumber()));
+            return PartialInput.of(new BankPaymentAddressDTO(rtpDTO.getRoutingNumber(), rtpDTO.getAccountNumber(), protectionTypeOf(rtpDTO.getProtectionType())));
         }
 
         if (bankPaymentAddress instanceof ACHDTO achDTO) {
-            return PartialInput.of(new BankPaymentAddressDTO(achDTO.getRoutingNumber(), achDTO.getAccountNumber()));
+            return PartialInput.of(new BankPaymentAddressDTO(achDTO.getRoutingNumber(), achDTO.getAccountNumber(), protectionTypeOf(achDTO.getProtectionType())));
         }
 
         throw new IllegalArgumentException(
@@ -368,6 +368,12 @@ public final class PatchQRCodeRequestMapper {
             base.additionalInformationMap(),
             base.paymentMethodUpdateDTOList(),
             tag);
+    }
+
+
+    /** The protection type as the payee set it (X9.150 §14.5.x.3), by its wire value. */
+    private static String protectionTypeOf(com.matera.x9qrcode.infrastructure.generated.dto.ProtectionTypeEnumDTO protectionType) {
+        return isNull(protectionType) ? null : protectionType.getValue();
     }
 
 }

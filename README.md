@@ -510,11 +510,11 @@ Note: Caching of certificates via standard HTTP cache headers is RECOMMENDED to 
 
 This section describes how the signing mechanism is applied in the context of X9 QRCodes application.
 
-### Bank account networks & protection (US only, tokenized only)
+### Bank account networks & protection (US only)
 
 For bank-account payment methods, this implementation supports **US bank rails only** — **FedNow**, **RTP**, and **ACH** (each identified by a 9-digit ABA routing number and an account number).
 
-Account numbers on these rails use the **tokenized** protection approach **only**. The `protectionType` field on a bank address is **mandatory** and is always **`tokenized`** — the software does not implement the `encrypted` or `plaintext` approaches. Making the field required and always present means anyone reading a created QR payload can see the account number is tokenized, never assumed to be in the clear. `protectionType` applies to the bank rails (FedNow, RTP, ACH) only; a Solana method carries a wallet address, not a bank account.
+The `protectionType` field on a bank address is **mandatory**, and it is the **payee's** statement of how the account number is protected (ANSI X9.150-2026 §14.5.x.3): `tokenized`, `encrypted` or `plaintext`. This service stores what was sent and returns it, from GET and in the signed payload; it does not tokenize or encrypt anything itself. Making the field required means anyone reading a payload is told how the account number is protected, never left to assume. `protectionType` applies to the bank rails (FedNow, RTP, ACH) only; a Solana method carries a wallet address, not a bank account.
 
 ### The supported network set
 

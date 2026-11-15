@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**798 tests documented** — every JUnit test and every black-box case.
+**816 tests documented** — every JUnit test and every black-box case.
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
 (STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036 and ADR-0027's EMV and JWS verification rules), the
@@ -514,6 +514,16 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-DEC-014` | a well-formed EMV string is read: the golden string, a lower-case CRC, org.x9 among other templates, UTF-16 lengths (the control for X9-DEC-013) | `EmvReaderTest.java` |
 | `X9-DEC-015` | the decoder refuses each malformed case with a 400 naming `qrCode`, before any fetch | `DecoderRelaysTheRefusalApiTest.java` |
 | `X9-DEC-016` | the decoder refuses the Go build's 19 malformed cases with a 400, before any fetch (black box) | `test_qr_code.py` |
+| `X9-DEC-017` | another bank's payload with an unknown rail, an unknown currency and unknown fields decodes, every method presented | `ForeignPayloadReadWithToleranceApiTest.java` |
+| `X9-DEC-018` | a currency this deployment does not settle is presented as the issuer wrote it | `ForeignPayloadReadWithToleranceApiTest.java` |
+| `X9-DEC-019` | an unknown field inside a rail we interpret is ignored; the known fields are presented, `protectionType` as written | `ForeignPayloadReadWithToleranceApiTest.java` |
+| `X9-DEC-020` | an unknown field on a payment method, on the creditor or at the top of the payload is ignored | `ForeignPayloadReadWithToleranceApiTest.java` |
+| `X9-DEC-021` | tolerance stops at integrity: the same foreign payload with a broken signature is refused | `ForeignPayloadReadWithToleranceApiTest.java` |
+| `X9-DEC-501` | another bank's payload, served over https and signed by its own key, with unknown rails, an unknown currency and unknown fields decodes (black box) | `test_tolerant_reading.py` |
+| `X9-DEC-502` | an unknown currency and an unknown rail reach the payer as the other bank wrote them | `test_tolerant_reading.py` |
+| `X9-DEC-503` | an unknown field inside a known rail of another bank's payload is ignored | `test_tolerant_reading.py` |
+| `X9-DEC-504` | an unknown field on a method, on the creditor or at the top of another bank's payload is ignored | `test_tolerant_reading.py` |
+| `X9-DEC-505` | another bank's payload signed by an untrusted CA, or altered after signing, is refused and nothing of it presented | `test_tolerant_reading.py` |
 
 ## Editing a payment request
 
@@ -626,6 +636,8 @@ status is `X9-MAP-002`.
 | `X9-RAIL-053` | an unsupported network is not silently dropped | `NetworkNamingApiTest.java` |
 | `X9-RAIL-054` | a patch may not introduce an unsupported network | `NetworkNamingApiTest.java` |
 | `X9-RAIL-055` | an unknown field inside `solana` is named beside the other violations of the same request | `SolanaPaymentMethodApiTest.java` |
+| `X9-RAIL-056` | an unknown field inside `fednow`, `rtp` or `ach` is refused at create, naming its path | `ClosedBankRailsApiTest.java` |
+| `X9-RAIL-057` | an unknown field inside a bank rail is refused on PATCH, naming its path, and nothing changes | `ClosedBankRailsApiTest.java` |
 | `X9-RAIL-060` | a payload offering an uninterpreted rail still decodes | `OpaqueNetworkOnDecodeApiTest.java` |
 | `X9-RAIL-061` | a rail we do interpret is unaffected by opacity | `OpaqueNetworkOnDecodeApiTest.java` |
 | `X9-RAIL-062` | an unknown network arrives with every field intact | `OpaqueNetworkOnDecodeApiTest.java` |
@@ -639,6 +651,9 @@ status is `X9-MAP-002`.
 | `X9-RAIL-081` | anything outside digits and letters is refused | `BankAccountNumberApiTest.java` |
 | `X9-RAIL-082` | the bank address checks its account number, not its routing number twice | `CheckedAsWrittenTest.java` |
 | `X9-RAIL-083` | an account number of 4 to 17 digits or letters is accepted, the standard's own among them | `CheckedAsWrittenTest.java` |
+| `X9-RAIL-085` | `protectionType` is read back from GET as it was sent, each bank rail, each allowed value | `ClosedBankRailsApiTest.java` |
+| `X9-RAIL-086` | `protectionType` is in the signed payload as it was sent, each bank rail, each allowed value | `ClosedBankRailsApiTest.java` |
+| `X9-RAIL-087` | a PATCH that changes only `protectionType` changes it | `ClosedBankRailsApiTest.java` |
 | `X9-RAIL-090` | a destination this QR Code never published is refused | `SolanaTwoPhaseNotificationApiTest.java` |
 | `X9-RAIL-100` | an ACH notification takes the QR Code out of circulation | `PaymentNotificationDispatchApiTest.java` |
 | `X9-RAIL-101` | a FedNow post-commit on an ACTIVE QR Code reserves it, and never settles it | `PaymentNotificationDispatchApiTest.java` |
@@ -650,6 +665,9 @@ status is `X9-MAP-002`.
 | `X9-RAIL-501` | a network this deployment does not interpret is refused at create, naming it, with no id | `test_create_refusals.py` |
 | `X9-RAIL-502` | an unknown field inside `solana` is refused at create, naming its path, with no id | `test_create_refusals.py` |
 | `X9-RAIL-503` | an unknown field inside `solana` is refused on PATCH, naming its path, and the ETag does not move | `test_create_refusals.py` |
+| `X9-RAIL-504` | an unknown field inside `fednow`, `rtp` or `ach` is refused at create, naming its path, with no id | `test_create_refusals.py` |
+| `X9-RAIL-505` | an unknown field inside a bank rail is refused on PATCH, naming its path, and the ETag does not move | `test_create_refusals.py` |
+| `X9-RAIL-506` | `protectionType` is read back as sent, on each bank rail, from GET and from the signed payload, for each allowed value | `test_payload.py` |
 
 ## Signatures, keys and problem details
 

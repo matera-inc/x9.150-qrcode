@@ -184,6 +184,7 @@ that is here must still be marked `GAP`.
 | `R-I5-01` | `paymentMethods` is an array; a bare object is refused. | `X9-RAIL-120` | — |
 | `R-I5-02` | One `paymentMethods` entry carries every rail that settles its currency. | `X9-RAIL-110`, `X9-RAIL-111` | — |
 | `R-I6-01` | A bank account number is 4 to 17 digits or letters; anything else is refused. | `X9-RAIL-080`, `X9-RAIL-081`, `X9-RAIL-082`, `X9-RAIL-083` | — |
+| `R-I6-02` | `protectionType` is the payee's (§14.5.x.3): what was sent on a bank rail is what GET and the signed payload return, and a PATCH can change it. | `X9-RAIL-085`, `X9-RAIL-086`, `X9-RAIL-087`, `X9-RAIL-506` | — |
 | `R-I7-01` | A payer signing with an RSA key or an EC key is verified, from the `alg` it presents. | `X9-SIG-050`, `X9-SIG-054`, `X9-SIG-509` | `S3.2-AC1`, `S3.2-AC2` |
 | `R-I7-02` | This service signs with the key it is given, EC or RSA. | `X9-SIG-040`, `X9-SIG-041`, `X9-SIG-090`, `X9-SIG-091` | — |
 | `R-I7-03` | A configured `alg` the key cannot produce fails at startup, naming both. | `X9-SIG-092`, `X9-SIG-093` | — |
@@ -289,6 +290,9 @@ the ADR that changed it.
 | `R-ADR0012-02` | Only currencies in `supported-currencies.json` are accepted; every offending one is named; an empty list disables the check. | `X9-CUR-013`, `X9-CUR-014`, `X9-CUR-016`, `X9-CUR-062` | — |
 | `R-ADR0012-03` | Our own API accepts one spelling of each network key and currency code; any other casing is refused, naming both. | `X9-RAIL-051`, `X9-CUR-012`, `X9-CUR-063` | — |
 | `R-ADR0012-04` | `payment.network` on a notification is matched whatever its case and echoed as sent. | `X9-RAIL-070`, `X9-RAIL-071` | — |
+| `R-ADR0012-05` | What we generate is closed: an unknown field inside `fednow`, `rtp` or `ach` is refused, by its path, on create and on PATCH (amendment of 2026-11-15). | `X9-RAIL-056`, `X9-RAIL-057`, `X9-RAIL-504`, `X9-RAIL-505` | — |
+| `R-ADR0012-06` | What we read is tolerant: another bank's payload with an unknown rail, an unknown currency or unknown fields decodes, the known methods presented, unknown fields ignored (amendment of 2026-11-15). | `X9-DEC-017`, `X9-DEC-018`, `X9-DEC-019`, `X9-DEC-020`, `X9-DEC-501`, `X9-DEC-502`, `X9-DEC-503`, `X9-DEC-504` | — |
+| `R-ADR0012-07` | Tolerance stops at integrity: a foreign payload whose signature fails is refused, and nothing of it is presented (amendment of 2026-11-15). | `X9-DEC-021`, `X9-DEC-505` | — |
 | `R-ADR0013-01` | A transaction is retried only when MongoDB labelled it `TransientTransactionError`; a duplicate key or a business failure is not. | `X9-LIFE-080`, `X9-LIFE-081`, `X9-LIFE-082`, `X9-LIFE-083`, `X9-LIFE-084` | — |
 | `R-ADR0013-02` | The retry wraps the transaction, so each attempt gets a new one. | `X9-LIFE-086`, `X9-LIFE-087` | — |
 | `R-ADR0013-03` | Attempts are bounded, and the original failure is rethrown. | `X9-LIFE-085` | — |
