@@ -109,6 +109,12 @@ differential run sees both builds agree.
 
 So the Java build gets **two** deliberate fixes before it is frozen: the ETag and the signed answer.
 
+### Note, 2026-11-15 (owner): Java's known breaks are not compared
+
+Where Java is known to break X9.150 or an ADR (an **Open** entry in
+[`known-bugs.md`](../../known-bugs.md), or a black-box test marked as an expected failure on Java),
+that behaviour is excluded from the Java↔Go differential comparison, and Go follows the spec.
+
 ## Alternatives rejected
 
 - **Byte-identity checked by schema validation.** It catches nothing that matters here.
