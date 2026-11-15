@@ -12,7 +12,7 @@
 // internal/keys' crypto.Signer, which never leaves that package. iat is the business clock
 // (internal/clock), so a moved test clock signs at the moved time, as Java does.
 //
-// Verification arrives in this package with Story 8.5; the header names below are shared.
+// Verification is in verify.go (Story 8.5); the header names below are shared.
 package jws
 
 import (
