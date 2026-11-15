@@ -7,6 +7,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -38,6 +39,24 @@ func (r *Reader) Notifications(ctx context.Context, id uuid.UUID) ([]domain.Noti
 	return readNotifications(ctx, r.tx, id)
 }
 
+// LatestNotification reads the latest notification the QR Code accepted, as it was stored
+// (notification_json): what GET shows as paymentNotification.data; nil when none was accepted.
+func (r *Reader) LatestNotification(ctx context.Context, id uuid.UUID) (json.RawMessage, error) {
+	return latestNotification(ctx, r.tx, id)
+}
+
+func latestNotification(ctx context.Context, tx pgx.Tx, id uuid.UUID) (json.RawMessage, error) {
+	var notification []byte
+	err := tx.QueryRow(ctx, sqlSelectLatestNotification, id).Scan(&notification)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading the latest notification of QR Code %s: %w", id, err)
+	}
+	return notification, nil
+}
+
 // ------------------------------------------------------------------ the read pool
 
 // readOnly runs fn in a READ COMMITTED, read-only transaction on the read pool: isolation is set
@@ -52,7 +71,7 @@ func (s *Store) readOnly(ctx context.Context, fn func(tx pgx.Tx) error) error {
 		})
 }
 
-// Get reads a QR Code by id, for GET, on the read pool: one row. A statement cancelled after
+// Get reads a QR Code by id, on the read pool: one row. A statement cancelled after
 // StatementTimeout is ErrUnavailable.
 func (s *Store) Get(ctx context.Context, id uuid.UUID) (QRCode, error) {
 	var q QRCode
@@ -65,6 +84,28 @@ func (s *Store) Get(ctx context.Context, id uuid.UUID) (QRCode, error) {
 		return QRCode{}, answer(err)
 	}
 	return q, nil
+}
+
+// GetWithNotification reads a QR Code by id for GET, on the read pool, and in the same transaction
+// the latest notification it accepted, as it was stored (notification_json): what GET shows as
+// paymentNotification.data; nil when none was accepted.
+func (s *Store) GetWithNotification(ctx context.Context, id uuid.UUID) (QRCode, json.RawMessage, error) {
+	var (
+		q            QRCode
+		notification json.RawMessage
+	)
+	err := s.readOnly(ctx, func(tx pgx.Tx) error {
+		var err error
+		if q, err = scanQRCode(tx.QueryRow(ctx, sqlSelectQRCode, id)); err != nil {
+			return err
+		}
+		notification, err = latestNotification(ctx, tx, id)
+		return err
+	})
+	if err != nil {
+		return QRCode{}, nil, answer(err)
+	}
+	return q, notification, nil
 }
 
 // GetByLocation reads the QR Code holding a location, for the payload, on the read pool.

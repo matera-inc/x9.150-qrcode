@@ -39,6 +39,12 @@ const (
  currency, amount, tip_amount, transaction_id, payer_info, signer_subject
  FROM qr_code_notification WHERE qr_code_id = $1 ORDER BY id`
 
+	// sqlSelectLatestNotification reads the notification a GET shows under paymentNotification.data:
+	// the latest one accepted. A post-commit on a rail or in a currency the QR Code does not offer is
+	// stored as evidence but was refused (ADR-0036, amended 2026-11-15), so it is not shown.
+	sqlSelectLatestNotification = `SELECT notification_json FROM qr_code_notification
+ WHERE qr_code_id = $1 AND deviations NOT LIKE '%NOT_OFFERED_%' ORDER BY id DESC LIMIT 1`
+
 	sqlInsertNotification = `INSERT INTO qr_code_notification (id, qr_code_id, received_at,
  received_in_status_code, deviations, phase, network, currency, amount, tip_amount, transaction_id,
  payer_info, signer_subject, notification_json, jws_compact)

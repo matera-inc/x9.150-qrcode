@@ -46,7 +46,7 @@ func TestViewIsJavasReadOfTheRow(t *testing.T) {
 		EMVContent: "000201",
 	}
 	s := &Service{host: "pay.example"}
-	got, err := s.view(q, created.Add(time.Hour))
+	got, err := s.view(q, nil, created.Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestSentAtIsNowButNeverBeforeRevisedAt(t *testing.T) {
 	q := store.QRCode{ID: id, LocationID: id, ValidUntil: time.Date(2030, 12, 31, 23, 59, 59, 0, time.UTC),
 		Status: domain.StatusActive, ReservedUntil: domain.NoLapse, RequestJSON: json.RawMessage(stored),
 		CreatedAt: revised, RevisedAt: revised, EMVContent: "000201"}
-	got, err := (&Service{host: "pay.example"}).view(q, revised.Add(-time.Hour))
+	got, err := (&Service{host: "pay.example"}).view(q, nil, revised.Add(-time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,6 +103,45 @@ func TestSentAtIsNowButNeverBeforeRevisedAt(t *testing.T) {
 	}
 	if answer["sentAt"] != "2026-11-15T12:00:00Z" {
 		t.Errorf("GET at a clock behind revisedAt: sentAt %v, want revisedAt", answer["sentAt"])
+	}
+}
+
+// X9-HOLD-401 (S10.5-AC5): GET shows the latest accepted notification as paymentNotification.data,
+// after kind and endpoint, echoing the payer's spelling, without payment.qrcodeId (Java's mapper
+// does not copy it); no data member before any notification.
+func TestViewShowsTheLatestNotification(t *testing.T) {
+	id := uuid.MustParse("01a1dc2a-6a37-d73d-6313-076e9bfe04f5")
+	q := store.QRCode{
+		ID: id, LocationID: id, ValidUntil: time.Date(2030, 12, 31, 23, 59, 59, 0, time.UTC),
+		Status: domain.StatusPaymentInitiated, ReservedUntil: domain.NoLapse,
+		RequestJSON: json.RawMessage(`{"paymentNotification":{"kind":"DEFAULT"},` +
+			`"paymentMethods":[{"currency":"USDC","amount":1000,"networks":{"solana":{"recipient":"R"}}}]}`),
+	}
+	notification := []byte(`{"payment":{"qrcodeId":"01A1DC2A6A37D73D6313076E9BFE04F5","amount":1000,` +
+		`"currency":"usdc","network":"SOLANA","transactionId":"5ig"},"payer":{"info":"p@example.com"},` +
+		`"blockchain":{"action":"SENT","from":"F","to":"R"}}`)
+	s := &Service{host: "pay.example"}
+	got, err := s.view(q, notification, q.ValidUntil.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		PaymentNotification json.RawMessage `json:"paymentNotification"`
+	}
+	if err := json.Unmarshal(got, &body); err != nil {
+		t.Fatal(err)
+	}
+	const want = `{"kind":"DEFAULT","data":{"payment":{"amount":1000,"currency":"usdc","network":"SOLANA",` +
+		`"transactionId":"5ig"},"payer":{"info":"p@example.com"},"blockchain":{"action":"SENT","from":"F","to":"R"}}}`
+	if diff := cmp.Diff(want, string(body.PaymentNotification)); diff != "" {
+		t.Fatalf("paymentNotification (-want +got):\n%s", diff)
+	}
+
+	if got, err = s.view(q, nil, q.ValidUntil.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(got, &body); err != nil || string(body.PaymentNotification) != `{"kind":"DEFAULT"}` {
+		t.Fatalf("before any notification: %s, %v", body.PaymentNotification, err)
 	}
 }
 

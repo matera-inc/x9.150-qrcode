@@ -120,6 +120,17 @@ func testNotOfferedPostCommitIsRecorded(t *testing.T, e *env) {
 	if got := e.count(t, "SELECT COUNT(*) FROM payment_event WHERE qr_code_id = $1 AND deviations = 'NOT_OFFERED_CURRENCY'", q.ID); got != 1 {
 		t.Fatalf("%d flagged payment.sent, want 1", got)
 	}
+	// GET shows the latest accepted notification, never the refused one.
+	if _, shown, err := e.store.GetWithNotification(ctx, q.ID); err != nil || len(shown) == 0 {
+		t.Fatalf("GET reads no notification after an accepted pre-commit: %v", err)
+	}
+	only := e.create(t)
+	if _, err := e.notify(ctx, only.ID, sent, nil, settings); err != nil {
+		t.Fatal(err)
+	}
+	if _, shown, err := e.store.GetWithNotification(ctx, only.ID); err != nil || shown != nil {
+		t.Fatalf("GET shows %s, %v; want no notification when the only one was refused", shown, err)
+	}
 	// A later event's body is not built from the refused call.
 	r, err := e.setStatus(ctx, q.ID, domain.StatusCancelled)
 	if err != nil || len(r.Events) != 1 || r.Events[0].TransactionID != nil || *r.Events[0].Currency != "USDC" {

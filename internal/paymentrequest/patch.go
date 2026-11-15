@@ -118,7 +118,11 @@ func (s *Service) decidePatch(ctx context.Context, rd *store.Reader, now time.Ti
 	// refused by name when it does not (INTERPRETATION I-16, owner 2026-11-15, option B), compared
 	// with the GET answer at now, before anything else, as the Java build does.
 	if readOnly := req.ReadOnly(); len(readOnly) > 0 {
-		answer, err := s.view(before, now)
+		notification, err := rd.LatestNotification(ctx, id)
+		if err != nil {
+			return store.Change{}, err
+		}
+		answer, err := s.view(before, notification, now)
 		if err != nil {
 			return store.Change{}, err
 		}
