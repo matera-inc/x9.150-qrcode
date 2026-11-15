@@ -279,7 +279,16 @@ the variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`.
   `//nolint:forbidigo` that says which real duration it measures. The clock supports a
   millisecond offset, but it stays disabled in the Go build until the `/test/clock` listener and
   its certificate guard arrive with the signing keys.
-- **Signing** (`internal/jws`, not yet behind an endpoint) uses the Java build's settings and
+- **Signatures on the wire.** The Go build publishes its signing key at
+  `/pub/.well-known/jwks` (a JWK set with the `x5c` chain, in the Java build's shape) and
+  `/pub/.well-known/certificate/x9-key.pem` (the chain in PEM; the name every `x5u` gives it,
+  and the only one served), and answers `POST /api/v1/signature/generate` and
+  `/api/v1/signature/validate` as the Java build does. Both follow a keystore reload. A received
+  JWS is verified with `X9_JWS_CLOCK_SKEW_SECONDS` (60; `0` allows no drift, a negative value is
+  read as `0`) and `X9_CERTIFICATE_ISSUERNAME` (`X9`; empty skips the issuer check), the Java
+  build's settings. A `jku` or `x5u` on the public host is read from the process itself over
+  `localhost`, as Java reads it; any other is fetched over HTTPS only.
+- **Signing** (`internal/jws`) uses the Java build's settings and
   header profile: `X9_CERTIFICATE_JWKALGORITHM` (default `PS512`; RS\*, PS\*, or ES256/ES384/ES512
   each on its own curve), `X9_CERTIFICATE_ENDPOINTTYPE` (`JWK_SET` → `jku`, the default; `PEM` →
   `x5u`; `NONE` → `x5c`) and `X9_PUBLICENDPOINTS_JWSTTLSECONDS` (300, written as `ttl: 300000`

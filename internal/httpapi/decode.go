@@ -32,8 +32,8 @@ const MaxBodyBytes = 1 << 20
 // first JSON value is ignored, all as Jackson does. dst's member types decide how a scalar of
 // another JSON type is read (see internal/contract).
 func DecodeJSON(r *http.Request, dst any) error {
-	if !isJSON(r.Header.Get("Content-Type")) {
-		return UnsupportedMediaType()
+	if err := CheckJSONContentType(r); err != nil {
+		return err
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, MaxBodyBytes+1))
 	if err != nil || len(body) > MaxBodyBytes {
@@ -51,6 +51,16 @@ func Unmarshal(body []byte, dst any) error {
 	}
 	if err := json.UnmarshalDecode(dec, dst); err != nil {
 		return MalformedJSON()
+	}
+	return nil
+}
+
+// CheckJSONContentType is DecodeJSON's first check alone: Spring's 415 for a body that is not JSON.
+// Spring makes it before it reads any header, so a handler that reads headers first calls it, then
+// DecodeJSON.
+func CheckJSONContentType(r *http.Request) error {
+	if !isJSON(r.Header.Get("Content-Type")) {
+		return UnsupportedMediaType()
 	}
 	return nil
 }

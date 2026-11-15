@@ -9,6 +9,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 // S8.2-AC1: the keystore and truststore keep the Java build's variable names (ADR-0031), and
@@ -32,7 +33,7 @@ func TestCertificateVariablesAreJavas(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := Certificate{
-		EndpointType: "JWK_SET", JWKAlgorithm: "PS512",
+		EndpointType: "JWK_SET", JWKAlgorithm: "PS512", IssuerName: "X9",
 		PrivateKeystore: PrivateKeystore{
 			Location: ks, Type: "PKCS12", Password: "store-pw", PrivateKeyPassword: "key-pw",
 			Alias: "x9-private-keystore", EnforcedAlias: "signer",
@@ -57,7 +58,7 @@ func TestCertificateDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Certificate{EndpointType: "JWK_SET", JWKAlgorithm: "PS512"}
+	want := Certificate{EndpointType: "JWK_SET", JWKAlgorithm: "PS512", IssuerName: "X9"}
 	if cfg.Certificate != want || cfg.Keystore.Reload.Frequency != 30000 {
 		t.Fatalf("certificate = %+v, reload = %d", cfg.Certificate, cfg.Keystore.Reload.Frequency)
 	}
@@ -95,6 +96,48 @@ func TestSigningSettings(t *testing.T) {
 		if _, err := Load("", append(complete(), tc.env)); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: err = %v, want it to contain %q", tc.env, err, tc.want)
 		}
+	}
+}
+
+// S10.2-AC1: the verifier's settings keep the Java build's keys, variables and defaults:
+// x9.public-endpoints.jws-clock-skew-seconds (X9_JWS_CLOCK_SKEW_SECONDS, 60) and
+// x9.certificate.issuer-name (X9_CERTIFICATE_ISSUERNAME, X9). A configured 0 is no drift, not the
+// verifier's default, and a negative skew is read as 0, as Java reads it.
+func TestVerifierSettings(t *testing.T) {
+	cfg, err := Load("", complete())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.PublicEndpoints.JWSClockSkewSeconds != 60 || cfg.PublicEndpoints.JWSClockSkew() != time.Minute {
+		t.Errorf("skew = %d (%v), want 60 (1m)", cfg.PublicEndpoints.JWSClockSkewSeconds, cfg.PublicEndpoints.JWSClockSkew())
+	}
+	if cfg.Certificate.IssuerName != "X9" {
+		t.Errorf("issuer-name = %q, want X9", cfg.Certificate.IssuerName)
+	}
+	for _, tc := range []struct {
+		env  string
+		want time.Duration
+	}{
+		{"X9_JWS_CLOCK_SKEW_SECONDS=5", 5 * time.Second},
+		{"X9_JWS_CLOCK_SKEW_SECONDS=0", -1},
+		{"X9_JWS_CLOCK_SKEW_SECONDS=-30", -1},
+	} {
+		cfg, err := Load("", append(complete(), tc.env))
+		if err != nil {
+			t.Fatalf("%s: %v", tc.env, err)
+		}
+		if got := cfg.PublicEndpoints.JWSClockSkew(); got != tc.want {
+			t.Errorf("%s: JWSClockSkew = %v, want %v", tc.env, got, tc.want)
+		}
+	}
+	if _, err := Load("", append(complete(), "X9_JWS_CLOCK_SKEW_SECONDS=soon")); err == nil ||
+		!strings.Contains(err.Error(), "public-endpoints.jws-clock-skew-seconds (X9_JWS_CLOCK_SKEW_SECONDS)") {
+		t.Errorf("err = %v, want it to name the key and its variable", err)
+	}
+	cfg, err = Load("", append(complete(), "X9_CERTIFICATE_ISSUERNAME="))
+	if err != nil || cfg.Certificate.IssuerName != "" {
+		t.Errorf("an empty issuer-name: %q, %v; want it kept empty (the check skipped, as in Java)",
+			cfg.Certificate.IssuerName, err)
 	}
 }
 

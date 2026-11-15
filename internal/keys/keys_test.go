@@ -438,6 +438,28 @@ func TestTruststoreChangeReloads(t *testing.T) {
 	}
 }
 
+// S10.2-AC1: the Store is the verifier's truststore, and answers from the current snapshot, so a
+// reloaded truststore is used without a restart.
+func TestStoreIsTheCurrentTruststore(t *testing.T) {
+	ca, other := newCA(t, "Example Test Root CA"), newCA(t, "Example Other CA")
+	first := newIdentity(t, ca, "first.example.com")
+	s, path := loadFiles(t, quiet(), first)
+	trusts := func(c *x509.Certificate) bool {
+		_, err := c.Verify(x509.VerifyOptions{Roots: s.Roots()})
+		return err == nil
+	}
+	if len(s.Certificates()) != 1 || !trusts(ca.cert) || trusts(other.cert) {
+		t.Fatalf("before the reload: %d certificates", len(s.Certificates()))
+	}
+	replaceFile(t, strings.TrimSuffix(path, "signer.pem")+"trust.pem", certPEM(other.cert))
+	if changed, err := s.Reload(); !changed || err != nil {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	if len(s.Certificates()) != 1 || !s.Certificates()[0].Equal(other.cert) || trusts(ca.cert) || !trusts(other.cert) {
+		t.Fatal("the store still answers with the old truststore")
+	}
+}
+
 // S8.2-AC3: Run re-reads on its timer (real time, here a synctest bubble's) every interval, and
 // stops with its context, leaving no goroutine behind.
 func TestRunReloadsOnItsTimer(t *testing.T) {

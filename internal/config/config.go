@@ -24,6 +24,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"go.yaml.in/yaml/v3"
 
@@ -67,6 +68,20 @@ type PublicEndpoints struct {
 	// JWSTTLSeconds is the ttl of every JWS this service signs, in seconds; the header carries it in
 	// milliseconds. The Java build's x9.public-endpoints.jws-ttl-seconds, 300 by default.
 	JWSTTLSeconds int `yaml:"jws-ttl-seconds"`
+	// JWSClockSkewSeconds is how far ahead of this service's clock a JWS's iat may be before it is
+	// refused FUTURE_IAT (ADR-0027 step 5). The Java build's x9.public-endpoints.jws-clock-skew-seconds
+	// and its variable X9_JWS_CLOCK_SKEW_SECONDS, 60 by default. 0 allows no drift, and a negative
+	// value is read as 0, as Java reads it (JWSClockSkew).
+	JWSClockSkewSeconds int `yaml:"jws-clock-skew-seconds"`
+}
+
+// JWSClockSkew is the allowed drift as internal/jws's VerifierConfig.ClockSkew reads it: a positive
+// duration, or a negative one for none (its zero is the 60 s default, which a configured 0 is not).
+func (p PublicEndpoints) JWSClockSkew() time.Duration {
+	if p.JWSClockSkewSeconds <= 0 {
+		return -1
+	}
+	return time.Duration(p.JWSClockSkewSeconds) * time.Second
 }
 
 // Server is the HTTP listener. Health is served on the same port, as the Java build does.
@@ -155,7 +170,11 @@ type Certificate struct {
 	// JWKAlgorithm is the JWS alg this service signs with, Java's x9.certificate.jwk-algorithm:
 	// PS512 by default; RS256, RS384, RS512, PS256, PS384 or PS512 for an RSA key, ES256 (P-256),
 	// ES384 (P-384) or ES512 (P-521) for an EC key.
-	JWKAlgorithm    string          `yaml:"jwk-algorithm"`
+	JWKAlgorithm string `yaml:"jwk-algorithm"`
+	// IssuerName must appear, ignoring case, in the issuer of the trust anchor that a counterpart's
+	// certificate chains to (ADR-0027 step 4): Java's x9.certificate.issuer-name, "X9" by default.
+	// Set to empty, the check is skipped, as in Java.
+	IssuerName      string          `yaml:"issuer-name"`
 	PrivateKeystore PrivateKeystore `yaml:"private-keystore"`
 	Truststore      Truststore      `yaml:"truststore"`
 }
@@ -165,6 +184,7 @@ func (c Certificate) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("endpointType", c.EndpointType),
 		slog.String("jwkAlgorithm", c.JWKAlgorithm),
+		slog.String("issuerName", c.IssuerName),
 		slog.String("privateKeystore", c.PrivateKeystore.Location),
 		slog.String("privateKeystoreAlias", c.PrivateKeystore.Alias),
 		slog.String("truststore", c.Truststore.Location),
@@ -214,12 +234,12 @@ type KeystoreReload struct {
 func defaults() Config {
 	return Config{
 		Server:          Server{Port: 8080, ShutdownDelaySeconds: 5},
-		PublicEndpoints: PublicEndpoints{Host: DefaultPublicHost, JWSTTLSeconds: 300},
+		PublicEndpoints: PublicEndpoints{Host: DefaultPublicHost, JWSTTLSeconds: 300, JWSClockSkewSeconds: 60},
 		Database:        Database{Port: 5432, Schema: "x9_qrcode", PoolWrites: 8, PoolReads: 4},
 		Log:             Log{Level: "info"},
 		Reservation:     Reservation{TTLSeconds: 90},
 		Testing:         Testing{ClockListen: "127.0.0.1:8099"},
-		Certificate:     Certificate{EndpointType: "JWK_SET", JWKAlgorithm: "PS512"},
+		Certificate:     Certificate{EndpointType: "JWK_SET", JWKAlgorithm: "PS512", IssuerName: "X9"},
 		Keystore:        Keystore{Reload: KeystoreReload{Frequency: 30000}},
 	}
 }
@@ -236,6 +256,7 @@ var envVars = []envVar{
 	{"X9_SERVER_SHUTDOWNDELAYSECONDS", "server.shutdown-delay-seconds", setInt(func(c *Config) *int { return &c.Server.ShutdownDelaySeconds })},
 	{"X9_PUBLICENDPOINTS_HOST", "public-endpoints.host", setString(func(c *Config) *string { return &c.PublicEndpoints.Host })},
 	{"X9_PUBLICENDPOINTS_JWSTTLSECONDS", "public-endpoints.jws-ttl-seconds", setInt(func(c *Config) *int { return &c.PublicEndpoints.JWSTTLSeconds })},
+	{"X9_JWS_CLOCK_SKEW_SECONDS", "public-endpoints.jws-clock-skew-seconds", setInt(func(c *Config) *int { return &c.PublicEndpoints.JWSClockSkewSeconds })},
 	{"DATABASE_HOST", "database.host", setString(func(c *Config) *string { return &c.Database.Host })},
 	{"DATABASE_PORT", "database.port", setInt(func(c *Config) *int { return &c.Database.Port })},
 	{"DATABASE_NAME", "database.name", setString(func(c *Config) *string { return &c.Database.Name })},
@@ -256,6 +277,7 @@ var envVars = []envVar{
 	{"X9_TESTING_CLOCKLISTEN", "testing.clock-listen", setString(func(c *Config) *string { return &c.Testing.ClockListen })},
 	{"X9_CERTIFICATE_ENDPOINTTYPE", "certificate.endpoint-type", setString(func(c *Config) *string { return &c.Certificate.EndpointType })},
 	{"X9_CERTIFICATE_JWKALGORITHM", "certificate.jwk-algorithm", setString(func(c *Config) *string { return &c.Certificate.JWKAlgorithm })},
+	{"X9_CERTIFICATE_ISSUERNAME", "certificate.issuer-name", setString(func(c *Config) *string { return &c.Certificate.IssuerName })},
 	{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION", "certificate.private-keystore.location", setString(func(c *Config) *string { return &c.Certificate.PrivateKeystore.Location })},
 	{"X9_CERTIFICATE_PRIVATEKEYSTORE_TYPE", "certificate.private-keystore.type", setString(func(c *Config) *string { return &c.Certificate.PrivateKeystore.Type })},
 	{"X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD", "certificate.private-keystore.password", setString(func(c *Config) *string { return &c.Certificate.PrivateKeystore.Password })},

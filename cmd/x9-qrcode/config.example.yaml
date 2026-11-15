@@ -27,6 +27,9 @@ public-endpoints:
                                  # ASCII, no space; set to empty, it is refused at start.
   jws-ttl-seconds: 300           # X9_PUBLICENDPOINTS_JWSTTLSECONDS. The ttl of every JWS this service
                                  # signs; the header carries it in milliseconds (300000).
+  jws-clock-skew-seconds: 60     # X9_JWS_CLOCK_SKEW_SECONDS (the Java build's variable). How far ahead
+                                 # of this service's clock a received JWS's iat may be (FUTURE_IAT).
+                                 # 0 allows no drift; a negative value is read as 0, as in Java.
 
 database:
   host: postgres.example.com     # DATABASE_HOST            REQUIRED
@@ -75,6 +78,8 @@ certificate:
   jwk-algorithm: PS512           # X9_CERTIFICATE_JWKALGORITHM. RS256/384/512 or PS256/384/512 for an RSA
                                  #   key; ES256 (P-256), ES384 (P-384) or ES512 (P-521) for an EC key.
                                  #   An algorithm the key cannot sign with is refused at start.
+  issuer-name: X9                # X9_CERTIFICATE_ISSUERNAME. A counterpart's chain must end at a trust
+                                 #   anchor whose issuer contains this, ignoring case; empty skips the check.
   private-keystore:
     location: ""                 # X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION. Empty: the bundled demo.
     type: ""                     # X9_CERTIFICATE_PRIVATEKEYSTORE_TYPE. Informative: PKCS12, PEM or JKS
