@@ -333,6 +333,7 @@ public final class QRCodeMongoDocumentMapper {
         QRCodeMongoPersistenceModel.BankPaymentAddress bankPaymentAddressDocument = new QRCodeMongoPersistenceModel.BankPaymentAddress();
         bankPaymentAddressDocument.setRoutingNumber(bankPaymentAddress.routingNumber());
         bankPaymentAddressDocument.setAccountNumber(bankPaymentAddress.accountNumber());
+        bankPaymentAddressDocument.setProtectionType(bankPaymentAddress.protectionType());
 
         return bankPaymentAddressDocument;
     }

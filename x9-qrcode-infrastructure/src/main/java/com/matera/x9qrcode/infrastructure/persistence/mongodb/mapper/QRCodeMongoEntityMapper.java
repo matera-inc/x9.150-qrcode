@@ -376,7 +376,8 @@ public final class QRCodeMongoEntityMapper {
 
         return new BankPaymentAddressVO(
             doc.getRoutingNumber(),
-            doc.getAccountNumber()
+            doc.getAccountNumber(),
+            doc.getProtectionType()
         );
     }
 

@@ -12,10 +12,20 @@ import java.util.regex.Pattern;
 
 import static java.util.Objects.isNull;
 
+/**
+ * A bank rail's destination: routing number, account number, and the protection type the payee set
+ * for the account number (ANSI X9.150-2026 §14.5.x.3: {@code tokenized}, {@code encrypted} or
+ * {@code plaintext}). {@code protectionType} is null only for a QR Code stored before it was kept.
+ */
 public record BankPaymentAddressVO(
     String routingNumber,
-    String accountNumber
+    String accountNumber,
+    String protectionType
 ) {
+
+    public BankPaymentAddressVO(String routingNumber, String accountNumber) {
+        this(routingNumber, accountNumber, null);
+    }
 
     private static final Pattern ROUTING_NUMBER_PATTERN = Pattern.compile("^\\d{9}$");
     private static final Pattern ACCOUNT_NUMBER_PATTERN = Pattern.compile("^[0-9A-Za-z]{4,17}$");

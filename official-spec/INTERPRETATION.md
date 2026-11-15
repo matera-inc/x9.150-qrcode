@@ -284,6 +284,13 @@ which contains `-` and `_` and so would not satisfy this pattern. This build imp
 only (see the README), so the question does not arise yet; it must be revisited if `encrypted` is
 ever implemented.
 
+**`protectionType` is the payee's statement, and is returned as made (2026-11-15).** §14.5.x.3 makes
+it a value the payee sets, from an enum (`tokenized`, `encrypted`, `plaintext`). This build used to
+answer `tokenized` from GET and in the signed payload whatever had been sent, so a payee that sent a
+plaintext account number signed a payload claiming otherwise. It now stores the value sent and
+returns it in both places; a QR Code stored before the value was kept reads `tokenized`, which is
+what it said at the time. Rule `R-I6-02`.
+
 ## I-7 — `alg` is whatever the X9-approved suite allows, so both RSA and EC must verify
 
 **Where:** §9 JWS header table (`alg`), Annex A examples
@@ -402,10 +409,13 @@ The apparent inconsistency — refuse it here, carry it there — dissolves once
 promise and a message are different things. We refuse to *make* a promise we cannot keep. We decline
 to *break* a message that was never ours.
 
-**Where this is visible in the code:** `NetworksSimple` and `PatchNetworksSimple` are the only
-`additionalProperties: true` objects in the payload contract, and `openapi.yaml` says so at the point
-where it matters. `Solana` itself is closed — opacity is for rails we do *not* interpret; a rail we
-do interpret, on a published embedding, should report an unknown field rather than carry it.
+**Where this is visible in the code:** `NetworksSimple`, `PatchNetworksSimple` and, on the payload
+side, `PayloadNetworks` are the only `additionalProperties: true` objects in the contract, and
+`openapi.yaml` says so at the point where it matters. The rails we interpret are closed **when we
+generate**: `FedNow`, `RTP`, `ACH` and `Solana` refuse an unknown field on create and PATCH. **When we
+read** another bank's payload, the payload-side schemas (`PayloadFedNow`, `PayloadRTP`, `PayloadACH`,
+`PayloadSolana`) are open, and an unknown field inside a known rail is ignored rather than refused
+(ADR-0012, amendment of 2026-11-15).
 
 > **Update, 2026-11-15 (owner).** The bank rails `fednow`, `rtp` and `ach` are now closed too, on
 > create and PATCH: an unknown field in them is refused by name, as in `solana`. Both halves of this

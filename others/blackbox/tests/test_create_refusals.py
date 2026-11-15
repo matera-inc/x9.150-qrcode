@@ -1,6 +1,8 @@
 # Copyright © 2026 Matera Systems, Inc.
 # Licensed under the Matera Source License v1.0 (source-available; not open source). See LICENSE.md.
 """It refuses what it cannot honour, by name (acceptance.py section 6, folded in by Story 3.4)."""
+import pytest
+
 from x9client import samples
 from x9client.checks import assert_refused
 
@@ -113,3 +115,47 @@ def test_a_query_parameter_of_the_wrong_type_answers_violations_as_an_array(api)
         assert response.status == 400, (path, response)
         assert isinstance(response.body.get("violations"), list), (path, response.body)
         assert response.body["violations"] == [violation], (path, response.body)
+
+
+BANK_FIELDS = "routingNumber, accountNumber and protectionType"
+
+
+@pytest.mark.parametrize("rail", ["fednow", "rtp", "ach"])
+def test_an_unknown_field_in_a_bank_rail_is_refused_at_create_naming_it(api, rail):
+    """X9-RAIL-504 — an unknown field inside ``fednow``, ``rtp`` or ``ach`` is refused at create:
+    400 naming its path, no id.
+
+    Source: Ours. ADR-0012, amendment of 2026-11-15: what we generate is closed; ``FedNow``,
+      ``RTP`` and ``ACH`` are ``additionalProperties: false``, as ``Solana`` is.
+    Why: The Java build answered 201 and dropped the field, so a biller's extra or mistyped bank
+      field vanished from the QR Code they printed, and nobody was told.
+    """
+    response = api.create_qr_detailed(currency="USD", networks={rail: dict(samples.FEDNOW, x=1)})
+
+    assert response.status == 400, response
+    assert response.violations == [
+        f"paymentMethods[0].networks.{rail}.x: is not a field of {rail}, whose fields are "
+        f"{BANK_FIELDS}"], response.body
+    assert "id" not in response.body
+
+
+@pytest.mark.parametrize("rail", ["fednow", "rtp", "ach"])
+def test_an_unknown_field_in_a_bank_rail_is_refused_on_patch_and_nothing_moves(api, rail):
+    """X9-RAIL-505 — an unknown field inside a bank rail is refused on PATCH, naming its path, and
+    the ETag does not move.
+
+    Source: Ours. ADR-0012, amendment of 2026-11-15: a PATCH replaces the same closed object.
+    Why: A refusal at create that a PATCH lets through is no refusal.
+    """
+    qr = api.create_qr(currency="USD", networks={rail: samples.FEDNOW})
+    current = api.qr(qr)
+    method = samples.payment_method(currency="USD", networks={rail: dict(samples.FEDNOW, x=1)})
+
+    response = api.patch(f"/api/v1/payment-request/{qr}", body={"paymentMethods": [method]},
+                         if_match=current.etag)
+
+    assert response.status == 400, response
+    assert response.violations == [
+        f"paymentMethods[0].networks.{rail}.x: is not a field of {rail}, whose fields are "
+        f"{BANK_FIELDS}"], response.body
+    assert api.qr(qr).etag == current.etag, "a refused patch does not move the ETag"

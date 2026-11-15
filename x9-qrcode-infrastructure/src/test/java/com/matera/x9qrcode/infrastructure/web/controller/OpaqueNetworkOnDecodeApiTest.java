@@ -161,8 +161,9 @@ class OpaqueNetworkOnDecodeApiTest extends AbstractIntegrationTest {
      *
      * <p><b>Source:</b> Ours. I-9.
      *
-     * <p><b>Why:</b> Opacity is for rails we do NOT interpret. One we do should report an unknown field rather than
-     * carry it, or the strictness that makes interpretation worth anything is lost.
+     * <p><b>Why:</b> Opacity is for rails we do NOT interpret. One we do is read into its typed fields, and on
+     * this payer side an unknown field inside it is ignored rather than refused (ADR-0012, amendment of
+     * 2026-11-15; see {@code ForeignPayloadReadWithToleranceApiTest}).
      */
     @Test
     void theRailWeDoInterpretIsUnaffected() {

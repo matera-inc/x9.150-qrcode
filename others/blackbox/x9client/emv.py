@@ -72,6 +72,26 @@ def decode(emv):
     return out
 
 
+def tlv(tag, value):
+    return f"{tag}{len(value):02d}{value}"
+
+
+def with_location(emv, location, gui="org.x9"):
+    """``emv`` with the payload URL (sub-tag 01) of the ``gui`` template replaced by ``location``,
+    the lengths and the CRC recomputed: the same QR Code, pointing at another host."""
+    fields = []
+    for tag, value in parse(emv):
+        if tag == "63":
+            continue
+        if tag in TEMPLATE_TAGS:
+            subfields = parse(value)
+            if dict(subfields).get("00") == gui:
+                value = "".join(tlv(t, location if t == "01" else v) for t, v in subfields)
+        fields.append(tlv(tag, value))
+    body = "".join(fields) + "6304"
+    return body + crc16(body)
+
+
 def template_with(emv, gui):
     """The (tag, sub-fields) of the template whose sub-tag 00 is ``gui`` (e.g. ``org.x9``)."""
     for tag, value in decode(emv).items():

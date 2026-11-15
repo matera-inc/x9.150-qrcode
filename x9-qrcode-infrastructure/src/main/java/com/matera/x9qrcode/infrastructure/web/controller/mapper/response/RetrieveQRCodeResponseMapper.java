@@ -407,7 +407,7 @@ public class RetrieveQRCodeResponseMapper {
         return new RTPDTO()
             .accountNumber(bankPaymentAddress.accountNumber())
             .routingNumber(bankPaymentAddress.routingNumber())
-            .protectionType(com.matera.x9qrcode.infrastructure.generated.dto.ProtectionTypeEnumDTO.TOKENIZED);
+            .protectionType(protectionTypeOf(bankPaymentAddress.protectionType()));
     }
 
     private static ACHDTO buildACH(BankPaymentAddressDTO bankPaymentAddress) {
@@ -418,7 +418,7 @@ public class RetrieveQRCodeResponseMapper {
         return new ACHDTO()
             .accountNumber(bankPaymentAddress.accountNumber())
             .routingNumber(bankPaymentAddress.routingNumber())
-            .protectionType(com.matera.x9qrcode.infrastructure.generated.dto.ProtectionTypeEnumDTO.TOKENIZED);
+            .protectionType(protectionTypeOf(bankPaymentAddress.protectionType()));
     }
 
     private static FedNowDTO buildFedNow(BankPaymentAddressDTO bankPaymentAddress) {
@@ -429,7 +429,7 @@ public class RetrieveQRCodeResponseMapper {
         return new FedNowDTO()
             .accountNumber(bankPaymentAddress.accountNumber())
             .routingNumber(bankPaymentAddress.routingNumber())
-            .protectionType(com.matera.x9qrcode.infrastructure.generated.dto.ProtectionTypeEnumDTO.TOKENIZED);
+            .protectionType(protectionTypeOf(bankPaymentAddress.protectionType()));
     }
 
     private static BasePaymentDetailsDTO buildPaymentDetails(PaymentDetailsDTO paymentDetails) {
@@ -440,6 +440,17 @@ public class RetrieveQRCodeResponseMapper {
         return new BasePaymentDetailsDTO()
             .endToEndId(paymentDetails.endToEndId())
             .network(paymentDetails.paymentNetwork());
+    }
+
+
+    /**
+     * The protection type the payee set (X9.150 §14.5.x.3), as stored. A QR Code stored before the
+     * value was kept has none, and reads as {@code tokenized}, which is what this build always said.
+     */
+    private static com.matera.x9qrcode.infrastructure.generated.dto.ProtectionTypeEnumDTO protectionTypeOf(String stored) {
+        return isNull(stored)
+            ? com.matera.x9qrcode.infrastructure.generated.dto.ProtectionTypeEnumDTO.TOKENIZED
+            : com.matera.x9qrcode.infrastructure.generated.dto.ProtectionTypeEnumDTO.fromValue(stored);
     }
 
 }

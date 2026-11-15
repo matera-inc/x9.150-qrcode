@@ -130,7 +130,8 @@ public final class PatchQRCodePaymentMethodsMapper {
 
         return new BankPaymentAddressVO(
             bankPaymentAddressDTO.routingNumber(),
-            bankPaymentAddressDTO.accountNumber()
+            bankPaymentAddressDTO.accountNumber(),
+            bankPaymentAddressDTO.protectionType()
         );
     }
 

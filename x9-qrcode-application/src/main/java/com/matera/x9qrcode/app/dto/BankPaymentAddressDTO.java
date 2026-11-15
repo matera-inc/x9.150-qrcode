@@ -6,9 +6,15 @@
  */
 package com.matera.x9qrcode.app.dto;
 
+/** {@code protectionType} as the payee set it (X9.150 §14.5.x.3); null only for an older stored QR Code. */
 public record BankPaymentAddressDTO(
     String routingNumber,
-    String accountNumber
+    String accountNumber,
+    String protectionType
 ) {
+
+    public BankPaymentAddressDTO(String routingNumber, String accountNumber) {
+        this(routingNumber, accountNumber, null);
+    }
 
 }

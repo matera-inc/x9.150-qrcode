@@ -191,6 +191,37 @@ def test_payee(api, pki, business_now):
     payee.close()
 
 
+@pytest.fixture(scope="session")
+def other_bank(api, pki, business_now):
+    """Another bank's payload host (``x9client.peer`` over https), on the test payee's identity.
+
+    It serves whatever signed payload a test gives it at any ``/pub/api/v1/loc/{id}``. Before any
+    test uses it, one payload this service issued is decoded through it; if the service cannot
+    fetch from it (502: it does not trust the test CA for TLS, or cannot reach this process), the
+    tests that need it stop with that diagnosis.
+    """
+    from x9client import emv
+    from x9client import peer as peer_module
+
+    host = os.environ.get("X9_SUITE_HOST", "127.0.0.1")
+    bank = peer_module.TestPayee(pki["payee"], now_ms=business_now,
+                                 tls=pki["ca"].issue_tls_server("Blackbox Other Bank", host))
+    signer = jws.Signer(pki["payee"], now_ms=business_now)
+    bank.answer = lambda question: peer_module.Answer(
+        200, signer.sign({"id": "probe", "paymentMethods": []}))
+    created = api.create_qr_detailed().body
+    probe = api.post("/api/v1/qrcode-emv-decoder", body={
+        "qrCode": emv.with_location(created["qrCode"], bank.location("A" * 32))})
+    if probe.status != 200:
+        bank.close()
+        unavailable(f"the service could not decode a payload served by another bank at "
+                    f"https://{bank.location('A' * 32)} ({probe.status} {probe.body}); the "
+                    f"deployment must trust the test CA for TLS (others/blackbox/deployment/"
+                    f"x9-test-ca.pem through SSL_CERT_DIR) and reach X9_SUITE_HOST")
+    yield bank
+    bank.close()
+
+
 @pytest.fixture
 def peer(test_payee):
     """The test payee, reset: nothing received, answering a signed yes until told otherwise."""

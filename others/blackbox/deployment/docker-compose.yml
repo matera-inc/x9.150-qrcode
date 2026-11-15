@@ -43,6 +43,9 @@ services:
       X9_CERTIFICATE_TRUSTSTORE_LOCATION: "file:/x9-blackbox/x9-blackbox-truststore.jks"
       X9_CERTIFICATE_TRUSTSTORE_PASSWORD: "x9test123"
       X9_CERTIFICATE_TRUSTSTORE_ALIAS: "x9-test-ca"
+      # TLS: the system CAs plus the test CA, for another bank's payload host served by the suite
+      # over https (test_tolerant_reading.py). The JVM image loads SSL_CERT_DIR at start; Go reads it.
+      SSL_CERT_DIR: "/etc/ssl/certs:/x9-blackbox/ca"
 
   blackbox:
     image: "${X9_RUNNER_IMAGE:-x9-blackbox-runner:local}"

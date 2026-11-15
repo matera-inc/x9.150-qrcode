@@ -28,21 +28,22 @@ import com.matera.x9qrcode.app.dto.TipRangeDTO;
 import com.matera.x9qrcode.app.dto.UltimateCreditorDTO;
 import com.matera.x9qrcode.app.usecase.retrievepayload.RetrieveQRCodePayloadOutput;
 import com.matera.x9qrcode.domain.utils.UUIDUtils;
-import com.matera.x9qrcode.infrastructure.generated.dto.SolanaDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.ACHDTO;
+import com.matera.x9qrcode.infrastructure.generated.dto.PayloadSolanaDTO;
+import com.matera.x9qrcode.infrastructure.generated.dto.PayloadACHDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.AdjustmentPayloadDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.AmountDuePayloadResponseDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.BillBaseInvoiceDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.BillBaseOrderDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.BillBaseTipDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.BillPayloadResponseDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.FedNowDTO;
+import com.matera.x9qrcode.infrastructure.generated.dto.PayloadFedNowDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.KeyValuePairDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.NetworksSimpleDTO;
+import com.matera.x9qrcode.infrastructure.generated.dto.PayloadNetworksDTO;
+import com.matera.x9qrcode.infrastructure.generated.dto.PayloadPaymentMethodDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentMethodEditableDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentPayloadResponseDTO;
 import com.matera.x9qrcode.infrastructure.generated.dto.QRCodeStatusDTO;
-import com.matera.x9qrcode.infrastructure.generated.dto.RTPDTO;
+import com.matera.x9qrcode.infrastructure.generated.dto.PayloadRTPDTO;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
@@ -233,8 +234,8 @@ public final class RetrieveQRCodePayloadResponseMapper {
         return List.of(adjustmentPayload);
     }
 
-    private static com.matera.x9qrcode.infrastructure.generated.dto.PaymentMethodDTO buildPaymentMethod(PaymentMethodDTO paymentMethod) {
-        return new com.matera.x9qrcode.infrastructure.generated.dto.PaymentMethodDTO()
+    private static PayloadPaymentMethodDTO buildPaymentMethod(PaymentMethodDTO paymentMethod) {
+        return new PayloadPaymentMethodDTO()
             .currency(paymentMethod.currency())
             .validUntil(paymentMethod.validUntil())
             .amount(paymentMethod.amount())
@@ -261,9 +262,9 @@ public final class RetrieveQRCodePayloadResponseMapper {
             .max(range.max());
     }
 
-    private static NetworksSimpleDTO buildNetworks(NetworksDTO networks) {
-        NetworksSimpleDTO networksDTO =
-            new NetworksSimpleDTO()
+    private static PayloadNetworksDTO buildNetworks(NetworksDTO networks) {
+        PayloadNetworksDTO networksDTO =
+            new PayloadNetworksDTO()
                 .fednow(buildFedNow(networks.getFedNow()))
                 .ach(buildACH(networks.getAch()))
                 .rtp(buildRTP(networks.getRtp()))
@@ -280,46 +281,57 @@ public final class RetrieveQRCodePayloadResponseMapper {
         return networksDTO;
     }
 
-    private static SolanaDTO buildSolana(com.matera.x9qrcode.app.dto.SolanaPaymentAddressDTO solana) {
+    private static PayloadSolanaDTO buildSolana(com.matera.x9qrcode.app.dto.SolanaPaymentAddressDTO solana) {
         if (isNull(solana)) {
             return null;
         }
 
-        return new SolanaDTO()
+        return new PayloadSolanaDTO()
             .recipient(solana.recipient())
             .memo(solana.memo());
     }
 
-    private static RTPDTO buildRTP(BankPaymentAddressDTO bankPaymentAddress) {
+    private static PayloadRTPDTO buildRTP(BankPaymentAddressDTO bankPaymentAddress) {
         if (isNull(bankPaymentAddress)) {
             return null;
         }
 
-        return new RTPDTO()
+        return new PayloadRTPDTO()
             .accountNumber(bankPaymentAddress.accountNumber())
             .routingNumber(bankPaymentAddress.routingNumber())
-            .protectionType(com.matera.x9qrcode.infrastructure.generated.dto.ProtectionTypeEnumDTO.TOKENIZED);
+            .protectionType(protectionTypeOf(bankPaymentAddress.protectionType()));
     }
 
-    private static ACHDTO buildACH(BankPaymentAddressDTO bankPaymentAddress) {
+    private static PayloadACHDTO buildACH(BankPaymentAddressDTO bankPaymentAddress) {
         if (isNull(bankPaymentAddress)) {
             return null;
         }
 
-        return new ACHDTO()
+        return new PayloadACHDTO()
             .accountNumber(bankPaymentAddress.accountNumber())
             .routingNumber(bankPaymentAddress.routingNumber())
-            .protectionType(com.matera.x9qrcode.infrastructure.generated.dto.ProtectionTypeEnumDTO.TOKENIZED);
+            .protectionType(protectionTypeOf(bankPaymentAddress.protectionType()));
     }
 
-    private static FedNowDTO buildFedNow(BankPaymentAddressDTO bankPaymentAddress) {
+    private static PayloadFedNowDTO buildFedNow(BankPaymentAddressDTO bankPaymentAddress) {
         if (isNull(bankPaymentAddress)) {
             return null;
         }
 
-        return new FedNowDTO()
+        return new PayloadFedNowDTO()
             .accountNumber(bankPaymentAddress.accountNumber())
             .routingNumber(bankPaymentAddress.routingNumber())
-            .protectionType(com.matera.x9qrcode.infrastructure.generated.dto.ProtectionTypeEnumDTO.TOKENIZED);
+            .protectionType(protectionTypeOf(bankPaymentAddress.protectionType()));
     }
+
+    /**
+     * The protection type the payee set (X9.150 §14.5.x.3), as stored. A QR Code stored before the
+     * value was kept has none, and reads as {@code tokenized}, which is what this build always said.
+     */
+    private static com.matera.x9qrcode.infrastructure.generated.dto.ProtectionTypeEnumDTO protectionTypeOf(String stored) {
+        return isNull(stored)
+            ? com.matera.x9qrcode.infrastructure.generated.dto.ProtectionTypeEnumDTO.TOKENIZED
+            : com.matera.x9qrcode.infrastructure.generated.dto.ProtectionTypeEnumDTO.fromValue(stored);
+    }
+
 }

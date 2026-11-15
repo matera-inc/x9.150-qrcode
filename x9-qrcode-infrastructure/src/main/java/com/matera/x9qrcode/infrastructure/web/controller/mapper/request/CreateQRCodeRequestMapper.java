@@ -304,15 +304,21 @@ public final class CreateQRCodeRequestMapper {
 
         return NetworksDTO.builder()
                 .fedNow(isNull(fedNow) ? null
-                    : new BankPaymentAddressDTO(fedNow.getRoutingNumber(), fedNow.getAccountNumber()))
+                    : new BankPaymentAddressDTO(fedNow.getRoutingNumber(), fedNow.getAccountNumber(), protectionTypeOf(fedNow.getProtectionType())))
                 .rtp(isNull(rtp) ? null
-                    : new BankPaymentAddressDTO(rtp.getRoutingNumber(), rtp.getAccountNumber()))
+                    : new BankPaymentAddressDTO(rtp.getRoutingNumber(), rtp.getAccountNumber(), protectionTypeOf(rtp.getProtectionType())))
                 .ach(isNull(ach) ? null
-                    : new BankPaymentAddressDTO(ach.getRoutingNumber(), ach.getAccountNumber()))
+                    : new BankPaymentAddressDTO(ach.getRoutingNumber(), ach.getAccountNumber(), protectionTypeOf(ach.getProtectionType())))
                 .solana(isNull(solana) ? null
                     : new SolanaPaymentAddressDTO(solana.getRecipient(), solana.getMemo()))
                 .additionalProperties(networksSimple.getAdditionalProperties())
                 .build();
+    }
+
+
+    /** The protection type as the payee set it (X9.150 §14.5.x.3), by its wire value. */
+    private static String protectionTypeOf(com.matera.x9qrcode.infrastructure.generated.dto.ProtectionTypeEnumDTO protectionType) {
+        return isNull(protectionType) ? null : protectionType.getValue();
     }
 
 }

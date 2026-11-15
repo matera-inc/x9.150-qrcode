@@ -49,6 +49,26 @@ one phrase reads as something it never meant.
 - **`payment.sent` and `payment.failed` have a trigger again:** an interpreted chain did return,
   and Solana emits both (see [STATE-MACHINE.md](../../STATE-MACHINE.md)).
 
+### Amendment, 2026-11-15: refusal is for what we generate; reading is tolerant
+
+- **2026-11-15 (owner decision):** *strict about what we generate, tolerant about what we read.*
+  Everything this ADR refuses, it refuses on **our own** create and PATCH. A payload **another
+  bank** issued, which the EMV decoder (`POST /api/v1/qrcode-emv-decoder`) fetches and verifies for
+  a payer, is parsed and presented, never refused for its content: a rail we do not interpret is
+  carried intact (INTERPRETATION I-9), a currency outside `supported-currencies.json` is presented
+  as written, and an unknown field, inside a rail we interpret, on a payment method or at the top,
+  is ignored. In the owner's words: "That's the soul of interoperability of X9.150."
+  - **What we generate is closed.** `fednow`, `rtp` and `ach` join `solana`: each is
+    `additionalProperties: false` in `openapi.yaml`, and an unknown field inside one is refused on
+    create and PATCH by its path, beside the body's other violations:
+    `paymentMethods[0].networks.fednow.x: is not a field of fednow, whose fields are routingNumber,
+    accountNumber and protectionType`.
+  - **What we read stays open.** The payload side has schemas of its own
+    (`PayloadPaymentMethods`, `PayloadNetworks`, `PayloadFedNow`, `PayloadRTP`, `PayloadACH`,
+    `PayloadSolana`), so closing the request side cannot leak into the decoder.
+  - **Integrity is not content.** A malformed EMV string, a payload whose signature does not
+    verify, and a payload that is not the content issued for its location are still refused.
+
 ## Decision
 
 **Refuse, at creation, anything this deployment cannot honour — by name.**

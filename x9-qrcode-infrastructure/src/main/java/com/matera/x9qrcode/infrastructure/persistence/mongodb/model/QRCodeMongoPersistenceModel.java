@@ -612,6 +612,10 @@ public class QRCodeMongoPersistenceModel implements Persistable<UUID> {
         @Field(name = "account_number")
         private String accountNumber;
 
+        /** As the payee set it (X9.150 §14.5.x.3). Absent on a document written before it was kept. */
+        @Field(name = "protection_type")
+        private String protectionType;
+
     }
 
     @Data
