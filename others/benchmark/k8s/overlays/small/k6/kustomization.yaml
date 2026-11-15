@@ -1,0 +1,19 @@
+# SMOKE ONLY — never a measurement. The k6 Job on 1 vCPU / 512 MiB, for the smoke profile's few
+# virtual users on a small local cluster.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../k6
+patches:
+  - patch: |-
+      apiVersion: batch/v1
+      kind: Job
+      metadata: {name: x9-k6}
+      spec:
+        template:
+          spec:
+            containers:
+              - name: k6
+                resources:
+                  requests: {cpu: "1", memory: 512Mi}
+                  limits: {cpu: "1", memory: 512Mi}

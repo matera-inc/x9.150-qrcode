@@ -1,0 +1,9 @@
+# Go + PostgreSQL (S5.1-AC4). Applied by collect.sh into a fresh namespace per run, in three stages
+# selected by the label x9-bench/stage: database, then schema (the Liquibase Job, waited for), then
+# app. The ConfigMaps x9-bench-db-bootstrap, x9-bench-crl and x9-bench-truststore are made first.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - postgres.yaml
+  - db-init.yaml
+  - app.yaml

@@ -1,0 +1,5 @@
+# The k6 Job (S5.1-AC4). See job.yaml.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - job.yaml

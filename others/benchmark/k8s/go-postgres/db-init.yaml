@@ -1,0 +1,34 @@
+# The X9.150 schema: the Liquibase changelog (db/changelog/), applied as the owner role, exactly as
+# db/docker-compose.yml does. The image is db/local/liquibase.Dockerfile built by build-images.sh
+# and tagged git-<sha> (collect.sh substitutes LIQUIBASE_IMAGE); it is never pulled.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: x9-db-init
+  labels: {app.kubernetes.io/name: x9-db-init, app.kubernetes.io/part-of: x9-bench, x9-bench/stage: schema}
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: x9-db-init, app.kubernetes.io/part-of: x9-bench, x9-bench/stage: schema}
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "until pg_isready -h postgres-0.postgres -U postgres; do sleep 1; done"]
+      containers:
+        - name: liquibase
+          image: LIQUIBASE_IMAGE
+          imagePullPolicy: Never
+          args: ["update"]
+          env:
+            - {name: LIQUIBASE_SEARCH_PATH, value: /liquibase/x9}
+            - {name: LIQUIBASE_COMMAND_CHANGELOG_FILE, value: changelog/db.changelog-master.yaml}
+            - {name: LIQUIBASE_COMMAND_URL, value: "jdbc:postgresql://postgres-0.postgres:5432/postgres"}
+            - {name: LIQUIBASE_COMMAND_USERNAME, value: x9_qrcode_owner}
+            - {name: LIQUIBASE_COMMAND_DEFAULT_SCHEMA_NAME, value: x9_qrcode}
+            - {name: LIQUIBASE_LIQUIBASE_SCHEMA_NAME, value: x9_qrcode}
+            - {name: LIQUIBASE_SHOW_BANNER, value: "false"}

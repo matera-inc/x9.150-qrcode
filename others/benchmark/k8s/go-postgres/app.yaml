@@ -1,0 +1,80 @@
+# The Go build under test (S5.1-AC4): 2 vCPU / 2 GiB, requests equal to limits, as shipped, with
+# GOMEMLIMIT at 80% of the memory limit (plan §9.2). The image is the git-<sha> tag collect.sh
+# substitutes for APP_IMAGE; imagePullPolicy Never.
+#
+# The same configuration as the Java build, in the Go build's terms: the bundled demo signing key
+# (the same key and certificate as Java's), the test clock OFF, and the same trust (the test CA plus
+# the demo certificate) as PEM, because Go reads PKCS#12 or PEM and refuses a JKS. The same `crl`
+# sidecar serves the test CA's CRL at the payers' distribution point.
+#
+# Until the Go build serves the API (Epics 9-10) only S7 can run against it; S1 and S2 are refused by
+# collect.sh with a message, never run against a service that would answer 404.
+apiVersion: v1
+kind: Service
+metadata:
+  name: x9-qrcode
+  labels: {app.kubernetes.io/name: x9-qrcode, app.kubernetes.io/part-of: x9-bench, x9-bench/stage: app}
+spec:
+  selector: {app.kubernetes.io/name: x9-qrcode}
+  ports:
+    - {name: http, port: 8080, targetPort: 8080}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: x9-qrcode
+  labels: {app.kubernetes.io/name: x9-qrcode, app.kubernetes.io/part-of: x9-bench, x9-bench/role: app, x9-bench/stage: app}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app.kubernetes.io/name: x9-qrcode}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: x9-qrcode, app.kubernetes.io/part-of: x9-bench, x9-bench/role: app}
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+        - name: crl
+          image: python:3.13.9-slim
+          imagePullPolicy: IfNotPresent
+          restartPolicy: Always
+          command: ["python3", "-m", "http.server", "18081", "--bind", "127.0.0.1", "--directory", "/crl"]
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+          volumeMounts:
+            - {name: crl, mountPath: /crl, readOnly: true}
+      containers:
+        - name: app
+          image: APP_IMAGE
+          imagePullPolicy: Never
+          ports:
+            - {name: http, containerPort: 8080}
+          env:
+            - {name: DATABASE_HOST, value: postgres-0.postgres}
+            - {name: DATABASE_NAME, value: postgres}
+            - {name: DATABASE_USER, value: x9_qrcode_app}
+            - {name: DATABASE_PASSWORD, value: unused}
+            - {name: DATABASE_SSLMODE, value: disable}
+            - {name: X9_PUBLICENDPOINTS_HOST, value: "x9-150.example.com"}
+            - {name: X9_TESTING_CLOCKCONTROL, value: "false"}
+            - {name: X9_CERTIFICATE_TRUSTSTORE_LOCATION, value: "file:/x9-bench/truststore/x9-bench-truststore.pem"}
+            - {name: X9_CERTIFICATE_TRUSTSTORE_TYPE, value: PEM}
+            # 80% of the 2 GiB limit.
+            - {name: GOMEMLIMIT, value: 1638MiB}
+          resources:
+            requests: {cpu: "2", memory: 2Gi}
+            limits: {cpu: "2", memory: 2Gi}
+          readinessProbe:
+            httpGet: {path: /actuator/health, port: 8080}
+            periodSeconds: 2
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - {name: truststore, mountPath: /x9-bench/truststore, readOnly: true}
+      volumes:
+        - name: crl
+          configMap: {name: x9-bench-crl}
+        - name: truststore
+          configMap: {name: x9-bench-truststore}

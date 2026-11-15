@@ -1,0 +1,64 @@
+# The load generator: k6 v2.4.0 as an in-cluster Job (S5.1-AC4), on its own 2 vCPU so it never
+# starves the system under test, and talking to the service through its ClusterIP Service: no
+# request crosses the network the cluster is controlled through (plan §9.1).
+#
+# collect.sh substitutes @SCENARIO@ (s1-create.js | s2-cycle.js), @PROFILE@ (readme | warmup | smoke)
+# and @STAGES@ (empty, or a STAGES override), and makes two ConfigMaps first: x9-bench-k6 (the
+# scripts, flattened; mounted back into lib/) and x9-bench-payers (prepare.sh's payers.json).
+#
+# k6 writes its summary JSON and its raw, gzipped NDJSON to /out, then waits until collect.sh has
+# copied /out (kubectl cp) and touched /out/collected, at most an hour.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: x9-k6
+  labels: {app.kubernetes.io/name: x9-k6, app.kubernetes.io/part-of: x9-bench, x9-bench/stage: load}
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 7200
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: x9-k6, app.kubernetes.io/part-of: x9-bench, x9-bench/role: load}
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:2.4.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              k6 run --no-color --out json=/out/raw.ndjson.gz /scripts/"$SCENARIO" >/out/k6.log 2>&1
+              echo $? >/out/exit-code
+              touch /out/done
+              for _ in $(seq 1 3600); do [ -f /out/collected ] && exit 0; sleep 1; done
+          env:
+            - {name: SCENARIO, value: "@SCENARIO@"}
+            - {name: PROFILE, value: "@PROFILE@"}
+            - {name: STAGES, value: "@STAGES@"}
+            - {name: BASE_URL, value: "http://x9-qrcode:8080"}
+            - {name: PAYERS_PATH, value: /payers/payers.json}
+            - {name: SUMMARY_PATH, value: /out/summary.json}
+            - {name: K6_NO_USAGE_REPORT, value: "true"}
+          resources:
+            requests: {cpu: "2", memory: 2Gi}
+            limits: {cpu: "2", memory: 2Gi}
+          volumeMounts:
+            - {name: scripts, mountPath: /scripts, readOnly: true}
+            - {name: payers, mountPath: /payers, readOnly: true}
+            - {name: out, mountPath: /out}
+      volumes:
+        - name: scripts
+          configMap:
+            name: x9-bench-k6
+            items:
+              - {key: s1-create.js, path: s1-create.js}
+              - {key: s2-cycle.js, path: s2-cycle.js}
+              - {key: lib.jws.js, path: lib/jws.js}
+              - {key: lib.x9.js, path: lib/x9.js}
+        - name: payers
+          configMap: {name: x9-bench-payers}
+        - name: out
+          emptyDir: {}
