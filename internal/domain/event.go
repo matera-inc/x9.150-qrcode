@@ -224,26 +224,25 @@ func (v requestView) firstMethod() *methodView {
 	return &v.PaymentMethods[0]
 }
 
-// offersCurrency reports whether a payment method is in currency, matched whatever its case: the
-// notified currency is a third-party payer's spelling.
-func (v requestView) offersCurrency(currency string) bool {
-	for _, m := range v.PaymentMethods {
-		if m.Currency != nil && strings.EqualFold(*m.Currency, currency) {
+// offers reports whether a payment method publishes network, matched whatever its case, as Java's
+// PaymentNetworksVO.supports does: the network's key is present and not null.
+func (v requestView) offers(network string) bool {
+	return slices.ContainsFunc(v.PaymentMethods, func(m methodView) bool { return m.publishes(network) })
+}
+
+// publishes reports whether the method's networks object carries network, matched whatever its
+// case: the key is present and not null.
+func (m methodView) publishes(network string) bool {
+	for key, value := range m.Networks {
+		if strings.EqualFold(key, network) && len(value) > 0 && string(value) != "null" {
 			return true
 		}
 	}
 	return false
 }
 
-// offers reports whether a payment method publishes network, matched whatever its case, as Java's
-// PaymentNetworksVO.supports does: the network's key is present and not null.
-func (v requestView) offers(network string) bool {
-	for _, m := range v.PaymentMethods {
-		for key, value := range m.Networks {
-			if strings.EqualFold(key, network) && len(value) > 0 && string(value) != "null" {
-				return true
-			}
-		}
-	}
-	return false
+// in reports whether the method is in currency, matched whatever its case: the notified currency is
+// a third-party payer's spelling.
+func (m methodView) in(currency string) bool {
+	return m.Currency != nil && strings.EqualFold(*m.Currency, currency)
 }

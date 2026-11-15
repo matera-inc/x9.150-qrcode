@@ -49,8 +49,8 @@ func Gate(row domain.Row, req billing.Request, data *contract.NotificationData, 
 	}
 	pay := data.Payment.Value
 	notified := domain.Notification{Network: pay.Network.Value, Currency: pay.Currency.Value}
-	if missing := notOffered(req.PaymentMethods, notified); len(missing) > 0 {
-		return domain.NotOfferedRefusal(notified, missing), nil
+	if r := offerOf(req.PaymentMethods, notified).Refusal(notified); r != nil {
+		return r, nil
 	}
 	method, r := matchMethod(req.PaymentMethods, data)
 	if r != nil {
@@ -72,23 +72,16 @@ func Gate(row domain.Row, req billing.Request, data *contract.NotificationData, 
 	return checkAmount(req, method, total, tip, now)
 }
 
-// notOffered is domain.NotOffered over the methods the gate reads: NOT_OFFERED_RAIL when no method
-// publishes the notified rail, each rail on its own, then NOT_OFFERED_CURRENCY when none is in the
-// notified currency, both matched whatever their case.
-func notOffered(methods []billing.PaymentMethod, n domain.Notification) []domain.Deviation {
-	rail, currency := false, false
+// offerOf is domain.OfferOf over the methods the gate reads.
+func offerOf(methods []billing.PaymentMethod, n domain.Notification) domain.Offer {
+	var o domain.Offer
 	for _, m := range methods {
-		rail = rail || publishes(m.Networks, n.Network)
-		currency = currency || strings.EqualFold(m.Currency, n.Currency)
+		rail, currency := publishes(m.Networks, n.Network), strings.EqualFold(m.Currency, n.Currency)
+		o.Rail = o.Rail || rail
+		o.Currency = o.Currency || currency
+		o.Together = o.Together || rail && currency
 	}
-	var out []domain.Deviation
-	if !rail {
-		out = append(out, domain.DeviationNotOfferedRail)
-	}
-	if !currency {
-		out = append(out, domain.DeviationNotOfferedCurrency)
-	}
-	return out
+	return o
 }
 
 func refusal(field, message string) *domain.Refusal {

@@ -669,6 +669,42 @@ func TestAPreCommitNotOfferedIsTheGatesAfterTheStatus(t *testing.T) {
 	}
 }
 
+// The owner's ruling of 2026-11-15: a rail and a currency each offered, but not on one payment
+// method (USD only on FedNow, USDC on Solana; the payer reports USD on Solana), are not offered. A
+// pre-commit is a signed 400 with nothing stored; a post-commit is a signed 400 recorded on one
+// payment.sent flagged NOT_OFFERED_CURRENCY, the QR Code untouched.
+func TestACurrencyNotOfferedOnThatRail(t *testing.T) {
+	twoMethods := `{"validUntil":"2030-01-01T00:00:00Z","bill":{"amountDue":{"amount":1000,"currency":"USDC"}},` +
+		`"paymentNotification":{"kind":"DEFAULT"},"paymentMethods":[` +
+		`{"currency":"USDC","validUntil":"2030-01-01T00:00:00Z","amount":1000,"networks":{"solana":{"recipient":"` + recipient + `"}}},` +
+		`{"currency":"USD","validUntil":"2030-01-01T00:00:00Z","amount":1000,"networks":{"fednow":` + bankAddress + `}}]}`
+	const want = "paymentNotification.data.payment.currency: This QR Code does not offer the USD currency on the Solana rail."
+
+	f := serve(t, 0)
+	id := f.qr(twoMethods)
+	r, cid := f.notify(note(id, payment("currency", "USD")))
+	if v := violations(f.signed(r, http.StatusBadRequest, cid)); !strings.Contains(v, want) {
+		t.Errorf("pre-commit: %s", v)
+	}
+	if len(f.store.stored) != 0 || len(f.store.events) != 0 {
+		t.Fatalf("a refused pre-commit stored %d notifications, %d events", len(f.store.stored), len(f.store.events))
+	}
+
+	before := f.store.row(id)
+	r, cid = f.notify(note(id, payment("currency", "USD"), payment("transactionId", "5VfYtx9Hash"),
+		top("blockchain", map[string]any{"action": "SENT", "from": wallet, "to": recipient})))
+	if v := violations(f.signed(r, http.StatusBadRequest, cid)); !strings.Contains(v, want) {
+		t.Errorf("post-commit: %s", v)
+	}
+	if !reflect.DeepEqual(f.store.row(id), before) {
+		t.Error("the row changed")
+	}
+	if len(f.store.stored) != 1 || len(f.store.events) != 1 || f.store.events[0].Type != domain.EventSent ||
+		!slices.Equal(f.store.events[0].Deviations, []domain.Deviation{domain.DeviationReceivedInWrongStatus, domain.DeviationNotOfferedCurrency}) {
+		t.Errorf("stored %d, events %+v; want the call recorded on one flagged payment.sent", len(f.store.stored), f.store.events)
+	}
+}
+
 // S10.4-AC3: the network and the currency are matched whatever their case.
 func TestNetworkAndCurrencyAnyCase(t *testing.T) {
 	f := serve(t, 0)
