@@ -9,9 +9,11 @@ package com.matera.x9qrcode.domain.service;
 import com.matera.x9qrcode.domain.dto.FormulaResultDTO;
 import com.matera.x9qrcode.domain.utils.DateTimeUtils;
 import com.matera.x9qrcode.domain.vo.AdjustmentParametersVO;
+import com.matera.x9qrcode.domain.vo.AmountVO;
 import com.matera.x9qrcode.domain.vo.DiscountVO;
 import com.matera.x9qrcode.domain.vo.enumerated.FormulaEnum;
 
+import java.math.BigInteger;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
@@ -21,8 +23,6 @@ import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
 public class FixedDiscountLateFeeLinearInterestFormulaService implements FormulaService {
-
-    public static final long DAY_MILLIS = Duration.ofDays(1).toMillis();
 
     @Override
     public FormulaEnum getFormulaType() {
@@ -34,21 +34,34 @@ public class FixedDiscountLateFeeLinearInterestFormulaService implements Formula
                                       OffsetDateTime dueDate,
                                       Long originalAmount,
                                       String currency,
-                                      AdjustmentParametersVO parameters) {
+                                      AdjustmentParametersVO parameters,
+                                      OffsetDateTime feeStopsAt) {
         OffsetDateTime currentDate = getCurrentDate(dateForPayment);
 
         if (currentDate.isAfter(dueDate)) {
-            long daysLate = calculateDaysLate(dueDate, currentDate);
-            long fee = (daysLate * parameters.lateFees().perDay()) + parameters.lateFees().fixed();
+            // The fee stops growing at the QR Code's validUntil: the code cannot be paid after it,
+            // and creation and PATCH bound the amount at exactly that instant (ADR-0005). A code
+            // that expires on or before its due date never owes a fee.
+            OffsetDateTime feeAt = nonNull(feeStopsAt) && currentDate.isAfter(feeStopsAt) ? feeStopsAt : currentDate;
+
+            if (!feeAt.isAfter(dueDate)) {
+                return null;
+            }
+
+            long daysLate = LateFeeBound.daysLate(dueDate, feeAt);
+
+            // Exact arithmetic, then the 18-digit bound: refused rather than wrapped round a long
+            // or emitted past what X9.150 allows, even if a stored bill escaped the creation check.
+            BigInteger fee = LateFeeBound.fee(parameters.lateFees(), daysLate);
 
             return new FormulaResultDTO(
-                originalAmount + fee,
-                fee,
+                AmountVO.requireAtMost18Digits(fee.add(BigInteger.valueOf(originalAmount))),
+                AmountVO.requireAtMost18Digits(fee),
                 parameters.lateFees().explanation(),
                 currency,
                 // The fee for k days applies up to and including dueDate + k × 24 h; one
                 // millisecond later it is k + 1 days. That boundary is what the payee signs.
-                dueDate.plus(Duration.ofMillis(daysLate * DAY_MILLIS))
+                dueDate.plus(Duration.ofDays(daysLate))
             );
         }
 
@@ -82,12 +95,6 @@ public class FixedDiscountLateFeeLinearInterestFormulaService implements Formula
         }
 
         return nowUTC;
-    }
-
-    private long calculateDaysLate(OffsetDateTime dueDate, OffsetDateTime currentDate) {
-        long late = Duration.between(dueDate, currentDate).toMillis();
-
-        return (late + DAY_MILLIS - 1) / DAY_MILLIS;
     }
 
 }

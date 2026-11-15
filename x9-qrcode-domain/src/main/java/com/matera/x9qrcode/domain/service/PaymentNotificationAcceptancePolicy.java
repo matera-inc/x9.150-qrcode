@@ -10,6 +10,7 @@ import com.matera.x9qrcode.domain.dto.FormulaResultDTO;
 import com.matera.x9qrcode.domain.entity.QRCodeEntity;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 import com.matera.x9qrcode.domain.service.factory.FormulaFactory;
+import com.matera.x9qrcode.domain.vo.AmountVO;
 import com.matera.x9qrcode.domain.vo.BillVO;
 import com.matera.x9qrcode.domain.vo.CryptoWalletPaymentAddressVO;
 import com.matera.x9qrcode.domain.vo.PaymentMethodVO;
@@ -20,6 +21,7 @@ import com.matera.x9qrcode.domain.vo.enumerated.NetworkEnum;
 import lombok.RequiredArgsConstructor;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -337,11 +339,10 @@ public class PaymentNotificationAcceptancePolicy {
         }
 
         // Pro-rate by ratio rather than subtracting the raw minor-unit delta: currencies on one QR
-        // share a pegged group but not a scale, so USD cents and USDC micro-units differ.
-        return BigDecimal.valueOf(method.amount().value())
-            .multiply(BigDecimal.valueOf(formulaResult.amount()))
-            .divide(BigDecimal.valueOf(originalBillAmount), 0, RoundingMode.HALF_UP)
-            .longValueExact();
+        // share a pegged group but not a scale, so USD cents and USDC micro-units differ. Refused
+        // past 18 digits rather than compared against an amount no payload could have carried.
+        return AmountVO.requireAtMost18Digits(LateFeeBound.prorated(
+            method.amount().value(), originalBillAmount, BigInteger.valueOf(formulaResult.amount())));
     }
 
     private FormulaResultDTO calculateAdjustment(QRCodeEntity qrCode, OffsetDateTime at) {
@@ -362,7 +363,8 @@ public class PaymentNotificationAcceptancePolicy {
             bill.invoice().dueDate(),
             bill.amountDue().currencyAmount().amount(),
             bill.amountDue().currencyAmount().currency(),
-            bill.amountDue().adjustment().parameters()
+            bill.amountDue().adjustment().parameters(),
+            qrCode.getValidUntil()
         );
     }
 

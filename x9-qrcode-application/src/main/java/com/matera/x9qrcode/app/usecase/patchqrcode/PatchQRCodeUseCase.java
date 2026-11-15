@@ -87,6 +87,10 @@ public class PatchQRCodeUseCase extends UseCase<PatchQRCodeInput, PatchQRCodeOut
 
         qrCodeEntity.updatePaymentMethods(updatedPaymentMethods, changedSomethingElse);
 
+        // Against the merged state: a later validUntil, a larger fee or a larger amount each raise
+        // the largest amount the bill can show (ADR-0005). Refused before anything is saved.
+        qrCodeEntity.requireLateFeeWithinEighteenDigits();
+
         List<String> currencies = collectCurrencies(qrCodeEntity);
 
         supportedCurrencyPolicy.validate(currencies);

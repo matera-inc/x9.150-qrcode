@@ -94,7 +94,8 @@ public class RetrieveQRCodePayloadUseCase extends UseCase<RetrieveQRCodePayloadI
                 bill.invoice().dueDate(),
                 bill.amountDue().currencyAmount().amount(),
                 bill.amountDue().currencyAmount().currency(),
-                bill.amountDue().adjustment().parameters()
+                bill.amountDue().adjustment().parameters(),
+                qrCodeEntity.getValidUntil()
             );
         }
 

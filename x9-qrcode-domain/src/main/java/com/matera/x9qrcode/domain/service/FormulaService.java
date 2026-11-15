@@ -16,10 +16,15 @@ public interface FormulaService {
 
     FormulaEnum getFormulaType();
 
+    /**
+     * @param feeStopsAt the QR Code's {@code validUntil}: a late fee does not grow past it (ADR-0005).
+     *     {@code null} leaves it unbounded in time; the result is still refused past 18 digits.
+     */
     FormulaResultDTO calculate(OffsetDateTime dateForPayment,
                                OffsetDateTime dueDate,
                                Long originalAmount,
                                String currency,
-                               AdjustmentParametersVO parameters);
+                               AdjustmentParametersVO parameters,
+                               OffsetDateTime feeStopsAt);
 
 }
