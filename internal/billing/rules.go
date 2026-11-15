@@ -182,15 +182,18 @@ func checkDiscount(d Discount) error {
 	return nil
 }
 
+// lateFeesField is the late fees' path in the request body.
+const lateFeesField = "bill.amountDue.adjustments.parameters.lateFees"
+
 func checkLateFees(f LateFees) error {
 	if isBlank(f.Explanation) {
 		return invalid("Late fee explanation must not be null or blank.")
 	}
 	if f.Fixed < 0 {
-		return invalid("Fixed late fee must be greater than 0.")
+		return rule(lateFeesField+".fixed", "must be greater than or equal to 0")
 	}
 	if f.PerDay < 0 {
-		return rule("", "Per day late fee must be greater than 0.")
+		return rule(lateFeesField+".perDay", "must be greater than or equal to 0")
 	}
 	if err := CheckSignedAmount(f.Fixed); err != nil {
 		return err
@@ -274,8 +277,8 @@ func CheckInvoiceDueDate(req Request) error {
 }
 
 // CheckMethodsTogether refuses two payment methods in one currency, and a method valid after the
-// QR Code. Currencies are compared exactly, as Java groups them; of several repeated ones, the one
-// named is the one Java's HashMap meets first.
+// QR Code. Currencies are compared exactly; of several repeated ones, the first in request order is
+// named.
 func CheckMethodsTogether(req Request) error {
 	if dup := firstDuplicate(req.PaymentMethods); dup != "" {
 		return rule("paymentMethods", "must not contain duplicated currency: "+dup)
@@ -404,17 +407,18 @@ func civilBefore(a, b time.Time) bool {
 	return ad < bd
 }
 
-// firstDuplicate is the repeated currency Java reports: it counts the currencies with
-// Collectors.groupingBy and throws on the first repeated one it iterates, so of several the one
-// named is the first in that HashMap's order, which String.hashCode fixes.
+// firstDuplicate is the first currency, in request order, that appears more than once: the first
+// by first appearance, so that the refusal names what the biller wrote first.
 func firstDuplicate(methods []PaymentMethod) string {
-	currencies := make([]string, 0, len(methods))
+	var order []string
 	count := map[string]int{}
 	for _, m := range methods {
-		currencies = append(currencies, m.Currency)
+		if count[m.Currency] == 0 {
+			order = append(order, m.Currency)
+		}
 		count[m.Currency]++
 	}
-	for _, c := range javaGroupingOrder(currencies) {
+	for _, c := range order {
 		if count[c] > 1 {
 			return c
 		}

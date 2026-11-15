@@ -6,13 +6,10 @@
 package billing
 
 import (
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/google/go-cmp/cmp"
 )
 
 const recipient = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
@@ -76,8 +73,11 @@ func TestCheckCreate(t *testing.T) {
 		}, msgTooManyDigits, Invalid},
 		{"a 19-digit fixed fee", func(r *Request) { *r = withInvoice(*r, due, MaxAmount+1, 0) }, msgTooManyDigits, Invalid},
 		{"a 19-digit daily fee", func(r *Request) { *r = withInvoice(*r, due, 0, MaxAmount+1) }, msgTooManyDigits, Invalid},
-		{"a negative fixed fee", func(r *Request) { *r = withInvoice(*r, due, -1, 0) }, "Fixed late fee must be greater than 0.", Invalid},
-		{"a negative daily fee", func(r *Request) { *r = withInvoice(*r, due, 0, -1) }, "Per day late fee must be greater than 0.", BusinessRule},
+		{"a negative fixed fee", func(r *Request) { *r = withInvoice(*r, due, -1, 0) },
+			"bill.amountDue.adjustments.parameters.lateFees.fixed: must be greater than or equal to 0", BusinessRule},
+		{"a negative daily fee", func(r *Request) { *r = withInvoice(*r, due, 0, -1) },
+			"bill.amountDue.adjustments.parameters.lateFees.perDay: must be greater than or equal to 0", BusinessRule},
+		{"zero fees", func(r *Request) { *r = withInvoice(*r, due, 0, 0) }, "", 0},
 		{"a late fee without an explanation", func(r *Request) {
 			*r = withInvoice(*r, due, 0, 0)
 			r.Bill.AmountDue.Adjustment.LateFees.Explanation = " "
@@ -380,25 +380,9 @@ func TestCheckPatch(t *testing.T) {
 	}
 }
 
-// Of several repeated currencies, the one named is the one Java's HashMap iterates first. The
-// expected orders were printed by Java 25's Collectors.groupingBy(x -> x, counting()): by bucket,
-// newest first within one (CAD and USD share bucket 7), the table doubled on a call that finds it
-// more than three quarters full, even for a key already in it.
-func TestJavaGroupingOrder(t *testing.T) {
-	a := []string{"A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "B1", "B2", "B3", "B4"}
-	cases := []struct{ in, want []string }{
-		{[]string{"USD", "USDC", "FRNT", "USDC", "USD"}, []string{"FRNT", "USD", "USDC"}},
-		{[]string{"ZZZ", "USD", "AAA", "BRL", "FRNT", "USDC", "EUR", "JPY", "GBP", "CHF", "AUD", "CAD", "NZD", "SEK", "USDT", "BRL1"},
-			[]string{"CHF", "AAA", "EUR", "CAD", "USD", "USDT", "BRL1", "AUD", "JPY", "FRNT", "GBP", "SEK", "NZD", "USDC", "ZZZ", "BRL"}},
-		{a, []string{"B2", "A1", "B3", "A2", "B4", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "B1"}},
-		{append(slices.Clone(a), "A1"), []string{"B1", "B2", "A1", "B3", "A2", "B4", "A3", "A4", "A5", "A6", "A7", "A8", "A9"}},
-		{[]string{"USD", "CAD", "USD"}, []string{"CAD", "USD"}},
-	}
-	for _, c := range cases {
-		if diff := cmp.Diff(c.want, javaGroupingOrder(c.in)); diff != "" {
-			t.Errorf("%v (-want +got):\n%s", c.in, diff)
-		}
-	}
+// Of several repeated currencies, the one named is the first repeated one in request order
+// (owner decision 2026-11-15, Story 9.4 Q5): the first, by first appearance, that appears again.
+func TestFirstDuplicateIsInRequestOrder(t *testing.T) {
 	methods := func(currencies ...string) []PaymentMethod {
 		ms := make([]PaymentMethod, 0, len(currencies))
 		for _, c := range currencies {
@@ -406,10 +390,18 @@ func TestJavaGroupingOrder(t *testing.T) {
 		}
 		return ms
 	}
-	if got := firstDuplicate(methods("USDC", "USD", "USDC", "USD")); got != "USD" {
-		t.Errorf("named %q, want USD, which Java's map holds before USDC", got)
+	cases := []struct {
+		in   []string
+		want string
+	}{
+		{[]string{"USDC", "USD", "USDC", "USD"}, "USDC"},
+		{[]string{"USD", "CAD", "CAD", "USD"}, "USD"},
+		{[]string{"FRNT", "USD", "USDC", "USD"}, "USD"},
+		{[]string{"USD", "USDC"}, ""},
 	}
-	if got := firstDuplicate(methods("USD", "CAD", "USD", "CAD")); got != "CAD" {
-		t.Errorf("named %q, want CAD, the newer key of their shared bucket", got)
+	for _, c := range cases {
+		if got := firstDuplicate(methods(c.in...)); got != c.want {
+			t.Errorf("%v: named %q, want %q", c.in, got, c.want)
+		}
 	}
 }
