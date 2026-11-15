@@ -19,9 +19,10 @@ has. That behaviour is documented in STATE-MACHINE, ENDPOINTS, INTERPRETATION an
 
 **Scope:**
 
-- **Detailed stories:** plan phases 0, 1 and 1b (track A, pin behaviour on Java), and 2 and 3
-  (track B, Go/PostgreSQL foundations).
-- **Epic stubs only:** phases 4–12.
+- **Detailed stories:** plan phases 0, 1 and 1b (track A, pin behaviour on Java), 2 and 3
+  (track B, Go/PostgreSQL foundations), and 4 to 6 (Epics 8 to 10, the Go build's crypto and
+  endpoints).
+- **Epic stubs only:** phases 7–12.
 
 ## Requirements Inventory
 
@@ -351,7 +352,9 @@ None. The service has no UI.
 | FR21 | Epic 7 | CI Go job |
 | FR22 | Epic 7 | multi-stage `Dockerfile` + `make` wrappers |
 | FR23 | Epic 8 | EMV, keys, PKI and revocation, JWS signing and verification, the test clock in Go |
-| FR24–FR32 | Epics 9–17 | stubs for plan phases 5–12 |
+| FR24 | Epic 9 | create, GET, PATCH with audit, status-update, ETag and `If-Match`, location rebind, on PostgreSQL |
+| FR25 | Epic 10 | event stream, published keys and signature endpoints, payload, notifications under ADR-0036, payer-side endpoints, decoder; the whole black-box suite green on Go |
+| FR26–FR32 | Epics 11–17 | stubs for plan phases 7–12 |
 
 ## Epic List
 
@@ -361,7 +364,8 @@ alongside 3–4.
 **Track B: Go/PostgreSQL foundations.** Epics 6–7 follow each other, and the track runs in parallel
 with track A.
 
-**Stubs.** Epics 9–17. Epic 8 was detailed on 2026-11-14, once Epic 4 was green.
+**Stubs.** Epics 11–17. Epic 8 was detailed on 2026-11-14, once Epic 4 was green; Epics 9 and 10
+on 2026-11-15, once Epic 8 was built.
 
 ### Epic 1: The docs tell the truth
 
@@ -423,12 +427,26 @@ CI enforces the code rules from the first commit. There are no business endpoint
 Go signs, verifies and encodes exactly as Java does, proved by the golden set of Story 4.7.
 **FRs covered:** FR23
 
-### Epics 9–17: stubs (detailed later)
+### Epic 9: Billers manage payment requests on Go
+
+A biller creates, reads, edits and settles a QR Code on the Go build exactly as on Java, with every
+change and its event in one PostgreSQL commit. Done is the black-box suite's payment-request tests
+passing against the Go image.
+
+**FRs covered:** FR24
+
+### Epic 10: Payers fetch, notify and are evented on Go, under the pre-commit / post-commit rule
+
+Payers fetch the signed payload, pre-commit and post-commit with a signed answer every time, and
+payment systems read the events by HTTP, SQL or CDC. Done is the whole black-box suite passing
+against the Go image, except the `java_only` tests and retention (Epic 12).
+
+**FRs covered:** FR25
+
+### Epics 11–17: stubs (detailed later)
 
 | Epic | Phase | Scope |
 |---|---|---|
-| 9 | 5 | Billers manage payment requests on Go (FR24) |
-| 10 | 6 | Payers fetch, notify and are evented on Go (FR25) |
 | 11 | 7 | Proven equivalent to Java: differential run and interop (FR26) |
 | 12 | 8 | Retention without surprises: housekeeping (FR27) |
 | 13 | 9 | Operators can migrate data and configuration (FR28) |
@@ -1808,16 +1826,775 @@ carries `X-Test-Clock-Offset` while the offset is non-zero.
 **Then** no listener exists and the clock has no offset; certificate validity is always judged on
 the real clock, as in Java.
 
-## Epics 9–17: stubs
+## Epic 9: Billers manage payment requests on Go
 
-Detailed in a later run of this workflow. Scope now includes the Epic 2
-behaviour (signed answers and their verification, pre-commit on every rail, the holder retry and
-takeover event, exact `validUntil`), which Epics 9–10 port and Epic 11 proves equivalent.
+A biller creates, reads, edits and settles a QR Code on the Go build exactly as on Java, under the
+transition map of ADR-0035, and every change it makes is in PostgreSQL with its event in the same
+commit. Done means the black-box suite's payment-request tests pass against the Go image.
+
+**Implements:** FR24; ADR-0005, ADR-0016, ADR-0018, ADR-0020, ADR-0023 to ADR-0026, ADR-0028,
+ADR-0029, ADR-0035, ADR-0036 (the status-update rows of its matrix, amendments of 2026-11-14
+included), ADR-0037; the owner's decision of 2026-11-15 on the public host's default.
+
+**Done is defined by the black-box suite** (ADR-0030). Story 9.1 runs the suite against the Go image
+and keeps a list of the test keys that must pass there; each later story ends by adding its keys to
+that list. A key whose setup needs an endpoint of a later story (a payer's pre-commit, the event
+stream) joins the list with that story, which names it. The suite's `go_only` and `java_only`
+markers are used as they are. The epic proves these rule-coverage rows on Go: `R-MAP-001`, `-002`,
+`-010` to `-013`, `-050`; `R-SM-10` to `-14` and `-29` to `-34`; `R-EP-08`, `-24`, `-25`, `-27`;
+`R-I1-01` to `-03`, `R-I2`, `R-I3`, `R-I5`, `R-I6`, `R-I8`, `R-I9-01`, `-03`; `R-ADR0005-01` to `-04`,
+`R-ADR0012`, `R-ADR0016`, `R-ADR0018`, `R-ADR0020-01` to `-03`, `R-ADR0035-01`, `-04`.
+
+Order: 9.1, 9.2, 9.3 and 9.4 in parallel; 9.5 after 9.3; 9.6 after 9.2, 9.4 and 9.5; then 9.7 and
+9.8 in parallel. Story 10.1 (the event stream) needs only 9.2 and 9.5: build it alongside 9.6,
+because the tests of 9.6 to 9.8 that assert "no event" or "exactly this event" read the stream.
+
+### Story 9.1: The black-box suite runs against the Go image
+
+As a **maintainer**,
+I want `make blackbox-image` to run the suite against the Go image on PostgreSQL, as it runs against
+Java on MongoDB,
+So that a Go story is done when its tests pass there, and not when its author says so.
+
+**Implements:** FR24, FR25; ADR-0030, ADR-0031 (Liquibase one-shot, PKCS#12), ADR-0034
+
+**Acceptance Criteria:**
+
+**S9.1-AC1.** **Given** `X9_IMAGE` naming a Go image (`make go-image`, `x9-qrcode:go`)
+**Then** `others/blackbox/deployment/run-against-image.sh` starts PostgreSQL 16, applies
+`db/changelog/` with the Liquibase one-shot of Story 6.3 under the migration role, starts the image
+as the application role with the test clock on and the black-box truststore, and runs the suite in
+the service's network namespace, as it does for Java. `X9_DATABASE_URL` is a read-only
+`postgresql://` URL, so `X9_BUILD` is `go`. The Java run does not change.
+
+**S9.1-AC2.** **Given** the Go build refuses JKS (ADR-0031)
+**Then** `build-truststore.sh` also writes a PKCS#12 copy of the black-box truststore (the test CA
+and the shipped demo certificate), which the Go run mounts; the JKS stays for Java, and no new
+private key is committed.
+
+**S9.1-AC3.** **Given** `others/blackbox/deployment/go-required.txt`, one test key per line, empty
+at first
+**Then** the Go run fails when a listed test fails, errors or is skipped (a `java_only` skip
+excepted), and reports every other test as informative, with the counts of each outcome. The
+stories of Epics 9 and 10 add their keys to it.
+
+**S9.1-AC4.** **Given** a pull request that touches the Go code, `db/` or `others/blackbox/`
+**Then** a `blackbox-go` job in `.github/workflows/blackbox.yml` builds the image with
+`make go-image` and runs S9.1-AC1; it fails the pull request when a listed key fails. The Java job
+is unchanged.
+
+**S9.1-AC5.** **Given** `X9-LOC-421`, a strict expected failure today (BUG-004: Java's
+`releaseLocation` ignores `validUntil`)
+**Then** its mark becomes conditional on the build: still a strict expected failure on Java, and an
+ordinary test on Go, which follows ADR-0024 (Story 9.6). No other mark changes.
+
+**S9.1-AC6.** **Given** the Go deployment under test
+**Then** it sets no public host, so it runs on the default of S9.6-AC4, `x9-150.example.com`, one
+of the hosts the golden EMV set covers; `test_golden.py`'s EMV cases therefore run on Go instead
+of skipping.
+
+### Story 9.2: HTTP answers in Java's shape
+
+As an **integrator**,
+I want the Go build to read and write JSON, and to refuse, exactly as Java does,
+So that my client cannot tell which build it is talking to (ADR-0028).
+
+**Implements:** FR24, FR25; ADR-0026 (ids on the wire), ADR-0028 ("Behaviours the Go build
+reproduces"), ADR-0031 (server limits)
+
+**Acceptance Criteria:**
+
+**S9.2-AC1.** **Given** the routes of Epics 9 and 10
+**Then** they are registered on the existing mux behind `internal/httplog` and the test clock's
+offset header, through one package of helpers that every handler uses to read a body and to write
+an answer; an unknown path or a wrong method is answered with Java's status and problem `type`.
+
+**S9.2-AC2.** **Given** a JSON request body
+**Then** keys match case-sensitively; unknown properties are treated as Java treats them for that
+schema (an interpreted rail stays closed: an unknown field in `solana` is refused, `R-I9-03`); a
+body that is not JSON, or a number past 2^63−1, is a 400 `malformed-json` (`X9-AMT-422`). The type
+decoded is the type validated and stored (ADR-0024), and it tracks which fields a PATCH carried.
+
+**S9.2-AC3.** **Given** a JSON answer
+**Then** a value is omitted only when it is null, never because it is zero, `false` or empty
+(Jackson's `NON_NULL`); amounts are JSON numbers; pretty-printing is not reproduced (tolerated
+difference 1).
+
+**S9.2-AC4.** **Given** a refusal
+**Then** it is `application/problem+json` with Java's fields (`type`, `title`, `status`, `detail`,
+`violations`, and properties such as `currentStatus` and `currentRevision`) and Java's `type` URIs,
+unchanged: `validation-error`, `malformed-json`, `business-rule-violation`, `resource-not-found`,
+`status-conflict`, `precondition-failed`, `invalid-signature`, `payload-refused`,
+`payload-unreachable`, `notification-undeliverable`, `internal-error`. A 500 carries no stack, SQL
+or internal detail.
+
+**S9.2-AC5.** **Given** the request schemas of `openapi.yaml`
+**Then** every `required`, `minLength`, `maxLength`, `pattern`, `minimum`, `maximum`, exclusive bound
+and `enum` is enforced by hand-written checks, each violation naming Java's field path with Bean
+Validation's default message; a Go test reads `openapi.yaml` and fails when a constraint of a
+request schema has no check (the Go counterpart of `contract.py`). No server code is generated from
+the contract (ADR-0028).
+
+**S9.2-AC6.** **Given** a QR Code or location id on input
+**Then** it is accepted in the forms ADR-0026 names and Java accepts, and every id is written as 32
+upper-case hexadecimal characters.
+
+**S9.2-AC7.** **Given** an `If-Match` header
+**Then** it is parsed as Java parses it: quoted, bare, `W/"…"` and `W/…` forms and a bare number are
+read as a tag; `*` or no header means unconditional; anything else is compared as a tag, and so
+fails with 412.
+
+**S9.2-AC8.** **Given** the server
+**Then** request headers above 30 KB are refused as Java refuses them, and ADR-0031's timeouts hold
+(read-header 10 s, read 30 s, write 40 s, idle 120 s). Go tests cover every criterion of this story;
+its black-box key is `X9-LIFE-502` (the deployment is ready), added to the list.
+
+### Story 9.3: One package decides every transition
+
+As a **Go implementer**,
+I want the QR Code's lifecycle decided by one pure package, with one `now` per decision,
+So that every endpoint applies ADR-0035's map the same way and every event is built through one
+door.
+
+**Implements:** FR24, FR25; ADR-0016, ADR-0019, ADR-0020, ADR-0021, ADR-0024, ADR-0029, ADR-0035,
+ADR-0036
+
+**Acceptance Criteria:**
+
+**S9.3-AC1.** **Given** `internal/domain`
+**Then** it imports no database and no HTTP package. It holds the QR Code row of ADR-0024, status as a
+typed string parsed at the boundary, the holder (`payer.info` and signer subject), and the
+reservation's end (`reserved_until`) with its "no lapse" sentinel.
+
+**S9.3-AC2.** **Given** `EffectiveStatus(row, now)`
+**Then** a `PAYMENT_INITIATED` past its stamp reads `ACTIVE`; never once a hash is registered, nor
+when `x9.reservation.ttl-seconds` is `0`; a reservation with no stamp is treated as holding
+(ADR-0019). Entering `PAYMENT_INITIATED` stamps `min(now + ttl, validUntil)`; leaving it clears the
+stamp and the holder; time never writes a status (ADR-0029).
+
+**S9.3-AC3.** **Given** `ETag(row, now)`
+**Then** it is `"<revision>-<effective status>"`, and `If-Match` is compared against the same
+function (ADR-0028, Story 2.2).
+
+**S9.3-AC4.** **Given** a trigger (create, PATCH, status-update, pre-commit, post-commit, `NOT_SENT`,
+location release)
+**Then** one function decides it and returns the row's new values, the events to emit in order and
+the answer's status; each uses the stored or the effective status as ADR-0035's map says. A table
+test has a case for every key of the map (`X9-MAP-001` to `X9-MAP-051`) and every cell of
+ADR-0036's matrix, the § and ¶ amendments included.
+
+**S9.3-AC5.** **Given** the same-holder rule
+**Then** two notifications are from the same payer only when both carry `payer.info`, the values are
+equal, and the certificate subjects are equal; an unattributed reservation (status-update) matches
+nobody (ADR-0036, superseding ADR-0021's fallback).
+
+**S9.3-AC6.** **Given** `BuildEvent(type, row, lastNotification, now, reason)`
+**Then** it is the only code that constructs a `payment_event`: the body comes from the last stored
+notification, else from the first payment method and the payment details, field for field as Java;
+`deviations` is a closed list (`RECEIVED_IN_WRONG_STATUS`, `ACTION_CONTRADICTS_HASH`), absent rather
+than empty; `receivedInStatus` and `schemaVersion` as Java writes them. A test fails if another
+package builds an event.
+
+**S9.3-AC7.** **Given** any accepted transition
+**Then** it sets `revised_at`; only PATCH moves `revision` (ADR-0016); reactivation and a lapse emit
+nothing.
+
+**S9.3-AC8.** **Given** a location held by another QR Code
+**Then** the holder is not live when its stored status is `PAID` or `CANCELLED` **or** its
+`valid_until` has passed (ADR-0024). Go follows the ADR, not Java's BUG-004.
+
+### Story 9.4: A payment request is checked and priced as Java checks and prices it
+
+As a **biller**,
+I want Go to accept and refuse exactly the requests Java does, and to price them the same at any
+instant,
+So that nothing I send changes meaning when the build changes.
+
+**Implements:** FR24, FR25 (pricing); FR36; ADR-0005, ADR-0010, ADR-0012, ADR-0017; INTERPRETATION
+I-1 to I-3, I-5, I-6, I-8 to I-10, I-13, I-14
+
+**Acceptance Criteria:**
+
+**S9.4-AC1.** **Given** a create or PATCH body that passed the contract checks (S9.2-AC5)
+**Then** the business rules refuse what Java refuses, naming the same field with the same message:
+a network other than `fednow`, `rtp`, `ach` and `solana`, by name, and any other casing of those
+(I-1, I-2); a currency not in `supported-currencies.json` or written in another case, every
+offender named, an empty list disabling the check (I-3); a payment method without a currency (no
+default, not even the bill's); currencies from two peg groups; a duplicate currency; `paymentMethods`
+as a bare object (I-5); a bank account number that is not 4 to 17 letters or digits (I-6); a Solana
+`recipient` that is not 32 to 44 Base58 characters, or an unknown field in `solana` (I-8, I-9); a
+tip offer that contradicts itself, while `presets` has no minimum size (I-10); a `validUntil` not in
+the future; a `dueDate` or a method's `validUntil` after the QR Code's.
+
+**S9.4-AC2.** **Given** an amount
+**Then** every amount the service takes is at most 999999999999999999 and not negative, the signed
+adjustment amount bounded on both sides; a bill whose amount plus the largest late fee reachable
+before `validUntil`, or any payment method as the payload would show it with that fee, would pass
+18 digits is refused at create and at PATCH; the formula refuses rather than emits such an amount
+(ADR-0005).
+
+**S9.4-AC3.** **Given** the formula (`FixedDiscountLateFeeLinearInterest`) and an instant
+**Then** the price is computed at that one instant (I-14): a discount applies up to and including
+its edge `dueDate − daysBefore`, and the largest eligible one wins; at exactly `dueDate` there is no
+fee; the late fee rises at each 24-hour boundary from `dueDate` and stops at `validUntil`; each
+adjusted amount advertises as its `validUntil` the exact instant it stops applying, capped by the
+method's and the QR Code's (FR36); methods in a pegged currency are adjusted as Java adjusts them
+since BUG-001's fix.
+
+**S9.4-AC4.** **Given** the two currency files
+**Then** Go ships `supported-currencies.json` and `pegged-currencies.json` with Java's content and
+loading rules (`_comment` ignored, strict JSON), and reads replacements from the locations Java's
+`x9.currency.supported-currencies-location` and `x9.currency.pegged-currencies-location` name, under
+ADR-0031's naming.
+
+**S9.4-AC5.** **Given** the rules and the formula
+**Then** each has a table test with Java's message, the formula's edges are tested to the
+millisecond with `internal/clock`, and a fuzz target shows the formula never overflows or panics.
+The black-box keys come with Stories 9.6, 9.7 and 10.3, which call this code.
+
+### Story 9.5: A transition is one transaction, and its event is in it
+
+As a **payment system reading the events**,
+I want every change and its event to commit together, numbered in commit order,
+So that my cursor never skips an event and never sees one whose change was rolled back.
+
+**Implements:** FR24, FR25; ADR-0023, ADR-0024, ADR-0025, ADR-0026, ADR-0037
+
+**Acceptance Criteria:**
+
+**S9.5-AC1.** **Given** `internal/store`
+**Then** every transition runs ADR-0025's script in one `pgx.BeginFunc` transaction with
+`READ COMMITTED` set explicitly, and `SET LOCAL lock_timeout = '2s'` when it emits an event: read
+the row; decide in `internal/domain` with one `now`; `UPDATE … WHERE id = ? AND lock_version = ?`.
+Zero rows, `40001`, `40P01` or `55P03` re-run the whole script from the read, three attempts in all;
+`57014` is a 503; `23505` is answered as the domain maps it; exhausted re-runs are a 409 "busy" with
+the current status, never a 500.
+
+**S9.5-AC2.** **Given** one transaction
+**Then** its statements run in this order: a location holder's release, the row's update, the audit
+or notification row, and last the event, as one pgx batch of `UPDATE event_sequence SET last_seq =
+last_seq + 1` and `INSERT INTO payment_event … SELECT last_seq …` with no `RETURNING`. A store test
+asserts the order.
+
+**S9.5-AC3.** **Given** an event row
+**Then** its `event_id` is a UUIDv7 minted after the sequence lock is taken, from one monotonic
+generator, so `event_id` order equals `seq` order (ADR-0037); `read_status_code` is `PEND` and
+`read_at` is `9999-12-31 00:00:00`, and X9.150 never updates either.
+
+**S9.5-AC4.** **Given** new rows
+**Then** QR Code ids are UUIDv7, location ids UUIDv4, event ids UUIDv7, all bound as `UUID`
+(ADR-0026); SQL is never schema-qualified and uses only ADR-0023's portable dialect.
+
+**S9.5-AC5.** **Given** the two pools of Story 7.2
+**Then** writes use the write pool, and GET, the payload and the events read on the read pool.
+
+**S9.5-AC6.** **Given** PostgreSQL in `internal/dbtest`
+**Then** tests show: concurrent transitions on one row end with the domain's outcomes and no lost
+update; concurrent event-producing transactions on different rows give a gapless `seq` in commit
+order; a rolled-back transition leaves no event and no gap.
+
+**S9.5-AC7.** **Given** a committed transaction that inserted an event
+**Then** an in-process signal wakes parked event readers (Story 10.1), after the commit and never
+on a rollback.
+
+### Story 9.6: A biller creates and reads a QR Code
+
+As a **biller**,
+I want to create a QR Code and read it back on the Go build,
+So that what I print and what I read are what Java gave me.
+
+**Implements:** FR24; ADR-0016, ADR-0024, ADR-0026, ADR-0028, ADR-0029, ADR-0035 (`X9-MAP-001`,
+`X9-MAP-050`); owner decision 2026-11-15 (public host default)
+
+**Acceptance Criteria:**
+
+**S9.6-AC1.** **Given** a valid `POST /api/v1/payment-request`
+**Then** the answer is 201 with Java's `PaymentRequestResponse` fields and an `ETag`: the id, revision
+`0`, `ACTIVE`, the times, the location, `qrCode` (built by `internal/emv` from the location and the
+EMV configuration) and `qrCodeB64` (that string in Base64). No event is written. A refused create
+writes nothing (`X9-LIFE-506`, through the PostgreSQL inspector).
+
+**S9.6-AC2.** **Given** a create with `locationId`
+**Then** it may take a location another QR Code holds only when the creditor is the same and the
+holder is not live (S9.3-AC8); the holder is released first, in the same transaction, to a fresh
+UUIDv4 location with its new `emv_content`, its revision unmoved and no event (`X9-MAP-050`); a
+live holder or another creditor keeps the location, with Java's 400; a refused create releases
+nothing. A `23505` after the re-runs is answered as a refused rebind (400).
+
+**S9.6-AC3.** **Given** a create without `locationId`
+**Then** the location takes the default the owner settles (see "Questions for the owner" of this
+epic's pull request: ADR-0024 says the QR Code's own id, ADR-0026 says a fresh UUIDv4); this
+criterion is not built until that answer is written here.
+
+**S9.6-AC4.** **Given** the public host
+**Then** it defaults to `x9-150.example.com`, Java's documented default (owner, 2026-11-15), so the
+image starts with no host configured; a host over 37 characters, or with a character outside
+printable ASCII or a space, still stops the service at startup (`R-EP-25`, `R-ADR0027-08`).
+`emv_content` is written only with `location_id` and never recomputed.
+
+**S9.6-AC5.** **Given** `GET /api/v1/payment-request/{id}`
+**Then** one row is read and the answer is composed from its columns and `request_json`, with the
+effective status and the `ETag`; `?revision=` matches only the current revision and is otherwise
+answered as Java answers it; an unknown id is 404; `lockVersion` never appears; an expired QR Code
+is still read (ADR-0029, tolerated difference 2).
+
+**S9.6-AC6.** **Given** the harness of Story 9.1
+**Then** these keys are added to `go-required.txt` and pass: `test_qr_code.py` but `X9-DEC-016`;
+`test_create_refusals.py`; `test_contract.py`'s cases for `createPaymentRequest`; in
+`test_payment_requests_pinned.py`, `X9-RAIL-420`, `X9-CUR-420` to `-423`, `X9-LIFE-420` to `-422`,
+`X9-TIP-420`, `-421`, `X9-AMT-420` to `-423`, `X9-LOC-420` to `-425` (`X9-LOC-421` included, which
+Java fails); `X9-PATCH-501`; `X9-LIFE-506`; `X9-LOC-501`; `X9-MAP-001`. `X9-MAP-050` joins
+with Story 10.1.
+
+### Story 9.7: A biller edits a QR Code, and every edit is audited
+
+As a **biller**,
+I want to change what a live QR Code asks for, conditionally if I choose,
+So that a partial payment can lower the amount, and the previous values are kept for audit.
+
+**Implements:** FR24; ADR-0016, ADR-0018, ADR-0024, ADR-0028; `R-MAP-002`, `R-EP-27`
+
+**Acceptance Criteria:**
+
+**S9.7-AC1.** **Given** a `PATCH /api/v1/payment-request/{id}`
+**Then** it is allowed when the stored status is `ACTIVE` or `PAYMENT_INITIATED` and refused
+otherwise as Java refuses it; only the six tags of ADR-0024 change, the others are never applied; a
+tag counts as changed when present, `paymentMethods` when its value differs; a PATCH that changes
+nothing is a 400.
+
+**S9.7-AC2.** **Given** the currencies of the PATCH (ADR-0018)
+**Then** it names every currency the QR Code offers, in any order, or is refused naming the one left
+out; a currency the QR Code does not offer is refused naming it, never dropped with a 200; methods
+merge by currency. The dates are checked on the merged result, as at creation (`R-EP-27`), and the
+amount bounds of S9.4-AC2 hold.
+
+**S9.7-AC3.** **Given** an accepted PATCH
+**Then** it runs as ADR-0024 orders it, in one transaction: a location holder released first (S9.6-AC2
+rules), then `request_json`, `valid_until`, the location and its `emv_content` only when the
+location changed, `revision = n + 1`, `revised_at`; then the audit row `(id, n, now, changed tags,
+their previous values)`, the previous `locationId` taken from the column. No event is written
+(`X9-MAP-002`).
+
+**S9.7-AC4.** **Given** an `If-Match`
+**Then** a tag other than `ETag(row, now)` is a 412 `precondition-failed` with `currentStatus` and
+`currentRevision`, and nothing is written; a refused PATCH never moves the revision or the ETag.
+
+**S9.7-AC5.** **Given** the audit log
+**Then** no endpoint reads it, and a store test rebuilds a QR Code's earlier request by walking it
+backwards.
+
+**S9.7-AC6.** **Given** the harness
+**Then** these keys are added and pass: `test_patch_currencies.py`;
+`X9-PATCH-420` to `-426`, `-430` to `-432`, `-434`, `-435`, `-502`, `-504`; `X9-MAP-002`;
+`test_contract.py`'s cases for `patchPaymentRequest`. `X9-PATCH-433` joins with Story 10.5, and
+`X9-TIME-014` with Story 10.3.
+
+### Story 9.8: The payment system sets the status, and a retry is harmless
+
+As a **payment system**,
+I want to reserve, settle, cancel and release a QR Code through the status-update API,
+So that I decide the outcome of my own receivable, and a retried call never counts twice.
+
+**Implements:** FR24; ADR-0008, ADR-0016, ADR-0019, ADR-0020, ADR-0035 (`X9-MAP-010` to `-013`),
+ADR-0036 (status-update rows; amendments of 2026-11-14)
+
+**Acceptance Criteria:**
+
+**S9.8-AC1.** **Given** `PUT /api/v1/payment-request/{id}/status-update` with `PAYMENT_INITIATED`
+**Then** from `ACTIVE` (effective, so a lapsed reservation counts) it takes an unattributed
+reservation, stamped as S9.3-AC2, and writes `payment.initiated`; it carries no settlement details
+(`R-SM-14`); on `PAID` or `CANCELLED` it is a 409 `status-conflict` naming the current status.
+
+**S9.8-AC2.** **Given** `PAID` or `CANCELLED`
+**Then** each is accepted from a stored `ACTIVE` or `PAYMENT_INITIATED`, a lapsed reservation and a
+QR Code past `validUntil` included (ADR-0020), writing `payment.cleared` or `payment.cancelled`;
+`PAID` records `endToEndId` and the network; `PAID` on `CANCELLED` and `CANCELLED` on `PAID` are 400.
+
+**S9.8-AC3.** **Given** `ACTIVE`
+**Then** a `PAYMENT_INITIATED` (effective) returns to `ACTIVE` with its reservation and holder
+cleared and no event, also once a hash is registered: this is the payment system's control over a
+reservation (ADR-0036); on a lapsed reservation, `PAID` or `CANCELLED` it is a 400.
+
+**S9.8-AC4.** **Given** the status the QR Code already has, stored and effective
+**Then** the answer is 200 and nothing is written: no revision, no `revised_at`, no event; a repeated
+`PAID` keeps the first reference (ADR-0020).
+
+**S9.8-AC5.** **Given** an `If-Match`
+**Then** only the current tag passes, otherwise 412 with `currentStatus` and `currentRevision` and
+nothing written; a retry sending the first attempt's tag after that attempt succeeded is a 412, and
+a retry without `If-Match` is the 200 of S9.8-AC4 (ADR-0020, owner 2026-11-14).
+
+**S9.8-AC6.** **Given** any status-update
+**Then** the revision never moves and the ETag follows the status (`R-ADR0016-02`); the event is in
+the transaction (S9.5); exhausted re-runs are a 409 "busy". The endpoint's description in
+`openapi.yaml`, which still says a `PAYMENT_INITIATED` on a held QR Code is a 409, is corrected to
+ADR-0036's amended matrix (a retry, 200); no schema changes.
+
+**S9.8-AC7.** **Given** the harness
+**Then** these keys are added and pass: `X9-MAP-010` to `-013`, `X9-MAP-051`; `X9-PATCH-503`,
+`-505`; `test_contract.py`'s cases for `putPaymentRequestStatusUpdate`; with Story 10.1,
+`X9-LIFE-170` to `-176` and `X9-EVT-050`. `X9-LIFE-503` joins with Story 10.5, whose pre-commit it
+uses.
+
+## Epic 10: Payers fetch, notify and are evented on Go, under the pre-commit / post-commit rule
+
+A payer's PSP fetches the signed payload, pre-commits and post-commits, and gets a signed answer
+every time; a payment system reads the events over HTTP, SQL or CDC; a PSP can use the Go build to
+pay somebody else's QR Code. Done means the whole black-box suite passes against the Go image,
+except the tests marked `java_only` and `X9-TIME-015` (retention, Epic 12).
+
+**Implements:** FR25; FR33 to FR36 (ported); ADR-0001, ADR-0003, ADR-0004, ADR-0006, ADR-0014,
+ADR-0015, ADR-0017, ADR-0019, ADR-0021, ADR-0025 to ADR-0028 (its 2026-11-14 amendment included),
+ADR-0031 (cursor ahead of the log, shutdown), ADR-0035, ADR-0036, ADR-0037; INTERPRETATION I-9 to
+I-14.
+
+Each story adds its keys to the list of Story 9.1, under the same rules. The epic proves these
+rule-coverage rows on Go: `R-MAP-020` to `-045`, `-051`; `R-SM-15` to `-28`, `-35` to `-46`;
+`R-EP-02` to `-07`, `-09` to `-23`, `-26`, `-28`; `R-I1-04` to `-06`, `R-I4`, `R-I9-02`, `R-I10`,
+`R-I11`, `R-I12`, `R-I13`, `R-I14`; `R-ADR0004`, `R-ADR0006-01` to `-03`, `R-ADR0014-01` to `-03`,
+`R-ADR0015`, `R-ADR0017`, `R-ADR0019`, `R-ADR0020-04`, `R-ADR0021`, `R-ADR0027`, `R-ADR0035-02`,
+`-03`, `R-ADR0036`.
+
+Order: 10.1 after 9.2 and 9.5, alongside 9.6 to 9.8; 10.2 after 9.2; 10.3 and 10.4 after 9.6 and
+10.2, in parallel; 10.5 after 10.4 (its black-box keys also need 9.8); 10.6 after 10.2; 10.7 after
+10.3; 10.8 last. The signature endpoints (`/api/v1/signature/generate` and `validate`) are a biller's
+tool but are built in 10.2, with the verifier they need.
+
+### Story 10.1: The event stream reads the outbox
+
+As a **payment system**,
+I want to page the events of the Go build with my existing cursor, over HTTP,
+So that I keep consuming at cutover without changing anything.
+
+**Implements:** FR25; ADR-0001, ADR-0025, ADR-0026, ADR-0031, ADR-0037; `R-EP-13` to `-23`
+
+**Acceptance Criteria:**
+
+**S10.1-AC1.** **Given** `GET /pub/api/v1/events?after=`
+**Then** `after` omitted or empty starts at the beginning of retained history; a decimal `seq`
+resumes strictly after it; a ULID is translated through `payment_event_legacy_cursor` (its row's
+`seq`, else the first migrated event whose legacy cursor is greater); an `after` greater than
+`last_seq` is a 409 "cursor ahead of log" carrying the current `last_seq` (ADR-0031); any other
+value is a 400 naming `after`.
+
+**S10.1-AC2.** **Given** `limit` and `wait`
+**Then** `limit` is 1 to 500, 100 by default, and `wait` 0 to 30 seconds, 0 by default; a value
+outside either range is a 400 naming the parameter, at once.
+
+**S10.1-AC3.** **Given** a page
+**Then** events come in `seq` order with Java's fields and values (`eventId`, `type`, `occurredAt`,
+`qrCodeId`, `qrCodeRevision`, amounts, `payerInfo`, `deviations`, `receivedInStatus`,
+`schemaVersion`, …); `nextCursor` is the last event's `seq` as a decimal string; `hasMore` is true
+when the page was cut at `limit`; a read past the end is empty with no `nextCursor`.
+
+**S10.1-AC4.** **Given** nothing to return and `wait > 0`
+**Then** the request is held until an event commits (S9.5-AC7) or `wait` passes, with a 1 s poll as
+the backstop; a parked request holds no database connection and reads on the read pool; on SIGTERM
+parked requests return their current page (ADR-0031).
+
+**S10.1-AC5.** **Given** `docs/EVENTS-TABLE.md`
+**Then** the rows Go inserts match it column for column, and a store test reads them as the
+document's plain-SQL reader does (claim with `FOR UPDATE SKIP LOCKED`, mark `DONE`) under the reader
+role's grants.
+
+**S10.1-AC6.** **Given** the harness
+**Then** these keys are added and pass: `X9-EVT-051` to `-057`, and the keys of Epic 9 that waited
+for the stream (`X9-MAP-050`, `X9-EVT-050`, `X9-LIFE-170` to `-176`). A `go_only` test is added for
+the "cursor ahead of log" answer, which Java does not give; it is recorded for Epic 11's list of
+tolerated differences.
+
+### Story 10.2: Signatures on the wire: keys published, signer and verifier wired
+
+As a **payer, or a biller testing a JWS**,
+I want the Go build to publish its keys and to sign and verify through the API,
+So that every counterpart can check the Go build's signatures, and the payer endpoints have a
+verifier to use.
+
+**Implements:** FR25 (and FR24's signature endpoints); FR23 (wiring); ADR-0027, ADR-0033;
+`R-EP-06`, `-07`, `-11`; `R-I7`; `R-I12-09` to `-11`
+
+**Acceptance Criteria:**
+
+**S10.2-AC1.** **Given** startup
+**Then** one signer (Story 8.4) and one verifier (Story 8.5) are built from `internal/keys` (a key
+reload is followed without restart), the truststore, a certificate fetcher that knows the public host
+(Story 8.3) and the business clock. `internal/config` reads
+`x9.public-endpoints.jws-clock-skew-seconds` (`X9_JWS_CLOCK_SKEW_SECONDS`, 60 by default, a
+negative value read as 0, as Java does) and `x9.certificate.issuer-name` (`X9` by default) under
+ADR-0031's naming; both are in `config.example.yaml`.
+
+**S10.2-AC2.** **Given** `GET /pub/.well-known/jwks`
+**Then** it serves the signing key as a JWK set with its `x5c` chain, in Java's shape, and follows a
+key reload.
+
+**S10.2-AC3.** **Given** `GET /pub/.well-known/certificate/{pemFileName}`
+**Then** the signing certificate is served in PEM (`application/x-pem-file`) under the file name
+Java serves, which is the one the `x5u` header names; any other name is a 404.
+
+**S10.2-AC4.** **Given** `POST /api/v1/signature/generate` with a `Correlation-Id` header and any JSON
+body
+**Then** the answer is a compact JWS (`application/jose`) signed as Story 8.4 signs, with that
+`correlationId` and the requested ttl; a missing header is refused as Java refuses it.
+
+**S10.2-AC5.** **Given** `POST /api/v1/signature/validate`
+**Then** a valid JWS is a 200 carrying the `Correlation-Id` header, and an invalid one a 422 with
+Java's body.
+
+**S10.2-AC6.** **Given** the harness
+**Then** these keys are added and pass: `X9-SIG-507`; `test_contract.py`'s cases for `validate`.
+The two signature endpoints have no black-box test of their own, because the suite never signs
+through the service under test (`X9-SUITE-501`): a Go handler test covers S10.2-AC4 and S10.2-AC5,
+verifying a generated token with the verifier, and Epic 11's differential run compares both
+endpoints with Java.
+
+### Story 10.3: A payer fetches the signed payload
+
+As a **payer's PSP**,
+I want `POST /pub/api/v1/loc/{id}` to give me the signed payload at today's price, or a reason,
+So that I pay what the payee published, and never an expired or closed bill.
+
+**Implements:** FR25; FR36; ADR-0020, ADR-0027 (EMV), ADR-0028 (tolerated difference 2), ADR-0029;
+INTERPRETATION I-13, I-14; `R-EP-02` to `-05`, `R-ADR0020-04`, `R-ADR0027-07`
+
+**Acceptance Criteria:**
+
+**S10.3-AC1.** **Given** a payload request (`application/jose`)
+**Then** it is verified by the verifier of S10.2-AC1, and a request that does not verify is a 400,
+not a 401, with Java's `signatureProblem`; an unknown location is a 400, not a 404, as Java answers.
+
+**S10.3-AC2.** **Given** the signed `qrCodeContent`
+**Then** it must decode to exactly the stored `emv_content`, byte for byte; malformed EMV is refused
+as `CONTENT_MISMATCH`, saying it is malformed, and any other difference as `CONTENT_MISMATCH`.
+
+**S10.3-AC3.** **Given** a QR Code that is `PAID`, `CANCELLED` or past `validUntil`
+**Then** the payload is refused with a 400 naming the reason; an expired QR Code answers with its
+expiry reason, because the Go build keeps the row (tolerated difference 2); a lapsed reservation
+reads `ACTIVE` and is served.
+
+**S10.3-AC4.** **Given** a served payload
+**Then** it is priced by S9.4-AC3 at the later of `dateForPayment` and the payee's now; expired
+payment methods are dropped; `paymentNotification.endpoint` is the creditor's own when given,
+otherwise the host-derived URL; the body is Java's `PaymentPayloadResponse`, field for field.
+
+**S10.3-AC5.** **Given** the answer
+**Then** it is a compact JWS (`application/jose`) signed by the signer of S10.2-AC1 with Java's
+header, `statusCode` in `crit`; nothing is written (the quote is not stored: ADR-0011 is not built).
+
+**S10.3-AC6.** **Given** the harness
+**Then** these keys are added and pass: `test_payload.py`; `X9-LOC-301` to `-312` of
+`test_payers.py`; `test_clock.py`; `X9-LOC-502`; `X9-PATCH-440`; `X9-TIME-014`; `X9-LOC-470` to `-473` of
+`test_golden.py`.
+
+### Story 10.4: The notification endpoint verifies, refuses by name, and always answers signed
+
+As a **payer's PSP**,
+I want every answer to my payment notification to be a JWS signed by the payee, refusals included,
+So that the signed question and the signed answer are the evidence of what was agreed (FR33).
+
+**Implements:** FR25; FR33; ADR-0006, ADR-0027, ADR-0028 (2026-11-14 amendment), ADR-0036 (every
+answer signed); INTERPRETATION I-1, I-4, I-12; `R-I12-01` to `-11`, `R-ADR0006-01` to `-03`,
+`R-SM-16` to `-18`
+
+**Acceptance Criteria:**
+
+**S10.4-AC1.** **Given** `POST /pub/api/v1/payment-notification`
+**Then** every answer is a compact JWS (`application/jose`, `typ: JOSE`) signed with the payee's key,
+also a 400 or 415 refused before the handler runs: a yes has the body `{"statusCode": 200}`; a
+refusal keeps its HTTP status and its error fields, with `statusCode` added.
+
+**S10.4-AC2.** **Given** the notification's signature
+**Then** a notification that does not verify is a signed 401 carrying the fixed `signatureProblem`,
+under a fresh `correlationId`; once it verifies, the answer echoes its `correlationId`; the answer's
+`iat` is the payee's clock at the decision.
+
+**S10.4-AC3.** **Given** a verified notification
+**Then** these are refused before any transition, with Java's status and field: an unknown QR Code
+(404); a QR Code created without `paymentNotification`, or with `kind: EXTERNAL` (ADR-0006); a
+network or currency the QR Code does not offer, matched whatever the case and echoed as sent (I-1,
+I-4); `blockchain` data on a bank rail; ACH without `payer.info` or `expectedDate`; an unknown field
+in `solana`; an amount past 18 digits (ADR-0005; signed bodies included).
+
+**S10.4-AC4.** **Given** a refusal
+**Then** it is logged with the payer's certificate subject and `payer.info` and the reason, so a
+payee can count refusals per payer.
+
+**S10.4-AC5.** **Given** the harness
+**Then** these keys are added and pass: `X9-SIG-508` to `-526` of `test_signatures.py` but those
+whose setup takes a reservation (they join with Story 10.5); `X9-SIG-001` to `-003`, `-110`, `-111`,
+`X9-RAIL-001`, `-002`, `X9-CUR-001` of `test_payment_notification.py`; `X9-HOLD-403`, `-404` and
+`X9-SIG-301` to `-304` of `test_payers.py`.
+
+### Story 10.5: Pre-commit and post-commit, under the transition map
+
+As a **payee**,
+I want Go to decide every notification by ADR-0036's matrix, and to register every hash,
+So that two payers never pay one QR Code, and money that moved is never lost to the payment system.
+
+**Implements:** FR25; FR34, FR35, FR36; ADR-0003, ADR-0004, ADR-0014, ADR-0017, ADR-0019, ADR-0021,
+ADR-0025, ADR-0035 (`X9-MAP-020` to `-045`), ADR-0036 (the owner's § and ¶ included); INTERPRETATION
+I-10, I-11, I-13, I-14
+
+**Acceptance Criteria:**
+
+**S10.5-AC1.** **Given** a verified notification on any rail
+**Then** no `transactionId` makes it a pre-commit and a `transactionId` a post-commit (ADR-0004);
+`blockchain.action` only corroborates and decides `NOT_SENT` alone; a `PAYMENT_INITIATED` carrying a
+hash is a post-commit flagged `ACTION_CONTRADICTS_HASH`, and a warning names the payer; a `SENT`
+without a hash is a 400.
+
+**S10.5-AC2.** **Given** a pre-commit
+**Then** the acceptance gate judges it at the payee's clock at receipt: `amount − tipAmount` against
+the payload's price at that instant (S9.4-AC3, exact edges), the tip rules of I-10 in the notified
+currency, `validUntil` inclusive; a refusal is a 400 naming `payment.amount` or `validUntil`.
+
+**S10.5-AC3.** **Given** the QR Code's effective status at receipt
+**Then** the pre-commit, post-commit and `NOT_SENT` rows of ADR-0035's map hold, cell for cell of
+ADR-0036's matrix: a new holder reserves with `payment.initiated` (a takeover of a lapsed
+reservation too); the holder's retry is judged again, refreshes the window and emits nothing, and a
+refused retry releases the QR Code in the same transaction (`payment.failed` on a chain); another
+payer is 409; once a hash is registered, no payer message changes the status (§); `PAID` or
+`CANCELLED` refuse a pre-commit with 400.
+
+**S10.5-AC4.** **Given** a post-commit
+**Then** it is accepted in every status and never judged on amount or time: on `ACTIVE` it reserves
+the QR Code for the sender with `payment.initiated`, then `payment.sent` on a chain; held by the
+sender, by someone else, `PAID` or `CANCELLED`, the status does not change; every hash on a chain is
+its own `payment.sent`; a bank rail never publishes `payment.sent`; a registered hash stops the
+window, whoever sent it, and the holder does not change. Nothing a payer sends ever makes a QR Code
+`PAID`.
+
+**S10.5-AC5.** **Given** an accepted notification
+**Then** it is stored as a `qr_code_notification` row (received time, `received_in_status` = the
+effective status at receipt, `deviations`, phase, network, currency, amount, tip, transaction id,
+`payer.info`, signer subject, the notification as accepted, the compact JWS) before its events, in
+the same transaction, and each event is built by `BuildEvent` from that row; `deviations` and
+`receivedInStatus` are on every event a notification produces.
+
+**S10.5-AC6.** **Given** concurrent notifications
+**Then** 32 pre-commits from different payers on one QR Code end with exactly one 200 and the rest
+409; the same payer racing itself gets 200 (the re-run decides, ADR-0025); a notification that keeps
+losing is a 409 "busy" with the current status, never a 500.
+
+**S10.5-AC7.** **Given** `x9.reservation.ttl-seconds: 0`
+**Then** a reservation never lapses and ends only by a refused retry, `NOT_SENT` or the status-update
+API (ADR-0036); a Go test proves it on the test clock.
+
+**S10.5-AC8.** **Given** the harness
+**Then** these keys are added and pass: `X9-MAP-020` to `-045` and `-051`'s hash case;
+`test_payment_notification.py`; `test_two_phase.py`; `test_settlement.py`; `test_tip_offers.py`;
+`X9-HOLD-401`, `-402`, `-405` to `-407`; `X9-LIFE-507`; `X9-PATCH-433`; the `test_signatures.py`
+keys that take a reservation; `test_time_edges.py` except `X9-TIME-013` (`java_only`) and
+`X9-TIME-015` (Epic 12).
+
+### Story 10.6: A PSP pays somebody else's QR Code through the Go build
+
+As a **PSP integrating as a payer**,
+I want the pre-payment and post-payment endpoints to sign, deliver and check for me,
+So that I never build a JWS, and I know whether the payee's yes was really signed.
+
+**Implements:** FR25; FR33 (the answer is checked); ADR-0015, ADR-0027 (certificate fetching),
+ADR-0028 (2026-11-14 amendment), ADR-0036 (pre-commit on every rail); `R-EP-10`, `R-ADR0015`,
+`R-I12-06` to `-08`
+
+**Acceptance Criteria:**
+
+**S10.6-AC1.** **Given** `POST /api/v1/payment-notification/pre-payment` or `post-payment`
+**Then** a pre-payment carrying a `transactionId`, a post-payment without one, or a relative
+endpoint is a 400 before anything is sent; otherwise the notification is composed, signed with this
+deployment's key (S10.2-AC1) and posted as `application/jose` to the endpoint. There is no
+rail-specific refusal: pre-commit exists on every rail (ADR-0036), and the pre-payment description
+in `openapi.yaml`, which still tells FedNow and RTP payers to skip it, is corrected; no schema
+changes.
+
+**S10.6-AC2.** **Given** the delivery
+**Then** redirects are not followed; no answer, a closed connection, or a whole answer (headers and
+body) not received within 15 seconds is a 502 `notification-undeliverable`.
+
+**S10.6-AC3.** **Given** the payee's answer
+**Then** it is returned as a 200 with `accepted` and the payee's body, a refusal included; its
+signature is checked against the truststore and its `correlationId` against the one sent, and
+reported as `signature` `VERIFIED`, `ABSENT` or `INVALID` with a `signatureProblem` from the closed
+list; a 200 that is not verified is still `accepted` (an unsigned yes). The check reports, never
+refuses.
+
+**S10.6-AC4.** **Given** the harness
+**Then** these keys are added and pass: `test_payee_answers.py`; the payer-side cases of
+`test_payers.py`; `X9-SIG-470` to `-475` of `test_golden.py`; `test_contract.py`'s cases for
+`sendPrePaymentNotification` and `sendPostPaymentNotification`.
+
+### Story 10.7: The decoder reads a scanned QR Code and fetches its payload
+
+As a **payer's app**,
+I want to send the scanned string and get the payee's verified payload, or a refusal I can act on,
+So that I can tell "do not pay" from "try again".
+
+**Implements:** FR25; ADR-0027 (EMV refused, never tolerated; certificate fetching); `R-EP-09`,
+`R-EP-26`, `R-EP-28`, `R-I9-02`, `R-ADR0027-07`
+
+**Acceptance Criteria:**
+
+**S10.7-AC1.** **Given** `POST /api/v1/qrcode-emv-decoder`
+**Then** malformed EMV (by `internal/emv`'s rules) is a 400 `business-rule-violation` whose
+violation reads `qrCode: The QR Code is malformed: …`, before any fetch; a well-formed string with no
+`org.x9` template carrying a URL is refused the same way, saying so.
+
+**S10.7-AC2.** **Given** the location URL
+**Then** a payload request signed with this deployment's key is sent to it; a URL is this
+deployment's own only when its host, port included, equals the public host, ignoring case, and is
+then read internally; any other is fetched over `https`, without user information; the payload's
+JWS is verified (S10.2-AC1).
+
+**S10.7-AC3.** **Given** the payee's answer
+**Then** a refusal is a 400 `payload-refused` (any other 4xx the payee gave relayed the same way)
+whose `violations` carry the payee's reason, capped and reduced to plain strings; no answer is a 502
+`payload-unreachable` carrying no address; a payload is a 200 `PaymentPayloadResponse` with the
+amount due priced by S9.4-AC3, and an unknown network in someone else's payload is carried intact
+(I-9).
+
+**S10.7-AC4.** **Given** the harness
+**Then** these keys are added and pass: `X9-DEC-016`; `X9-DEC-006`, `-007`; `test_contract.py`'s
+cases for `decodeEmv`.
+
+### Story 10.8: The whole suite passes on Go
+
+As the **owner**,
+I want the Go build to pass every test the Java build passes, and the ones Java fails by mistake,
+So that Epic 11's differential run starts from two builds that each pass on their own.
+
+**Implements:** FR24, FR25; ADR-0030 ("a black-box suite defines done"), ADR-0028
+
+**Acceptance Criteria:**
+
+**S10.8-AC1.** **Given** the Go run of Story 9.1
+**Then** `go-required.txt` gives way to the whole suite under `X9_REQUIRE_ALL=1`: every test passes
+except the `java_only` ones, skipped with their reason, and `X9-TIME-015` (retention, Epic 12), a
+strict expected failure on Go that names Epic 12, so it turns red the day retention lands.
+
+**S10.8-AC2.** **Given** `test_contract.py` on Go
+**Then** its last line reads `N cases generated, N executed (0 known gaps, 0 failed)`: the Go build
+enforces every constraint of the contract, with no gaps list of its own.
+
+**S10.8-AC3.** **Given** `test_golden.py` and `test_database.py` on Go
+**Then** every golden case gets the manifest's verdict and code on the service, every golden EMV
+string is read and re-encoded identically, and the PostgreSQL inspector sees what the API says.
+
+**S10.8-AC4.** **Given** the `blackbox-go` job
+**Then** it runs the whole suite on every pull request touching the Go code, `db/` or
+`others/blackbox/`, and fails the pull request on any failure; the Java job is unchanged.
+
+**S10.8-AC5.** **Given** a behaviour where Go follows the standard or an ADR and Java does not (BUG-004,
+the "cursor ahead of log" answer, an expired QR Code kept)
+**Then** each is listed, with its test key, in the pull request for Epic 11's
+`TOLERATED-DIFFERENCES.md`; no rule-coverage row loses its test.
+
+## Epics 11–17: stubs
+
+Detailed in a later run of this workflow. Epic 11 proves equivalent what Epics 9 and 10 port,
+the Epic 2 behaviour included (signed answers and their verification, pre-commit on every rail, the
+holder retry and takeover event, exact `validUntil`).
 
 | Epic | Phase | Scope |
 |---|---|---|
-| 9 | 5 | Billers manage payment requests on Go (FR24) |
-| 10 | 6 | Payers fetch, notify and are evented on Go, under the pre-commit / post-commit rule (FR25) |
 | 11 | 7 | Proven equivalent to Java: differential run and interop (FR26) |
 | 12 | 8 | Retention without surprises: housekeeping (FR27) |
 | 13 | 9 | Operators can migrate data and configuration, reservation holders included; the legacy `SPRING_*`, `MONGO*` and `JASYPT_*` variables are housekept out of the Helm chart, the compose files and the docs, since the Go service refuses them (owner, 2026-11-14) (FR28) |
