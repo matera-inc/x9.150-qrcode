@@ -139,6 +139,11 @@ paths:
         replace were silent — an unknown currency used to be discarded and answered **200**, with the
         amount the caller sent simply absent afterwards, and the revision incremented anyway so even
         a conditional client saw every sign of success.
+
+        **Dates are checked on the merged result, as at creation.** Once every change is applied,
+        `bill.invoice.dueDate` and every `paymentMethods[].validUntil` must be no later than
+        `validUntil`, whichever side the patch moved; otherwise **400** naming the field, and nothing
+        changes, the revision included. A patch of `validUntil` alone is held to the bill's due date.
       operationId: patchPaymentRequest
       tags:
         - payment-request

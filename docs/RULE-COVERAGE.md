@@ -168,6 +168,7 @@ that is here must still be marked `GAP`.
 | `R-EP-24` | The loc URL fits in tag 26 (99 characters), so the host is at most 37 characters. | `X9-LOC-425` | `S4.2-AC1`, `S4.2-AC2` |
 | `R-EP-25` | A host longer than 37 characters is rejected at startup. | GAP | — |
 | `R-EP-26` | A payer fetches a payload or a JWK set from another host over `https` only. | GAP | — |
+| `R-EP-27` | A PATCH is checked on its merged result: `dueDate` and every payment method's `validUntil` no later than `validUntil`, whichever side it moved; a refused PATCH changes nothing, the revision included. | `X9-PATCH-040`, `X9-PATCH-041`, `X9-PATCH-426` | — |
 
 ## INTERPRETATION.md
 

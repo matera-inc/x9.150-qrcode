@@ -87,6 +87,11 @@ public class PatchQRCodeUseCase extends UseCase<PatchQRCodeInput, PatchQRCodeOut
 
         qrCodeEntity.updatePaymentMethods(updatedPaymentMethods, changedSomethingElse);
 
+        // Against the merged state, as creation checks them: dueDate and every method's validUntil
+        // no later than validUntil. A PATCH moving only validUntil used to skip the dueDate check,
+        // which ran only when the bill itself was patched. Refused before anything is saved.
+        qrCodeEntity.requireDatesWithinValidUntil();
+
         // Against the merged state: a later validUntil, a larger fee or a larger amount each raise
         // the largest amount the bill can show (ADR-0005). Refused before anything is saved.
         qrCodeEntity.requireLateFeeWithinEighteenDigits();

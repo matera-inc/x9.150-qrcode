@@ -58,6 +58,11 @@ x9:
 | `/api/v1/signature/generate` | POST | Generate a JWS for JSON content |
 | `/api/v1/signature/validate` | POST | Validate a JWS |
 
+> **A PATCH is checked as a whole.** Once every change in it is applied, the result must pass the
+> date rules of creation: `bill.invoice.dueDate` and every `paymentMethods[].validUntil` no later
+> than `validUntil`. A PATCH that breaks one, whichever side it moved, is refused with 400 naming
+> the field, and changes nothing, the revision included.
+
 > **Two roles, one service.** Most endpoints serve the **payee** — the side that issues a QR Code
 > and is told about payments. The two under `/api/v1/payment-notification/` serve the **payer**: they
 > compose, sign and deliver a notification to *someone else's* X9.150 deployment, so a PSP

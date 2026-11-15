@@ -247,6 +247,15 @@ public class QRCodeEntity {
         this.qrCodeEntityValidator.validateLateFeeBound();
     }
 
+    /**
+     * Refuses a merged state that creation would refuse on dates: a {@code dueDate} or a payment
+     * method's {@code validUntil} after the QR Code's {@code validUntil}. Run by the PATCH use case
+     * once every change is applied, so a PATCH moving only one side of a pair is held to the rule.
+     */
+    public void requireDatesWithinValidUntil() {
+        this.qrCodeEntityValidator.validateDatesWithinValidUntil();
+    }
+
     public static QRCodeEntity restore(UUID id,
                                        UUID locationId,
                                        Integer revision,
