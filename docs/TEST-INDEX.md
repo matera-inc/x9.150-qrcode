@@ -6,10 +6,10 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**769 tests documented** — every JUnit test and every black-box case.
+**775 tests documented** — every JUnit test and every black-box case.
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
-(STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map and ADR-0036), the
+(STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036 and ADR-0027's EMV rules), the
 tests that prove it and the acceptance criteria they cite, and the rules that have no test yet. A
 check in CI keeps it true (`docs/check/check_rule_coverage.py`).
 
@@ -448,6 +448,7 @@ The status-update matrix itself is `X9-MAP-010` to `-013` above.
 | `X9-LOC-012` | moving the location is not a no-op even when the amounts are unchanged | `LocationHandoverApiTest.java` |
 | `X9-LOC-013` | a location held by a live QR Code is not handed over | `LocationHandoverApiTest.java` |
 | `X9-LOC-020` | a payload request naming another location is refused | `JwsQRCodeSignatureServiceTest.java` |
+| `X9-LOC-021` | a payload request whose signed `qrCodeContent` is malformed EMV is refused, saying so | `JwsQRCodeSignatureServiceTest.java` |
 | `X9-LOC-030` | the payload URL is extracted from EMV tag 26 | `MateraAdoptQRCodeEMVServiceTest.java` |
 | `X9-LOC-040` | a location held by a live QR Code cannot be claimed at creation | `QRCodesApisFlowTest.java` |
 | `X9-LOC-041` | the payload is retrieved by location, signed | `QRCodesApisFlowTest.java` |
@@ -469,6 +470,7 @@ The status-update matrix itself is `X9-MAP-010` to `-013` above.
 | `X9-LOC-482` | this deployment's own host is read internally, on its local port (the control for X9-LOC-481) | `DefaultQRCodeLocationServiceTest.java` |
 | `X9-LOC-483` | a URL that only mentions the own host (query, path, user information, subdomain, suffix, other port) is another host's, fetched over `https` without user information (BUG-005) | `DefaultQRCodeLocationServiceTest.java` |
 | `X9-LOC-484` | the own host is recognised whatever its case, and with user information dropped (the control for X9-LOC-483) | `DefaultQRCodeLocationServiceTest.java` |
+| `X9-LOC-485` | a configured host with a character outside printable ASCII, or a space, stops the service at startup | `X9PropertiesHostLengthTest.java` |
 | `X9-LOC-501` | a live QR Code keeps its location: another create cannot take it | `test_location_handover.py` |
 | `X9-LOC-502` | a CANCELLED QR Code's location goes to the taker, and the donor gets a new one | `test_location_handover.py` |
 | `X9-LOC-503` | the payload is a JWS that verifies against the payee's certificate | `test_payload.py` |
@@ -502,6 +504,10 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-DEC-010` | an ordinary reason passes through untouched | `RelayedRefusalIsSafeToRenderTest.java` |
 | `X9-DEC-011` | control characters do not survive | `RelayedRefusalIsSafeToRenderTest.java` |
 | `X9-DEC-012` | a reason reduced to nothing still says something | `RelayedRefusalIsSafeToRenderTest.java` |
+| `X9-DEC-013` | a malformed EMV string is refused, never tolerated: the Go build's 19 malformed cases by name, plus three only a Java string can carry | `EmvReaderTest.java` |
+| `X9-DEC-014` | a well-formed EMV string is read: the golden string, a lower-case CRC, org.x9 among other templates, UTF-16 lengths (the control for X9-DEC-013) | `EmvReaderTest.java` |
+| `X9-DEC-015` | the decoder refuses each malformed case with a 400 naming `qrCode`, before any fetch | `DecoderRelaysTheRefusalApiTest.java` |
+| `X9-DEC-016` | the decoder refuses the Go build's 19 malformed cases with a 400, before any fetch (black box) | `test_qr_code.py` |
 
 ## Editing a payment request
 

@@ -412,6 +412,17 @@ rules the ADR states outside the table.
 | `R-ADR0036-35` | `NOT_SENT`: the holder's releases with `payment.failed`, a lapsed reservation's included; 409 from someone else; 400 on `ACTIVE`, `PAID`, `CANCELLED`. | `X9-HOLD-122`, `X9-HOLD-123`, `X9-HOLD-124`, `X9-HOLD-125`, `X9-HOLD-316` | — |
 | `R-ADR0036-36` | `NOT_SENT` with a `transactionId` is a post-commit, flagged `ACTION_CONTRADICTS_HASH`. | `X9-HOLD-139`, `X9-HOLD-220`, `X9-MAP-044` | `S4.1-AC1`, `S4.1-AC3` |
 
+## ADR-0027: EMV
+
+The owner's decision of 2026-11-15, recorded in ADR-0027's EMV section: bad QR Codes are not
+tolerated, on either build. The Go build's tests are in `internal/emv`; these are the Java build's
+and the black-box suite's.
+
+| Rule | What it says | Tests | Proves |
+|---|---|---|---|
+| `R-ADR0027-07` | Malformed EMV is refused, never tolerated: a bad, missing or non-hex CRC, a zero, non-numeric or overrunning length, a duplicate top-level tag, a truncated field or template. The decoder answers 400 naming `qrCode`, before any fetch; a payload request carrying it is refused as a content mismatch. | `X9-DEC-013`, `X9-DEC-014`, `X9-DEC-015`, `X9-DEC-016`, `X9-LOC-021` | — |
+| `R-ADR0027-08` | A configured host with a character outside printable ASCII, or a space, stops the service at startup. | `X9-LOC-485` | — |
+
 ---
 
 <sub>Copyright © 2026 Matera Systems, Inc. Licensed under the Matera Source License v1.0 (source-available; not open source) — see LICENSE.md at the repository root. Creating a Derivative Work from this document — by AI/ML generation or by manual re-implementation based on it — is governed by that license (see the "Derivative Work" definition and Annex A).</sub>

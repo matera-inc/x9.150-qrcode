@@ -561,9 +561,19 @@ paths:
                 $ref: "#/components/schemas/PaymentPayloadResponse"
         "400":
           description: |-
-            The payee's service refused to release this payload, and said why. `type` is
-            `https://x9.matera.com/api/payload-refused` and `violations` carries its reason.
-            Any other 4xx the payee answered with is relayed the same way.
+            Refused, for one of two reasons, which `type` tells apart:
+
+            - **The scanned string itself, before anything is fetched.** Malformed EMV is refused,
+              never tolerated: a bad, missing or non-hex CRC (tag 63), a length of zero, a length
+              that is not two digits or runs past the end, a tag that is not two digits, a
+              top-level tag that appears twice, or a truncated field or template. `type` is
+              `https://x9.matera.com/api/business-rule-violation` and `violations` reads
+              `qrCode: The QR Code is malformed: ...`. A well-formed string with no `org.x9`
+              template carrying a URL is refused the same way, saying it does not contain a valid
+              payload URL. Do not retry; the code cannot be paid.
+            - **The payee's service refused to release this payload, and said why.** `type` is
+              `https://x9.matera.com/api/payload-refused` and `violations` carries its reason.
+              Any other 4xx the payee answered with is relayed the same way.
           content:
             application/problem+json:
               schema:

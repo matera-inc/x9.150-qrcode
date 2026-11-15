@@ -48,6 +48,17 @@ public class X9Properties implements InitializingBean {
                     "property x9.public-endpoints.host is not present, please check property value.");
         }
 
+        // EMV tag 26 carries the host in its URL: printable ASCII only, and no space (ADR-0027, EMV).
+        String host = publicEndpoints.getHost();
+        for (int i = 0; i < host.length(); i++) {
+            char c = host.charAt(i);
+
+            if (c <= ' ' || c > '~') {
+                String error = "[ERROR]: Property x9.public-endpoints.host must be printable ASCII with no space (found U+%04X at position %d) !";
+                throw new IllegalStateException(error.formatted((int) c, i));
+            }
+        }
+
         int fullPayloadUrlLength = publicEndpoints.getPayloadDomain().length() + SHORTENED_UUID_LENGTH;
         if (fullPayloadUrlLength > emv.getUrlMaxSize()) {
             int domainLimit =  emv.getUrlMaxSize() - (publicEndpoints.getPayloadPath().length() + SHORTENED_UUID_LENGTH);

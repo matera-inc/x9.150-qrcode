@@ -147,7 +147,13 @@ The test CA covers each branch: valid, revoked by CRL, revoked by OCSP, no respo
 - TLV encode and decode;
 - CRC16-CCITT (poly `0x1021`, init `0xFFFF`);
 - tag 26 with GUI `org.x9` and sub-tag `01`;
-- golden strings from Java, and a fuzzed decoder.
+- golden strings from Java, and a fuzzed decoder;
+- **2026-11-15 (owner decision): malformed EMV is refused, never tolerated, on both builds.** A bad,
+  missing or non-hex CRC, a zero, non-numeric or overrunning length, a duplicate top-level tag, and a
+  truncated field or template are refused with a 400 naming `qrCode`, before anything is fetched
+  from the host the string names; the case list is Go's `TestDecodeRefusesMalformedInput`, and Java
+  reads EMV with the same rules by hand (`EmvReader`) rather than through the jar. A configured host
+  with any character outside printable ASCII, or a space, stops the service at startup.
 
 The ≤37-character host check stays at startup.
 
