@@ -23,10 +23,15 @@ some have persisted ULID cursors.
 - **All ids are `UUID` columns,** minted by the server with `github.com/google/uuid`, and bound as
   UUIDs, never as strings:
   - **QR Code id:** v7 (insert-ordered key);
-  - **location id:** v4 (unguessable, printed in public, leaks no creation time);
+  - **location id:** the QR Code's own id when the create gives none, as Java does
+    ([0024](0024-a-qr-code-is-one-row-and-every-patch-is-audit-logged.md)); a fresh v4 when a rebind
+    moves a holder to a new location;
   - **event id:** v7.
-- **On the wire, ids keep the 32-hex form.** Input is accepted in either case, with or without
-  dashes. Output is always 32 upper-case hex.
+- **The QR Code id is exactly 32 hex characters, with no dashes, in requests and in answers,** as
+  X9.150 defines it (it must fit an ACH field). Input is accepted in either case; output is upper
+  case. A location id has the same form, since it is printed in the QR Code's URL. **This is the
+  standard's id format, not a rule for every UUID:** `eventId` and `correlationId` keep the usual
+  dashed form (`format: uuid` in the contract). *(Amended 2026-11-15, owner.)*
 - **The cursor is `payment_event.seq`, as a decimal string** ([0025](0025-a-transition-is-one-transaction-and-its-event-is-in-it.md)).
 - **ULID cursors are translated, not reset.**
   - Migrated events keep their Java cursor in a separate table,
@@ -50,8 +55,12 @@ some have persisted ULID cursors.
 - **Caller-supplied ids.** A breaking change for every integrator of an external standard.
 - **A forced cursor reset at cutover.** It works, thanks to `eventId` dedupe, but every consumer
   must act. Translating is cheap.
-- **v7 location ids.** They would expose the creation time in a public QR Code.
-- **Dashed UUIDs on the wire.** They change a format consumers already store.
+- **A v4 default location id, so a printed code would not reveal its creation time.** Rejected
+  on 2026-11-15 (owner): the payload anyone can fetch from the code already carries `createdAt`,
+  and a v7 id still has 74 random bits, so it cannot be guessed. Java's default (the QR Code's own
+  id) stands.
+- **Dashed QR Code ids on the wire, in or out.** X9.150 defines the 32-character form, and
+  consumers already store it.
 
 ---
 
