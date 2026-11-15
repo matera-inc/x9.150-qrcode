@@ -24,6 +24,9 @@ from x9client.samples import TX_HASH
 
 PRE = "/api/v1/payment-notification/pre-payment"
 POST = "/api/v1/payment-notification/post-payment"
+# The 502's detail (owner, 2026-11-15): no answer is not proof that nothing arrived.
+ANSWER_NOT_RECEIVED = ("The payee's answer was not received; the payee may have received the "
+                       "notification. Retrying is safe.")
 
 
 def notify_through(api, peer, *, post=False):
@@ -208,12 +211,14 @@ def test_a_payee_that_hangs_up_without_answering_is_502(api, peer, events):
     """X9-SIG-504 — a payee that hangs up without answering is 502, and nothing changes here.
 
     S3.5-AC2 case 17 — no answer at all: the payee reads the notification and closes the
-    connection. 502, a delivery to retry, and nothing changed here."""
+    connection. 502, a delivery to retry, and nothing changed here. The payee did receive it, so
+    the problem's detail must not say that nothing was delivered (owner, 2026-11-15)."""
     peer.answer = lambda question: peer_module.Answer(0, hang_up=True)
 
     response, qr = notify_through(api, peer)
 
     assert response.status == 502, f"no answer is a delivery to retry: {response}"
+    assert response.body["detail"] == ANSWER_NOT_RECEIVED, response
     assert peer.received, "it was delivered; the payee simply never answered"
     assert_untouched(api, events, qr)
 

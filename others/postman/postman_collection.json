@@ -644,7 +644,7 @@
             "pre-payment"
           ]
         },
-        "description": "PAYER SIDE. Announce a payment to the payee and wait for permission, then pay exactly what was announced.\n\nMust NOT carry a transactionId: the payee infers the phase from its absence, so one here reads as a payment already made and the QR Code is never reserved.\n\n200 with accepted=false is a REFUSAL, not an error. 502 means the payee was unreachable and nothing was delivered - retry that one.",
+        "description": "PAYER SIDE. Announce a payment to the payee and wait for permission, then pay exactly what was announced.\n\nMust NOT carry a transactionId: the payee infers the phase from its absence, so one here reads as a payment already made and the QR Code is never reserved.\n\n200 with accepted=false is a REFUSAL, not an error. 502 means the payee's answer was not received; the payee may have received the notification, and retrying is safe.",
         "body": {
           "mode": "raw",
           "raw": "{\n  \"endpoint\": \"{{payeeNotificationEndpoint}}\",\n  \"notification\": {\n    \"payment\": {\n      \"qrcodeId\": \"{{id}}\",\n      \"amount\": 22500,\n      \"currency\": \"USDC\",\n      \"network\": \"Solana\"\n    },\n    \"payer\": {\n      \"info\": \"payer@example.com\"\n    },\n    \"blockchain\": {\n      \"action\": \"PAYMENT_INITIATED\",\n      \"from\": \"{{payerWallet}}\",\n      \"to\": \"{{payeeWallet}}\"\n    }\n  }\n}",
