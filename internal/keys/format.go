@@ -24,31 +24,14 @@ const (
 	truststoreName      = "certificate.truststore.location (X9_CERTIFICATE_TRUSTSTORE_LOCATION)"
 )
 
-// PKCS12 decodes a PKCS#12 file. It is an interface so that a decoder lands without touching the
-// rest: the standard library and golang.org/x/crypto/pkcs12 cannot read what keytool and OpenSSL 3
-// write today (PBES2 with AES, an HMAC-SHA-256 MAC), and the module that can is awaiting approval.
+// PKCS12 decodes a PKCS#12 file. SSLMatePKCS12 is the one this build uses; the interface keeps the
+// library at one place, and lets a test stand in for it.
 type PKCS12 interface {
-	// DecodeKeystore returns the private key and every certificate of the file. alias, when not
-	// empty, selects the entry by its friendly name (Java's enforced-alias); without it the file
-	// must hold exactly one private key.
+	// DecodeKeystore returns the private key and every certificate of the file. alias is Java's
+	// enforced-alias; a decoder that cannot select an entry by name requires exactly one key.
 	DecodeKeystore(data []byte, password, keyPassword, alias string) (crypto.PrivateKey, []*x509.Certificate, error)
 	// DecodeTruststore returns the file's trusted certificates.
 	DecodeTruststore(data []byte, password string) ([]*x509.Certificate, error)
-}
-
-// unsupportedPKCS12 is this build's decoder: it refuses, naming the conversion to PEM.
-type unsupportedPKCS12 struct{}
-
-const pkcs12Refusal = "is a PKCS#12 file, which this build cannot read yet (its decoder awaits a dependency " +
-	"decision); convert it to PEM, key and chain in one file, with `openssl pkcs12 -in <file> -nodes -out <file>.pem` " +
-	"and point the location at the PEM file"
-
-func (unsupportedPKCS12) DecodeKeystore([]byte, string, string, string) (crypto.PrivateKey, []*x509.Certificate, error) {
-	return nil, nil, fmt.Errorf("%w: %s %s", ErrUnsupportedFormat, privateKeystoreName, pkcs12Refusal)
-}
-
-func (unsupportedPKCS12) DecodeTruststore([]byte, string) ([]*x509.Certificate, error) {
-	return nil, fmt.Errorf("%w: %s %s", ErrUnsupportedFormat, truststoreName, pkcs12Refusal)
 }
 
 type format int

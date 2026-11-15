@@ -12,13 +12,14 @@
 // never touches one in use, so a signature in progress finishes with the key it started with, and
 // its certificate headers name that key.
 //
-// Formats: PEM, read here in full; PKCS#12, behind the PKCS12 interface (this build has no decoder,
-// pending a dependency decision); JKS, refused with the conversion to run (ADR-0031). Go never
-// decrypts Jasypt: internal/config refuses an ENC(…) value before this package runs.
+// Formats: PEM, read here; PKCS#12, read with software.sslmate.com/src/go-pkcs12 behind the PKCS12
+// interface; JKS and JCEKS, refused with the conversion to run (ADR-0031). Go never decrypts
+// Jasypt: internal/config refuses an ENC(…) value before this package runs.
 //
-// With no location configured, the bundled DEMO identity is used, as the Java build does: the
-// demo key converted from Java's x9-demo.jks by others/scripts/convert-demo-keystores.sh. It is
-// NON-PRODUCTION (its private key is public) and a WARN says so at every load.
+// With no location configured, the bundled DEMO identity is used, as the Java build does: Java's
+// own x9-demo.jks and x9-demo-truststore.jks, which are PKCS#12 files, copied as .p12 by
+// others/scripts/convert-demo-keystores.sh. It is NON-PRODUCTION (its private key is public) and a
+// WARN says so at every load.
 package keys
 
 import (
@@ -48,10 +49,13 @@ import (
 // in x9-demo.jks (CN=x9.matera.com, OU=Demo NonProduction). The test-clock guard depends on it.
 const DemoFingerprint = "67e9eae59581e99c81d3744fe086042f7363e13c2d15e05113011d2d76e5ed1b"
 
+// demoPassword opens the bundled demo files; it is public, in the Java build's application.yml.
+const demoPassword = "x9demo123"
+
 var (
-	//go:embed bundled/x9-demo.pem
+	//go:embed bundled/x9-demo.p12
 	bundledKeystore []byte
-	//go:embed bundled/x9-demo-truststore.pem
+	//go:embed bundled/x9-demo-truststore.p12
 	bundledTruststore []byte
 )
 
@@ -114,13 +118,12 @@ type Store struct {
 // Option configures a Store.
 type Option func(*Store)
 
-// WithPKCS12 sets the PKCS#12 decoder. Without it, a PKCS#12 file is refused with the conversion to
-// PEM to run.
+// WithPKCS12 sets the PKCS#12 decoder (SSLMatePKCS12 when not given).
 func WithPKCS12(d PKCS12) Option { return func(s *Store) { s.pkcs12 = d } }
 
 // Load reads the keystore and the truststore once, and refuses to start on any problem.
 func Load(cfg config.Certificate, logger *slog.Logger, opts ...Option) (*Store, error) {
-	s := &Store{cfg: cfg, pkcs12: unsupportedPKCS12{}, logger: logger}
+	s := &Store{cfg: withDemoPasswords(cfg), pkcs12: SSLMatePKCS12{}, logger: logger}
 	for _, o := range opts {
 		o(s)
 	}
@@ -128,7 +131,7 @@ func Load(cfg config.Certificate, logger *slog.Logger, opts ...Option) (*Store, 
 	if err != nil {
 		return nil, err
 	}
-	k, err := build(cfg, ks, ts, s.pkcs12)
+	k, err := build(s.cfg, ks, ts, s.pkcs12)
 	if err != nil {
 		return nil, err
 	}
@@ -136,6 +139,17 @@ func Load(cfg config.Certificate, logger *slog.Logger, opts ...Option) (*Store, 
 	s.loadedDigest = digest
 	s.logLoaded(false, k)
 	return s, nil
+}
+
+// withDemoPasswords gives a bundled file its published password, as Java's defaults do.
+func withDemoPasswords(cfg config.Certificate) config.Certificate {
+	if cfg.PrivateKeystore.Location == "" {
+		cfg.PrivateKeystore.Password, cfg.PrivateKeystore.PrivateKeyPassword = demoPassword, demoPassword
+	}
+	if cfg.Truststore.Location == "" {
+		cfg.Truststore.Password = demoPassword
+	}
+	return cfg
 }
 
 // Current is the snapshot to use for one signature or one verification. Take it once and use both
@@ -305,6 +319,6 @@ func samePublicKey(a, b crypto.PublicKey) bool {
 	return ok && e.Equal(b)
 }
 
-// ErrUnsupportedFormat is returned for a file this build cannot read: JKS, JCEKS, or PKCS#12 while
-// no decoder is configured.
+// ErrUnsupportedFormat is returned for a file this build cannot read: JKS, JCEKS, an encrypted PEM
+// key, or a file that is neither PEM nor PKCS#12.
 var ErrUnsupportedFormat = errors.New("unsupported keystore format")

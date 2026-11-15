@@ -148,8 +148,8 @@ type PrivateKeystore struct {
 	PrivateKeyPassword string `yaml:"private-key-password"`
 	// Alias names the keystore in logs, as in Java; it does not select an entry.
 	Alias string `yaml:"alias"`
-	// EnforcedAlias selects the entry of a PKCS#12 file holding several; without it the file must
-	// hold exactly one private key, as in Java.
+	// EnforcedAlias is Java's entry selector. It is accepted and not used: the PKCS#12 reader cannot
+	// select an entry by name, so the file must hold exactly one private key.
 	EnforcedAlias string `yaml:"enforced-alias"`
 }
 

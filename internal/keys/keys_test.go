@@ -6,6 +6,7 @@
 package keys
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/ed25519"
@@ -14,6 +15,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -66,23 +68,24 @@ func TestBundledDemoIdentity(t *testing.T) {
 	}
 }
 
-// S8.2-AC4: the bundled PEM is the conversion of Java's JKS, byte for byte (the script's check).
-// The JKS cannot be read here, so the certificate is compared with the copy Java's guard pins.
-func TestBundledDemoMatchesTheJavaFingerprint(t *testing.T) {
-	block, _ := pem.Decode(bundledTruststore)
-	if block == nil {
-		t.Fatal("the bundled truststore is not PEM")
-	}
-	c, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		t.Fatal(err)
+// S8.2-AC4: the bundled files are Java's demo files, byte for byte (they are PKCS#12 despite their
+// .jks names), so both builds sign with the same key and trust the same certificate.
+func TestBundledDemoIsJavasDemo(t *testing.T) {
+	for bundled, java := range map[string][]byte{"x9-demo.jks": bundledKeystore, "x9-demo-truststore.jks": bundledTruststore} {
+		want, err := os.ReadFile(javaResources + bundled) //nolint:gosec // G304: a fixed path in this repository.
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(java, want) {
+			t.Errorf("the bundled copy of %s differs from Java's; run others/scripts/convert-demo-keystores.sh", bundled)
+		}
 	}
 	s, err := Load(config.Certificate{}, newLogger(io.Discard))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !c.Equal(s.Current().Identity.Certificate()) {
-		t.Fatal("the bundled truststore does not hold the bundled demo certificate, as Java's does")
+	if trusted := s.Current().Truststore.Certificates(); len(trusted) != 1 || !trusted[0].Equal(s.Current().Identity.Certificate()) {
+		t.Fatal("the bundled truststore does not hold the bundled demo certificate alone, as Java's does")
 	}
 }
 
@@ -203,10 +206,8 @@ func TestGoldenTestCATruststore(t *testing.T) {
 	}
 }
 
-// S8.2-AC1: a JKS file is refused at startup, naming the conversion (ADR-0031). So is a PKCS#12 file
-// while this build has no decoder, naming the conversion to PEM. The content decides, not the name:
-// Java's x9-demo.jks is a PKCS#12 file (keytool's default since JDK 9), and is treated as one.
-func TestUnreadableFormatsAreRefusedWithTheirConversion(t *testing.T) {
+// S8.2-AC1: a JKS or JCEKS file is refused at startup, naming the conversion (ADR-0031).
+func TestJKSIsRefusedWithItsConversion(t *testing.T) {
 	// A JKS keystore starts with 0xFEEDFEED (JCEKS with 0xCECECECE); the rest is never read.
 	jks := writeFile(t, t.TempDir(), "signer.jks", []byte{0xFE, 0xED, 0xFE, 0xED, 0, 0, 0, 2})
 	jceks := writeFile(t, t.TempDir(), "signer.jceks", []byte{0xCE, 0xCE, 0xCE, 0xCE, 0, 0, 0, 2})
@@ -221,12 +222,6 @@ func TestUnreadableFormatsAreRefusedWithTheirConversion(t *testing.T) {
 			[]string{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION", "JKS", "x9-config-convert"}},
 		{"Java's JKS test truststore", config.Certificate{Truststore: config.Truststore{Location: javaTestPKI + "x9-test-truststore.jks"}},
 			[]string{"X9_CERTIFICATE_TRUSTSTORE_LOCATION", "JKS", "x9-config-convert", "keytool -importkeystore"}},
-		{"Java's x9-demo.jks, which is PKCS#12", config.Certificate{PrivateKeystore: config.PrivateKeystore{Location: javaResources + "x9-demo.jks"}},
-			[]string{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION", "PKCS#12", "openssl pkcs12"}},
-		{"PKCS#12 keystore", config.Certificate{PrivateKeystore: config.PrivateKeystore{Location: javaTestPKI + "x9-test-payer.p12", Password: "x9test123"}},
-			[]string{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION", "PKCS#12", "openssl pkcs12"}},
-		{"PKCS#12 truststore", config.Certificate{Truststore: config.Truststore{Location: javaTestPKI + "x9-test-ca.p12", Password: "x9test123"}},
-			[]string{"X9_CERTIFICATE_TRUSTSTORE_LOCATION", "PKCS#12", "openssl pkcs12"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := Load(tc.cfg, newLogger(io.Discard))
