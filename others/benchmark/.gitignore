@@ -1,2 +1,8 @@
 # prepare.sh's output: regenerated from the repository's test-CA material on every campaign.
 build/
+
+# Raw k6 output: compressed and published on the campaign's GitHub release, never committed. Only
+# the summaries and each run's SHA256SUMS are (package-raw.sh; README, "Publishing a campaign").
+results/**/raw.ndjson
+results/**/raw.ndjson.gz
+results/release/

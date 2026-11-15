@@ -3,10 +3,10 @@
 // Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
 // based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
 //
-// S1 — create only (S5.1-AC1). Each virtual user creates QR Codes, with the README's profile:
-// ramp to 500 VUs, sustain 3 minutes, think time 1–3 s. The body is the one the README script
-// (others/scripts/k6/create-qrcodes-load-test.js) sends, USD on FedNow, so S1 continues it, with
-// the two fields today's API refuses in it corrected (lib/x9.js says which).
+// S1 — create only (S5.1-AC1). Each virtual user creates QR Codes, with the `readme` profile:
+// ramp to 500 VUs, sustain 3 minutes, think time 1–3 s. The body is the one the retired README load
+// script (formerly others/scripts/k6/) sent, USD on FedNow, so S1 continues it, with the two fields
+// today's API refuses in it corrected (lib/x9.js says which).
 //
 //   k6 run -e BASE_URL=http://x9-qrcode:8080 others/benchmark/k6/s1-create.js
 //   k6 run -e PROFILE=smoke ...                 # a harness check, not a measurement
