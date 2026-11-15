@@ -205,10 +205,18 @@ paths:
 
         `PAYMENT_INITIATED` is the rail-agnostic entry point for a payee platform that has learned of
         a payment from its own rail — typically on initial network acceptance of an ISO 20022
-        credit-transfer request (pacs.008). It is accepted **only when the QR Code is `ACTIVE`**; a QR
-        Code that is already `PAYMENT_INITIATED`, `PAID` or `CANCELLED` is rejected with **409**,
-        whose body reports the status actually found. This is what prevents a second payment being
-        started against a QR Code that is already being paid.
+        credit-transfer request (pacs.008). On FedNow and RTP this is how a payee that receives the
+        funds reserves the QR Code without any payment notification (ANSI X9.150-2026 §9, A.11).
+
+        - From `ACTIVE` (including a reservation that has lapsed) it reserves the QR Code for nobody
+          identifiable, so no payer can take it, and publishes `payment.initiated`. This is what
+          prevents a second payment being started against a QR Code that is already being paid.
+        - On a QR Code already `PAYMENT_INITIATED` and still reserved, it is a retry: **200**, nothing
+          changes, no event (ADR-0020). The same holds for `PAID` on `PAID`, `CANCELLED` on
+          `CANCELLED` and `ACTIVE` on `ACTIVE`, so a payment system that timed out can simply send it
+          again. A retry that carries `If-Match` must carry the current tag, or it gets 412.
+        - On a QR Code that is `PAID` or `CANCELLED` it is rejected with **409**, whose body reports the
+          status actually found.
       operationId: putPaymentRequestStatusUpdate
       tags:
         - payment-request
@@ -297,10 +305,16 @@ paths:
         made — the QR Code would never be reserved, and the payer would pay against something another
         payer could still claim.
 
-        Note the rails differ. ACH and Solana reserve the QR Code on a pre-payment. FedNow and RTP
-        carry the QR Code id inside the ISO 20022 message and reconcile from it, so a notification
-        there is a courtesy that requires the End-to-End ID — which exists only once the payment has
-        been initiated. For those rails, go straight to `post-payment`.
+        A pre-payment reserves the QR Code on every rail, so it comes first whenever notifications are
+        exchanged.
+
+        On FedNow and RTP (ISO 20022 rails) the payment notification is **optional as a whole**
+        (ANSI X9.150-2026 §9, A.11): the pacs.008 carries the QR Code id, and a payee that receives
+        the funds can reserve the QR Code on the pacs.008 itself, through the status-update API. A
+        payee that relies only on the network omits `paymentNotification` from its payment requests,
+        and then no notification is sent. When a payee does ask for notifications on these rails,
+        send them as on any other rail: a pre-payment first, then the post-payment with the End-to-End
+        ID.
       operationId: sendPrePaymentNotification
       tags:
         - Payment Notification

@@ -241,6 +241,11 @@ that is here must still be marked `GAP`.
 | `R-I14-03` | A late fee rises every 24 hours from `dueDate`, and its `validUntil` is the next boundary. | `X9-TIME-005`, `X9-AMT-510` | `S2.6-AC1`, `S2.6-AC2`, `S4.5-AC1` |
 | `R-I14-04` | An adjusted amount's `validUntil` is never later than the QR Code's. | `X9-TIME-005`, `X9-AMT-511` | `S2.6-AC1`, `S2.6-AC2`, `S4.5-AC1` |
 | `R-I14-05` | The payload is priced at one instant, the later of `dateForPayment` and now, and shows only the payment methods valid at that instant; a past `dateForPayment` never brings back an expired method. | `X9-TIME-017`, `X9-TIME-020`, `X9-TIME-021` | — |
+| `R-I15-01` | A payment request without `paymentNotification` gets no notification: one sent anyway is refused, signed, and the QR Code stays `ACTIVE` (X9.150 §9). | `X9-HOLD-403` | — |
+| `R-I15-02` | On FedNow and RTP the payee can reserve the QR Code without any notification: status-update `PAYMENT_INITIATED` from `ACTIVE` reserves it for nobody identifiable, with `payment.initiated`. | `X9-MAP-010` | — |
+| `R-I15-03` | On FedNow and RTP the payee can close the QR Code from the network alone: status-update `PAID` with the End-to-End ID. | `X9-MAP-011` | — |
+| `R-I15-04` | When notifications are exchanged on FedNow and RTP, they work as on any other rail: a pre-commit reserves, a post-commit is registered. | `X9-MAP-020`, `X9-MAP-030` | — |
+| `R-I15-05` | A notification on a rail the payee does not want is refused as not needed on that rail. | NOT BUILT (ADR-0036) | — |
 
 ## ADRs 0004 to 0021
 

@@ -136,6 +136,15 @@ the post-commit is the link.
 | **Solana** | Only if the optional memo `{QRCD:"id"}` is set and survives ([SOLANA-FIELDS.md](official-spec/SOLANA-FIELDS.md)). Some custody providers' webhooks do not expose the memo | **the link, in practice** |
 | **Any other blockchain**, once interpreted | Most chains carry no memo at all | **the link** — pre-commit / post-commit is the mechanism for every chain |
 
+**On FedNow and RTP the notification is optional as a whole.** These ISO 20022 rails have two
+messages of their own: the pacs.008 starts the payment and the pacs.002 confirms it. A payee that
+receives the funds can move the QR Code to `PAYMENT_INITIATED` on the pacs.008 through the
+status-update API, which stops a second payer just as a pre-commit does, and to `PAID` on the
+pacs.002. The payment notification emulates that pair for rails and payers that lack it. A payee
+that relies only on the network omits `paymentNotification`; a payer may still send notifications
+on these rails when the payee asks for them, and they work as on any other rail. See
+[INTERPRETATION I-15](official-spec/INTERPRETATION.md#i-15--on-fednow-and-rtp-the-payment-notification-is-optional-and-the-network-can-do-its-job).
+
 ### Every case, by message and status
 
 This is [ADR-0036](docs/adr/0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md)'s

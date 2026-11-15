@@ -118,6 +118,19 @@ BEST-PRACTICES say so.
 
 ### Pre-commit on every rail
 
+> **Amended 2026-11-15 (owner): on FedNow and RTP the notification itself is optional.** Whenever
+> notifications are exchanged, the pre-commit comes first on every rail, as below. But on ISO 20022
+> rails (FedNow, RTP; Pix would be another) the payee PSP that receives the funds sees the pacs.008
+> and the pacs.002 itself: it can reserve the QR Code on the pacs.008 through status-update
+> `PAYMENT_INITIATED` ([ADR-0008](0008-status-update-is-the-iso20022-entry-point.md)), which closes the
+> two-payer race just as a pre-commit does, and mark it `PAID` on the pacs.002. The notification
+> emulates that pair, so on these rails it is optional as a whole (X9.150 §9 and A.11). This service
+> **always answers** a notification on every rail; a payee that relies only on the network omits
+> `paymentNotification`. When a payee needs notifications for one rail (USDC) but not another (USD
+> over FedNow), the rule is to refuse the unwanted one with an error saying it is not needed on that
+> rail; **that refusal is not built in this version.** Full reasoning:
+> [INTERPRETATION I-15](../../official-spec/INTERPRETATION.md#i-15--on-fednow-and-rtp-the-payment-notification-is-optional-and-the-network-can-do-its-job).
+
 - A pre-commit goes through the acceptance gate at the payee's clock, and takes the reservation.
 - While a reservation holds, another payer's pre-commit is refused with 409.
 - The holder may retry its pre-commit (same payer, as defined above), and the retry is judged again.
