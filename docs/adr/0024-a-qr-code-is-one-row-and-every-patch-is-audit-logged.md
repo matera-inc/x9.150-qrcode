@@ -23,8 +23,11 @@ minutes or days, and nobody reads it "as of" an instant.
 - **Allowed** only when the stored status is `ACTIVE` or `PAYMENT_INITIATED` (lines 55-57).
 - **Six top-level tags can change:** `locationId`, `validUntil`, `unstructured`,
   `additionalInformation`, `bill` and `paymentMethods`.
-  Any other key, at any level, is refused by name (2026-11-15, INTERPRETATION I-16: what we
-  generate is closed); until then it was ignored.
+  Since 2026-11-15 (INTERPRETATION I-16, owner option B): a member a GET answer carries but a
+  PATCH cannot change (`id`, `status`, `revision`, `creditor`, `bill.amountDue.currency`, …) is
+  accepted and ignored when it equals the stored value and refused by name when it differs
+  (`status: cannot be changed by a PATCH (stored ACTIVE)`); any other key, at any level, is
+  refused as unknown. Until then both were ignored.
 - **What counts as changed:** a tag counts when it is **present**; `paymentMethods` counts when its
   value differs (lines 82-86).
 - **A PATCH that changes nothing is refused.**

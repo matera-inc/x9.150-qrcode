@@ -308,9 +308,10 @@ func testARefusedPatchWritesNothing(t *testing.T, e *env) {
 	}
 }
 
-// S9.7-AC1, X9-PATCH-420, X9-PATCH-423: a member that is not one of the six tags is never applied:
-// a PATCH is closed (INTERPRETATION I-16), so it is refused by name and nothing moves; a bill
-// restated as it is counts as a change.
+// S9.7-AC1, X9-PATCH-420, X9-PATCH-423: a member that is not one of the six tags is never applied.
+// One a GET answer carries (creditor, status, …) is refused by name when it differs from the stored
+// value, and nothing moves; the same members copied from GET are accepted and ignored (option B,
+// owner 2026-11-15; INTERPRETATION I-16). A bill restated as it is counts as a change.
 func testOnlyTheSixTagsChange(t *testing.T, e *env) {
 	id := e.create(t, nil)
 	before := e.get(t, id).body
@@ -319,9 +320,10 @@ func testOnlyTheSixTagsChange(t *testing.T, e *env) {
 	if a.status != http.StatusBadRequest {
 		t.Fatalf("PATCH: %d %s, want 400", a.status, a.text)
 	}
-	for _, key := range []string{"creditor", "status", "revision", "paymentNotification"} {
-		if !strings.Contains(a.text, key+": is not a field of the payment request, whose fields are locationId, validUntil, bill, unstructured, additionalInformation and paymentMethods") {
-			t.Errorf("the refusal does not name %s: %s", key, a.text)
+	for _, said := range []string{"creditor: cannot be changed by a PATCH\"", "status: cannot be changed by a PATCH (stored ACTIVE)",
+		"revision: cannot be changed by a PATCH (stored 0)", "paymentNotification: cannot be changed by a PATCH\""} {
+		if !strings.Contains(a.text, said) {
+			t.Errorf("the refusal does not say %s: %s", said, a.text)
 		}
 	}
 	after := e.get(t, id).body
@@ -337,10 +339,21 @@ func testOnlyTheSixTagsChange(t *testing.T, e *env) {
 		t.Errorf("a PATCH changing only a member that is not a tag: %d %s, want 400 (X9-PATCH-421)", a.status, a.text)
 	}
 
-	// The amount the refused PATCH carried, applied on its own, so the restated bill below is the
-	// only change of its PATCH.
-	if a := e.patch(t, id, patchOf(900, nil), ""); a.status != http.StatusOK {
-		t.Fatalf("the amount alone: %d %s", a.status, a.text)
+	// The same members as GET renders them, beside the amount the refused PATCH carried: accepted,
+	// and only the amount applies (X9-PATCH-510).
+	copied := patchOf(900, nil)
+	for _, key := range []string{"id", "creditor", "status", "revision", "createdAt", "revisedAt", "sentAt", "paymentNotification",
+		"qrCode", "qrCodeB64", "location"} {
+		if v, ok := before[key]; ok {
+			copied[key] = v
+		}
+	}
+	copied["sentAt"] = "1999-01-01T00:00:00Z" // the instant of a GET answer is never compared
+	if a := e.patch(t, id, copied, ""); a.status != http.StatusOK {
+		t.Fatalf("the amount, with the read-only members copied from GET: %d %s", a.status, a.text)
+	}
+	if got := e.get(t, id).body; !cmp.Equal(got["creditor"], before["creditor"]) || got["status"] != "ACTIVE" {
+		t.Errorf("a copied read-only member changed something: %v", got)
 	}
 	restated := map[string]any{"description": "blackbox", "paymentTiming": "immediate", "amountDue": map[string]any{"amount": 1000}}
 	if a := e.patch(t, id, patchOf(900, map[string]any{"bill": restated}), ""); a.status != http.StatusOK || a.etag != `"2-ACTIVE"` {

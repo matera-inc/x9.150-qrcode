@@ -38,7 +38,7 @@ def _patch(api, qr, methods):
     current = api.qr(qr)
     body = {"bill": {"description": "blackbox",
                      "paymentTiming": current.body["bill"].get("paymentTiming", "immediate"),
-                     "amountDue": samples.patch_amount_due(current.body["bill"]["amountDue"])},
+                     "amountDue": current.body["bill"]["amountDue"]},
             "paymentMethods": methods}
     return api.patch(f"/api/v1/payment-request/{qr}", body=body, if_match=current.etag)
 

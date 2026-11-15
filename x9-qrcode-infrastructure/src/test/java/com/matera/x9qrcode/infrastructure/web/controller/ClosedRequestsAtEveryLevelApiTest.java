@@ -18,6 +18,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.http.HttpStatus;
 
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
@@ -267,9 +268,9 @@ class ClosedRequestsAtEveryLevelApiTest extends AbstractIntegrationTest {
      * is closed as a create is.
      *
      * <p><b>Why:</b> A refusal at create that a PATCH lets through is no refusal. The full PATCH, which
-     * the control accepts, is broken at one level per case. Note what it does NOT carry:
-     * {@code bill.amountDue.currency}, which a PATCH cannot change and which is now refused rather than
-     * dropped.
+     * the control accepts, is broken at one level per case. What a GET carries but a PATCH
+     * cannot change ({@code bill.amountDue.currency}, {@code status}, …) is not unknown: it is compared
+     * with the stored value (X9-PATCH-042, -043).
      */
     @ParameterizedTest(name = "PATCH: an unknown field in {1} at \"{0}\" is refused")
     @MethodSource("patchLevels")
@@ -289,6 +290,77 @@ class ClosedRequestsAtEveryLevelApiTest extends AbstractIntegrationTest {
         assertEquals(before.jsonPath().getInt("revision"), after.jsonPath().getInt("revision"));
         assertEquals(before.header("ETag"), after.header("ETag"), "a refused PATCH moved the ETag");
         assertEquals("closed at every level", after.jsonPath().getString("bill.description"));
+    }
+
+    /**
+     * <b>X9-PATCH-042</b> — a PATCH whose body is the GET answer, with one patchable change, is
+     * applied; every read-only member it carried, equal to the stored one, is accepted and ignored.
+     *
+     * <p><b>Source:</b> Ours. INTERPRETATION I-16 (owner, 2026-11-15, option B): what a GET carries
+     * but a PATCH cannot change ({@code id}, {@code status}, {@code revision}, {@code creditor},
+     * {@code bill.amountDue.currency}, …) is compared with the stored value as GET renders it;
+     * {@code sentAt}, the instant of the GET answer, is never compared.
+     *
+     * <p><b>Why:</b> A client reads, edits and writes back. Refusing what it copied from our own answer
+     * would make it strip fields it never meant to touch.
+     */
+    @Test
+    void aPatchOfTheGetAnswerWithOneChangeIsApplied() throws Exception {
+        String id = create();
+        MockMvcResponse before = given().when().get(CREATE + "/" + id);
+        ObjectNode body = (ObjectNode) objectMapper.readTree(before.asString());
+        body.put("unstructured", "edited from a GET copy");
+        body.put("sentAt", "1999-01-01T00:00:00Z");
+
+        MockMvcResponse response = given().contentType("application/json").body(objectMapper.writeValueAsString(body))
+            .when().patch(CREATE + "/" + id);
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode(), response.asString());
+        JsonPath after = given().when().get(CREATE + "/" + id).jsonPath();
+        assertEquals("edited from a GET copy", after.getString("unstructured"));
+        assertEquals(before.jsonPath().getInt("revision") + 1, after.getInt("revision"));
+        assertEquals("USD", after.getString("bill.amountDue.currency"));
+        assertEquals("ACTIVE", after.getString("status"));
+    }
+
+    /**
+     * <b>X9-PATCH-043</b> — a PATCH of the GET answer that changes a read-only member is refused,
+     * naming it and its stored value, and nothing moves.
+     *
+     * <p><b>Source:</b> Ours. INTERPRETATION I-16 (owner, 2026-11-15, option B), in the Go build's
+     * words: {@code <path>: cannot be changed by a PATCH (stored <value>)}; {@code (none stored)} when
+     * there is none; no value for an object.
+     *
+     * <p><b>Why:</b> Ignoring it would tell the caller the status, the currency or the creditor had
+     * changed when it had not.
+     */
+    @Test
+    void aPatchOfTheGetAnswerChangingAReadOnlyMemberIsRefused() throws Exception {
+        String id = create();
+        MockMvcResponse before = given().when().get(CREATE + "/" + id);
+        ObjectNode body = (ObjectNode) objectMapper.readTree(before.asString());
+        body.put("unstructured", "edited from a GET copy");
+        body.put("status", "CANCELLED");
+        ((ObjectNode) body.at("/creditor")).put("name", "Another Co");
+        ((ObjectNode) body.at("/bill/amountDue")).put("currency", "USDC");
+        body.put("revisedAt", "2030-01-01T00:00:00Z");
+
+        MockMvcResponse response = given().contentType("application/json").body(objectMapper.writeValueAsString(body))
+            .when().patch(CREATE + "/" + id);
+
+        assertEquals(HttpStatus.BAD_REQUEST.value(), response.statusCode(), response.asString());
+        String revisedAt = before.jsonPath().getString("revisedAt");
+        assertEquals(Set.of(
+            "creditor: cannot be changed by a PATCH",
+            revisedAt == null ? "revisedAt: cannot be changed by a PATCH (none stored)"
+                : "revisedAt: cannot be changed by a PATCH (stored " + revisedAt + ")",
+            "status: cannot be changed by a PATCH (stored ACTIVE)",
+            "bill.amountDue.currency: cannot be changed by a PATCH (stored USD)"), Set.copyOf(violations(response)),
+            response.asString());
+        assertEquals(4, violations(response).size(), response.asString());
+        MockMvcResponse after = given().when().get(CREATE + "/" + id);
+        assertEquals(before.header("ETag"), after.header("ETag"), "a refused PATCH moved the ETag");
+        assertEquals(before.jsonPath().getInt("revision"), after.jsonPath().getInt("revision"));
     }
 
     /**

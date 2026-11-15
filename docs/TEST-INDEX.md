@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**825 tests documented** — every JUnit test and every black-box case.
+**829 tests documented** — every JUnit test and every black-box case.
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
 (STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036 and ADR-0027's EMV and JWS verification rules), the
@@ -549,6 +549,8 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-PATCH-030` | a payment request is edited | `QRCodesApisFlowTest.java` |
 | `X9-PATCH-031` | the edit is visible on a subsequent read | `QRCodesApisFlowTest.java` |
 | `X9-PATCH-040` | a PATCH of `validUntil` alone, to before the bill's `dueDate`, is refused naming `bill.invoice.dueDate`; nothing changes; exactly `dueDate` is accepted | `PatchCrossFieldDatesApiTest.java` |
+| `X9-PATCH-042` | a PATCH of the GET answer with one patchable change is applied; the read-only members it carried, equal to the stored ones, are ignored | `ClosedRequestsAtEveryLevelApiTest.java` |
+| `X9-PATCH-043` | a PATCH of the GET answer changing a read-only member is refused naming it and its stored value; nothing moves | `ClosedRequestsAtEveryLevelApiTest.java` |
 | `X9-PATCH-041` | a PATCH moving `validUntil` before a method's, or a method's after the QR Code's, is refused naming `paymentMethods[0].validUntil`; nothing changes | `PatchCrossFieldDatesApiTest.java` |
 | `X9-PATCH-440` | `lockVersion` is in no answer: create, GET, PATCH, or the signed payload | `test_conditional_requests.py` |
 | `X9-PATCH-501` | a GET serves an ETag | `test_conditional_requests.py` |
@@ -560,6 +562,8 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-PATCH-507` | a PATCH omitting a currency is refused naming it, and nothing moves | `test_patch_currencies.py` |
 | `X9-PATCH-508` | a PATCH adding a currency the QR Code does not offer is refused naming it, and nothing moves | `test_patch_currencies.py` |
 | `X9-PATCH-509` | a PATCH naming only an unknown currency is refused, not a silent 200 | `test_patch_currencies.py` |
+| `X9-PATCH-510` | a PATCH whose body is the whole GET answer, with one patchable change, is applied; the read-only members are accepted | `test_closed_requests.py` |
+| `X9-PATCH-511` | the whole GET answer with a read-only member changed (status, currency, creditor) is refused naming it; nothing moves | `test_closed_requests.py` |
 
 ## Payment requests pinned: create, PATCH, ETag, rebind (Story 4.2)
 
@@ -584,8 +588,8 @@ status is `X9-MAP-002`.
 | `X9-AMT-423` | a late fee that could pass 18 digits before validUntil is refused at create (bill, fee, method) and on PATCH, naming the field | `test_payment_requests_pinned.py` |
 | `X9-AMT-422` | an amount past 2^63−1 is an unreadable body: 400 `malformed-json`, nothing created (pinned) | `test_payment_requests_pinned.py` |
 | `X9-LOC-425` | tag 26 fits in 99 characters, which limits the configured host to 37 | `test_payment_requests_pinned.py` |
-| `X9-PATCH-420` | fields that are not patchable (creditor, status, id, revision, …) are refused by name and nothing applies | `test_payment_requests_pinned.py` |
-| `X9-PATCH-421` | a patch carrying a field that is not patchable is refused naming it, and nothing moves | `test_payment_requests_pinned.py` |
+| `X9-PATCH-420` | fields that are not patchable (creditor, status, id, revision, …), sent with values other than the stored ones, are refused by name and nothing applies | `test_payment_requests_pinned.py` |
+| `X9-PATCH-421` | a patch carrying a creditor other than the stored one is refused naming it, and nothing moves | `test_payment_requests_pinned.py` |
 | `X9-PATCH-422` | a no-op patch is refused and nothing moves | `test_payment_requests_pinned.py` |
 | `X9-PATCH-423` | restating the bill unchanged counts as a change: 200, revision moves (pinned, not endorsed) | `test_payment_requests_pinned.py` |
 | `X9-PATCH-424` | a patch may not add a currency to a single-currency QR Code | `test_payment_requests_pinned.py` |

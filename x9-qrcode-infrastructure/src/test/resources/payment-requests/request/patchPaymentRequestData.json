@@ -30,6 +30,7 @@
     },
     "amountDue": {
       "amount": 18834,
+      "currency": "USD",
       "adjustments": {
         "formula": "FixedDiscountLateFeeLinearInterest",
         "parameters": {

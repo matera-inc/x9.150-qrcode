@@ -53,6 +53,7 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonStreamContext;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.deser.DeserializationProblemHandler;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -62,6 +63,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
@@ -164,6 +166,18 @@ public final class ClosedRequestFields extends DeserializationProblemHandler {
             List.of("action", "from", "to"))));
 
     private static final String ATTRIBUTE = ClosedRequestFields.class.getName() + ".violations";
+    private static final String READ_ONLY_ATTRIBUTE = ClosedRequestFields.class.getName() + ".readOnly";
+
+    /**
+     * What a GET answer carries at a level a PATCH accepts, but a PATCH cannot change (owner,
+     * 2026-11-15, option B): not refused while the body is read, but kept with its value, and
+     * compared with the stored one by {@link ReadOnlyPatchFields}. A body copied from GET keeps
+     * working; an attempt to change one of them is refused by name.
+     */
+    static final Map<Class<?>, Set<String>> READ_ONLY = Map.of(
+        PatchPaymentRequestReplacementDTO.class, Set.of("id", "qrCode", "qrCodeB64", "location", "creditor",
+            "paymentNotification", "revision", "createdAt", "revisedAt", "sentAt", "status", "paymentDetails", "emv"),
+        PatchAmountDueDTO.class, Set.of("currency"));
 
     /** A closed object: what a refusal calls it, and its own fields as the refusal lists them. */
     record Closed(String name, List<String> fields) {
@@ -189,6 +203,10 @@ public final class ClosedRequestFields extends DeserializationProblemHandler {
     record Violation(String path, String message) {
     }
 
+    /** A read-only member a PATCH carried: where it is, and the value sent. */
+    record ReadOnly(String path, JsonNode value) {
+    }
+
     @Override
     public boolean handleUnknownProperty(DeserializationContext ctxt, JsonParser p, JsonDeserializer<?> deserializer,
                                          Object beanOrClass, String propertyName) throws IOException {
@@ -196,6 +214,12 @@ public final class ClosedRequestFields extends DeserializationProblemHandler {
         Closed closed = isNull(type) ? null : OBJECTS.get(type);
         if (isNull(closed)) {
             return false;
+        }
+
+        if (READ_ONLY.getOrDefault(type, Set.of()).contains(propertyName)) {
+            JsonNode value = ctxt.readTree(p);
+            record(READ_ONLY_ATTRIBUTE, new ReadOnly(pathOf(p.getParsingContext(), propertyName), value));
+            return true;
         }
 
         p.skipChildren();
@@ -212,6 +236,31 @@ public final class ClosedRequestFields extends DeserializationProblemHandler {
         }
 
         return true;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> void record(String attribute, T item) {
+        RequestAttributes request = RequestContextHolder.getRequestAttributes();
+        if (isNull(request)) {
+            return;
+        }
+        List<T> found = (List<T>) request.getAttribute(attribute, RequestAttributes.SCOPE_REQUEST);
+        if (isNull(found)) {
+            found = new ArrayList<>();
+            request.setAttribute(attribute, found, RequestAttributes.SCOPE_REQUEST);
+        }
+        found.add(item);
+    }
+
+    /** The read-only members the current request carried, in the order read. Empty when none. */
+    static List<ReadOnly> readOnlyRecorded() {
+        RequestAttributes request = RequestContextHolder.getRequestAttributes();
+        if (isNull(request)) {
+            return List.of();
+        }
+        @SuppressWarnings("unchecked")
+        List<ReadOnly> found = (List<ReadOnly>) request.getAttribute(READ_ONLY_ATTRIBUTE, RequestAttributes.SCOPE_REQUEST);
+        return isNull(found) ? List.of() : Collections.unmodifiableList(found);
     }
 
     /** The unknown fields recorded on the current request. Empty when there are none. */

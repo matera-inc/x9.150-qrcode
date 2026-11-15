@@ -1092,7 +1092,7 @@ def test_map_050_location_released_by_a_rebind(api, events):
     current = api.qr(taker)
     body = {"locationId": before["location"],
             "bill": {"description": "blackbox", "paymentTiming": "immediate",
-                     "amountDue": samples.patch_amount_due(current.body["bill"]["amountDue"])},
+                     "amountDue": current.body["bill"]["amountDue"]},
             "paymentMethods": [{k: pm[k] for k in ("currency", "validUntil", "amount", "networks")}
                                for pm in current.body["paymentMethods"]]}
 
