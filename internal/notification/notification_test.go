@@ -15,6 +15,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -485,15 +487,20 @@ func TestRefusedByName(t *testing.T) {
 			status: 400, naming: "paymentNotification.kind"},
 		{name: "network not offered, echoed as sent", request: solanaQR("", "", notifyDefault),
 			edits: []func(map[string]any){payment("network", "FedNow"), top("blockchain", nil)}, status: 400,
-			naming: "paymentNotification.data.payment.network: This QRCode does not support Instant Payment networks."},
+			naming: "paymentNotification.data.payment.network: This QR Code does not offer the FedNow rail."},
 		{name: "rtp on a FedNow-only QR Code", request: bankQR(`"fednow":` + bankAddress),
 			edits:  []func(map[string]any){payment("network", "RTP"), payment("currency", "USD"), top("blockchain", nil)},
-			status: 400, naming: "does not support the RTP network"},
+			status: 400, naming: "paymentNotification.data.payment.network: This QR Code does not offer the RTP rail."},
 		{name: "a chain the QR Code does not offer", request: bankQR(`"fednow":` + bankAddress),
 			edits: []func(map[string]any){payment("currency", "USD")}, status: 400,
-			naming: "This QRCode does not support the Solana network."},
+			naming: "paymentNotification.data.payment.network: This QR Code does not offer the Solana rail."},
 		{name: "currency not offered", request: solanaQR("", "", notifyDefault),
-			edits: []func(map[string]any){payment("currency", "USD")}, status: 400, naming: "paymentNotification.data.payment.currency"},
+			edits: []func(map[string]any){payment("currency", "USD")}, status: 400, naming: "paymentNotification.data.payment.currency: This QR Code does not offer the USD currency."},
+		{name: "neither the rail nor the currency offered", request: bankQR(`"fednow":` + bankAddress),
+			status: 400, naming: "paymentNotification.data.payment: This QR Code does not offer the Solana rail nor the USDC currency."},
+		{name: "a NOT_SENT on a rail not offered: refused, nothing moved", request: bankQR(`"fednow":` + bankAddress),
+			edits:  []func(map[string]any){payment("currency", "USD"), top("blockchain", map[string]any{"action": "NOT_SENT", "from": wallet, "to": recipient})},
+			status: 400, naming: "This QR Code does not offer the Solana rail."},
 		{name: "blockchain on a bank rail", request: bankQR(`"fednow":` + bankAddress),
 			edits: []func(map[string]any){payment("network", "fednow"), payment("currency", "USD")}, status: 400,
 			naming: "paymentNotification.data.blockchain"},
@@ -551,6 +558,84 @@ func TestRefusedByName(t *testing.T) {
 			}
 			if len(f.store.stored) != 0 || len(f.store.events) != 0 {
 				t.Errorf("a refusal stores nothing: %d notifications, %d events", len(f.store.stored), len(f.store.events))
+			}
+		})
+	}
+}
+
+// ADR-0036 (amended 2026-11-15): a post-commit on a rail or in a currency the QR Code does not offer
+// is an error that is still recorded. It is stored with its evidence, its hash is published as one
+// payment.sent on every rail (a bank rail included) flagged NOT_OFFERED_RAIL and/or
+// NOT_OFFERED_CURRENCY beside the other codes, the row is not touched at all (no reservation taken,
+// none refreshed or stopped), and the answer is a signed 400 naming what is not offered.
+func TestAPostCommitNotOfferedIsRecordedAndRefused(t *testing.T) {
+	post := func(edits ...func(map[string]any)) []func(map[string]any) {
+		return append([]func(map[string]any){payment("transactionId", "5VfYtx9Hash")}, edits...)
+	}
+	cases := []struct {
+		name       string
+		request    string
+		held       bool // a pre-commit from the same payer reserved it first
+		edits      []func(map[string]any)
+		naming     string
+		deviations []domain.Deviation
+		status     domain.Status
+	}{
+		{name: "a chain on a bank-only QR Code, ACTIVE", request: bankQR(`"fednow":` + bankAddress),
+			edits:      post(payment("currency", "USD"), top("blockchain", map[string]any{"action": "SENT", "from": wallet, "to": recipient})),
+			naming:     "paymentNotification.data.payment.network: This QR Code does not offer the Solana rail.",
+			deviations: []domain.Deviation{domain.DeviationReceivedInWrongStatus, domain.DeviationNotOfferedRail}, status: domain.StatusActive},
+		{name: "RTP on a FedNow-only QR Code: each rail on its own, payment.sent on a bank rail too", request: bankQR(`"fednow":` + bankAddress),
+			edits:      post(payment("network", "RTP"), payment("currency", "USD"), top("blockchain", nil)),
+			naming:     "paymentNotification.data.payment.network: This QR Code does not offer the RTP rail.",
+			deviations: []domain.Deviation{domain.DeviationReceivedInWrongStatus, domain.DeviationNotOfferedRail}, status: domain.StatusActive},
+		{name: "a currency not offered, from the holder", request: solanaQR("", "", notifyDefault), held: true,
+			edits:      post(payment("currency", "EURC"), top("blockchain", map[string]any{"action": "SENT", "from": wallet, "to": recipient})),
+			naming:     "paymentNotification.data.payment.currency: This QR Code does not offer the EURC currency.",
+			deviations: []domain.Deviation{domain.DeviationNotOfferedCurrency}, status: domain.StatusPaymentInitiated},
+		{name: "both, contradicting its action", request: bankQR(`"fednow":` + bankAddress),
+			edits:  post(),
+			naming: "paymentNotification.data.payment: This QR Code does not offer the Solana rail nor the USDC currency.",
+			deviations: []domain.Deviation{domain.DeviationReceivedInWrongStatus, domain.DeviationActionContradictsHash,
+				domain.DeviationNotOfferedRail, domain.DeviationNotOfferedCurrency}, status: domain.StatusActive},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := serve(t, 0)
+			id := f.qr(c.request)
+			if c.held {
+				r, cid := f.notify(note(id))
+				f.signed(r, http.StatusOK, cid)
+			}
+			before := f.store.row(id)
+			stored, events := len(f.store.stored), len(f.store.events)
+
+			r, cid := f.notify(note(id, c.edits...))
+			answer := f.signed(r, http.StatusBadRequest, cid)
+			if v := violations(answer); !strings.Contains(v, c.naming) {
+				t.Errorf("violations %s do not name %q", v, c.naming)
+			}
+			if after := f.store.row(id); !reflect.DeepEqual(after, before) {
+				t.Errorf("the row changed:\n before %+v\n after  %+v", before, after)
+			}
+			if got := len(f.store.stored) - stored; got != 1 {
+				t.Errorf("%d notifications stored, want the call recorded once", got)
+			}
+			if got := f.store.events[events:]; len(got) != 1 || got[0].Type != domain.EventSent {
+				t.Fatalf("events %+v, want one payment.sent", got)
+			}
+			e := f.store.events[events]
+			if !slices.Equal(e.Deviations, c.deviations) {
+				t.Errorf("deviations %v, want %v", e.Deviations, c.deviations)
+			}
+			if e.ReceivedInStatus == nil || *e.ReceivedInStatus != c.status {
+				t.Errorf("receivedInStatus %v, want %s", e.ReceivedInStatus, c.status)
+			}
+			if e.TransactionID == nil || *e.TransactionID != "5VfYtx9Hash" {
+				t.Errorf("transactionId %v, want the hash", e.TransactionID)
+			}
+			if !strings.Contains(f.logs.String(), "NOT_OFFERED_") {
+				t.Errorf("the warning does not name the deviation: %s", f.logs.String())
 			}
 		})
 	}

@@ -28,7 +28,6 @@ const (
 const (
 	fieldAmount    = "paymentNotification.data.payment.amount"
 	fieldTipAmount = "paymentNotification.data.payment.tipAmount"
-	fieldNetwork   = "paymentNotification.data.payment.network"
 )
 
 // bankRail reports whether network settles through a bank (FedNow, RTP, ACH): it names no
@@ -59,15 +58,6 @@ func publishes(n billing.Networks, network string) bool {
 	}
 }
 
-func offers(methods []billing.PaymentMethod, network string) bool {
-	for _, m := range methods {
-		if publishes(m.Networks, network) {
-			return true
-		}
-	}
-	return false
-}
-
 // RefuseByName is what a notification is refused for, whatever the QR Code's status and before any
 // transition (S10.4-AC3), in the Java build's order and with its field: nil when none applies. It
 // reads the QR Code as stored (req is its request_json) at the payee's clock.
@@ -77,15 +67,16 @@ func offers(methods []billing.PaymentMethod, network string) bool {
 //   - a QR Code created without paymentNotification, or whose notifications go to another service
 //     (kind EXTERNAL, ADR-0006);
 //   - an amount or a tip that is not positive;
-//   - a network the QR Code does not offer, matched whatever its case and echoed as sent (I-1, I-4);
 //   - blockchain data on a bank rail;
 //   - ACH without payer.info or expectedDate (an ACH transfer settles later; without payer.info the
 //     holder is nobody, ADR-0036).
 //
-// The currency, the destination address, the amount and the validity are the acceptance gate's
-// (Gate): a pre-commit's only, because a post-commit reports money that has already moved and is
-// never judged on amount or time (ADR-0036).
-func RefuseByName(req contract.CreateRequest, methods []billing.PaymentMethod, data *contract.NotificationData, now time.Time) *domain.Refusal {
+// A rail or a currency the QR Code does not offer is not among them. It is refused by name too, but
+// only before the money moves (Decide); a post-commit naming one is recorded and refused
+// (domain.PostCommit, ADR-0036 amended 2026-11-15). The destination address, the amount and the
+// validity are the acceptance gate's (Gate): a pre-commit's only, because a post-commit reports
+// money that has already moved and is never judged on amount or time (ADR-0036).
+func RefuseByName(req contract.CreateRequest, data *contract.NotificationData, now time.Time) *domain.Refusal {
 	pay := data.Payment.Value
 	network := pay.Network.Value
 	if data.ExpectedDate.IsSet() && data.ExpectedDate.Value.Before(now) {
@@ -107,53 +98,31 @@ func RefuseByName(req contract.CreateRequest, methods []billing.PaymentMethod, d
 	if pay.TipAmount.IsSet() && pay.TipAmount.Value <= 0 {
 		return refusal(fieldTipAmount, "must be greater than zero.")
 	}
-	return refuseNetwork(methods, data)
+	return refuseRail(data)
 }
 
-// refuseNetwork checks the notified rail against the QR Code's methods, and what each rail must
-// and must not carry.
-func refuseNetwork(methods []billing.PaymentMethod, data *contract.NotificationData) *domain.Refusal {
-	network := data.Payment.Value.Network.Value
-	switch rail := strings.ToLower(network); rail {
-	case railFedNow, railRTP, railACH:
-		kind := "Instant Payments"
-		if rail == railACH {
-			kind = "ACH payments"
-		}
-		if data.Blockchain.IsSet() {
-			return refusal("paymentNotification.data.blockchain", "Blockchain data must not be informed for "+kind+".")
-		}
-		if !offers(methods, network) {
-			return refusal(fieldNetwork, notOffered(methods, rail, network))
-		}
-		if rail != railACH {
-			return nil
-		}
-		if !data.Payer.IsSet() || strings.TrimSpace(data.Payer.Value.Info.Value) == "" {
-			return refusal("paymentNotification.data.payer.info", "Payer info is required for ACH payments.")
-		}
-		if !data.ExpectedDate.IsSet() {
-			return refusal("paymentNotification.data.expectedDate", "Expected date is required for ACH payments.")
-		}
-		return nil
-	default:
-		if !offers(methods, network) {
-			return refusal(fieldNetwork, fmt.Sprintf("This QRCode does not support the %s network.", network))
-		}
+// refuseRail is what each rail must and must not carry. Whether the QR Code offers the rail is not
+// asked here (see RefuseByName).
+func refuseRail(data *contract.NotificationData) *domain.Refusal {
+	rail := strings.ToLower(data.Payment.Value.Network.Value)
+	if !bankRail(rail) {
 		return nil
 	}
-}
-
-// notOffered is the Java build's words for a bank rail the QR Code does not offer. Java takes
-// FedNow and RTP together, so a QR Code offering only one of them accepted a notification on the
-// other; here each rail is its own, and the other is refused naming it.
-func notOffered(methods []billing.PaymentMethod, rail, network string) string {
-	switch {
-	case rail == railACH:
-		return "This QRCode does not support ACH network."
-	case offers(methods, railFedNow) || offers(methods, railRTP):
-		return fmt.Sprintf("This QRCode does not support the %s network.", network)
-	default:
-		return "This QRCode does not support Instant Payment networks."
+	kind := "Instant Payments"
+	if rail == railACH {
+		kind = "ACH payments"
 	}
+	if data.Blockchain.IsSet() {
+		return refusal("paymentNotification.data.blockchain", "Blockchain data must not be informed for "+kind+".")
+	}
+	if rail != railACH {
+		return nil
+	}
+	if !data.Payer.IsSet() || strings.TrimSpace(data.Payer.Value.Info.Value) == "" {
+		return refusal("paymentNotification.data.payer.info", "Payer info is required for ACH payments.")
+	}
+	if !data.ExpectedDate.IsSet() {
+		return refusal("paymentNotification.data.expectedDate", "Expected date is required for ACH payments.")
+	}
+	return nil
 }
