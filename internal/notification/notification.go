@@ -328,12 +328,12 @@ func Decide(row domain.Row, a *Accepted, last *domain.NotificationRecord, now ti
 	}
 	phase := a.Notification.Phase()
 	if phase == domain.PhaseRelease {
-		notOffered, err := domain.NotOffered(row, a.Notification)
+		offer, err := domain.OfferOf(row, a.Notification)
 		if err != nil {
 			return domain.Decision{}, err
 		}
-		if len(notOffered) > 0 {
-			return refuse(domain.NotOfferedRefusal(a.Notification, notOffered)), nil
+		if r := offer.Refusal(a.Notification); r != nil {
+			return refuse(r), nil
 		}
 	}
 	var gate *domain.Refusal

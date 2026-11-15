@@ -8,7 +8,6 @@ package domain
 import (
 	"encoding/json"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -337,7 +336,8 @@ func PreCommit(row Row, n Notification, gate *Refusal, last *NotificationRecord,
 // recorded (ADR-0036, amended 2026-11-15): it is stored, its hash published as one payment.sent on
 // every rail, bank rails included, flagged NOT_OFFERED_RAIL and/or NOT_OFFERED_CURRENCY beside the
 // other codes; nothing else changes (status, reservation, holder, window, revised_at), and the
-// answer is the 400 of NotOfferedRefusal.
+// answer is the 400 of Offer.Refusal. A rail and a currency each offered, but not on one payment
+// method, count as not offered: the currency is not offered on that rail (owner, 2026-11-15).
 func PostCommit(row Row, n Notification, now time.Time) (Decision, error) {
 	effective := EffectiveStatus(row, now)
 	sender := n.Sender()
@@ -349,10 +349,11 @@ func PostCommit(row Row, n Notification, now time.Time) (Decision, error) {
 	if n.ActionContradictsHash() {
 		deviations = append(deviations, DeviationActionContradictsHash)
 	}
-	notOffered, err := NotOffered(row, n)
+	offer, err := OfferOf(row, n)
 	if err != nil {
 		return Decision{}, err
 	}
+	notOffered := offer.Deviations()
 	record := &NotificationRecord{
 		Notification: n, Phase: PhasePostCommit, ReceivedAt: now,
 		Receipt: Receipt{ReceivedIn: effective, Deviations: append(deviations, notOffered...)},
@@ -360,7 +361,7 @@ func PostCommit(row Row, n Notification, now time.Time) (Decision, error) {
 	cause := Cause{Receipt: &record.Receipt}
 
 	if len(notOffered) > 0 {
-		d := refused(row, now, NotOfferedRefusal(n, notOffered))
+		d := refused(row, now, offer.Refusal(n))
 		d.Notification = record
 		return emitted(d, EventSent, record, now, cause)
 	}
@@ -393,43 +394,63 @@ func PostCommit(row Row, n Notification, now time.Time) (Decision, error) {
 	return d, nil
 }
 
-// NotOffered is what a notification names that no payment method of the QR Code offers:
-// NOT_OFFERED_RAIL when none publishes its network, each rail on its own (FedNow is not RTP), then
-// NOT_OFFERED_CURRENCY when none is in its currency, both matched whatever their case; nil when
-// the QR Code offers both. It asks only whether some method offers each: whether one method offers
-// the two together is the acceptance gate's question, asked of a pre-commit only.
-func NotOffered(row Row, n Notification) ([]Deviation, error) {
-	view, err := readRequest(row.RequestJSON)
-	if err != nil {
-		return nil, err
-	}
-	var out []Deviation
-	if !view.offers(n.Network) {
-		out = append(out, DeviationNotOfferedRail)
-	}
-	if !view.offersCurrency(n.Currency) {
-		out = append(out, DeviationNotOfferedCurrency)
-	}
-	return out, nil
+// Offer is whether a QR Code offers what a notification names (ADR-0036, amended 2026-11-15, and
+// the owner's ruling of the same day): Rail when some payment method publishes its network, each
+// rail on its own (FedNow is not RTP); Currency when some method is in its currency; Together when
+// one method does both. Names are matched whatever their case.
+type Offer struct {
+	Rail, Currency, Together bool
 }
 
-// NotOfferedRefusal is the 400 a payer gets for a rail or a currency the QR Code does not offer,
-// the same words for every phase, naming them as sent. notOffered is what NotOffered returned, not
-// empty.
-func NotOfferedRefusal(n Notification, notOffered []Deviation) *Refusal {
-	rail := slices.Contains(notOffered, DeviationNotOfferedRail)
-	currency := slices.Contains(notOffered, DeviationNotOfferedCurrency)
+// Deviations are the codes a refused post-commit carries: NOT_OFFERED_RAIL when no method publishes
+// the rail; NOT_OFFERED_CURRENCY when no method is in the currency, or when the rail is offered but
+// not in that currency (the currency is not offered on that rail). nil when offered.
+func (o Offer) Deviations() []Deviation {
+	var out []Deviation
+	if !o.Rail {
+		out = append(out, DeviationNotOfferedRail)
+	}
+	if !o.Currency || o.Rail && !o.Together {
+		out = append(out, DeviationNotOfferedCurrency)
+	}
+	return out
+}
+
+// Refusal is the 400 a payer gets for what the QR Code does not offer, the same words in every
+// phase, naming the rail and the currency as sent; nil when offered.
+func (o Offer) Refusal(n Notification) *Refusal {
 	switch {
-	case rail && currency:
+	case o.Together:
+		return nil
+	case !o.Rail && !o.Currency:
 		return businessRule("paymentNotification.data.payment",
 			fmt.Sprintf("This QR Code does not offer the %s rail nor the %s currency.", n.Network, n.Currency))
-	case rail:
+	case !o.Rail:
 		return businessRule("paymentNotification.data.payment.network",
 			fmt.Sprintf("This QR Code does not offer the %s rail.", n.Network))
-	default:
+	case !o.Currency:
 		return businessRule("paymentNotification.data.payment.currency",
 			fmt.Sprintf("This QR Code does not offer the %s currency.", n.Currency))
+	default:
+		return businessRule("paymentNotification.data.payment.currency",
+			fmt.Sprintf("This QR Code does not offer the %s currency on the %s rail.", n.Currency, n.Network))
 	}
+}
+
+// OfferOf is what the QR Code as stored offers of what n names.
+func OfferOf(row Row, n Notification) (Offer, error) {
+	view, err := readRequest(row.RequestJSON)
+	if err != nil {
+		return Offer{}, err
+	}
+	var o Offer
+	for _, m := range view.PaymentMethods {
+		rail, currency := m.publishes(n.Network), m.in(n.Currency)
+		o.Rail = o.Rail || rail
+		o.Currency = o.Currency || currency
+		o.Together = o.Together || rail && currency
+	}
+	return o, nil
 }
 
 // Release decides NOT_SENT without a transactionId (X9-MAP-042, -043, -045): the payer gives the

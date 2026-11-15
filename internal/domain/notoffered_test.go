@@ -92,28 +92,63 @@ func TestPostCommitNotOffered(t *testing.T) {
 	}
 }
 
-// ADR-0036, amended 2026-11-15: NotOffered matches the rail and the currency whatever their case,
-// each rail on its own, and a networks member that is null offers nothing.
-func TestNotOffered(t *testing.T) {
+// ADR-0036, amended 2026-11-15, and the owner's ruling of the same day: OfferOf matches the rail
+// and the currency whatever their case, each rail on its own; a networks member that is null offers
+// nothing; and a rail and a currency each offered, but not on one payment method, are not offered:
+// the currency is not offered on that rail.
+func TestOfferOf(t *testing.T) {
 	for _, c := range []struct {
 		network, currency string
 		want              []Deviation
+		field, text       string
 	}{
-		{"SOLANA", "usdc", nil},
-		{"fedNow", "Usd", nil},
-		{"rtp", "USD", nil},
-		{"Base", "USDC", []Deviation{DeviationNotOfferedRail}},
-		{"solana", "EURC", []Deviation{DeviationNotOfferedCurrency}},
-		{"tron", "USDT", []Deviation{DeviationNotOfferedRail, DeviationNotOfferedCurrency}},
+		{"SOLANA", "usdc", nil, "", ""},
+		{"fedNow", "Usd", nil, "", ""},
+		{"rtp", "USD", nil, "", ""},
+		{"Base", "USDC", []Deviation{DeviationNotOfferedRail},
+			"paymentNotification.data.payment.network", "This QR Code does not offer the Base rail."},
+		{"solana", "EURC", []Deviation{DeviationNotOfferedCurrency},
+			"paymentNotification.data.payment.currency", "This QR Code does not offer the EURC currency."},
+		{"tron", "USDT", []Deviation{DeviationNotOfferedRail, DeviationNotOfferedCurrency},
+			"paymentNotification.data.payment", "This QR Code does not offer the tron rail nor the USDT currency."},
+		{"Solana", "USD", []Deviation{DeviationNotOfferedCurrency},
+			"paymentNotification.data.payment.currency", "This QR Code does not offer the USD currency on the Solana rail."},
+		{"FedNow", "USDC", []Deviation{DeviationNotOfferedCurrency},
+			"paymentNotification.data.payment.currency", "This QR Code does not offer the USDC currency on the FedNow rail."},
 	} {
-		got, err := NotOffered(active(), Notification{Network: c.network, Currency: c.currency})
-		if err != nil || !slices.Equal(got, c.want) {
-			t.Errorf("NotOffered(%s, %s) = %v, %v; want %v", c.network, c.currency, got, err, c.want)
+		n := Notification{Network: c.network, Currency: c.currency}
+		o, err := OfferOf(active(), n)
+		if err != nil || !slices.Equal(o.Deviations(), c.want) {
+			t.Errorf("OfferOf(%s, %s).Deviations() = %v, %v; want %v", c.network, c.currency, o.Deviations(), err, c.want)
+		}
+		r := o.Refusal(n)
+		switch {
+		case c.field == "" && r != nil:
+			t.Errorf("%s %s offered, yet refused: %v", c.network, c.currency, r)
+		case c.field != "" && (r == nil || r.Field != c.field || r.Message != c.text):
+			t.Errorf("%s %s: refusal %+v, want %s: %s", c.network, c.currency, r, c.field, c.text)
 		}
 	}
 	nullRail := active()
 	nullRail.RequestJSON = []byte(`{"paymentMethods":[{"currency":"USD","networks":{"fednow":{"accountNumber":"1"},"rtp":null}}]}`)
-	if got, _ := NotOffered(nullRail, Notification{Network: "RTP", Currency: "USD"}); !slices.Equal(got, []Deviation{DeviationNotOfferedRail}) {
-		t.Errorf("a null rtp member offers RTP: %v", got)
+	if o, _ := OfferOf(nullRail, Notification{Network: "RTP", Currency: "USD"}); !slices.Equal(o.Deviations(), []Deviation{DeviationNotOfferedRail}) {
+		t.Errorf("a null rtp member offers RTP: %v", o.Deviations())
+	}
+}
+
+// The owner's ruling of 2026-11-15: a post-commit naming a rail and a currency each offered, but not
+// on one payment method, is recorded and refused exactly as a currency not offered (X9-CUR-521).
+func TestPostCommitCurrencyNotOfferedOnThatRail(t *testing.T) {
+	n := withTx(chain(holderA, ActionSent), "TX-7")
+	n.Currency = "USD"
+	d, err := Notify(held(holderA), n, nil, lastFrom(holderA), t0, settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Write || d.Refusal == nil || d.Refusal.Message != "This QR Code does not offer the USD currency on the solana rail." {
+		t.Fatalf("write %v, refusal %+v", d.Write, d.Refusal)
+	}
+	if len(d.Events) != 1 || d.Events[0].Type != EventSent || !slices.Equal(d.Events[0].Deviations, []Deviation{DeviationNotOfferedCurrency}) {
+		t.Fatalf("events %+v, want one payment.sent flagged NOT_OFFERED_CURRENCY", d.Events)
 	}
 }
