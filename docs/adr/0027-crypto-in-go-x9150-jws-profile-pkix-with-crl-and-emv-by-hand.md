@@ -141,6 +141,9 @@ does not cover them:
 
 An answer that cannot be parsed at all is unreadable, and soft-fails.
 
+Pinned on both payer endpoints by `X9-LOC-313` (each refused answer) and `X9-LOC-314` (`tryLater`
+and `internalError` soft-fail; a delegated responder with `OCSPSigning` is relied on).
+
 The test CA covers each branch: valid, revoked by CRL, revoked by OCSP, no responder, untrusted, EC.
 
 **Keys:**

@@ -345,6 +345,84 @@ class TestPayload:
                 signed(response, payee_certificate, business_now, 200)
         assert responder.queries > queries, "the service must have asked the OCSP responder"
 
+    # mode of x9client.ocsp.OcspResponder -> what ADR-0027 says the service answers
+    OCSP_ANSWERS_REFUSED = [
+        "malformedRequest", "sigRequired", "unauthorized",
+        "unauthorised-signer", "delegated-no-eku",
+        "next-update-passed", "this-update-future",
+        "other-certificate",
+    ]
+    OCSP_ANSWERS_ACCEPTED = ["tryLater", "internalError", "delegated"]
+
+    def _payer_whose_responder_answers(self, pki, responder, mode, business_now):
+        """A payer naming only ``responder`` (no CRL), which answers for it as ``mode``."""
+        identity = ocsp.issue(pki["ca"], f"ocsp-{mode}-{uuid.uuid4().hex[:8]}",
+                              f"Blackbox Payer OCSP {mode}", responder=responder)
+        responder.answer(identity, mode)
+        return jws.Signer(identity, now_ms=business_now)
+
+    @pytest.mark.parametrize("endpoint", ["payload", "notification"])
+    @pytest.mark.parametrize("mode", OCSP_ANSWERS_REFUSED)
+    def test_an_ocsp_answer_adr_0027_refuses_is_refused(self, api, issued, pki, responder,
+                                                        business_now, payee_certificate,
+                                                        endpoint, mode):
+        """X9-LOC-313 — an OCSP answer that is an answer, but not one the service can rely on, is
+        refused, not soft-failed, on both payer endpoints: an error status other than
+        ``tryLater`` or ``internalError`` (``malformedRequest``, ``sigRequired``,
+        ``unauthorized``); an answer signed by a responder that is neither the issuer nor
+        authorised by it; a delegated responder without ``OCSPSigning``; an out-of-date answer
+        (``nextUpdate`` passed, or ``thisUpdate`` an hour in the future); an answer with no
+        response for the certificate asked about.
+
+        The certificate names no CRL, so OCSP is the only source, and the responder (the suite's
+        ``x9client.ocsp``) answers each way on purpose.
+
+        Source: Ours. ADR-0027, "OCSP answers that are refused, not soft-failed" (owner,
+          2026-11-15), in the JDK and in Go's ``internal/pki`` alike. R-ADR0027-06.
+        Why: Soft-fail forgives a responder that cannot be reached. A responder that answers, but
+          with something unusable, is a different thing: forgiving it would let anyone on the
+          path, or a misconfigured responder, turn every revocation check into "accepted".
+        """
+        signer = self._payer_whose_responder_answers(pki, responder, mode, business_now)
+        queries = responder.queries
+
+        if endpoint == "payload":
+            response = fetch(api, issued["location"]["id"], issued["qrCode"], signer=signer)
+            assert_payload_refused(response, naming=SIGNATURE_REFUSED)
+        else:
+            body = signed(api.notify(issued["id"], signer=signer), payee_certificate,
+                          business_now, 401)
+            assert body.get("signatureProblem") == "UNTRUSTED_CHAIN", body
+            assert api.status_of(issued["id"]) == "ACTIVE"
+        assert responder.queries > queries, "the service must have asked the OCSP responder"
+
+    @pytest.mark.parametrize("endpoint", ["payload", "notification"])
+    @pytest.mark.parametrize("mode", OCSP_ANSWERS_ACCEPTED)
+    def test_an_ocsp_answer_adr_0027_forgives_is_accepted(self, api, issued, pki, responder,
+                                                          business_now, payee_certificate,
+                                                          endpoint, mode):
+        """X9-LOC-314 — the controls of X9-LOC-313: ``tryLater`` and ``internalError`` soft-fail,
+        and a responder the issuer delegated with ``OCSPSigning`` is relied on, on both payer
+        endpoints.
+
+        Source: Ours. ADR-0027, "OCSP answers that are refused, not soft-failed": ``tryLater``
+          and ``internalError`` soft-fail (a responder saying it cannot answer now is a
+          responder that cannot be reached); RFC 6960 §4.2.2.2 for the delegated responder.
+        Why: Without these, every refusal of X9-LOC-313 could pass against a service that
+          refuses every OCSP answer except the issuer's own "good"; and the delegated case shows
+          that X9-LOC-313's "delegated-no-eku" is refused for the missing key usage, not for
+          being delegated.
+        """
+        signer = self._payer_whose_responder_answers(pki, responder, mode, business_now)
+        queries = responder.queries
+
+        if endpoint == "payload":
+            response = fetch(api, issued["location"]["id"], issued["qrCode"], signer=signer)
+            assert response.status == 200, response
+        else:
+            signed(api.notify(issued["id"], signer=signer), payee_certificate, business_now, 200)
+        assert responder.queries > queries, "the service must have asked the OCSP responder"
+
     def test_an_x5u_that_only_mentions_the_own_host_is_not_fetched_over_http(
             self, api, issued, pki, business_now, payee_certificate):
         """X9-LOC-312 — an ``x5u`` on another host, over plain http, that mentions this
