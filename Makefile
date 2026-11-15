@@ -49,7 +49,7 @@ blackbox: ## Run the black-box suite (X9_BASE_URL, default http://localhost:8080
 	@.blackbox-venv/bin/python -c 'import pytest, cryptography, yaml' 2>/dev/null || $(MAKE) blackbox-venv
 	@.blackbox-venv/bin/pytest others/blackbox -q
 
-blackbox-image: ## Run the black-box suite against an image, all in containers, as CI does (X9_IMAGE, default x9-qrcode:latest)
+blackbox-image: ## Run the black-box suite against an image, all in containers, as CI does (X9_IMAGE, default x9-qrcode:latest; a Go image, e.g. x9-qrcode:go, runs on PostgreSQL)
 	./others/blackbox/deployment/run-against-image.sh
 
 golden-export: ## Re-export the golden JWS and EMV sets from an image (X9_IMAGE; see others/blackbox/golden/README.md), then run blackbox-image

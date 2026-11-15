@@ -1,0 +1,12 @@
+# The black-box tests that must pass against the Go build (Story 9.1, S9.1-AC3).
+#
+# run-against-image.sh runs the WHOLE suite against a Go image; the run fails when a test listed
+# here fails, errors, is an expected failure or is skipped (a java_only skip excepted), and reports
+# every other test as informative, with the count of each outcome (others/blackbox/required_keys.py).
+#
+# One entry per line: a test key (X9-LIFE-502), or a node-id prefix starting with tests/
+# (tests/test_qr_code.py, or tests/test_contract.py::test_a_contract_constraint_is_refused[create:).
+# `!` before an entry excludes what it matches. An entry that matches no test fails the run.
+#
+# Each story of Epics 9 and 10 ends by adding its keys here; Story 10.8 replaces this list with the
+# whole suite. Empty until then.

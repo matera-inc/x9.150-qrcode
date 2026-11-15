@@ -1,0 +1,91 @@
+# The black-box suite against the Go build on PostgreSQL (Story 9.1). The Java build's run is
+# docker-compose.yml; run-against-image.sh picks this file when X9_IMAGE is a Go image, builds the
+# four local images it names (tagged per run) and gives every run its own project name.
+#
+#   postgres    PostgreSQL 16, throwaway (trust authentication, data on tmpfs)
+#   bootstrap   the DBA's one-time step (db/local/bootstrap.sql): the owner role and its schema
+#   liquibase   db/changelog applied by the Liquibase one-shot of Story 6.3, as the owner (migration)
+#               role, which creates the application and read-only roles
+#   x9-qrcode   the Go image under test, connected as the application role, with the test clock on,
+#               the bundled demo signing key and the black-box truststore as PKCS#12 (the Go build
+#               refuses JKS, ADR-0031). No public host is set: it runs on the default,
+#               x9-150.example.com, one of the hosts of the golden EMV set (S9.1-AC6)
+#   blackbox    the suite, in x9-qrcode's network namespace, reading the database as the read-only
+#               role; that postgresql:// URL is what makes the suite take this run as the Go build
+#
+# The run's verdict is go-required.txt (S9.1-AC3): every test runs, only the listed ones decide.
+#
+# NON-PRODUCTION. The truststore trusts keys anybody can download; the database trusts everyone.
+name: x9-blackbox-go
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  bootstrap:
+    image: "${X9_BOOTSTRAP_IMAGE:-x9-blackbox-bootstrap:local}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["psql", "-X", "-h", "postgres", "-U", "postgres", "-v", "owner=x9_qrcode_owner",
+              "-v", "schema=x9_qrcode", "-f", "/x9/bootstrap.sql"]
+
+  liquibase:
+    image: "${X9_LIQUIBASE_IMAGE:-x9-blackbox-liquibase:local}"
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    environment:
+      LIQUIBASE_SEARCH_PATH: /liquibase/x9
+      LIQUIBASE_COMMAND_CHANGELOG_FILE: changelog/db.changelog-master.yaml
+      LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres:5432/postgres
+      LIQUIBASE_COMMAND_USERNAME: x9_qrcode_owner
+      LIQUIBASE_COMMAND_DEFAULT_SCHEMA_NAME: x9_qrcode
+      LIQUIBASE_LIQUIBASE_SCHEMA_NAME: x9_qrcode
+      LIQUIBASE_SHOW_BANNER: "false"
+    command: ["update"]
+
+  x9-qrcode:
+    image: "${X9_UNDER_TEST_IMAGE:-x9-qrcode-under-test:local}"
+    depends_on:
+      liquibase:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_NAME: postgres
+      DATABASE_USER: x9_qrcode_app
+      # The database trusts every connection; the Go build still requires a credential to be set.
+      DATABASE_PASSWORD: unused
+      DATABASE_SSLMODE: disable
+      X9_TESTING_CLOCKCONTROL: "true"
+      X9_TESTING_CLOCKLISTEN: "127.0.0.1:8099"
+      X9_CERTIFICATE_TRUSTSTORE_LOCATION: "file:/x9-blackbox/x9-blackbox-truststore.p12"
+      X9_CERTIFICATE_TRUSTSTORE_TYPE: PKCS12
+      X9_CERTIFICATE_TRUSTSTORE_PASSWORD: "x9test123"
+      X9_CERTIFICATE_TRUSTSTORE_ALIAS: "x9-test-ca"
+
+  blackbox:
+    image: "${X9_RUNNER_IMAGE:-x9-blackbox-runner:local}"
+    network_mode: "service:x9-qrcode"
+    depends_on:
+      - x9-qrcode
+    command: ["-q", "-p", "no:cacheprovider", "--tb=short"]
+    environment:
+      X9_BASE_URL: "http://127.0.0.1:8080"
+      X9_CLOCK_URL: "http://127.0.0.1:8099"
+      X9_SUITE_HOST: "127.0.0.1"
+      X9_DATABASE_URL: "postgresql://x9_qrcode_readonly@postgres:5432/postgres"
+      X9_REQUIRED_KEYS: "/suite/others/blackbox/deployment/go-required.txt"
+      # A capability the run cannot use (clock, database, payee) is a failure here, not a skip;
+      # for an unlisted test that failure is informative.
+      X9_REQUIRE_ALL: "1"
+      X9_WAIT_SECONDS: "${X9_WAIT_SECONDS:-120}"

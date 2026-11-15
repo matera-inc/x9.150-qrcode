@@ -8,6 +8,12 @@ name: Black-box
 # Separate from the `build` job in ci.yml, which it leaves unchanged. A suite that could not run
 # fails this job: the service never healthy, zero tests collected, or any capability missing
 # (X9_REQUIRE_ALL) is red, never a green skip.
+#
+# The `blackbox-go` job (Story 9.1) runs the same suite against the Go image on PostgreSQL 16, with
+# db/changelog applied by Liquibase, on every pull request that touches the Go code, db/ or
+# others/blackbox/. Every test runs; the job fails when a test listed in
+# others/blackbox/deployment/go-required.txt does not pass, and reports every other test as
+# informative. On any other pull request it checks out, finds nothing to run, and passes.
 
 on:
   pull_request:
@@ -41,4 +47,40 @@ jobs:
       - name: Run the black-box suite against it
         env:
           X9_IMAGE: x9-qrcode:ci
+        run: ./others/blackbox/deployment/run-against-image.sh
+
+  blackbox-go:
+    name: blackbox-go
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # A job-level path filter, in plain git, so the Java job above keeps running on every pull
+      # request: a workflow-level `paths` would filter both jobs.
+      - name: Does this pull request touch the Go code, db/ or the suite?
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          changed="$(git diff --name-only "$BASE_SHA"...HEAD)"
+          printf '%s\n' "$changed"
+          if printf '%s\n' "$changed" | grep -Eq \
+              '(\.go$|^go\.(mod|sum)$|^cmd/|^internal/|^testdata/|^Dockerfile$|^\.dockerignore$|^Makefile$|^db/|^others/blackbox/|^\.github/workflows/blackbox\.yml$)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing the Go run depends on changed: the Go black-box run is not needed."
+          fi
+
+      - name: Build the Go image (make go-image)
+        if: steps.changes.outputs.run == 'true'
+        run: make go-image GO_IMAGE=x9-qrcode:go
+
+      - name: Run the black-box suite against it (PostgreSQL 16, Liquibase, go-required.txt)
+        if: steps.changes.outputs.run == 'true'
+        env:
+          X9_IMAGE: x9-qrcode:go
         run: ./others/blackbox/deployment/run-against-image.sh

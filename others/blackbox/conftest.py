@@ -29,11 +29,14 @@ import time
 
 import pytest
 
+import builds
 from x9client import clock as clock_module
 from x9client import db as db_module
 from x9client import jws
 from x9client.api import X9Api
 from x9client.events import EventReader
+
+pytest_plugins = ["required_keys"]
 
 REQUIRE_ALL = os.environ.get("X9_REQUIRE_ALL", "") not in ("", "0", "false")
 
@@ -135,6 +138,14 @@ def tamperer(pki, payer_a):
 
 
 @pytest.fixture(scope="session")
+def deployment():
+    """The deployment's API with nothing asked of it beyond answering: no QR Code is created and
+    no payer is probed. For the test that the deployment is up (``X9-LIFE-502``), which a build
+    with no payment-request endpoint yet must be able to pass (Story 9.1)."""
+    return X9Api(os.environ.get("X9_BASE_URL", "http://localhost:8080"))
+
+
+@pytest.fixture(scope="session")
 def api(payer_a, pki):
     """The deployment's API. Payer messages are signed by payer A unless a test says otherwise.
 
@@ -228,14 +239,9 @@ def db():
 
 
 def build_under_test():
-    """``"java"`` or ``"go"``: ``X9_BUILD`` when set, else the kind of ``X9_DATABASE_URL``
-    (MongoDB is the Java build, PostgreSQL the Go build), else ``"java"``, the only build that
-    runs today."""
-    explicit = os.environ.get("X9_BUILD", "").strip().lower()
-    if explicit in ("java", "go"):
-        return explicit
-    scheme = os.environ.get("X9_DATABASE_URL", "").split(":", 1)[0].lower()
-    return "go" if scheme in ("postgres", "postgresql") else "java"
+    """``"java"`` or ``"go"`` (``builds.under_test``: ``X9_BUILD``, else the kind of
+    ``X9_DATABASE_URL``)."""
+    return builds.under_test()
 
 
 def pytest_runtest_setup(item):

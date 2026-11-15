@@ -6,9 +6,11 @@
 # service reaches the suite's CRL server and test payee on 127.0.0.1, as when both run on one host.
 FROM python:3.13.9-slim
 
+# The database inspector of the build under test: mongo (Java, the default) or postgres (Go).
+ARG X9_DB_EXTRA=mongo
 WORKDIR /suite
-COPY others/blackbox/requirements.txt others/blackbox/requirements-db-mongo.txt others/blackbox/
-RUN pip install --no-cache-dir -q -r others/blackbox/requirements-db-mongo.txt
+COPY others/blackbox/requirements.txt others/blackbox/requirements-db-${X9_DB_EXTRA}.txt others/blackbox/
+RUN pip install --no-cache-dir -q -r others/blackbox/requirements-db-${X9_DB_EXTRA}.txt
 
 COPY . .
 ENV PYTHONDONTWRITEBYTECODE=1
