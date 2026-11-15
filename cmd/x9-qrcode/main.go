@@ -35,6 +35,7 @@ import (
 	"github.com/matera-inc/x9.150-qrcode/internal/httplog"
 	"github.com/matera-inc/x9.150-qrcode/internal/jws"
 	"github.com/matera-inc/x9.150-qrcode/internal/keys"
+	"github.com/matera-inc/x9.150-qrcode/internal/outbound"
 	"github.com/matera-inc/x9.150-qrcode/internal/paymentrequest"
 	"github.com/matera-inc/x9.150-qrcode/internal/pki"
 	"github.com/matera-inc/x9.150-qrcode/internal/signature"
@@ -164,6 +165,12 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	paymentrequest.NewStatusUpdates(st, time.Duration(cfg.Reservation.TTLSeconds)*time.Second).Register(api)
 	signature.New(keyStore, signer, verifier, logger).Register(api)
 	paymentrequest.NewPayloads(st, keyStore, signer, verifier, cfg.PublicEndpoints.Host, businessClock.Now, logger).Register(api)
+
+	// A PSP paying somebody else's QR Code (Story 10.6): signed with the same signer, the payee's
+	// answer checked with the same verifier.
+	payer := outbound.New(keyStore, signer, verifier, logger, outbound.Config{})
+	payer.Register(api)
+	defer payer.CloseIdleConnections()
 	srv := newServer(cfg.Server.Port, httplog.Middleware(logger, testclock.OffsetHeader(businessClock, api)))
 	// On SIGTERM, parked long-polls answer with their current page instead of holding the drain (ADR-0031).
 	srv.RegisterOnShutdown(events.Stop)
