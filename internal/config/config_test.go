@@ -58,6 +58,27 @@ func TestLoadDefaults(t *testing.T) {
 		cfg.Log.Level != "info" {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
+	// S8.6-AC3: the test clock is off by default; its listener's address is Java's default.
+	if cfg.Testing.ClockControl || cfg.Testing.ClockListen != "127.0.0.1:8099" {
+		t.Fatalf("unexpected test clock defaults: %+v", cfg.Testing)
+	}
+}
+
+// S8.6-AC1: with the clock on, a valid listener of its own is accepted (port 0 picks a free one).
+func TestClockListenAccepted(t *testing.T) {
+	for _, listen := range []string{"127.0.0.1:8099", "[::1]:8099", "0.0.0.0:0", "localhost:9099"} {
+		cfg, err := Load("", append(complete(), "X9_TESTING_CLOCKCONTROL=true", "X9_TESTING_CLOCKLISTEN="+listen))
+		if err != nil {
+			t.Fatalf("%s: %v", listen, err)
+		}
+		if !cfg.Testing.ClockControl || cfg.Testing.ClockListen != listen {
+			t.Fatalf("%s: %+v", listen, cfg.Testing)
+		}
+	}
+	// With the clock off, the address is not read, as in Java.
+	if _, err := Load("", append(complete(), "X9_TESTING_CLOCKLISTEN=nonsense")); err != nil {
+		t.Fatalf("an unused clock address was validated: %v", err)
+	}
 }
 
 // S7.1-AC1: the environment takes precedence over the file.
@@ -146,7 +167,15 @@ func TestInvalidValues(t *testing.T) {
 		{"bad exec mode", []string{"DATABASE_QUERY_EXEC_MODE=fast"}, "database.query-exec-mode (DATABASE_QUERY_EXEC_MODE)"},
 		{"negative reservation", []string{"X9_RESERVATION_TTL_SECONDS=-1"}, "reservation.ttl-seconds (X9_RESERVATION_TTL_SECONDS): must not be negative"},
 		{"bad log level", []string{"X9_LOG_LEVEL=loud"}, "log.level (X9_LOG_LEVEL)"},
-		{"test clock", []string{"X9_TESTING_CLOCKCONTROL=true"}, "testing.clock-control (X9_TESTING_CLOCKCONTROL): the movable test clock is not available"},
+		// S8.6-AC1: the clock listener is host:port, and never the API port.
+		{"clock on the API port", []string{"X9_TESTING_CLOCKCONTROL=true", "X9_TESTING_CLOCKLISTEN=0.0.0.0:8080"},
+			"testing.clock-listen (X9_TESTING_CLOCKLISTEN): \"0.0.0.0:8080\" must not be the API port 8080"},
+		{"clock listen without a port", []string{"X9_TESTING_CLOCKCONTROL=true", "X9_TESTING_CLOCKLISTEN=8099"},
+			"testing.clock-listen (X9_TESTING_CLOCKLISTEN): must be host:port"},
+		{"clock listen without a host", []string{"X9_TESTING_CLOCKCONTROL=true", "X9_TESTING_CLOCKLISTEN=:8099"}, "must be host:port"},
+		{"clock listen with an empty port", []string{"X9_TESTING_CLOCKCONTROL=true", "X9_TESTING_CLOCKLISTEN=localhost:"}, "must be host:port"},
+		{"clock listen with a named port", []string{"X9_TESTING_CLOCKCONTROL=true", "X9_TESTING_CLOCKLISTEN=localhost:http"}, "must be host:port"},
+		{"clock listen out of range", []string{"X9_TESTING_CLOCKCONTROL=true", "X9_TESTING_CLOCKLISTEN=localhost:70000"}, "must be host:port"},
 		{"bool not a bool", []string{"X9_TESTING_CLOCKCONTROL=yes please"}, "is not true or false"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

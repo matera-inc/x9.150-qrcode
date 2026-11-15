@@ -9,6 +9,7 @@ package main
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
@@ -24,11 +25,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/matera-inc/x9.150-qrcode/internal/clock"
 	"github.com/matera-inc/x9.150-qrcode/internal/config"
 	"github.com/matera-inc/x9.150-qrcode/internal/database"
 	"github.com/matera-inc/x9.150-qrcode/internal/health"
 	"github.com/matera-inc/x9.150-qrcode/internal/httplog"
 	"github.com/matera-inc/x9.150-qrcode/internal/keys"
+	"github.com/matera-inc/x9.150-qrcode/internal/testclock"
 )
 
 // Stamped at build time with -ldflags "-X main.version=… -X main.commit=…".
@@ -88,6 +91,24 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 		<-reloading
 	}()
 
+	// ── 1c. The business clock (ADR-0033). It can be moved only with X9_TESTING_CLOCKCONTROL=true
+	// and a bundled signing certificate, over a listener of its own. Certificate validity is never
+	// judged on it: internal/pki gets clock.New(), which has no offset.
+	businessClock := clock.New()
+	if cfg.Testing.ClockControl {
+		businessClock = clock.New(clock.AllowOffset())
+		clockListener, err := testclock.Start(ctx, cfg.Testing.ClockListen, businessClock,
+			func() *x509.Certificate { return keyStore.Current().Identity.Certificate() }, logger)
+		if err != nil {
+			return fmt.Errorf("starting the test clock: %w", err)
+		}
+		defer func() {
+			if err := clockListener.Shutdown(context.WithoutCancel(ctx)); err != nil {
+				logger.Error("x9-qrcode test clock listener did not stop cleanly", "err", err)
+			}
+		}()
+	}
+
 	// ── 2. Database pools (they connect lazily) and the health probes ─────────────────────────
 	pools, err := database.Open(ctx, cfg.Database)
 	if err != nil {
@@ -96,9 +117,10 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	probes := health.New(pools)
 
 	// ── 3. HTTP server: liveness UP from now on, readiness OUT_OF_SERVICE until the schema check passes ──
+	// Every API answer carries X-Test-Clock-Offset while the business clock is moved.
 	mux := http.NewServeMux()
 	probes.Register(mux)
-	srv := newServer(cfg.Server.Port, httplog.Middleware(logger, mux))
+	srv := newServer(cfg.Server.Port, httplog.Middleware(logger, testclock.OffsetHeader(businessClock, mux)))
 	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", srv.Addr)
 	if err != nil {
 		pools.Close()
