@@ -6,6 +6,9 @@
 package decoder
 
 import (
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -173,6 +176,55 @@ func (f *fixture) sign(w http.ResponseWriter, payload string, correlationID uuid
 	}
 	w.Header().Set("Content-Type", "application/jose;charset=UTF-8")
 	_, _ = io.WriteString(w, token)
+}
+
+// signWithoutCorrelationID answers with payload signed by the demo key under a header that names
+// no correlationId, in crit or out of it: a signature that verifies, on an answer to nobody.
+func (f *fixture) signWithoutCorrelationID(w http.ResponseWriter, payload string) {
+	token, err := f.signer.Sign(f.store.Current().Identity, jws.Message{
+		Payload: []byte(payload), CorrelationID: uuid.New(), StatusCode: http.StatusOK,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var header map[string]any
+	raw, err := base64.RawURLEncoding.DecodeString(strings.Split(token, ".")[0])
+	if err == nil {
+		err = json.Unmarshal(raw, &header)
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	delete(header, jws.HeaderCorrelationID)
+	header["crit"] = []string{jws.HeaderIssuedAt, jws.HeaderTTL, jws.HeaderStatusCode}
+	h, err := json.Marshal(header)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	input := base64.RawURLEncoding.EncodeToString(h) + "." + base64.RawURLEncoding.EncodeToString([]byte(payload))
+	alg, _ := header["alg"].(string)
+	hashes := map[string]crypto.Hash{"256": crypto.SHA256, "384": crypto.SHA384, "512": crypto.SHA512}
+	hash, ok := hashes[strings.TrimLeft(alg, "RPS")]
+	if !ok || !strings.HasPrefix(alg, "RS") && !strings.HasPrefix(alg, "PS") {
+		f.t.Errorf("the demo key signs with %q; this helper re-signs RS and PS only", alg)
+		return
+	}
+	digest := hash.New()
+	digest.Write([]byte(input))
+	var opts crypto.SignerOpts = hash
+	if strings.HasPrefix(alg, "PS") {
+		opts = &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash, Hash: hash}
+	}
+	sig, err := f.store.Current().Identity.Sign(rand.Reader, digest.Sum(nil), opts)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/jose;charset=UTF-8")
+	_, _ = io.WriteString(w, input+"."+base64.RawURLEncoding.EncodeToString(sig))
 }
 
 type reply struct {
@@ -489,8 +541,9 @@ func TestNoAnswerIsUnreachable(t *testing.T) {
 }
 
 // S10.7-AC2 and AC5: tolerance stops at integrity. A payload whose signature does not verify, one
-// that is not signed, and one signed under another correlationID than the caller gave, are refused,
-// and nothing of them is presented.
+// that is not signed, and one signed under no correlationId or under another than the request was
+// sent under (the caller's, or the one generated when the caller gave none: ADR-0027, amendment of
+// 2026-11-15) are refused in the same words, and nothing of them is presented.
 func TestAPayloadThatDoesNotVerifyIsRefused(t *testing.T) {
 	const want = "Payload JWS signature is invalid."
 	for _, tc := range []struct {
@@ -510,8 +563,17 @@ func TestAPayloadThatDoesNotVerifyIsRefused(t *testing.T) {
 		{"unsigned", func(*fixture) http.HandlerFunc {
 			return func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, foreignPayload) }
 		}, nil},
-		{"another correlationID", func(f *fixture) http.HandlerFunc {
+		{"another correlationID than the caller's", func(f *fixture) http.HandlerFunc {
 			return func(w http.ResponseWriter, _ *http.Request) { f.sign(w, foreignPayload, uuid.New()) }
+		}, map[string]any{"correlationID": cid}},
+		{"another correlationID than the one generated", func(f *fixture) http.HandlerFunc {
+			return func(w http.ResponseWriter, _ *http.Request) { f.sign(w, foreignPayload, uuid.New()) }
+		}, nil},
+		{"no correlationID, none given", func(f *fixture) http.HandlerFunc {
+			return func(w http.ResponseWriter, _ *http.Request) { f.signWithoutCorrelationID(w, foreignPayload) }
+		}, nil},
+		{"no correlationID, the caller's given", func(f *fixture) http.HandlerFunc {
+			return func(w http.ResponseWriter, _ *http.Request) { f.signWithoutCorrelationID(w, foreignPayload) }
 		}, map[string]any{"correlationID": cid}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -528,12 +590,38 @@ func TestAPayloadThatDoesNotVerifyIsRefused(t *testing.T) {
 	}
 }
 
-// Without a correlationID from the caller, the payload is not held to the request's, as in Java.
-func TestWithoutACorrelationIDThePayloadsIsNotMatched(t *testing.T) {
+// The answer signWithoutCorrelationID gives fails for its one defect: no correlationId, refused
+// whatever is expected, and not a broken signature.
+func TestAnAnswerWithoutACorrelationIDIsABadHeader(t *testing.T) {
 	f := serve(t)
-	f.bank.answerWith(func(w http.ResponseWriter, _ *http.Request) { f.sign(w, foreignPayload, uuid.New()) })
+	rec := httptest.NewRecorder()
+	f.signWithoutCorrelationID(rec, foreignPayload)
+	_, err := f.verifier.Verify(t.Context(), rec.Body.String(), jws.Expect{})
+	if got := jws.ProblemOf(err); got != jws.BadHeader {
+		t.Fatalf("problem %q, want %q: %v", got, jws.BadHeader, err)
+	}
+	if !strings.Contains(err.Error(), "correlationId") {
+		t.Errorf("the refusal does not name correlationId: %v", err)
+	}
+}
+
+// Without a correlationID from the caller, the request goes out under a fresh one, and a payload
+// that echoes it decodes (ADR-0027, amendment of 2026-11-15).
+func TestWithoutACorrelationIDThePayloadEchoesTheGeneratedOne(t *testing.T) {
+	f := serve(t)
 	if got := f.decode(map[string]any{"qrCode": f.bankCode()}); got.status != http.StatusOK {
 		t.Fatalf("status %d: %s", got.status, got.raw)
+	}
+	asked := f.bank.received()
+	if len(asked) != 1 {
+		t.Fatalf("%d payload requests, want 1", len(asked))
+	}
+	v, err := f.verifier.Verify(t.Context(), asked[0].body, jws.Expect{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Header.CorrelationID == uuid.Nil {
+		t.Error("the payload request went out under no correlationId")
 	}
 }
 

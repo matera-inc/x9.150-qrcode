@@ -545,39 +545,52 @@ func assertUndeliverable(t *testing.T, got reply) {
 }
 
 // S10.6-AC3: the payee's answer is reported, never refused: a signed refusal is VERIFIED and not
-// accepted; an unsigned yes is still accepted; the correlationId is checked against the one sent.
+// accepted; an unsigned yes is still accepted; the correlationId is checked against the one sent,
+// the caller's or the one generated when the caller gave none (ADR-0027, amendment of 2026-11-15).
 func TestTheAnswerIsReported(t *testing.T) {
 	cases := []struct {
 		name   string
 		answer func(f *fixture) http.HandlerFunc
 		want   map[string]any
 		body   bool
+		// generated: the caller gives no correlationId, so the one sent is this service's.
+		generated bool
 	}{
 		{"a signed refusal", func(f *fixture) http.HandlerFunc {
 			return func(w http.ResponseWriter, r *http.Request) { f.signedAnswer(w, r, http.StatusConflict) }
-		}, map[string]any{"statusCode": 409.0, "accepted": false, "signature": "VERIFIED"}, true},
+		}, map[string]any{"statusCode": 409.0, "accepted": false, "signature": "VERIFIED"}, true, false},
 		{"an unsigned yes", func(*fixture) http.HandlerFunc {
 			return func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = io.WriteString(w, `{"statusCode":200}`)
 			}
-		}, map[string]any{"statusCode": 200.0, "accepted": true, "signature": "ABSENT", "signatureProblem": "NOT_JWS"}, true},
+		}, map[string]any{"statusCode": 200.0, "accepted": true, "signature": "ABSENT", "signatureProblem": "NOT_JWS"}, true, false},
 		{"an empty yes", func(*fixture) http.HandlerFunc {
 			return func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }
-		}, map[string]any{"statusCode": 200.0, "accepted": true, "signature": "ABSENT", "signatureProblem": "ABSENT_BODY"}, false},
+		}, map[string]any{"statusCode": 200.0, "accepted": true, "signature": "ABSENT", "signatureProblem": "ABSENT_BODY"}, false, false},
 		{"a yes to another notification", func(f *fixture) http.HandlerFunc {
 			return func(w http.ResponseWriter, _ *http.Request) { f.answerWith(w, uuid.New(), 200, 200) }
-		}, map[string]any{"statusCode": 200.0, "accepted": true, "signature": "INVALID", "signatureProblem": "CORRELATION_ID_MISMATCH"}, true},
+		}, map[string]any{"statusCode": 200.0, "accepted": true, "signature": "INVALID", "signatureProblem": "CORRELATION_ID_MISMATCH"}, true, false},
+		{"a yes under another correlationId than the one generated", func(f *fixture) http.HandlerFunc {
+			return func(w http.ResponseWriter, _ *http.Request) { f.answerWith(w, uuid.MustParse(cid), 200, 200) }
+		}, map[string]any{"statusCode": 200.0, "accepted": true, "signature": "INVALID", "signatureProblem": "CORRELATION_ID_MISMATCH"}, true, true},
+		{"a yes to the one generated", func(f *fixture) http.HandlerFunc {
+			return func(w http.ResponseWriter, r *http.Request) { f.signedAnswer(w, r, http.StatusOK) }
+		}, map[string]any{"statusCode": 200.0, "accepted": true, "signature": "VERIFIED"}, true, true},
 		{"a signed yes sent with a 400", func(f *fixture) http.HandlerFunc {
 			return func(w http.ResponseWriter, _ *http.Request) { f.answerWith(w, uuid.MustParse(cid), 200, 400) }
-		}, map[string]any{"statusCode": 400.0, "accepted": false, "signature": "INVALID", "signatureProblem": "STATUS_MISMATCH"}, true},
+		}, map[string]any{"statusCode": 400.0, "accepted": false, "signature": "INVALID", "signatureProblem": "STATUS_MISMATCH"}, true, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := serve(t, 5*time.Second)
 			f.payee.answer = tc.answer(f)
+			req := f.request(false)
+			if tc.generated {
+				delete(req, "correlationId")
+			}
 
-			got := f.post(PrePaymentPath, f.request(false))
+			got := f.post(PrePaymentPath, req)
 
 			if got.status != http.StatusOK {
 				t.Fatalf("status %d: %s", got.status, got.raw)
