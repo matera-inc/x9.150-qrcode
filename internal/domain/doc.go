@@ -24,7 +24,8 @@
 //     through the status-update API, matches nobody.
 //   - Only PATCH moves the revision (ADR-0016); every accepted transition sets revised_at.
 //   - [BuildEvent] is the only code that constructs a payment event (ADR-0035). Its body comes from
-//     the last stored notification, else from the first payment method and the payment details.
+//     the stored notification [EventBodySource] picks (the latest carrying a transactionId, else
+//     the last stored), else from the first payment method and the payment details.
 //   - Only the payment system marks a QR Code PAID, through the status-update API. No payer
 //     message ever does (ADR-0036).
 package domain

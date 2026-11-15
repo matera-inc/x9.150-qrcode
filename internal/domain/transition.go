@@ -137,7 +137,7 @@ type StatusUpdate struct {
 // UpdateStatus decides a status-update (X9-MAP-010 to -013), the payment system's control over a
 // QR Code. In Java's order: If-Match; a payment network the QR Code does not offer; the same
 // status, stored and effective, as a retry (200, nothing written, no event); then the transition.
-// last is the last stored notification, the body of the event when there is one.
+// last is the stored notification EventBodySource picked, the body of the event when there is one.
 func UpdateStatus(row Row, req StatusUpdate, last *NotificationRecord, now time.Time, s Settings) (Decision, error) {
 	if r := requireETag(row, now, req.IfMatch); r != nil {
 		return refused(row, now, r), nil
@@ -227,8 +227,8 @@ func pay(row Row, req StatusUpdate, last *NotificationRecord, now time.Time) (De
 
 // Notify decides a payer's notification by its phase (ADR-0004, ADR-0036): PreCommit, PostCommit
 // or Release. gate is the acceptance gate's refusal of a pre-commit at the payee's clock, nil when
-// it would accept; it is consulted only once the status admits the pre-commit. last is the last
-// stored notification before this one.
+// it would accept; it is consulted only once the status admits the pre-commit. last is the stored
+// notification EventBodySource picked, from those stored before this one.
 func Notify(row Row, n Notification, gate *Refusal, last *NotificationRecord, now time.Time, s Settings) (Decision, error) {
 	switch n.Phase() {
 	case PhasePostCommit:
@@ -251,7 +251,8 @@ func Notify(row Row, n Notification, gate *Refusal, last *NotificationRecord, no
 //   - PAYMENT_INITIATED once a hash is registered: 409, the holder included (§);
 //   - PAYMENT_INITIATED held by the sender: a retry, judged again; yes refreshes the window and
 //     emits nothing; no releases the QR Code to ACTIVE in the same transaction (payment.failed on
-//     a chain, built from the last stored notification: the refused retry is not stored);
+//     a chain, built from the stored notification EventBodySource picked: the refused retry is
+//     not stored);
 //   - PAYMENT_INITIATED held by anyone else, or by nobody identifiable: 409;
 //   - PAID or CANCELLED: 400.
 func PreCommit(row Row, n Notification, gate *Refusal, last *NotificationRecord, now time.Time, s Settings) (Decision, error) {

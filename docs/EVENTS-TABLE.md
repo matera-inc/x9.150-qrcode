@@ -31,7 +31,7 @@ on each column as a database `COMMENT`; `\d+ payment_event` in psql shows it.
 | Column | Type | Meaning | None / sentinel |
 |---|---|---|---|
 | `seq` | `BIGINT`, primary key | The event's position: **the exact order** of events, gapless, equal to commit order. On the HTTP API it is the cursor, as a decimal string | — |
-| `event_id` | `UUID`, unique | `eventId` on the wire. A UUIDv7 minted in `seq` order for new events; the original id for events migrated from the Java build. **Your dedupe key** | — |
+| `event_id` | `UUID`, unique | `eventId` on the wire. A UUIDv7 (roughly time-ordered, **not** an order: use `seq`) for new events; the original id for events migrated from the Java build. **Your dedupe key** | — |
 | `type_code` | `VARCHAR(4)` → `event_type.code` | What happened. See [Event types](#event-types) | — |
 | `occurred_at` | `TIMESTAMP` (UTC) | When the transition that emitted the event happened, on X9.150's clock | — |
 | `qr_code_id` | `UUID` | The QR Code the event is about. **Not a foreign key:** the QR Code may be purged before its events | — |
@@ -53,6 +53,16 @@ on each column as a database `COMMENT`; `\d+ payment_event` in psql shows it.
 | `read_at` | `TIMESTAMP` (UTC) | When your reader marked the row `DONE` | `9999-12-31 00:00:00` = not read yet |
 
 Times are `TIMESTAMP` without a time zone, and they always hold UTC.
+
+**Where the payment columns come from.** `amount`, `tip_amount`, `payer_info`, `currency`,
+`network` and `transaction_id` describe the payment as a payer reported it, taken from one stored
+payment notification for the QR Code: the **latest one that carries a `transactionId`**, else the
+latest one stored. With no stored notification they come from the QR Code itself (the first payment
+method's amount and currency, and the network and End-to-End ID the status-update gave). So once a
+payer has reported a hash, every later event for the QR Code still carries it, even when the payer
+afterwards sent something contradictory (a `NOT_SENT` after the money moved), which is stored and
+flagged but never erases the hash
+([ADR-0035](adr/0035-one-event-builder-and-a-written-transition-map.md), amended 2026-11-15).
 
 ### Event types
 
@@ -78,15 +88,19 @@ matched the funds it received, through `PUT /api/v1/payment-request/{id}/status-
 - **`seq` is the exact order.** It is gapless and equals commit order: a transition takes the next
   number under a row lock on `event_sequence` and commits with it, so a smaller `seq` was always
   visible first. Use `seq` whenever exactness matters.
-- **`event_id` sorts the same way** for every event the Go build writes. It is a UUIDv7, minted
-  after the sequence lock is taken, from a monotonic generator. Use it when only a UUID is at hand,
-  for example a CDC message.
+- **`event_id` is not an order.** It is a UUIDv7, which begins with a millisecond timestamp, so
+  ids are *roughly* in time order, and that is all. When more than one Go instance writes events,
+  each mints ids from its own clock, and an id can be larger than the id of an event with a larger
+  `seq`. Sort by `seq`, always; use `event_id` to recognise an event, for example as a CDC message
+  key ([ADR-0037](adr/0037-the-event-table-is-the-outbox-read-by-cdc-or-plain-sql.md), amended
+  2026-11-15).
 - **`event_id` is the dedupe key.** Store it with whatever you do with the event, and ignore an
   event whose id you already have. Every way of reading below can, after a crash, hand you an event
   twice.
 - **Migrated events keep their original ids.** Events copied from the Java build keep their Java
   `eventId`, which is a random UUID (version 4). They come before every new event in `seq` order,
-  but **their `event_id` does not sort with `seq`.** Order them by `seq`.
+  but **their `event_id` is not even roughly in time order.** Order them by `seq`, like every
+  other event.
 
 ## Three ways to read it
 

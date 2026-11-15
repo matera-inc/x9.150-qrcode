@@ -47,6 +47,12 @@ inference. That is why it is the reference rail and the one the blockchain flow 
 The bar for promoting a network from `additionalProperties` to an interpreted object is therefore
 simple and checkable: **point at the published embedding.** No publication, no promotion.
 
+> **Note, 2026-11-15 (owner).** "Accepted and stored verbatim" above was superseded on the issuing
+> side by [ADR-0012](0012-refuse-what-this-deployment-cannot-honour.md): a network that is not
+> interpreted is refused at creation, by name. It still holds on the reading side. Both sides are
+> one rule, **strict to generate, tolerant to read**:
+> [INTERPRETATION I-16](../../official-spec/INTERPRETATION.md).
+
 ## A test of an unspecified rail is not a test
 
 This is the decisive point, and it is worth stating on its own.

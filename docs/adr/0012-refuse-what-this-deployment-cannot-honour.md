@@ -104,6 +104,14 @@ arrives from a third-party payer whose implementation is not ours to correct, so
 case-insensitively and echoed back verbatim. Both follow from one question — whose implementation is
 it? See [official-spec/INTERPRETATION.md](../../official-spec/INTERPRETATION.md) I-1.
 
+**Strict to generate, tolerant to read (owner, 2026-11-15).** This ADR is the "strict" half of one
+rule. On create and PATCH we refuse, by name, an unknown network, an unknown field inside an
+interpreted rail (now `fednow`, `rtp` and `ach` as well as `solana`) and an unsupported currency.
+When we read a QR Code or payload another bank generated (the decoder, the payer-side flows), the
+same things are parsed past and never refused, and the methods we know are presented; only
+integrity failures (malformed EMV, a bad signature, a content mismatch) are refused there. See
+[INTERPRETATION I-16](../../official-spec/INTERPRETATION.md).
+
 ## Alternatives rejected
 
 **Keep carrying unknown networks verbatim.** The status quo, and defensible as a reading of §2.4 —

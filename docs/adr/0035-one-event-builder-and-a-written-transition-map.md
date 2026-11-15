@@ -18,7 +18,8 @@ one might emit on a repeat announcement and another not.
 Java's actual rules (`QRCodeEntity`, the payer-notification block, after Story 2.4):
 
 - **The body** comes from the **last stored notification** if there is one. Otherwise it comes from
-  the first payment method and the payment details.
+  the first payment method and the payment details. *(Refined 2026-11-15, owner: the latest stored
+  notification that carries a `transactionId` comes first. See the amendment below.)*
 - **A repeat announcement** by the holder refreshes the reservation and emits nothing.
 - **A post-commit** never changes a closed QR Code, and reserves an `ACTIVE` one (ADR-0036).
 - **Every event a payer's notification produces** carries `receivedInStatus` and, when the payer
@@ -82,6 +83,24 @@ carries no receipt even when a notification is stored. Each trigger of the map i
 the same package, and a table test there has a case for every key below and every cell of
 ADR-0036's matrix.
 
+**Amended 2026-11-15 (owner): which stored notification the body comes from.** Since ADR-0036 a
+`NOT_SENT` that arrives once a hash is registered is **stored** (flagged `ACTION_CONTRADICTS_HASH`)
+but carries no `transactionId`. Under "the last stored notification" the next event (a
+`payment.cleared` or `payment.cancelled` from the status-update API) would then lose the hash the
+payer reported earlier, and the payment system would receive a closing event with no reference to
+match. So the body comes from, in this order:
+
+1. the **latest stored notification that carries a `transactionId`**;
+2. else the **last stored notification**;
+3. else the **first payment method** and the payment details.
+
+On every path that does not involve a contradictory notification this picks the same notification
+as before, because a post-commit is the last one stored until something without a hash follows it.
+It is also what Java sends: Java does not record a contradictory `NOT_SENT` at all, so its "last
+notification" is still the post-commit. In Go the choice is `domain.EventBodySource`, a pure
+function over every stored notification in arrival order; the store reads them all and SQL does not
+choose.
+
 **Same holder** means `payer.info` present on both and equal, and the same certificate subject;
 without `payer.info` the sender is never the holder (ADR-0036).
 
@@ -108,7 +127,8 @@ key, and one black-box test per key in
 [`others/blackbox/tests/test_transition_map.py`](../../others/blackbox/tests/test_transition_map.py)
 (`test_map_NNN_...`). Each test asserts the resulting status, every event for the QR Code exactly
 and in order, what did not change, and that each event body comes from the last stored
-notification, else the first payment method. Where ADR-0036's matrix covers more cells than the row,
+notification (since 2026-11-15, the latest one carrying a `transactionId` first), else the first
+payment method. Where ADR-0036's matrix covers more cells than the row,
 the extra cells are cases of the same test. `test_every_map_row_has_a_test` fails if a key here has
 no test, or a test no key.
 

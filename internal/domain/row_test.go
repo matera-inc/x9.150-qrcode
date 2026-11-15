@@ -252,21 +252,47 @@ func TestRefusalMatchesItsKindOnly(t *testing.T) {
 }
 
 // S9.5: the store hands over every stored notification in arrival order; which one an event body
-// is built from is decided here (ADR-0035), not in SQL.
-func TestEventBodySourceIsTheLastStored(t *testing.T) {
-	if got := EventBodySource(nil); got != nil {
-		t.Fatalf("no notification stored: got %+v, want nil", got)
+// is built from is decided here (ADR-0035), not in SQL. Owner, 2026-11-15: the latest stored
+// notification that carries a transactionId, else the last stored one, else none (the builder then
+// uses the first payment method).
+func TestEventBodySource(t *testing.T) {
+	pre := NotificationRecord{Phase: PhasePreCommit}
+	post := func(tx string) NotificationRecord {
+		return NotificationRecord{Phase: PhasePostCommit, Notification: Notification{TransactionID: tx}}
 	}
-	stored := []NotificationRecord{
-		{Phase: PhasePreCommit},
-		{Phase: PhasePostCommit, Notification: Notification{TransactionID: "tx-2"}},
+	// A NOT_SENT once a hash is registered: stored, flagged, and carrying no transactionId.
+	contradicting := NotificationRecord{Phase: PhaseRelease, Notification: Notification{Action: ActionNotSent},
+		Receipt: Receipt{ReceivedIn: StatusPaymentInitiated, Deviations: []Deviation{DeviationActionContradictsHash}}}
+	blank := NotificationRecord{Phase: PhasePreCommit, Notification: Notification{TransactionID: "  "}}
+
+	for _, tt := range []struct {
+		name   string
+		stored []NotificationRecord
+		want   *NotificationRecord
+	}{
+		{"none stored: none, so the first payment method", nil, nil},
+		{"none stored, empty slice", []NotificationRecord{}, nil},
+		{"no transactionId anywhere: the last stored", []NotificationRecord{pre, contradicting}, &contradicting},
+		{"one post-commit, last: it", []NotificationRecord{pre, post("tx-2")}, ptr(post("tx-2"))},
+		{"a contradictory NOT_SENT after the hash: the post-commit, not the NOT_SENT",
+			[]NotificationRecord{pre, post("tx-2"), contradicting}, ptr(post("tx-2"))},
+		{"two hashes: the latest", []NotificationRecord{post("tx-1"), pre, post("tx-2"), contradicting}, ptr(post("tx-2"))},
+		{"a blank transactionId is none", []NotificationRecord{post("tx-1"), blank}, ptr(post("tx-1"))},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := EventBodySource(tt.stored)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Fatalf("EventBodySource (-want +got):\n%s", diff)
+			}
+		})
 	}
+
+	stored := []NotificationRecord{post("tx-2"), contradicting}
 	got := EventBodySource(stored)
-	if got == nil || got.Phase != PhasePostCommit || got.Notification.TransactionID != "tx-2" {
-		t.Fatalf("got %+v, want the last stored notification", got)
-	}
 	got.Notification.TransactionID = "changed"
-	if stored[1].Notification.TransactionID != "tx-2" {
+	if stored[0].Notification.TransactionID != "tx-2" {
 		t.Fatal("EventBodySource aliases the stored slice")
 	}
 }
+
+func ptr[T any](v T) *T { return &v }

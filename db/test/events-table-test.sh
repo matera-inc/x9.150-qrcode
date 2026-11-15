@@ -15,7 +15,8 @@
 #      them; worker 2, claiming at the same time, gets none of them.
 #   3. Worker 1 marks them DONE in the same transaction and commits.
 #   4. The rows are DONE with read_at set, nothing of the transition is left pending, and their seq
-#      order is their event_id order.
+#      order is their event_id order, as written here by one writer (ADR-0037: across Go instances
+#      event_id order is not promised; seq is the only order).
 #
 # Until the black-box suite exists (Epic 3), this runs inside a THROWAWAY postgres container
 # where the changelog was just applied (db/ci/apply-and-check.sh does it):
@@ -160,7 +161,7 @@ equals "S6.5-AC5 in seq order the events are payment.initiated, payment.sent, pa
   "$(psql_as "$ER" -c "SELECT string_agg(t.name, ',' ORDER BY e.seq) FROM payment_event e
                          JOIN event_type t ON t.code = e.type_code WHERE e.qr_code_id = '$QR'")" \
   "payment.initiated,payment.sent,payment.cleared"
-equals "S6.5-AC5 seq order and event_id order are the same order" \
+equals "S6.5-AC5 one writer: seq order and event_id order are the same order" \
   "$(psql_as "$ER" -c "SELECT string_agg(event_id::text, ',' ORDER BY seq) FROM payment_event WHERE qr_code_id = '$QR'")" \
   "$(psql_as "$ER" -c "SELECT string_agg(event_id::text, ',' ORDER BY event_id) FROM payment_event WHERE qr_code_id = '$QR'")"
 equals "S6.5-AC5 seq is gapless across the two transitions" \

@@ -148,7 +148,8 @@ type Store struct {
 	clock       Clock
 	signal      *signal
 	// gate is held from minting an event id until the event batch has taken the sequence row's
-	// lock, so ids are minted in lock order.
+	// lock, so this process mints ids in lock order. It orders nothing across instances
+	// (ADR-0037, amended 2026-11-15).
 	gate        chan struct{}
 	lockTimeout string
 
@@ -320,7 +321,9 @@ func (s *Store) apply(ctx context.Context, tx pgx.Tx, c Change, now time.Time) (
 
 // insertEvents sends the event batch: for each event, the sequence UPDATE and the INSERT … SELECT
 // last_seq. The ids are minted under the gate, which is released only once the batch has run, so
-// the sequence row's lock is taken in the order the ids were minted (ADR-0037).
+// within this process the sequence row's lock is taken in the order the ids were minted. Another
+// instance has its own gate and clock: event_id order is not promised to be seq order (ADR-0037,
+// amended 2026-11-15).
 func (s *Store) insertEvents(ctx context.Context, tx pgx.Tx, events []domain.Event) ([]Event, error) {
 	select {
 	case s.gate <- struct{}{}:
