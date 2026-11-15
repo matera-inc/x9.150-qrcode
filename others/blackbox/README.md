@@ -40,6 +40,17 @@ service's loopback. Nothing is bind-mounted, so it works on Colima. It sets `X9_
 `X9_DATABASE_URL`, so every test runs: a missing capability, a service that never comes up, or
 zero tests collected fails the run.
 
+Runs never share anything, so two can go at once (for example the Java image and the Go image
+side by side). Each run takes its own compose project name and tags its two images with it:
+`X9_BLACKBOX_PROJECT` if you set it (lowercase letters, digits, `-`, `_`), otherwise
+`x9-blackbox-` plus a random suffix, which the script prints first. On exit it tears down only
+that project and removes only those two tags; `X9_IMAGE` itself is never touched.
+
+```bash
+X9_IMAGE=x9-qrcode:java ./others/blackbox/deployment/run-against-image.sh &
+X9_IMAGE=x9-qrcode:go   X9_BLACKBOX_PROJECT=x9-blackbox-go ./others/blackbox/deployment/run-against-image.sh
+```
+
 The `blackbox` job (`.github/workflows/blackbox.yml`) builds the image with buildpacks on every
 pull request and runs exactly this. It is separate from the `build` job. The publish gate
 (`make publish`) still runs `make blackbox` against each architecture it is about to push.
