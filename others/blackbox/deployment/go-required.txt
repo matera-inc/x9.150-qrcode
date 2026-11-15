@@ -75,3 +75,27 @@ tests/test_contract.py::test_the_unbroken_sample_is_accepted[patch
 #   Story 9.8 (status-update);
 #   X9-PATCH-435 and X9-MAP-002 from PAYMENT_INITIATED (a payer's pre-commit): Epic 10.
 #   X9-PATCH-433 joins with Story 10.5, and X9-TIME-014 with Story 10.3.
+
+#   X9-LOC-501 and X9-AMT-423's patch-valid-until case (a PATCH): Story 9.7;
+#   X9-LOC-420 (its create case reads the JWK set, its PATCH case a PATCH): Stories 10.2 and 9.7.
+
+# Story 9.8: the payment system sets the status, and a retry is harmless.
+X9-MAP-001
+X9-PATCH-503
+X9-PATCH-505
+X9-LIFE-176
+X9-EVT-050
+X9-EVT-051
+X9-EVT-052
+X9-EVT-055
+X9-EVT-057
+X9-LOC-421
+X9-LOC-424
+tests/test_payment_requests_pinned.py::test_a_live_holder_keeps_its_location[create-ACTIVE]
+tests/test_payment_requests_pinned.py::test_a_different_creditor_never_takes_the_location[create]
+tests/test_contract.py::test_a_contract_constraint_is_refused[status-update:
+# Story 9.8's other keys need a payer's notification (/pub/api/v1/payment-notification) or a PATCH
+# in their setup or their assertions, and join with the story that adds it:
+#   X9-MAP-010 to -013, -051, X9-LIFE-170 to -175, X9-LOC-422's PAYMENT_INITIATED holder: Epic 10
+#   (Stories 10.4 and 10.5); X9-LOC-422's and -423's PATCH cases: Story 9.7;
+#   X9-LIFE-503 passes already, but joins with Story 10.5, whose pre-commit it uses.
