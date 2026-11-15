@@ -518,8 +518,9 @@ the ACH addenda record ("NACHA review and confirmation are pending").
 ([ADR-0004](../docs/adr/0004-phase-inferred-from-transaction-id.md)):
 
 - **Pre-commit** (no `transactionId`) asks *may I pay this amount?* It is judged by the payee's clock at
-  receipt and, if accepted, reserves the QR Code. It is always used, on every rail: the reservation
-  is what stops two payers from paying the same QR Code at the same time.
+  receipt and, if accepted, reserves the QR Code. Whenever notifications are exchanged, it comes
+  first, on every rail: the reservation is what stops two payers from paying the same QR Code at
+  the same time. (On FedNow and RTP the notification itself is optional; see I-15.)
 - **Post-commit** (with a `transactionId`) reports *I paid, here is the reference*. It is recorded and never
   judged again.
 
@@ -716,6 +717,47 @@ advertised until up to ~21 h later, and a pre-commit made inside that gap was re
 signed quote said it was valid.
 
 ---
+
+## I-15 — On FedNow and RTP the payment notification is optional, and the network can do its job
+
+**Where:** §9 ("If absent, the Payer's PSP **SHALL NOT** generate or send a payment notification";
+"A Payment Notification is required only when requested by the Payee's PSP"), A.11 (payment
+notification trigger and timing), A.6 (the `QRCD` reference in the pacs.008)
+
+**What the standard says.** A notification is sent only when the payload carries a
+`paymentNotification` URL. A.11 then says, per rail:
+
+- **ACH:** the Payee's PSP **SHOULD** request a notification, and update the status to initiated
+  when it arrives.
+- **RTP and FedNow:** "if the Payee's PSP is NOT a receiving financial institution, they **SHOULD**
+  request a payment notification in order to manage the status of the payload."
+
+**What we read in it.** FedNow and RTP are ISO 20022 rails with two messages: the pacs.008 starts
+the payment and the pacs.002 confirms it. A payee PSP that receives the funds sees both. On the
+pacs.008 it can move the QR Code to `PAYMENT_INITIATED` itself, through the status-update API
+(`PUT /api/v1/payment-request/{id}/status-update`, [ADR-0008](../docs/adr/0008-status-update-is-the-iso20022-entry-point.md)),
+and that reservation stops a second payer exactly as a pre-commit would. On the pacs.002 it marks
+the QR Code `PAID`. **The payment notification emulates that pair of messages** (pre-commit ≈
+pacs.008, post-commit ≈ pacs.002) for rails and payers that do not have them. So on FedNow and RTP,
+and on ISO 20022 rails in general (Pix would be one), the notification is **optional as a whole**.
+
+**What this service does** (owner, 2026-11-15):
+
+- **It always answers a notification, on every rail.** A payer may send them on FedNow or RTP too,
+  for example to get signed receipts from the payee. Pre-commit and post-commit then work exactly as
+  on any other rail ([ADR-0036](../docs/adr/0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md)).
+- **A payee that relies only on the network omits `paymentNotification`** from its payment
+  requests. The payer then sends nothing (§9), and the payee's platform drives the status itself:
+  `PAYMENT_INITIATED` on pacs.008, `PAID` on pacs.002.
+
+**A gap in the standard, and the rule for it.** The `paymentNotification` URL belongs to the whole
+payload, not to one payment method. A payee offering USDC (where it needs notifications: on a
+blockchain the post-commit is the link, I-11) beside USD over FedNow (where it relies on the network)
+cannot say "only for USDC". The rule for that case is that a notification on the rail the payee does
+not want would be **refused with an error saying it is not needed on that rail** (for example "not
+needed for FedNow: the payee relies on the network"). **This version does not build that refusal:** it
+accepts and answers notifications on every rail, so such a payee simply receives notifications it
+may ignore.
 
 ## Reporting
 
