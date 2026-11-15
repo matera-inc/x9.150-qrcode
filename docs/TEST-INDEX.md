@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**608 tests documented** — every test that carries a key. Some black-box cases and a few JUnit
+**620 tests documented** — every test that carries a key. Some black-box cases and a few JUnit
 classes (the test clock, the formula service) have no key yet;
 [RULE-COVERAGE.md](RULE-COVERAGE.md) names those as `File::function`.
 
@@ -344,6 +344,7 @@ Only the party that announced a payment may re-announce it, report it, or give i
 | `X9-HOLD-404` | paymentNotification EXTERNAL: the payload names the external endpoint; a notification here is refused | `test_payers.py` |
 | `X9-HOLD-405` | every answer to a payer is signed, refusals included, statusCode equal to the HTTP status | `test_payers.py` |
 | `X9-HOLD-406` | 32 concurrent pre-commits: exactly one 200, 31 signed 409s, one payment.initiated | `test_payers.py` |
+| `X9-HOLD-407` | an ACH notification without `payer.info` (no payer, or no info) or without `expectedDate` is refused, signed, and reserves nothing | `test_payers.py` |
 
 ## The transition map (ADR-0035)
 
@@ -397,6 +398,8 @@ The status-update matrix itself is `X9-MAP-010` to `-013` above.
 | `X9-EVT-053` | `wait` above 30 is refused at once with 400 naming `wait` (the contract's `maximum: 30`) | `test_status_update_and_events.py` |
 | `X9-EVT-054` | an empty long poll is held for `wait` seconds: 0 at once, 2, and 30 | `test_status_update_and_events.py` |
 | `X9-EVT-055` | a replay from an old cursor returns the same events, ids and bodies, so deduplication by `eventId` applies each once | `test_status_update_and_events.py` |
+| `X9-EVT-056` | `limit` 0 and 501 are refused with 400 naming `limit`; 1 and 500 are accepted | `test_status_update_and_events.py` |
+| `X9-EVT-057` | a read without `limit` returns 100 events and `hasMore` when more stand behind the cursor | `test_status_update_and_events.py` |
 
 ## Locations and payload retrieval
 
@@ -426,6 +429,9 @@ The status-update matrix itself is `X9-MAP-010` to `-013` above.
 | `X9-LOC-308` | a certificate naming no revocation source is refused | `test_payers.py` |
 | `X9-LOC-309` | an expired payment method is dropped from the payload and the others stay | `test_payers.py` |
 | `X9-LOC-310` | a PAID or CANCELLED QR Code serves no payload and says which | `test_payers.py` |
+| `X9-LOC-480` | a configured host of 38 characters stops the service at startup, naming the 37 limit; 37 starts | `X9PropertiesHostLengthTest.java` |
+| `X9-LOC-481` | a payload or JWK set on another host is fetched over `https`, whatever scheme was written | `DefaultQRCodeLocationServiceTest.java` |
+| `X9-LOC-482` | this deployment's own host is read internally, on its local port (the control for X9-LOC-481) | `DefaultQRCodeLocationServiceTest.java` |
 
 ### What the payer is told when a decode is refused
 
@@ -473,6 +479,7 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-PATCH-031` | the edit is visible on a subsequent read | `QRCodesApisFlowTest.java` |
 | `X9-PATCH-040` | a PATCH of `validUntil` alone, to before the bill's `dueDate`, is refused naming `bill.invoice.dueDate`; nothing changes; exactly `dueDate` is accepted | `PatchCrossFieldDatesApiTest.java` |
 | `X9-PATCH-041` | a PATCH moving `validUntil` before a method's, or a method's after the QR Code's, is refused naming `paymentMethods[0].validUntil`; nothing changes | `PatchCrossFieldDatesApiTest.java` |
+| `X9-PATCH-440` | `lockVersion` is in no answer: create, GET, PATCH, or the signed payload | `test_conditional_requests.py` |
 
 ## Payment requests pinned: create, PATCH, ETag, rebind (Story 4.2)
 
@@ -564,6 +571,7 @@ status is `X9-MAP-002`.
 | `X9-RAIL-103` | an uninterpreted network is rejected, not ignored | `PaymentNotificationDispatchApiTest.java` |
 | `X9-RAIL-110` | the full create-and-settle flow works on every interpreted rail | `QRCodesApisFlowTest.java` |
 | `X9-RAIL-111` | a payment notification is accepted on every interpreted rail | `QRCodesApisFlowTest.java` |
+| `X9-RAIL-120` | `paymentMethods` sent as a bare object is refused with 400 and no id | `test_create_refusals.py` |
 
 ## Signatures, keys and problem details
 
@@ -621,6 +629,7 @@ status is `X9-MAP-002`.
 | `X9-SIG-124` | a question that cannot be read is refused, signed, under a fresh correlationId, naming the failed check by its `signatureProblem` code | `SignedNotificationAnswerApiTest.java` |
 | `X9-SIG-125` | a SENT report after the discount edge is recorded and answered with a signed yes | `SignedNotificationAnswerApiTest.java` |
 | `X9-SIG-126` | with public keys only, a verifier links question and answer | `SignedNotificationAnswerApiTest.java` |
+| `X9-SIG-151` | the signed answer, a yes and a no alike, carries `typ: JOSE` | `SignedNotificationAnswerApiTest.java` |
 | `X9-SIG-130` | a signed yes with the correlationId sent is VERIFIED | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-131` | a signed no is VERIFIED and not accepted | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-132` | a signed yes under another correlationId is INVALID, and still an unsigned yes | `OutboundAnswerVerificationApiTest.java` |
@@ -640,6 +649,7 @@ status is `X9-MAP-002`.
 | `X9-SIG-147` | a wrong `Content-Type` is answered with a signed 415 | `NotificationAnswerSignedEverywhereApiTest.java` |
 | `X9-SIG-148` | a body Spring cannot read is answered with a signed 400 | `NotificationAnswerSignedEverywhereApiTest.java` |
 | `X9-SIG-149` | an exception nothing maps is answered with a signed 500 that says nothing about it | `NotificationAnswerSignedEverywhereApiTest.java` |
+| `X9-SIG-150` | a payee answering 302 or 307 is not followed: one delivery, the redirect reported as the answer | `test_payee_answers.py` |
 | `X9-SIG-301` | the payee's refusal is reported as 200 with accepted false, changing nothing | `test_payers.py` |
 | `X9-SIG-302` | an unreachable payee is 502, with no verdict | `test_payers.py` |
 | `X9-SIG-303` | a pre-payment carrying a transactionId is refused before sending | `test_payers.py` |
@@ -670,6 +680,7 @@ judged within the 2 s before it; "1 ms after" is exact.
 | `X9-TIME-017` | one instant: 1 ms past a method's `validUntil`, with `dateForPayment` that day, the expired method is absent and the other is priced one day late | `test_time_edges.py` |
 | `X9-TIME-020` | a past `dateForPayment` does not bring back an expired payment method; the methods shown are chosen at the instant the fee is computed | `PayloadPricingInstantApiTest.java` |
 | `X9-TIME-021` | a future `dateForPayment` still chooses the payment methods valid on that day | `PayloadPricingInstantApiTest.java` |
+| `X9-TIME-018` | a post-commit 1 ms after `validUntil` is accepted, signed, and registered with its hash | `test_time_edges.py` |
 
 ## Golden sets (Story 4.7)
 
@@ -729,3 +740,4 @@ and against the running Java build.
 | `X9-TIP-131` | an explicit null tip.allowed on create is refused | `DefaultedBillFieldsApiTest.java` |
 | `X9-TIP-132` | a PATCH tip without allowed allows tips | `DefaultedBillFieldsApiTest.java` |
 | `X9-TIP-133` | an explicit null tip.allowed on PATCH is refused | `DefaultedBillFieldsApiTest.java` |
+| `X9-TIP-140` | tip percentages are taken in the notified currency (a USD bill paid through a USDC method) | `PaymentNotificationTipPolicyTest.java` |

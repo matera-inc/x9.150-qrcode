@@ -10,6 +10,7 @@ import com.matera.x9qrcode.domain.utils.BusinessClock;
 import com.matera.x9qrcode.infrastructure.AbstractIntegrationTest;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.nimbusds.jose.JOSEObjectType;
 import com.nimbusds.jose.JWSObject;
 import com.nimbusds.jose.JWSVerifier;
 import com.nimbusds.jose.crypto.ECDSAVerifier;
@@ -274,6 +275,29 @@ class SignedNotificationAnswerApiTest extends AbstractIntegrationTest {
         assertFalse(body.path("detail").asText().isBlank(), body.toString());
         assertTrue(body.path("violations").isArray() && !body.path("violations").isEmpty(), body.toString());
         assertEquals("ACTIVE", statusOf(qrCodeId), "a refusal changes nothing");
+    }
+
+    /**
+     * <b>X9-SIG-151</b> — the signed answer, a yes and a no alike, carries {@code typ: JOSE}.
+     *
+     * <p><b>Source:</b> Ours. INTERPRETATION I-12 ("{@code typ} stays {@code JOSE}", owner decision
+     * 2026-11-14): the standard's profile values name no type for this answer. The Go build does not
+     * check {@code typ} on what it receives; this pins what Java emits.
+     *
+     * <p><b>Why:</b> A payer that dispatches on {@code typ} must see the same value on every answer.
+     * When the owner revisits the {@code typ} values, this is the test that changes, on purpose.
+     */
+    @Test
+    void theSignedAnswerCarriesTypJose() throws Exception {
+        String qrCodeId = createQRCode();
+
+        JWSObject yes = assertSignedAnswer(post(sign(notification(qrCodeId, AMOUNT, "PAYMENT_INITIATED", null, PAYER)).jws()),
+                HttpStatus.OK.value());
+        JWSObject no = assertSignedAnswer(post(sign(notification(qrCodeId, AMOUNT - 1, "PAYMENT_INITIATED", null, PAYER)).jws()),
+                HttpStatus.BAD_REQUEST.value());
+
+        assertEquals(JOSEObjectType.JOSE, yes.getHeader().getType(), yes.getHeader().toString());
+        assertEquals(JOSEObjectType.JOSE, no.getHeader().getType(), no.getHeader().toString());
     }
 
     /**

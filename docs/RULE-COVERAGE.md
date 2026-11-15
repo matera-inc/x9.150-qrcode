@@ -15,7 +15,9 @@ Each row is one rule.
   reason.
 - **Tests** names at least one test: by its key (`X9-HOLD-104`, see
   [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md)), or, for a test that has no key yet, by
-  `File::function`. `GAP` means no test proves the rule today.
+  `File::function`. `GAP` means no test proves the rule today. `NOT BUILT (ADR-0006)` means the
+  ADR decided it and nothing was ever built, so there is nothing to observe; the ADR is named so
+  the row says where the decision lives.
 - **Proves** lists the acceptance criteria (`S4.2-AC1`, defined in
   [EPICS-AND-STORIES.md](rewrite/EPICS-AND-STORIES.md)) that those tests cite. `—` means the tests
   were written before criteria had IDs and cite none.
@@ -53,7 +55,8 @@ day Java changes: `X9-LOC-421` (BUG-004). It pins ADR-0024, which is outside thi
 (`.github/workflows/rule-coverage.yml`). It fails when:
 
 - a test cites a criterion ID that EPICS-AND-STORIES.md does not define;
-- a rule row has no test, unless it says `GAP` and is listed under [Gaps](#gaps) with a reason;
+- a rule row has no test, unless it says `GAP` and is listed under [Gaps](#gaps) with a reason,
+  or says `NOT BUILT (ADR-nnnn)` naming an ADR that exists (and is then not listed as a gap);
 - a rule row names a test that does not exist;
 - a **Proves** cell names a criterion that is not defined, or that none of the row's test files
   cites;
@@ -71,21 +74,8 @@ that is here must still be marked `GAP`.
 
 | Rule | Why there is no test | Recommendation |
 |---|---|---|
-| `R-SM-18` | The validator refuses an ACH notification without `payer.info` or `expectedDate`, and no test sends one. | Write the test (a small JUnit case). |
-| `R-SM-41` | No test sends a post-commit after the QR Code's `validUntil`. `X9-TIME-002` covers a post-commit after a discount's edge, `X9-TIME-008` one after a lapsed reservation. | Write the test (black-box, on the test clock). |
-| `R-EP-14` | No test sends `limit` 0 or 501, or reads without `limit`. | Write the test beside `X9-EVT-053` (`wait` above 30 refused with 400): it is the same validation. |
-| `R-EP-25` | The suite runs against one deployment and cannot start a second one with a 38-character host. `X9-LOC-425` pins the arithmetic only. | Write the test (JUnit, on `X9Properties`). |
-| `R-EP-26` | No test decodes a QR Code whose payee host is not this deployment's and checks the scheme used. | Write the test (JUnit, on `DefaultQRCodeLocationService`). |
-| `R-I5-01` | The generated contract cases break strings (required, length, pattern); none sends `paymentMethods` as an object. | Write the test (black-box, one case). |
-| `R-I10-08` | Every tip test uses one currency. None notifies in a currency with another scale (USDC against a USD bill). | Write the test (JUnit, `PaymentNotificationTipPolicyTest`). |
-| `R-I12-11` | No test reads the `typ` of the signed answer. | Write it when the owner reviews the `typ` values (I-12 says that review is pending). |
-| `R-ADR0006-04` | `paymentNotification.mode` is not in the contract and `APPROVE` is not built. | The owner says whether it is still planned; if not, mark the rule obsolete in ADR-0006. |
-| `R-ADR0007-02` | `x9.certificate.trust.allowed-issuers` and `allow-self-signed` are not built: no code reads them. | The owner says whether the Go build implements them; until then the rule is not testable. |
-| `R-ADR0011-01` | The quote store applies when FX lands. It is not built. | Nothing to test until FX is built. |
-| `R-ADR0015-07` | No test has a payee answer with a redirect. | Write the test (black-box: the test payee answers 302). |
-| `R-ADR0016-03` | No test asserts that `lockVersion` is absent from every answer. | Write the test (one assertion on a GET). |
-| `R-ADR0036-10` | As `R-SM-18`: no test sends an ACH notification without `payer.info`. | Write the test with `R-SM-18`. |
-| `R-ADR0036-33` | As `R-SM-41`: no test sends a post-commit after `validUntil`. | Write the test with `R-SM-41`. |
+
+None today.
 
 ## STATE-MACHINE.md
 
@@ -108,7 +98,7 @@ that is here must still be marked `GAP`.
 | `R-SM-15` | Only the payment system marks a QR Code `PAID`, through the status-update API; no payer message does. | `X9-HOLD-402`, `X9-HOLD-214`, `X9-RAIL-101`, `test_settlement.py::test_only_status_update_marks_paid_and_a_paid_qr_code_stays_paid` | `S2.4-AC4`, `S2.4-AC6`, `S2.4-AC7`, `S3.4-AC1`, `S4.3-AC2` |
 | `R-SM-16` | A notification must name a rail the QR Code offers. | `X9-RAIL-030`, `X9-RAIL-102` | — |
 | `R-SM-17` | `blockchain` data is refused on a bank rail. | `X9-RAIL-002` | — |
-| `R-SM-18` | An ACH notification must carry `payer.info` and `expectedDate`. | GAP | — |
+| `R-SM-18` | An ACH notification must carry `payer.info` and `expectedDate`. | `X9-HOLD-407` | — |
 | `R-SM-19` | A pre-commit has no `transactionId`; a post-commit has one. This holds on every rail. | `X9-HOLD-101`, `X9-HOLD-102`, `X9-HOLD-201` | `S2.4-AC1`, `S2.4-AC2`, `S2.4-AC5` |
 | `R-SM-20` | `blockchain.action` only corroborates the phase; it decides `NOT_SENT` alone. | `X9-HOLD-103`, `X9-MAP-040`, `X9-MAP-044` | `S4.1-AC1`, `S4.1-AC3` |
 | `R-SM-21` | A pre-commit is judged by the payee's clock at receipt, and an accepted one reserves the QR Code. | `X9-HOLD-201`, `X9-MAP-020`, `X9-TIME-016` | `S1.3-AC2`, `S2.4-AC1`, `S2.4-AC2`, `S2.5-AC5`, `S4.1-AC1`, `S4.1-AC3`, `S4.5-AC2` |
@@ -131,7 +121,7 @@ that is here must still be marked `GAP`.
 | `R-SM-38` | `deviations` lists `RECEIVED_IN_WRONG_STATUS` and `ACTION_CONTRADICTS_HASH`, and is absent when the payer followed the rules. | `X9-HOLD-113`, `X9-HOLD-118`, `X9-HOLD-119`, `X9-HOLD-120` | `S2.4-AC5` |
 | `R-SM-39` | Every hash survives in the event log as its own `payment.sent`. | `X9-HOLD-117`, `X9-HOLD-214` | `S2.4-AC6`, `S2.4-AC7` |
 | `R-SM-40` | Past `validUntil`, a pre-commit is refused by the payee's clock (400). | `X9-TIME-006`, `test_signatures.py::test_a_pre_commit_after_valid_until` | `S1.3-AC3`, `S3.2-AC7`, `S4.5-AC1` |
-| `R-SM-41` | Past `validUntil`, a post-commit is still accepted and registered. | GAP | — |
+| `R-SM-41` | Past `validUntil`, a post-commit is still accepted and registered. | `X9-TIME-018` | — |
 | `R-SM-42` | Two pre-commits that arrive together end with one winner and one 409. | `X9-HOLD-203`, `X9-HOLD-406` | `S2.4-AC2`, `S4.3-AC2`, `S4.3-AC3` |
 | `R-SM-43` | The same payer means `payer.info` present on both and equal, and the same certificate subject; without `payer.info` the sender is somebody else. | `X9-HOLD-001`, `X9-HOLD-002`, `X9-HOLD-003`, `X9-HOLD-004`, `X9-HOLD-305`, `X9-HOLD-306` | `S2.5-AC4` |
 | `R-SM-44` | `NOT_SENT` is keyed on the action, and is the only message by which a payer gives a reserved QR Code back. | `X9-HOLD-103`, `X9-HOLD-020`, `X9-HOLD-021`, `X9-HOLD-213` | `S2.4-AC5`, `S2.4-AC6` |
@@ -155,7 +145,7 @@ that is here must still be marked `GAP`.
 | `R-EP-11` | The signature endpoints generate a JWS and validate one. | `X9-SIG-101`, `X9-SIG-071` | — |
 | `R-EP-12` | `/test/clock` is never on the API port; it exists only in a test deployment, on its own listener. | `TestClockControlApiTest.java::theClockIsNeverOnTheApiPort`, `TestClockControlApiTest.java::theClockIsServedOnItsOwnListener`, `TestClockDisabledApiTest.java::theApiPortAnswers404`, `TestClockDisabledApiTest.java::nothingListensOnTheClockAddress` | `S2.1-AC1`, `S2.1-AC3`, `S2.1-AC4` |
 | `R-EP-13` | Events: `after` resumes after the cursor, with no gap and no repeat; without it the read starts at the beginning. | `X9-EVT-051`, `X9-EVT-055`, `X9-EVT-002`, `test_two_phase.py::test_the_cursor_advances_and_does_not_repeat` | `S3.4-AC1`, `S4.4-AC2` |
-| `R-EP-14` | Events: `limit` is 1 to 500, 100 by default. | GAP | — |
+| `R-EP-14` | Events: `limit` is 1 to 500, 100 by default. | `X9-EVT-056`, `X9-EVT-057` | — |
 | `R-EP-15` | Events: `wait` holds an empty read open, 0 to 30 seconds, 0 by default; above 30 is refused with 400 naming `wait`. | `X9-EVT-054`, `X9-EVT-053` | `S4.4-AC2` |
 | `R-EP-16` | Events: `hasMore` says a page was cut at `limit`; a read past the end is empty with no `nextCursor`. | `X9-EVT-052` | `S4.4-AC2` |
 | `R-EP-17` | Events: `eventId` is stable across reads, so a consumer deduplicates by it. | `X9-EVT-055`, `X9-EVT-002`, `test_two_phase.py::test_every_event_has_its_own_event_id` | `S3.4-AC1`, `S4.4-AC2` |
@@ -166,8 +156,8 @@ that is here must still be marked `GAP`.
 | `R-EP-22` | `qrCodeRevision` never goes backwards for one QR Code. | `X9-EVT-050` | `S4.4-AC2` |
 | `R-EP-23` | The stream returns every QR Code's events for the deployment; there is no filter. | `X9-EVT-050` | `S4.4-AC2` |
 | `R-EP-24` | The loc URL fits in tag 26 (99 characters), so the host is at most 37 characters. | `X9-LOC-425` | `S4.2-AC1`, `S4.2-AC2` |
-| `R-EP-25` | A host longer than 37 characters is rejected at startup. | GAP | — |
-| `R-EP-26` | A payer fetches a payload or a JWK set from another host over `https` only. | GAP | — |
+| `R-EP-25` | A host longer than 37 characters is rejected at startup. | `X9-LOC-480` | — |
+| `R-EP-26` | A payer fetches a payload or a JWK set from another host over `https` only. | `X9-LOC-481`, `X9-LOC-482` | — |
 | `R-EP-27` | A PATCH is checked on its merged result: `dueDate` and every payment method's `validUntil` no later than `validUntil`, whichever side it moved; a refused PATCH changes nothing, the revision included. | `X9-PATCH-040`, `X9-PATCH-041`, `X9-PATCH-426` | — |
 
 ## INTERPRETATION.md
@@ -187,7 +177,7 @@ that is here must still be marked `GAP`.
 | `R-I3-03` | No currency is implied: a payment method without a currency does not take the bill's. | `X9-CUR-421` | `S4.2-AC1` |
 | `R-I3-04` | Currencies on one request must share a peg group. | `X9-CUR-020`, `X9-CUR-022`, `X9-CUR-023`, `X9-CUR-024`, `X9-CUR-027`, `X9-CUR-422` | `S4.2-AC1` |
 | `R-I4-01` | The notified network is read from `payment.network`. | `X9-RAIL-070`, `X9-RAIL-030` | — |
-| `R-I5-01` | `paymentMethods` is an array; a bare object is refused. | GAP | — |
+| `R-I5-01` | `paymentMethods` is an array; a bare object is refused. | `X9-RAIL-120` | — |
 | `R-I5-02` | One `paymentMethods` entry carries every rail that settles its currency. | `X9-RAIL-110`, `X9-RAIL-111` | — |
 | `R-I6-01` | A bank account number is 4 to 17 digits or letters; anything else is refused. | `X9-RAIL-080`, `X9-RAIL-081` | — |
 | `R-I7-01` | A payer signing with an RSA key or an EC key is verified, from the `alg` it presents. | `X9-SIG-050`, `X9-SIG-054`, `test_signatures.py::test_each_payer_is_accepted_on_its_own_key` | `S3.2-AC1`, `S3.2-AC2` |
@@ -205,7 +195,7 @@ that is here must still be marked `GAP`.
 | `R-I10-05` | A tip offer must carry a range or presets: `{"allowed": true}` alone is refused at creation. | `X9-TIP-420`, `test_tip_offers.py::test_a_tip_offer_with_neither_range_nor_presets_is_refused` | `S3.4-AC1`, `S4.2-AC1` |
 | `R-I10-06` | The tip percentage is of what is being paid (`amount − tipAmount`), also on an editable amount. | `X9-TIP-013`, `X9-TIP-110`, `X9-TIP-111` | — |
 | `R-I10-07` | A tip may miss its bound by one minor unit, not by two. | `X9-TIP-014`, `X9-TIP-015`, `X9-TIP-112`, `X9-TIP-113` | — |
-| `R-I10-08` | Tip percentages are taken in the notified currency, not the bill's. | GAP | — |
+| `R-I10-08` | Tip percentages are taken in the notified currency, not the bill's. | `X9-TIP-140` | — |
 | `R-I10-09` | `presets` has no minimum size: a bill with no tip block, with tips refused, or with a range only can be created. | `X9-TIP-121`, `X9-TIP-122`, `test_tip_offers.py::test_each_tip_form_can_be_created` | `S3.4-AC1` |
 | `R-I10-10` | A tip of zero, a negative tip, and a tip larger than the transfer are refused. | `X9-TIP-105`, `X9-TIP-106`, `X9-TIP-004`, `X9-TIP-108` | — |
 | `R-I11-01` | A notification without a `transactionId` is a pre-commit; with one, a post-commit. | `X9-HOLD-101`, `X9-HOLD-102` | `S2.4-AC1`, `S2.4-AC5` |
@@ -239,7 +229,7 @@ that is here must still be marked `GAP`.
 | `R-I12-08` | It reports and never refuses: a 200 that is not verified is an unsigned yes. | `X9-SIG-132`, `X9-SIG-136`, `X9-SIG-138` | `S2.3-AC6` |
 | `R-I12-09` | A JWS whose `iat + ttl` has passed is refused (`EXPIRED`). | `X9-SIG-141`, `X9-TIME-011` | `S4.5-AC1` |
 | `R-I12-10` | A JWS whose `iat` is ahead of our clock by more than the skew is refused (`FUTURE_IAT`), in questions and in answers. | `X9-SIG-140`, `X9-SIG-144`, `X9-SIG-145` | — |
-| `R-I12-11` | The answer is signed with `typ: JOSE`. | GAP | — |
+| `R-I12-11` | The answer is signed with `typ: JOSE`. | `X9-SIG-151` | — |
 | `R-I13-01` | The payee's clock at receipt decides whether a pre-commit is still valid and which amount is owed. | `X9-TIME-016`, `X9-HOLD-201`, `X9-HOLD-308` | `S1.3-AC2`, `S2.4-AC1`, `S2.4-AC2`, `S2.5-AC1`, `S2.5-AC2`, `S4.5-AC2` |
 | `R-I13-02` | A pre-commit the payee's clock refuses is a 400 on the amount or on `validUntil`. | `X9-AMT-042`, `X9-AMT-044`, `X9-LIFE-041`, `test_signatures.py::test_a_pre_commit_after_valid_until` | `S3.2-AC7` |
 | `R-I13-03` | A pre-commit is accepted up to `validUntil` and refused one millisecond after. | `X9-TIME-006`, `TestClockControlApiTest.java::aPreCommitIsAcceptedBeforeTheEdgeAndRefusedOneMillisecondAfter` | `S1.3-AC3`, `S4.5-AC1` |
@@ -267,9 +257,9 @@ the ADR that changed it.
 | `R-ADR0006-01` | A QR Code created without `paymentNotification` refuses notifications. | `X9-LIFE-045`, `X9-HOLD-403` | `S4.3-AC2` |
 | `R-ADR0006-02` | `kind: DEFAULT` accepts and records notifications. | `X9-LIFE-040`, `X9-LIFE-104` | — |
 | `R-ADR0006-03` | `kind: EXTERNAL` names the creditor's own endpoint, and a notification sent here is refused. | `X9-LIFE-046`, `X9-HOLD-404` | `S4.3-AC2` |
-| `R-ADR0006-04` | `mode: APPROVE` asks the biller to approve a payment (two-phase approval, ADR-0003). | GAP | — |
+| `R-ADR0006-04` | `mode: APPROVE` asks the biller to approve a payment (two-phase approval, ADR-0003). | NOT BUILT (ADR-0006) | — |
 | `R-ADR0007-01` | A payer's certificate must chain to the truststore and not be revoked. | `X9-SIG-052`, `X9-SIG-053`, `X9-LOC-305`, `test_signatures.py::test_a_revoked_payer_certificate_is_refused` | `S3.2-AC2`, `S4.3-AC1` |
-| `R-ADR0007-02` | `allowed-issuers` narrows the accepted issuers, and `allow-self-signed` admits a self-signed certificate. | GAP | — |
+| `R-ADR0007-02` | `allowed-issuers` narrows the accepted issuers, and `allow-self-signed` admits a self-signed certificate. | NOT BUILT (ADR-0007) | — |
 | `R-ADR0007-03` | Every payer holding a certificate from a trusted CA is accepted: there is no list of payers. | `X9-SIG-050`, `X9-SIG-054`, `test_signatures.py::test_each_payer_is_accepted_on_its_own_key` | `S3.2-AC1`, `S3.2-AC2` |
 | `R-ADR0008-01` | A status-update `PAYMENT_INITIATED` reserves the QR Code, with no biller vote. | `X9-LIFE-050`, `X9-LIFE-051`, `X9-MAP-010` | `S4.1-AC1`, `S4.1-AC3` |
 | `R-ADR0008-02` | On a `PAID` or `CANCELLED` QR Code it is refused with 409 (on a held one it is a retry, ADR-0020). | `X9-MAP-010`, `X9-LIFE-053`, `X9-LIFE-054` | `S4.1-AC1`, `S4.1-AC3` |
@@ -278,7 +268,7 @@ the ADR that changed it.
 | `R-ADR0010-01` | Only rails with a published embedding are interpreted: FedNow, RTP, ACH and Solana. | `X9-RAIL-010`, `X9-RAIL-011`, `X9-RAIL-012`, `X9-RAIL-016` | — |
 | `R-ADR0010-02` | Solana is interpreted as published: `recipient` (mandatory) and `memo`; the field name once guessed is refused. | `X9-RAIL-040`, `X9-RAIL-043`, `X9-RAIL-044` | — |
 | `R-ADR0010-03` | Every rail's notification is validated: none falls through unchecked. | `X9-RAIL-090`, `X9-RAIL-103`, `X9-RAIL-073` | — |
-| `R-ADR0011-01` | The quote presented to a payer is stored, per fetch, and the payment is judged against it. | GAP | — |
+| `R-ADR0011-01` | The quote presented to a payer is stored, per fetch, and the payment is judged against it. | NOT BUILT (ADR-0011) | — |
 | `R-ADR0012-01` | A network this deployment does not support is refused by name, on create and on PATCH. | `X9-RAIL-052`, `X9-RAIL-053`, `X9-RAIL-054`, `X9-RAIL-420` | `S4.2-AC1` |
 | `R-ADR0012-02` | Only currencies in `supported-currencies.json` are accepted; every offending one is named; an empty list disables the check. | `X9-CUR-013`, `X9-CUR-014`, `X9-CUR-016`, `X9-CUR-062` | — |
 | `R-ADR0012-03` | Our own API accepts one spelling of each network key and currency code; any other casing is refused, naming both. | `X9-RAIL-051`, `X9-CUR-012`, `X9-CUR-063` | — |
@@ -297,11 +287,11 @@ the ADR that changed it.
 | `R-ADR0015-04` | The payee's refusal comes back as 200 with `accepted: false` and the payee's body. | `X9-LIFE-071`, `X9-SIG-301` | `S4.3-AC3` |
 | `R-ADR0015-05` | An unreachable payee is 502. | `X9-LIFE-072`, `X9-SIG-302`, `test_payee_answers.py::test_a_payee_that_hangs_up_without_answering_is_502` | `S3.5-AC2`, `S4.3-AC3` |
 | `R-ADR0015-06` | The call has timeouts: a payee answering after 15 seconds is 502. | `X9-LIFE-076`, `X9-LIFE-077`, `test_payee_answers.py::test_a_payee_answering_after_the_timeout_is_502` | `S3.5-AC2` |
-| `R-ADR0015-07` | Redirects are not followed. | GAP | — |
+| `R-ADR0015-07` | Redirects are not followed. | `X9-SIG-150` | — |
 | `R-ADR0015-08` | A relative notification endpoint is refused. | `X9-SIG-033` | — |
 | `R-ADR0016-01` | `revision` moves only on a PATCH that changes data; no status change moves it. | `X9-PATCH-010`, `X9-PATCH-011`, `X9-PATCH-012`, `X9-PATCH-013`, `X9-PATCH-425` | `S4.2-AC2`, `S4.2-AC3` |
 | `R-ADR0016-02` | The ETag changes on a status change even though the revision does not. | `X9-LIFE-038`, `X9-LIFE-039`, `X9-PATCH-430` | `S4.2-AC3` |
-| `R-ADR0016-03` | `lockVersion` is internal and never exposed. | GAP | — |
+| `R-ADR0016-03` | `lockVersion` is internal and never exposed. | `X9-PATCH-440` | — |
 | `R-ADR0017-01` | `payment.amount` is the total, tip included; the merchant's share is `amount − tipAmount`. | `X9-TIP-001`, `X9-TIP-002`, `X9-TIP-003` | — |
 | `R-ADR0017-02` | A tip is accepted only when the bill allows one, it is inside the range, and it is not larger than the transfer. | `X9-TIP-005`, `X9-TIP-007`, `X9-TIP-008`, `X9-TIP-009`, `X9-TIP-004`, `X9-TIP-010` | — |
 | `R-ADR0017-03` | Presets do not bind; a bill with presets and no range accepts any positive tip. | `X9-TIP-011`, `X9-TIP-012` | — |
@@ -378,7 +368,7 @@ rules the ADR states outside the table.
 | `R-ADR0036-07` | Two notifications come from the same payer only when both carry `payer.info`, equal, and the certificate subjects are equal. | `X9-HOLD-001`, `X9-HOLD-004`, `X9-HOLD-005`, `X9-HOLD-305` | `S2.5-AC4` |
 | `R-ADR0036-08` | A payer without `payer.info` may win a pre-commit, cannot retry it (409) or release it, and its post-commit is flagged. | `X9-HOLD-132`, `X9-HOLD-133`, `X9-HOLD-134`, `X9-HOLD-306` | `S2.5-AC4` |
 | `R-ADR0036-09` | A reservation taken through the status-update API matches no payer. | `X9-LIFE-173`, `X9-MAP-024` | `S4.1-AC1`, `S4.1-AC3`, `S4.4-AC1` |
-| `R-ADR0036-10` | ACH requires `payer.info`. | GAP | — |
+| `R-ADR0036-10` | ACH requires `payer.info`. | `X9-HOLD-407` | — |
 | `R-ADR0036-11` | A pre-commit goes through the acceptance gate at the payee's clock and takes the reservation, on every rail. | `X9-HOLD-201`, `X9-MAP-020` | `S2.4-AC1`, `S2.4-AC2`, `S2.5-AC5`, `S4.1-AC1`, `S4.1-AC3` |
 | `R-ADR0036-12` | While a reservation holds, another payer's pre-commit is 409. | `X9-HOLD-202`, `X9-HOLD-203`, `X9-MAP-024` | `S2.4-AC2`, `S4.1-AC1`, `S4.1-AC3` |
 | `R-ADR0036-13` | The holder may retry its pre-commit, and the retry is judged again. | `X9-HOLD-301`, `X9-HOLD-304`, `X9-MAP-021` | `S2.5-AC1`, `S2.5-AC2`, `S2.5-AC3`, `S4.1-AC1`, `S4.1-AC3` |
@@ -401,7 +391,7 @@ rules the ADR states outside the table.
 | `R-ADR0036-30` | A status-update `PAYMENT_INITIATED` on a lapsed reservation reserves the QR Code again (amended 2026-11-14). | `X9-LIFE-142`, `X9-MAP-010` | `S4.1-AC1`, `S4.1-AC3` |
 | `R-ADR0036-31` | A transition that keeps losing a concurrent write answers 409 "busy" with the current status, never 500. | `X9-HOLD-221` | — |
 | `R-ADR0036-32` | Past `validUntil`, a pre-commit is refused by the payee's clock. | `X9-TIME-006` | `S1.3-AC3`, `S4.5-AC1` |
-| `R-ADR0036-33` | Past `validUntil`, a post-commit is still accepted and registered. | GAP | — |
+| `R-ADR0036-33` | Past `validUntil`, a post-commit is still accepted and registered. | `X9-TIME-018` | — |
 | `R-ADR0036-34` | Every answer to a payer, refusals included, is a signed JWS. | `X9-HOLD-405` | `S4.3-AC2` |
 | `R-ADR0036-35` | `NOT_SENT`: the holder's releases with `payment.failed`, a lapsed reservation's included; 409 from someone else; 400 on `ACTIVE`, `PAID`, `CANCELLED`. | `X9-HOLD-122`, `X9-HOLD-123`, `X9-HOLD-124`, `X9-HOLD-125`, `X9-HOLD-316` | — |
 | `R-ADR0036-36` | `NOT_SENT` with a `transactionId` is a post-commit, flagged `ACTION_CONTRADICTS_HASH`. | `X9-HOLD-139`, `X9-HOLD-220`, `X9-MAP-044` | `S4.1-AC1`, `S4.1-AC3` |

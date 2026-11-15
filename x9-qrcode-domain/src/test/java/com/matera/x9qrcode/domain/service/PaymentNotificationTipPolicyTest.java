@@ -387,4 +387,44 @@ class PaymentNotificationTipPolicyTest extends AbstractTest {
         assertDoesNotThrow(() -> policy.accept(
             qrCodeTipping(TipVO.of(true, 0, 25, List.of(10, 15, 20))), notification(BILL + 130, 130L), NOW));
     }
+
+    // --------------------------------------------- the percentage is in the notified currency
+
+    /**
+     * <b>X9-TIP-140</b> — tip percentages are taken in the notified currency: on a USD bill of 1000
+     * (cents) paid through a USDC method of 10 000 000 (micro-units), a 20% tip is 2 000 000 USDC
+     * micro-units, and a tip of 250, which is 25% of the bill's own figure, is refused.
+     *
+     * <p><b>Source:</b> Ours. INTERPRETATION I-10 ("percentages are taken in the notified currency,
+     * not the bill's own"), as adjustments are pro-rated in
+     * {@code PaymentNotificationAcceptancePolicy.adjustedAmountFor}.
+     *
+     * <p><b>Why:</b> USD, USDC and FRNT share a dollar peg but not a scale. A range computed on the
+     * bill's USD cents and compared with a tip in USDC micro-units would refuse every honest tip
+     * (2 000 000 is far above 25% of 1000) and accept a tip of a fraction of a cent. This deployment
+     * offers only 1:1 currencies, so a peg-group pair is the one case it can have, and it is enough
+     * to tell the two readings apart.
+     */
+    @Test
+    void tipPercentagesAreTakenInTheNotifiedCurrency() {
+        long usdcAmount = 10_000_000L;
+        BillVO bill = new BillVO(
+            new DescriptionVO("dinner"), null, null, TipVO.of(true, 10, 25, List.of(15, 20)),
+            new AmountDueVO(new CurrencyAmountVO(BILL, "USD"), null),
+            PaymentTimingEnum.IMMEDIATE);
+        QRCodeEntity qrCode = QRCodeEntity.create(
+            UUID::randomUUID, null, VALID_UNTIL, CREDITOR_FIXTURE.creditor(), bill,
+            new UnstructuredVO("tip test"), List.of(),
+            new PaymentNotificationVO(NotificationKindEnum.DEFAULT, null, null),
+            List.of(new PaymentMethodVO(
+                "USDC", VALID_UNTIL, new AmountVO(usdcAmount), null,
+                new NetworksVO(null, null, null, new SolanaPaymentAddressVO(WALLET, MEMO), Map.of()))));
+
+        assertDoesNotThrow(() -> policy.accept(qrCode, notification(usdcAmount + 2_000_000L, 2_000_000L), NOW));
+
+        BusinessRuleException refused = assertThrows(BusinessRuleException.class,
+            () -> policy.accept(qrCode, notification(usdcAmount + 250L, 250L), NOW));
+        assertTrue(refused.field().contains("tipAmount"), refused.field());
+        assertTrue(refused.getMessage().contains("USDC"), refused.getMessage());
+    }
 }

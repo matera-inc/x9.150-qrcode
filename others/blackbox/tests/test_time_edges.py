@@ -388,6 +388,41 @@ def test_t6_a_pre_commit_after_valid_until_is_refused_and_the_payee_may_still_ma
     assert accepted.status == 200, f"validUntil is inclusive: accepted up to it: {accepted}"
 
 
+def test_a_post_commit_after_valid_until_is_accepted_and_registered(
+        api, clock, events, payee_certificate):
+    """X9-TIME-018 — a post-commit 1 ms after the QR Code's ``validUntil`` is accepted, answered
+    with a signed yes, and registered with its hash: from the holder of a reservation taken before
+    ``validUntil``, and on a QR Code nobody announced.
+
+    Source: Ours. STATE-MACHINE.md ("past ``validUntil``, a post-commit is still accepted and
+    registered"); ADR-0036 (a post-commit is never refused for status or time reasons).
+    Why: ``validUntil`` closes the offer, not the books. The money moved before the payee heard of
+    it; refusing the report would hide a real payment from the payment system, which then cannot
+    match the funds that arrive to any QR Code.
+    """
+    valid_until = whole_seconds_from_now(datetime.timedelta(hours=1))
+    held, unannounced = created(api, valid_until=iso(valid_until)), \
+        created(api, valid_until=iso(valid_until))
+
+    clock.move_to(valid_until - 5 * SECOND)
+    assert api.notify(held["id"], payer_info=HOLDER).status == 200, "setup: the pre-commit in time"
+
+    clock.move_to(valid_until + MS)
+    for qr in (held, unannounced):
+        sent = api.notify(qr["id"], payer_info=HOLDER, action="SENT", transaction_id=TX_HASH)
+        assert sent.status == 200, f"a post-commit after validUntil is accepted: {sent}"
+        assert sent.body == {"statusCode": 200}, sent.body
+        jws.verify(sent.text, payee_certificate, now_ms=clock.now_millis)
+
+    # The holder's reservation ended at validUntil (X9-TIME-010), so its post-commit lands on an
+    # ACTIVE QR Code exactly like the unannounced one's: reserved again, then registered
+    # (X9-MAP-030). What this test pins is the last event: the hash, registered.
+    for qr in (held, unannounced):
+        mine = event_types(events, qr["id"], 2)
+        assert mine[-1].get("type") == SENT, f"the post-commit is registered: {mine}"
+        assert mine[-1].get("transactionId") == TX_HASH, f"with its hash: {mine[-1]}"
+
+
 def test_t7_a_payment_method_that_expires_first_is_withdrawn_alone(api, clock, payee_certificate):
     """X9-TIME-007 — T7: between a method's ``validUntil`` and the QR Code's, that method is absent
     from the payload and refused in a notification; the other is served and accepted (S4.5-AC1).

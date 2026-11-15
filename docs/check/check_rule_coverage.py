@@ -25,6 +25,10 @@ and fails (exit 1), naming the file and the rule or line, when:
 It also fails on a malformed or repeated rule key, and on a "Gaps" entry whose rule now has a test
 (remove the entry) or does not exist.
 
+A rule for something that was decided but never built is marked `NOT BUILT (ADR-0006)` in its Tests
+cell, naming the ADR that decided it: it has no test because there is nothing to observe, and it
+proves no criterion. The ADR must exist, and the rule must not also be listed under "Gaps".
+
 A test is named by its key (`X9-HOLD-104`, see docs/TEST-CONVENTIONS.md) or, for a test that has no
 key yet, by `File::function` (`test_signatures.py::test_a_revoked_payer_certificate_is_refused`).
 Standard library only.
@@ -60,6 +64,7 @@ MAP_KEY = re.compile(r"^\| (X9-MAP-\d{3}) \|", re.M)
 INTERPRETATION_ENTRY = re.compile(r"^## I-(\d+) ", re.M)
 NO_CRITERION = "—"
 GAP = "GAP"
+NOT_BUILT = re.compile(r"^NOT BUILT \((ADR-\d{4})\)$")
 
 
 @dataclass(frozen=True)
@@ -81,6 +86,7 @@ class Rule:
     tests: list
     proves: list
     gap: bool
+    not_built: str = ""                             # the ADR named by NOT BUILT (ADR-nnnn)
 
 
 @dataclass
@@ -163,10 +169,12 @@ def read_coverage(text):
                                           "proves (write a literal pipe as \\|)"))
             continue
         tests_cell, proves_cell = row[2], row[3]
+        not_built = NOT_BUILT.match(tests_cell)
         rules.append(Rule(key=key, line=number, text=row[1], tests=names(tests_cell),
                           proves=[] if proves_cell == NO_CRITERION else
                           (names(proves_cell) or [proves_cell]),
-                          gap=tests_cell == GAP))
+                          gap=tests_cell == GAP,
+                          not_built=not_built.group(1) if not_built else ""))
     return rules, gaps, problems
 
 
@@ -210,9 +218,19 @@ def check(root):
             out.append(Violation(COVERAGE, gap.key, "is in the Gaps table twice"))
         listed.setdefault(gap.key, gap)
 
+    adrs = {f"ADR-{p.name[:4]}" for p in (root / ADR_DIR).glob("[0-9][0-9][0-9][0-9]-*.md")}
     for rule in rules:
         if not rule.text:
             out.append(Violation(COVERAGE, rule.key, "does not say what the rule is"))
+        if rule.not_built:
+            # Decided, never built: nothing to observe, so no test, but the decision is named.
+            if rule.not_built not in adrs:
+                out.append(Violation(COVERAGE, rule.key, f"is NOT BUILT under {rule.not_built}, "
+                                                         f"which is not in {ADR_DIR}"))
+            if rule.proves:
+                out.append(Violation(COVERAGE, rule.key, "is not built, so it proves no criterion: "
+                                                         f"write {NO_CRITERION}"))
+            continue
         if rule.gap:
             # S4.6-AC2: a rule with no test is allowed only when it is listed, with a reason.
             if rule.key not in listed:
@@ -245,6 +263,9 @@ def check(root):
         rule = by_key.get(gap.key)
         if rule is None:
             out.append(Violation(COVERAGE, gap.key, "is in the Gaps table but is not a rule row"))
+        elif rule.not_built:
+            out.append(Violation(COVERAGE, gap.key, "is in the Gaps table but is marked NOT BUILT: "
+                                                    "remove it from the table"))
         elif not rule.gap:
             out.append(Violation(COVERAGE, gap.key, "is in the Gaps table but now has a test: "
                                                     "remove it from the table"))
@@ -290,7 +311,7 @@ def uncovered_sources(root, by_key):
 
 def summary(root):
     rules, gaps, _ = read_coverage((Path(root) / COVERAGE).read_text(encoding="utf-8"))
-    return len(rules), sum(1 for r in rules if r.gap)
+    return len(rules), sum(1 for r in rules if r.gap), sum(1 for r in rules if r.not_built)
 
 
 def main(argv=None):
@@ -300,12 +321,12 @@ def main(argv=None):
     violations = check(args.root)
     for violation in violations:
         print(violation, file=sys.stderr)
-    total, without = summary(args.root)
+    total, without, not_built = summary(args.root)
     if violations:
         print(f"\n{len(violations)} problem(s) in the rule coverage.", file=sys.stderr)
         return 1
-    print(f"{total} rules, {total - without} with a test, {without} listed as gaps; every cited "
-          "criterion exists.")
+    print(f"{total} rules, {total - without - not_built} with a test, {without} listed as gaps, "
+          f"{not_built} not built; every cited criterion exists.")
     return 0
 
 
