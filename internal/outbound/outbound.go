@@ -24,18 +24,12 @@
 package outbound
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"log/slog"
-	"net"
 	"net/http"
-	"net/http/httptrace"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -103,76 +97,19 @@ type AnswerChecker interface {
 	CheckAnswer(ctx context.Context, httpStatus int, body string, sent uuid.UUID) jws.AnswerCheck
 }
 
-// Config bounds the delivery. A zero value is the default.
-type Config struct {
-	ConnectTimeout time.Duration
-	AnswerTimeout  time.Duration
-	// DialContext, when set, opens the connections in place of a net.Dialer; the connect timeout
-	// still bounds it. Tests use it to make a connection slow.
-	DialContext    func(ctx context.Context, network, addr string) (net.Conn, error)
-	MaxAnswerBytes int64
-}
-
 // Service answers the two payer-side routes.
 type Service struct {
-	keys      Keys
-	signer    *jws.Signer
-	checker   AnswerChecker
-	logger    *slog.Logger
-	client    *http.Client
-	transport *http.Transport
-	connectIn time.Duration
-	answerIn  time.Duration
-	maxBytes  int64
+	keys    Keys
+	signer  *jws.Signer
+	checker AnswerChecker
+	logger  *slog.Logger
+	client  *Client
 }
 
 // New returns the service. signer and checker are the deployment's one signer and one verifier
 // (S10.2-AC1).
 func New(k Keys, signer *jws.Signer, checker AnswerChecker, logger *slog.Logger, cfg Config) *Service {
-	connect := cfg.ConnectTimeout
-	if connect <= 0 {
-		connect = DefaultConnectTimeout
-	}
-	answer := cfg.AnswerTimeout
-	if answer <= 0 {
-		answer = DefaultAnswerTimeout
-	}
-	maxBytes := cfg.MaxAnswerBytes
-	if maxBytes <= 0 {
-		maxBytes = DefaultMaxAnswerBytes
-	}
-	dial := (&net.Dialer{Timeout: connect}).DialContext
-	if cfg.DialContext != nil {
-		dial = func(ctx context.Context, network, addr string) (net.Conn, error) {
-			ctx, cancel := context.WithTimeout(ctx, connect)
-			defer cancel()
-			return cfg.DialContext(ctx, network, addr)
-		}
-	}
-	transport := &http.Transport{
-		// Java's HttpClient reads no proxy from the environment; neither does this.
-		Proxy:               nil,
-		DialContext:         dial,
-		TLSHandshakeTimeout: connect,
-		MaxIdleConns:        16,
-		IdleConnTimeout:     30 * time.Second,
-		ForceAttemptHTTP2:   true,
-	}
-	return &Service{
-		keys:      k,
-		signer:    signer,
-		checker:   checker,
-		logger:    logger,
-		transport: transport,
-		client: &http.Client{
-			Transport: transport,
-			// A redirect is the payee's answer, reported as such, never followed (ADR-0015).
-			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-		},
-		connectIn: connect,
-		answerIn:  answer,
-		maxBytes:  maxBytes,
-	}
+	return &Service{keys: k, signer: signer, checker: checker, logger: logger, client: NewClient(cfg)}
 }
 
 // Register adds the routes to api.
@@ -187,7 +124,7 @@ func (s *Service) Register(api *httpapi.API) {
 
 // CloseIdleConnections closes the connections kept to payees; main calls it once the server has
 // stopped.
-func (s *Service) CloseIdleConnections() { s.transport.CloseIdleConnections() }
+func (s *Service) CloseIdleConnections() { s.client.CloseIdleConnections() }
 
 // Result is OutboundPaymentNotificationResult: what the payee answered, and what its signature is
 // worth.
@@ -242,7 +179,7 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request, p phase) error {
 
 	s.logger.InfoContext(r.Context(), "x9-qrcode sending a payment notification", "host", endpoint.Host,
 		"correlationId", correlationID.String())
-	status, body, err := s.deliver(r.Context(), endpoint, token)
+	status, body, err := s.client.Post(r.Context(), endpoint, http.Header{"Content-Type": {ContentTypeJOSE}}, token)
 	if err != nil {
 		s.logger.WarnContext(r.Context(), "x9-qrcode payment notification undeliverable", "host", endpoint.Host,
 			"correlationId", correlationID.String(), "err", err)
@@ -285,64 +222,6 @@ func checkPhase(p phase, note contract.NotificationData) error {
 		}
 	}
 	return nil
-}
-
-// errTooLarge is an answer past MaxAnswerBytes.
-var errTooLarge = errors.New("the answer is larger than this service reads")
-
-// errAnswerTimeout is a whole answer not received within the answer timeout.
-var errAnswerTimeout = errors.New("the payee's whole answer did not arrive in time")
-
-// deliver posts token to endpoint and returns the payee's status and body. As in the Java build,
-// the connection gets the connect timeout, and the whole answer, headers and body, gets the answer
-// timeout counted from when the request has been sent. Any failure to get a whole answer is an
-// error: the payee could not be reached, closed the connection without answering, or answered too
-// late.
-func (s *Service) deliver(ctx context.Context, endpoint *url.URL, token string) (int, string, error) {
-	ctx, cancel := context.WithCancelCause(ctx)
-	defer cancel(nil)
-	// A backstop on everything before the answer clock starts: the dial and the TLS handshake have
-	// their own bounds, and this keeps a stalled write from holding the caller.
-	sending := time.AfterFunc(s.connectIn+s.answerIn, func() { cancel(errAnswerTimeout) })
-	defer sending.Stop()
-	var (
-		mu       sync.Mutex
-		answerBy *time.Timer
-	)
-	trace := &httptrace.ClientTrace{WroteRequest: func(httptrace.WroteRequestInfo) {
-		mu.Lock()
-		defer mu.Unlock()
-		if answerBy == nil {
-			answerBy = time.AfterFunc(s.answerIn, func() { cancel(errAnswerTimeout) })
-		}
-	}}
-	defer func() {
-		mu.Lock()
-		defer mu.Unlock()
-		if answerBy != nil {
-			answerBy.Stop()
-		}
-	}()
-	req, err := http.NewRequestWithContext(httptrace.WithClientTrace(ctx, trace), http.MethodPost, endpoint.String(),
-		strings.NewReader(token))
-	if err != nil {
-		return 0, "", err
-	}
-	req.Header.Set("Content-Type", ContentTypeJOSE)
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return 0, "", errors.Join(err, context.Cause(ctx))
-	}
-	defer func() { _ = resp.Body.Close() }()
-	var body bytes.Buffer
-	n, err := io.Copy(&body, io.LimitReader(resp.Body, s.maxBytes+1))
-	if err != nil {
-		return 0, "", errors.Join(err, context.Cause(ctx))
-	}
-	if n > s.maxBytes {
-		return 0, "", errTooLarge
-	}
-	return resp.StatusCode, body.String(), nil
 }
 
 // resultOf is the report: the checked status, accepted when it is 2xx, the body verbatim (absent
