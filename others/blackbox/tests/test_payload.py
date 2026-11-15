@@ -22,13 +22,18 @@ def fetched(api, payee_certificate, business_now):
 
 
 def test_the_payload_is_a_jws_signed_by_the_payee(fetched):
-    """S3.4-AC1, section 2 — the payload verifies against the payee's certificate."""
+    """X9-LOC-503 — the payload is a JWS that verifies against the payee's certificate.
+
+    S3.4-AC1, section 2 — the payload verifies against the payee's certificate."""
     _, claims = fetched
     assert isinstance(claims, dict) and claims
 
 
 def test_the_payload_states_what_was_created(fetched):
-    """S3.4-AC1, section 2 — the amount, the currency, and the Solana recipient a payer pays."""
+    """X9-LOC-504 — the payload states the amount, the currency and the Solana recipient that were
+    created.
+
+    S3.4-AC1, section 2 — the amount, the currency, and the Solana recipient a payer pays."""
     _, claims = fetched
     assert claims["bill"]["amountDue"] == {"amount": BILL, "currency": "USDC"} or (
         claims["bill"]["amountDue"]["amount"] == BILL
@@ -37,13 +42,17 @@ def test_the_payload_states_what_was_created(fetched):
 
 
 def test_the_payload_says_where_to_send_the_notification(fetched):
-    """S3.4-AC1, section 2 — paymentNotification names the notification endpoint."""
+    """X9-LOC-505 — the payload names the notification endpoint.
+
+    S3.4-AC1, section 2 — paymentNotification names the notification endpoint."""
     _, claims = fetched
     assert "payment-notification" in str(claims.get("paymentNotification")), claims
 
 
 def test_an_unsigned_payload_request_is_refused_and_serves_nothing(api, fetched):
-    """S3.4-AC1, section 2 — not a JWS: 400, and no payload in the answer."""
+    """X9-LOC-506 — an unsigned payload request is refused with 400 and serves nothing.
+
+    S3.4-AC1, section 2 — not a JWS: 400, and no payload in the answer."""
     created, _ = fetched
     response = api.post_jose(f"/pub/api/v1/loc/{created['location']['id']}", "not-a-jws")
 

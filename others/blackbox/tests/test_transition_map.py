@@ -1149,7 +1149,9 @@ def test_map_051_never_once_a_hash_is_registered(api, events, clock):
 
 
 def test_every_map_row_has_a_test():
-    """The row-to-test table is checkable: every X9-MAP key in the ADR has a test here."""
+    """X9-SUITE-502 — every X9-MAP key in ADR-0035's map has a test in test_transition_map.py.
+
+    The row-to-test table is checkable: every X9-MAP key in the ADR has a test here."""
     import pathlib
     import re
 

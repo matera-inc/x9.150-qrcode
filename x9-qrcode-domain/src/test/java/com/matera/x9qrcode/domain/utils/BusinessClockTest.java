@@ -32,6 +32,7 @@ class BusinessClockTest {
         BusinessClock.reset();
     }
 
+    /** <b>X9-TIME-511</b> — with no offset, business time is real time. */
     @Test
     void withNoOffsetBusinessTimeIsRealTime() {
         Instant before = Instant.now();
@@ -43,7 +44,11 @@ class BusinessClockTest {
         assertEquals(ZoneOffset.UTC, now.getOffset());
     }
 
-    /** S2.1-AC4: {@code DateTimeUtils.nowUTC()} uses the offset. */
+    /**
+     * <b>X9-TIME-512</b> — DateTimeUtils.nowUTC() includes the offset.
+     *
+     * <p>S2.1-AC4: {@code DateTimeUtils.nowUTC()} uses the offset.
+     */
     @Test
     void nowUtcIncludesTheOffset() {
         BusinessClock.setOffsetMillis(ONE_DAY);
@@ -56,7 +61,11 @@ class BusinessClockTest {
         assertEquals(ZoneOffset.UTC, shifted.getOffset());
     }
 
-    /** ADR-0033: the clock is shifted, never frozen, so it keeps ticking. */
+    /**
+     * <b>X9-TIME-513</b> — a shifted clock keeps ticking: it is never frozen.
+     *
+     * <p>ADR-0033: the clock is shifted, never frozen, so it keeps ticking.
+     */
     @Test
     void aShiftedClockKeepsTicking() throws InterruptedException {
         BusinessClock.setOffsetMillis(-ONE_DAY);
@@ -68,6 +77,7 @@ class BusinessClockTest {
         assertTrue(second.isAfter(first));
     }
 
+    /** <b>X9-TIME-514</b> — reset restores real time. */
     @Test
     void resetRestoresRealTime() {
         BusinessClock.setOffsetMillis(ONE_DAY);
@@ -78,6 +88,7 @@ class BusinessClockTest {
         assertTrue(drift < 1_000);
     }
 
+    /** <b>X9-TIME-515</b> — setting {@code at} shifts the clock to that instant. */
     @Test
     void setAtShiftsTheClockToThatInstant() {
         Instant target = Instant.parse("2031-12-31T23:59:50Z");
@@ -89,7 +100,9 @@ class BusinessClockTest {
     }
 
     /**
-     * Story 2.1 follow-up: {@code at} keeps its milliseconds. Straight after the move the clock reads
+     * <b>X9-TIME-516</b> — {@code at} keeps its milliseconds, and the clock never reads earlier than it.
+     *
+     * <p>Story 2.1 follow-up: {@code at} keeps its milliseconds. Straight after the move the clock reads
      * the instant asked for, never earlier, and within a few milliseconds of it — not within the
      * ±500 ms that rounding to the second allowed.
      */
@@ -104,7 +117,11 @@ class BusinessClockTest {
         assertTrue(Duration.between(target, read).toMillis() < 50, "read " + read + " is too far after " + target);
     }
 
-    /** Story 2.1 follow-up: setting E + 1 ms guarantees every later read is after E, which is what edge tests need. */
+    /**
+     * <b>X9-TIME-517</b> — setting E + 1 ms makes every later read after E.
+     *
+     * <p>Story 2.1 follow-up: setting E + 1 ms guarantees every later read is after E, which is what edge tests need.
+     */
     @Test
     void oneMillisecondPastAnEdgeIsAfterTheEdge() {
         Instant edge = Instant.parse("2030-06-30T12:00:00Z");
@@ -114,6 +131,7 @@ class BusinessClockTest {
         assertTrue(BusinessClock.clock().instant().isAfter(edge));
     }
 
+    /** <b>X9-TIME-518</b> — an instant finer than a millisecond is refused. */
     @Test
     void anInstantFinerThanAMillisecondIsRefused() {
         Instant subMillisecond = Instant.parse("2031-12-31T23:59:50.000500Z");
@@ -122,12 +140,14 @@ class BusinessClockTest {
         assertEquals(0, BusinessClock.offsetMillis());
     }
 
+    /** <b>X9-TIME-519</b> — an instant too far away is refused. */
     @Test
     void anInstantTooFarAwayIsRefused() {
         assertThrows(IllegalArgumentException.class, () -> BusinessClock.setAt(Instant.MAX.truncatedTo(ChronoUnit.MILLIS)));
         assertEquals(0, BusinessClock.offsetMillis());
     }
 
+    /** <b>X9-TIME-520</b> — an absurd offset is refused. */
     @Test
     void anAbsurdOffsetIsRefused() {
         assertThrows(IllegalArgumentException.class, () -> BusinessClock.setOffsetMillis(Long.MAX_VALUE));

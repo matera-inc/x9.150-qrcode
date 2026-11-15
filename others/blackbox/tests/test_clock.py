@@ -15,7 +15,10 @@ pytestmark = pytest.mark.serial
 
 
 def test_the_clock_moves_and_every_answer_says_so(api, clock):
-    """S3.1-AC1, S3.1-AC4 — move_to, now and reset; X-Test-Clock-Offset while it is moved.
+    """X9-TIME-501 — the test clock moves, reads back and resets, and every answer carries `X-Test-
+    Clock-Offset` while it is moved.
+
+    S3.1-AC1, S3.1-AC4 — move_to, now and reset; X-Test-Clock-Offset while it is moved.
 
     Why: a moved clock that nobody can see is how a test deployment's results get mistaken for real
     ones. The header is on every API answer while the offset is non-zero, and gone after reset.
@@ -37,7 +40,10 @@ def test_the_clock_moves_and_every_answer_says_so(api, clock):
 
 
 def test_a_payload_stops_being_served_once_the_clock_passes_valid_until(api, clock):
-    """X9-LIFE-126 on the test clock — no sleeping for real time.
+    """X9-TIME-502 — on the test clock, a payload stops being served once the clock passes
+    `validUntil` (X9-LIFE-126 without sleeping).
+
+    X9-LIFE-126, on the test clock: no sleeping for real time.
 
     The same rule the sleeping test pins (an expired QR Code does not serve its payload), reached
     by moving the clock one second past ``validUntil`` instead of waiting for it.

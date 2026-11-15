@@ -31,10 +31,19 @@ proves no criterion. The ADR must exist, and the rule must not also be listed un
 
 A test is named by its key (`X9-HOLD-104`, see docs/TEST-CONVENTIONS.md) or, for a test that has no
 key yet, by `File::function` (`test_signatures.py::test_a_revoked_payer_certificate_is_refused`).
+
+And it fails on a test that carries no key: a black-box case (`others/blackbox/tests/test_*.py`)
+whose docstring does not start with `X9-AREA-NNN`, or a JUnit test whose javadoc has no
+`<b>X9-AREA-NNN</b>` (docs/TEST-CONVENTIONS.md). Every test is in docs/TEST-INDEX.md by its key.
+
+A test is named by its key (`X9-HOLD-104`, see docs/TEST-CONVENTIONS.md). `File::function`
+(`test_signatures.py::test_each_payer_is_accepted_on_its_own_key`) still resolves, for a row
+written before every test had a key.
 Standard library only.
 """
 
 import argparse
+import ast
 import re
 import sys
 from dataclasses import dataclass, field
@@ -50,6 +59,7 @@ ADRS = list(range(4, 22)) + [36]          # ADR-0035 is covered row by row, as R
 # Where tests live. Criterion IDs are checked in all of them; test keys are defined in the first two.
 JAVA_TESTS = "x9-qrcode-*/src/test/**/*.java"
 BLACKBOX = "others/blackbox/**/*.py"
+BLACKBOX_CASES = "others/blackbox/tests/test_*.py"
 OTHER_TESTS = ("db/test/*", "db/**/test_*.py", "docs/**/test_*.py", "cmd/**/*_test.go",
                "internal/**/*_test.go")
 
@@ -58,6 +68,9 @@ CRITERION_DEFINED = re.compile(r"^\*\*(S\d+\.\d+-AC\d+[a-z]?)\.", re.M)
 TEST_KEY = re.compile(r"X9-[A-Z0-9]+-\d{3}")
 KEY_IN_JAVADOC = re.compile(r"<b>(X9-[A-Z0-9]+-\d{3})</b>")
 KEY_IN_DOCSTRING = re.compile(r'"""\s*(X9-[A-Z0-9]+-\d{3})\b')
+KEY_FIRST = re.compile(r"\s*X9-[A-Z0-9]+-\d{3}\b")
+JUNIT_TEST = re.compile(r"^\s*@(Test|ParameterizedTest|RepeatedTest|TestFactory|TestTemplate)\b")
+JUNIT_METHOD = re.compile(r"\bvoid\s+(\w+)\s*\(")
 FUNCTION_REF = re.compile(r"^([\w.-]+\.(?:py|java|go|sh))::(\w+)$")
 RULE_KEY = re.compile(r"^R-(SM|EP|I\d{1,2}|ADR\d{4}|MAP)-\d{2,3}$")
 MAP_KEY = re.compile(r"^\| (X9-MAP-\d{3}) \|", re.M)
@@ -274,7 +287,56 @@ def check(root):
                                                     "recommendation"))
 
     out.extend(uncovered_sources(root, by_key))
+    out.extend(unkeyed_tests(root))
     return out
+
+
+def unkeyed_tests(root):
+    """Every black-box case and every JUnit test carries a key (docs/TEST-CONVENTIONS.md)."""
+    out = []
+    for path in sorted(root.glob(BLACKBOX_CASES)):
+        rel = path.relative_to(root).as_posix()
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError as e:
+            out.append(Violation(rel, f"line {e.lineno}", "cannot be parsed"))
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                    and node.name.startswith("test_"):
+                doc = ast.get_docstring(node, clean=False) or ""
+                if not KEY_FIRST.match(doc):
+                    out.append(Violation(rel, f"line {node.lineno}, {node.name}",
+                                         "has no key: start its docstring with X9-AREA-NNN"))
+    for path in sorted(root.glob(JAVA_TESTS)):
+        rel = path.relative_to(root).as_posix()
+        lines = path.read_text(encoding="utf-8").split("\n")
+        for number, line in enumerate(lines):
+            if not JUNIT_TEST.match(line):
+                continue
+            if not KEY_IN_JAVADOC.search(javadoc_above(lines, number)):
+                method = next((m.group(1) for m in map(JUNIT_METHOD.search, lines[number:number + 15])
+                               if m), "?")
+                out.append(Violation(rel, f"line {number + 1}, {method}",
+                                     "has no key: give its javadoc <b>X9-AREA-NNN</b>"))
+    return out
+
+
+def javadoc_above(lines, number):
+    """The javadoc that ends just above line ``number`` and the annotations around it, or ""."""
+    j = number - 1
+    while j >= 0:
+        stripped = lines[j].strip()
+        if stripped.endswith("*/"):
+            start = j
+            while start > 0 and "/**" not in lines[start]:
+                start -= 1
+            return "\n".join(lines[start:j + 1]) if "/**" in lines[start] else ""
+        if not stripped or stripped.endswith((";", "}")) or \
+                re.match(r"^(public |final |abstract |static )*(class|record|interface) ", stripped):
+            return ""
+        j -= 1
+    return ""
 
 
 def uncovered_sources(root, by_key):

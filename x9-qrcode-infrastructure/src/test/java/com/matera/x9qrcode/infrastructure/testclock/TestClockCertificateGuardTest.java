@@ -94,7 +94,9 @@ class TestClockCertificateGuardTest {
     };
 
     /**
-     * S2.1-AC1: every certificate bundled with this repository satisfies the guard — the revoked and
+     * <b>X9-TIME-523</b> — every certificate bundled with this repository satisfies the test-clock guard.
+     *
+     * <p>S2.1-AC1: every certificate bundled with this repository satisfies the guard — the revoked and
      * untrusted fixtures included, because their private keys are just as public as the others'.
      */
     @ParameterizedTest
@@ -113,7 +115,11 @@ class TestClockCertificateGuardTest {
         assertDoesNotThrow(() -> TestClockCertificateGuard.requireBundled(cert));
     }
 
-    /** The compiled-in list is exactly the bundled certificates: nothing missing, nothing extra. */
+    /**
+     * <b>X9-TIME-524</b> — the compiled-in list is exactly the bundled certificates.
+     *
+     * <p>The compiled-in list is exactly the bundled certificates: nothing missing, nothing extra.
+     */
     @Test
     void theListIsExactlyTheBundledCertificates() throws Exception {
         Set<String> bundled = new HashSet<>();
@@ -124,7 +130,11 @@ class TestClockCertificateGuardTest {
         assertThat(TestClockCertificateGuard.BUNDLED_FINGERPRINTS).containsExactlyInAnyOrderElementsOf(bundled);
     }
 
-    /** S2.1-AC2: a certificate that is not bundled — here, one this test has just generated — is refused. */
+    /**
+     * <b>X9-TIME-525</b> — a certificate that is not bundled is refused by the guard.
+     *
+     * <p>S2.1-AC2: a certificate that is not bundled — here, one this test has just generated — is refused.
+     */
     @Test
     void anyOtherCertificateIsRefused() throws Exception {
         X509Certificate cert = freshCertificate();
@@ -134,6 +144,7 @@ class TestClockCertificateGuardTest {
         assertThat(refused.getMessage()).contains("X9_TESTING_CLOCKCONTROL").contains("not a bundled");
     }
 
+    /** <b>X9-TIME-526</b> — no certificate at all is refused by the guard. */
     @Test
     void noCertificateIsRefused() {
         assertThrows(IllegalStateException.class, () -> TestClockCertificateGuard.requireBundled(null));
@@ -149,7 +160,11 @@ class TestClockCertificateGuardTest {
             .withPropertyValues("x9.testing.clock-listen=127.0.0.1:0");
     }
 
-    /** S2.1-AC2: with the flag on and a certificate that is not bundled, the application refuses to start. */
+    /**
+     * <b>X9-TIME-527</b> — with the clock on and a certificate that is not bundled, the application refuses to start.
+     *
+     * <p>S2.1-AC2: with the flag on and a certificate that is not bundled, the application refuses to start.
+     */
     @Test
     void theApplicationRefusesToStartWithARealCertificate() throws Exception {
         runnerSigningWith(freshCertificate())
@@ -162,7 +177,11 @@ class TestClockCertificateGuardTest {
             });
     }
 
-    /** S2.1-AC3: with the flag off, the clock does not exist, whatever the certificate. */
+    /**
+     * <b>X9-TIME-528</b> — with the clock off, no clock exists, whatever the certificate.
+     *
+     * <p>S2.1-AC3: with the flag off, the clock does not exist, whatever the certificate.
+     */
     @Test
     void withTheFlagOffNothingIsCreated() throws Exception {
         runnerSigningWith(freshCertificate())
@@ -172,7 +191,11 @@ class TestClockCertificateGuardTest {
             });
     }
 
-    /** S2.1-AC1: with the flag on and the demo certificate, the clock listener starts. */
+    /**
+     * <b>X9-TIME-529</b> — with the clock on and the demo certificate, the clock listener starts.
+     *
+     * <p>S2.1-AC1: with the flag on and the demo certificate, the clock listener starts.
+     */
     @Test
     void theApplicationStartsWithTheDemoCertificate() throws Exception {
         runnerSigningWith(demoCertificate())
@@ -183,6 +206,7 @@ class TestClockCertificateGuardTest {
             });
     }
 
+    /** <b>X9-TIME-530</b> — the clock listener may not be the API port. */
     @Test
     void theClockListenerMustNotBeTheApiPort() throws Exception {
         runnerSigningWith(demoCertificate())

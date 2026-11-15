@@ -27,8 +27,13 @@ message to an adopter can point at. Renaming a test method must not invalidate t
 is the whole reason the key is not just the method name.
 
 Areas: `AMT` amounts · `TIP` tips · `CUR` currencies · `RAIL` networks and rails · `LIFE` lifecycle
-and status · `SIG` signatures and keys · `LOC` locations and hand-over · `PATCH` editing a request ·
-`EVT` the event stream.
+and status · `HOLD` who holds a reservation · `MAP` a row of ADR-0035's transition map · `TIME` time
+edges and the test clock · `SIG` signatures and keys · `LOC` locations and hand-over · `DEC` the
+decoder · `PATCH` editing a request · `EVT` the event stream · `SUITE` the black-box suite's own
+tooling.
+
+**Every test has a key.** `docs/check/check_rule_coverage.py` fails on a black-box case whose
+docstring does not start with one, and on a JUnit test whose javadoc has no `<b>X9-…</b>`.
 
 **Source** — where the rule comes from, and it must be honest about which of three kinds it is:
 

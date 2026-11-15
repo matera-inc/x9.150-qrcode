@@ -5,7 +5,9 @@ from x9client.samples import TX_HASH
 
 
 def test_only_status_update_marks_paid_and_a_paid_qr_code_stays_paid(api, payer_a, events):
-    """S3.4-AC1, section 5 — status-update PAID is accepted; re-initiating PAID is 409.
+    """X9-LIFE-503 — status-update PAID is accepted, and a PAID QR Code stays PAID.
+
+    S3.4-AC1, section 5 — status-update PAID is accepted; re-initiating PAID is 409.
 
     ADR-0036: only the payment system marks a QR Code PAID, through this API, and a closed QR
     Code never reopens.

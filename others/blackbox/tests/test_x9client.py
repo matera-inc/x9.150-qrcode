@@ -16,11 +16,15 @@ from x9client import emv
 class TestEmv:
 
     def test_crc16_matches_the_published_check_value(self):
-        """S3.1-AC1 — CRC-16/CCITT-FALSE of "123456789" is 29B1, its published check value."""
+        """X9-SUITE-503 — the suite's CRC-16/CCITT-FALSE gives the published check value.
+
+        S3.1-AC1 — CRC-16/CCITT-FALSE of "123456789" is 29B1, its published check value."""
         assert emv.crc16("123456789") == "29B1"
 
     def test_a_well_formed_string_decodes_and_its_crc_holds(self):
-        """S3.1-AC1 — TLV decoding, one template level down, and the CRC check."""
+        """X9-SUITE-504 — the suite's EMV decoder reads TLVs one template down and checks the CRC.
+
+        S3.1-AC1 — TLV decoding, one template level down, and the CRC check."""
         body = "000201" + "010212" + "2620" + "0006org.x9" + "0106abcdef" + "5303840" + "6304"
         sample = body + emv.crc16(body)
 
@@ -33,7 +37,9 @@ class TestEmv:
         assert emv.template_with(sample, "org.x9") == ("26", {"00": "org.x9", "01": "abcdef"})
 
     def test_a_truncated_string_is_an_error_not_a_guess(self):
-        """S3.1-AC1 — a length that runs past the end is refused, not padded."""
+        """X9-SUITE-505 — the suite's EMV decoder refuses a length running past the end.
+
+        S3.1-AC1 — a length that runs past the end is refused, not padded."""
         with pytest.raises(emv.EmvError):
             emv.parse("000201" + "2699" + "short")
 
@@ -41,7 +47,10 @@ class TestEmv:
 class TestApi:
 
     def test_a_response_unpacks_as_status_and_body_and_keeps_its_headers(self):
-        """S3.1-AC1 — ETag and problem+json are read from what came back."""
+        """X9-SUITE-506 — the suite's HTTP client reads the status, the body, the ETag and
+        problem+json.
+
+        S3.1-AC1 — ETag and problem+json are read from what came back."""
         response = api_module.Response(
             412, {"type": "about:blank", "title": "Precondition Failed", "status": 412,
                   "violations": [{"field": "If-Match", "message": "stale"}]},
@@ -54,7 +63,10 @@ class TestApi:
         assert response.violations == [{"field": "If-Match", "message": "stale"}]
 
     def test_nothing_listening_is_status_zero_not_an_exception(self):
-        """S3.1-AC1 — a transport failure is reported, so the suite can skip with one line."""
+        """X9-SUITE-507 — the suite's HTTP client reports nothing listening as status 0, not an
+        exception.
+
+        S3.1-AC1 — a transport failure is reported, so the suite can skip with one line."""
         status, body = api_module.Api("http://127.0.0.1:9", timeout=2).get("/actuator/health")
         assert status == 0 and body
 
@@ -62,17 +74,24 @@ class TestApi:
 class TestOptionalCapabilities:
 
     def test_without_a_database_url_the_reason_is_stated(self, monkeypatch):
-        """S3.1-AC3 — X9_DATABASE_URL unset: no inspector, and a reason a skip can print."""
+        """X9-SUITE-508 — without X9_DATABASE_URL the suite has no inspector and states why.
+
+        S3.1-AC3 — X9_DATABASE_URL unset: no inspector, and a reason a skip can print."""
         monkeypatch.delenv(db_module.ENV, raising=False)
         inspector, reason = db_module.connect()
         assert inspector is None and db_module.ENV in reason
 
     def test_a_database_url_this_suite_cannot_read_is_a_reason_not_a_crash(self):
-        """S3.1-AC3 — an unknown scheme is skipped with a reason."""
+        """X9-SUITE-509 — a database URL of an unknown scheme is a stated reason, not a crash.
+
+        S3.1-AC3 — an unknown scheme is skipped with a reason."""
         inspector, reason = db_module.connect("redis://127.0.0.1:6379/0")
         assert inspector is None and "redis" in reason
 
     def test_a_clock_nobody_serves_is_reported_unavailable(self):
-        """S3.1-AC4 — the clock fixture skips with this message, rather than failing."""
+        """X9-SUITE-511 — a clock nobody serves is reported unavailable, with the message the
+        fixture skips on.
+
+        S3.1-AC4 — the clock fixture skips with this message, rather than failing."""
         assert not clock_module.Clock("http://127.0.0.1:9", timeout=2).available()
         assert clock_module.NOT_ENABLED == "test clock not enabled"

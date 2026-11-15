@@ -223,7 +223,11 @@ class QRCodeEntityLateFeeBoundTest extends AbstractTest {
         assertRefusedNaming("bill.amountDue.amount", qr::requireLateFeeWithinEighteenDigits);
     }
 
-    /** A bill with no late-fee adjustment is not this rule's business, at any amount. */
+    /**
+     * <b>X9-AMT-520</b> — a bill with no late-fee adjustment is not bounded by the 18-digit late-fee rule, at any amount.
+     *
+     * <p>A bill with no late-fee adjustment is not this rule's business, at any amount.
+     */
     @Test
     void aBillWithNoAdjustmentIsNotBounded() {
         BillVO noAdjustment = new BillVO(new DescriptionVO("plain"), null, null, TipVO.noTip(),

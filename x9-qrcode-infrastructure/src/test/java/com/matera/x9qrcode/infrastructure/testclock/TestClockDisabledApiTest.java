@@ -39,14 +39,22 @@ class TestClockDisabledApiTest extends AbstractIntegrationTest {
         return http.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
-    /** S2.1-AC3: with the flag off, nothing listens on the clock address — the listener is never created. */
+    /**
+     * <b>X9-TIME-537</b> — with the clock off, nothing listens on the clock address.
+     *
+     * <p>S2.1-AC3: with the flag off, nothing listens on the clock address — the listener is never created.
+     */
     @Test
     void nothingListensOnTheClockAddress() {
         assertTrue(context.getBeansOfType(TestClockServer.class).isEmpty());
         assertTrue(context.getBeansOfType(TestClockConfiguration.class).isEmpty());
     }
 
-    /** S2.1-AC3: /test/clock on the API port answers 404, for every method, and the clock does not move. */
+    /**
+     * <b>X9-TIME-538</b> — with the clock off, /test/clock on the API port is 404 for every method, and the clock does not move.
+     *
+     * <p>S2.1-AC3: /test/clock on the API port answers 404, for every method, and the clock does not move.
+     */
     @Test
     void theApiPortAnswers404() throws Exception {
         assertEquals(404, api("GET", null).statusCode());

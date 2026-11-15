@@ -26,9 +26,11 @@ import static java.util.Objects.isNull;
  * deduplicate on it. {@code qrCodeId} is the ordering key: events for one QR Code are ordered
  * relative to each other, and no ordering is promised across QR Codes.
  *
- * <p>{@code qrCodeRevision} is monotonic per QR Code but NOT gap-free — a notification that only
- * records details bumps the revision without emitting an event — so a consumer uses it as "ignore
- * anything not greater than what I have", never as "expect the next one".
+ * <p>{@code qrCodeRevision} is the revision of the payment request when the event happened. It is
+ * monotonic per QR Code but NOT gap-free, and not unique per event: since ADR-0016 only a PATCH moves
+ * it, and a PATCH emits no event, while a notification or a status update emits an event without
+ * moving it. So several events can carry the same revision; a consumer reads it as "which version of
+ * the request this was about", never as "expect the next one", and deduplicates on {@code eventId}.
  */
 public record PaymentEvent(
     UUID eventId,

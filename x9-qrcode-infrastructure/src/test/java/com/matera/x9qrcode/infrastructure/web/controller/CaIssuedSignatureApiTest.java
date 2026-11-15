@@ -265,7 +265,9 @@ class CaIssuedSignatureApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * The regression this file exists for.
+     * <b>X9-SIG-525</b> — an EC payer issued by a trusted CA, carrying x5c, is accepted.
+     *
+     * <p>The regression this file exists for.
      *
      * <p>{@code retrieveExternalJwkInformation} used to call {@code RSAKey.parse} unconditionally on
      * the {@code x5c} path, so an EC certificate was refused with "The public key of the X.509

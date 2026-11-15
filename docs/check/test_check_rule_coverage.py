@@ -55,8 +55,8 @@ PYTHON_TEST = f'''def test_map_010_first(api):
     """X9-MAP-010 — the first row of the map. {AC2}."""
 
 
-def test_without_a_key(api):
-    """A case that has no key yet."""
+def test_named_by_function(api):
+    """X9-LIFE-003 — a case a row names by file and function."""
 '''
 
 MAP_ADR = """# ADR-0035
@@ -74,7 +74,7 @@ def rows():
     out = {
         "R-SM-01": f"| `R-SM-01` | A thing holds. | `X9-LIFE-001` | `{AC1}` |",
         "R-EP-01": "| `R-EP-01` | An endpoint answers. | `X9-LIFE-002` | — |",
-        "R-I1-01": "| `R-I1-01` | A reading. | `test_things.py::test_without_a_key` | — |",
+        "R-I1-01": "| `R-I1-01` | A reading. | `test_things.py::test_named_by_function` | — |",
         "R-I2-01": "| `R-I2-01` | Another reading. | `ThingTest.java::aThingHolds` | — |",
         "R-MAP-010": f"| `R-MAP-010` | The first row. | `X9-MAP-010` | `{AC2}` |",
     }
@@ -159,7 +159,7 @@ class AConformingTable(unittest.TestCase):
             self.assertEqual(["x9-qrcode-domain/src/test/java/ThingTest.java"],
                              crc.files_of("X9-LIFE-001", tests))
             self.assertEqual(["others/blackbox/tests/test_things.py"],
-                             crc.files_of("test_things.py::test_without_a_key", tests))
+                             crc.files_of("test_things.py::test_named_by_function", tests))
             self.assertEqual([], crc.files_of("test_things.py::test_that_is_not_there", tests))
             self.assertEqual([], crc.files_of("X9-LIFE-999", tests))
         finally:
@@ -170,7 +170,7 @@ class S46AC2ATestCitesAnUnknownCriterion(unittest.TestCase):
     """S4.6-AC2: the check fails when a test cites an unknown criterion ID."""
 
     def test_an_unknown_criterion_in_a_black_box_test_fails_with_file_and_line(self):
-        cited = PYTHON_TEST + f'\n\ndef test_more(api):\n    """Proves {UNKNOWN}."""\n'
+        cited = PYTHON_TEST + f'\n\ndef test_more(api):\n    """X9-LIFE-004 — more. Proves {UNKNOWN}."""\n'
         out = run(extra={"others/blackbox/tests/test_things.py": cited})
         self.assertEqual(1, len(out), out)
         self.assertIn("others/blackbox/tests/test_things.py: line 10", out[0])
@@ -262,6 +262,63 @@ class ARuleForSomethingNeverBuilt(unittest.TestCase):
                   gaps=["| `R-SM-01` | Nobody built it. | Build it. |"])
         self.assertEqual(1, len(out), out)
         self.assertIn("marked NOT BUILT", out[0])
+
+class EveryTestCarriesAKey(unittest.TestCase):
+    """A black-box case or a JUnit test without an X9 key fails the check (docs/TEST-INDEX.md)."""
+
+    def test_a_black_box_case_without_a_key_fails(self):
+        unkeyed = PYTHON_TEST + '\n\nclass TestMore:\n    def test_unkeyed(self, api):\n' \
+                                '        """A case nobody keyed."""\n'
+        out = run(extra={"others/blackbox/tests/test_things.py": unkeyed})
+        self.assertEqual(1, len(out), out)
+        self.assertIn("others/blackbox/tests/test_things.py: line 10, test_unkeyed", out[0])
+        self.assertIn("has no key", out[0])
+
+    def test_a_black_box_case_without_a_docstring_fails(self):
+        out = run(extra={"others/blackbox/tests/test_things.py":
+                         PYTHON_TEST + "\n\ndef test_bare(api):\n    pass\n"})
+        self.assertEqual(1, len(out), out)
+        self.assertIn("test_bare", out[0])
+
+    def test_a_key_mentioned_later_in_the_docstring_is_not_a_key(self):
+        out = run(extra={"others/blackbox/tests/test_things.py":
+                         PYTHON_TEST + '\n\ndef test_late(api):\n    """As X9-LIFE-001."""\n'})
+        self.assertEqual(1, len(out), out)
+        self.assertIn("test_late", out[0])
+
+    def test_a_helper_outside_tests_needs_no_key(self):
+        out = run(extra={"others/blackbox/x9client/helpers.py": "def test_helper():\n    pass\n"})
+        self.assertEqual([], out)
+
+    def test_a_junit_test_without_a_key_fails(self):
+        unkeyed = JAVA_TEST.rstrip().rstrip("}") + """
+    /** No key here. */
+    @ParameterizedTest
+    @CsvSource({
+        "a, b"
+    })
+    void anUnkeyedOne(String a, String b) { }
+
+    @Test
+    void aBareOne() { }
+}
+"""
+        out = run(extra={"x9-qrcode-domain/src/test/java/ThingTest.java": unkeyed})
+        self.assertEqual(2, len(out), out)
+        self.assertIn("anUnkeyedOne", out[0])
+        self.assertIn("aBareOne", out[1])
+        self.assertIn("has no key", out[1])
+
+    def test_the_class_javadoc_is_not_the_first_tests_javadoc(self):
+        java = """/** <b>X9-LIFE-005</b> is only mentioned in the class javadoc. */
+class OtherTest {
+    @Test
+    void first() { }
+}
+"""
+        out = run(extra={"x9-qrcode-domain/src/test/java/OtherTest.java": java})
+        self.assertEqual(1, len(out), out)
+        self.assertIn("first", out[0])
 
 
 class S46AC2ARuleRowNamesATestThatDoesNotExist(unittest.TestCase):

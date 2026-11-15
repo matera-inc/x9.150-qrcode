@@ -4,13 +4,18 @@
 """The contract writes the field-refusal tests (Story 3.3, ADR-0034).
 
 Reads ``openapi.yaml`` and generates ONE refusal case for every ``maxLength``, ``minLength``,
-``pattern`` and ``required`` in the JSON request schemas of the operations below. A field added to
-the contract gets its refusal tests without anybody typing them.
+``pattern``, ``required``, ``maximum`` and ``minimum`` in the JSON request schemas of the operations
+below. A field added to the contract gets its refusal tests without anybody typing them.
 
 A case is a sample body that the service accepts (proved by a control case per operation) with
-exactly one field broken: one character too long, one too short, a value its pattern refuses, or
-the field removed. ``tests/test_contract.py`` sends each one and asserts 400, the field's path in
-the violations, and that nothing changed.
+exactly one field broken: one character too long, one too short, a value its pattern refuses, the
+field removed, or a number one past its bound (``maximum + 1``, ``minimum - 1``; the bound itself
+when ``exclusiveMaximum`` / ``exclusiveMinimum`` is true). ``tests/test_contract.py`` sends each one
+and asserts 400, the field's path in the violations, and that nothing changed.
+
+Each numeric bound also gets an EDGE case (``edges()``): the bound itself (one inside it when the
+bound is exclusive), which must not be refused for that field. Off-by-one is the bug a bound
+invites, so both sides of it are pinned.
 
 A constraint the service does not enforce today is listed, with the reason, in
 ``contract-known-gaps.yaml``: it still runs, as an expected failure that turns red the day the
@@ -31,7 +36,9 @@ OPENAPI = os.environ.get("X9_OPENAPI") or os.path.normpath(os.path.join(
     HERE, "..", "..", "x9-qrcode-infrastructure", "src", "main", "resources", "apis", "openapi.yaml"))
 KNOWN_GAPS = os.path.join(HERE, "contract-known-gaps.yaml")
 
-KINDS = ("maxLength", "minLength", "pattern", "required")
+KINDS = ("maxLength", "minLength", "pattern", "required", "maximum", "minimum")
+EDGE_KINDS = ("maximum-accepted", "minimum-accepted")
+NUMERIC = ("integer", "number")
 
 
 class Operation:
@@ -71,6 +78,7 @@ class Case:
         self.pattern = None                    # set for length cases on a patterned field
         self.min_length = None
         self.max_length = None
+        self.exclusive = False                 # exclusiveMaximum / exclusiveMinimum: true
 
     @property
     def field(self):
@@ -97,11 +105,27 @@ class Case:
             del parent[key]
             return body, named
 
+        if self.kind in ("maximum", "minimum") + EDGE_KINDS:
+            current = parent[key] if isinstance(parent, list) else parent.get(key)
+            if current is not None and (isinstance(current, bool)
+                                        or not isinstance(current, (int, float))):
+                raise Unbuildable(f"{self.field} is not a number in the sample")
+            parent[key] = self._number()
+            return body, named
+
         current = parent.get(key)
         if current is not None and not isinstance(current, str):
             raise Unbuildable(f"{self.field} is not a string in the sample ({type(current).__name__})")
         parent[key] = self._value(current)
         return body, named
+
+    def _number(self):
+        """One past the bound (the bound itself when exclusive), or, for an edge, the bound itself
+        (one inside it when exclusive)."""
+        step = 1 if self.kind.startswith("maximum") else -1
+        if self.kind in EDGE_KINDS:
+            return self.limit - step if self.exclusive else self.limit
+        return self.limit if self.exclusive else self.limit + step
 
     def _value(self, current):
         seed = (current or "") if isinstance(current, str) else ""
@@ -127,6 +151,10 @@ def _locate(body, path):
 
 
 def _locate_from(node, path, named):
+    if path == ["[]"]:                         # an array's items: the first element
+        if not isinstance(node, list) or not node:
+            raise Unbuildable(f"no element at {'.'.join(named)}")
+        return node, 0, ".".join(named[:-1] + [f"{named[-1]}[0]"])
     if len(path) == 1:
         if not isinstance(node, dict):
             raise Unbuildable(f"{'.'.join(named)} is not an object in the sample")
@@ -209,6 +237,16 @@ def _walk(spec, schema, path, operation, out, depth=0):
         case.max_length = strings.get("maxLength")
         out.append(case)
 
+    if schema.get("type") in NUMERIC:
+        for kind, edge in (("maximum", "maximum-accepted"), ("minimum", "minimum-accepted")):
+            if kind not in schema:
+                continue
+            exclusive = schema.get("exclusive" + kind[0].upper() + kind[1:]) is True
+            for name in (kind, edge):
+                case = Case(operation, tuple(path), name, schema[kind])
+                case.exclusive = exclusive
+                out.append(case)
+
     for name in schema.get("required") or []:
         out.append(Case(operation, tuple(path) + (name,), "required", None))
     for name, child in (schema.get("properties") or {}).items():
@@ -217,8 +255,7 @@ def _walk(spec, schema, path, operation, out, depth=0):
         _walk(spec, schema["items"], path + ["[]"], operation, out, depth + 1)
 
 
-def cases(spec=None):
-    """Every generated case, in contract order."""
+def _generated(spec):
     spec = spec or load()
     out = []
     for operation in OPERATIONS:
@@ -231,6 +268,16 @@ def cases(spec=None):
     return unique
 
 
+def cases(spec=None):
+    """Every generated refusal case, in contract order."""
+    return [c for c in _generated(spec) if c.kind not in EDGE_KINDS]
+
+
+def edges(spec=None):
+    """Every numeric bound, as the value that must still be accepted, in contract order."""
+    return [c for c in _generated(spec) if c.kind in EDGE_KINDS]
+
+
 def known_gaps(path=KNOWN_GAPS):
     """``{case id: reason}`` from the known-gaps file."""
     if not os.path.exists(path):
@@ -241,10 +288,10 @@ def known_gaps(path=KNOWN_GAPS):
 
 
 if __name__ == "__main__":
-    generated = cases()
+    generated = cases() + edges()
     gaps = known_gaps()
     for case in generated:
         print(f"{case.id}{'   [known gap]' if case.id in gaps else ''}")
-    by_kind = {k: sum(1 for c in generated if c.kind == k) for k in KINDS}
+    by_kind = {k: sum(1 for c in generated if c.kind == k) for k in KINDS + EDGE_KINDS}
     print(f"\n{len(generated)} cases generated: " + ", ".join(f"{v} {k}" for k, v in by_kind.items())
           + f"; {len(gaps)} known gaps", file=sys.stderr)

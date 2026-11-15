@@ -5,7 +5,9 @@ from x9client import jws
 
 
 def test_the_jwk_set_is_served_with_a_certificate_chain(api):
-    """S3.4-AC1, section 7 — GET /pub/.well-known/jwks has keys, each with its x5c, so the other
+    """X9-SIG-507 — the JWK set is served, each key with its x5c chain.
+
+    S3.4-AC1, section 7 — GET /pub/.well-known/jwks has keys, each with its x5c, so the other
     side can verify this payee's signatures."""
     status, jwks = api.get("/pub/.well-known/jwks")
     assert status == 200 and isinstance(jwks, dict) and jwks.get("keys"), jwks

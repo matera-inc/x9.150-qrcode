@@ -56,7 +56,11 @@ class FixedDiscountLateFeeLinearInterestFormulaServiceTest {
 
     // ------------------------------------------------------------ the due date (Story 1.3)
 
-    /** S1.3-AC4: a payment at exactly dueDate is on time: full amount, no late fee, no exception. */
+    /**
+     * <b>X9-AMT-501</b> — a payment at exactly the due date is on time: the full amount, no late fee.
+     *
+     * <p>S1.3-AC4: a payment at exactly dueDate is on time: full amount, no late fee, no exception.
+     */
     @Test
     void aPaymentAtExactlyTheDueDateIsOnTimeForTheFullAmount() {
         FormulaResultDTO result = assertDoesNotThrow(
@@ -65,20 +69,32 @@ class FixedDiscountLateFeeLinearInterestFormulaServiceTest {
         assertNull(result, "at the due date no adjustment applies: the full amount, no late fee");
     }
 
-    /** S1.3-AC4: the due date is on time with no discount configured too. */
+    /**
+     * <b>X9-AMT-502</b> — the due date is on time with no discount configured too.
+     *
+     * <p>S1.3-AC4: the due date is on time with no discount configured too.
+     */
     @Test
     void aPaymentAtExactlyTheDueDateIsOnTimeWithNoDiscountConfigured() {
         assertNull(assertDoesNotThrow(() -> at(DUE_DATE, parameters(null))));
     }
 
-    /** S1.3-AC4: dueDate − 1 ms is the same as dueDate when no discount window covers it. */
+    /**
+     * <b>X9-AMT-503</b> — 1 ms before the due date is the full amount when no discount covers it.
+     *
+     * <p>S1.3-AC4: dueDate − 1 ms is the same as dueDate when no discount window covers it.
+     */
     @Test
     void oneMillisecondBeforeTheDueDateIsTheFullAmountWhenNoDiscountCoversIt() {
         assertNull(at(DUE_DATE.minus(1, ChronoUnit.MILLIS),
             parameters(List.of(new DiscountVO(10, DISCOUNT, "early")))));
     }
 
-    /** S1.3-AC4: dueDate + 1 ms owes the first day's late fee. */
+    /**
+     * <b>X9-AMT-504</b> — 1 ms after the due date the first day's late fee is owed.
+     *
+     * <p>S1.3-AC4: dueDate + 1 ms owes the first day's late fee.
+     */
     @Test
     void oneMillisecondAfterTheDueDateTheLateFeeApplies() {
         FormulaResultDTO result = at(DUE_DATE.plus(1, ChronoUnit.MILLIS), parameters(null));
@@ -94,7 +110,11 @@ class FixedDiscountLateFeeLinearInterestFormulaServiceTest {
         return instant.plus(millis, ChronoUnit.MILLIS);
     }
 
-    /** S2.6-AC1, AC4: fetched before E = dueDate − N days, the discount is advertised until exactly E. */
+    /**
+     * <b>X9-AMT-505</b> — a discount is advertised until exactly the instant it stops applying.
+     *
+     * <p>S2.6-AC1, AC4: fetched before E = dueDate − N days, the discount is advertised until exactly E.
+     */
     @Test
     void aDiscountIsAdvertisedUntilExactlyTheInstantItStopsApplying() {
         OffsetDateTime eligibilityEnds = DUE_DATE.minusDays(10);
@@ -108,7 +128,11 @@ class FixedDiscountLateFeeLinearInterestFormulaServiceTest {
             "the discount must be advertised until E itself, not the end of E's calendar day");
     }
 
-    /** S2.6-AC1, AC4: the discount still applies at E and no longer 1 ms after: one edge, not two. */
+    /**
+     * <b>X9-AMT-506</b> — a discount applies at its edge and not 1 ms after.
+     *
+     * <p>S2.6-AC1, AC4: the discount still applies at E and no longer 1 ms after: one edge, not two.
+     */
     @Test
     void aDiscountAppliesAtItsEdgeAndNotOneMillisecondAfter() {
         OffsetDateTime eligibilityEnds = DUE_DATE.minusDays(10);
@@ -123,7 +147,11 @@ class FixedDiscountLateFeeLinearInterestFormulaServiceTest {
         assertNull(at(plusMs(eligibilityEnds, 1), parameters), "1 ms past E the full amount is owed");
     }
 
-    /** S2.6-AC3: of several discounts the largest eligible is served, advertised until its own E. */
+    /**
+     * <b>X9-AMT-507</b> — of several discounts the largest eligible is served, until its own edge.
+     *
+     * <p>S2.6-AC3: of several discounts the largest eligible is served, advertised until its own E.
+     */
     @Test
     void ofSeveralDiscountsTheLargestEligibleIsServedUntilItsOwnEdge() {
         DiscountVO earlyAndLarge = new DiscountVO(30, 2 * DISCOUNT, "early");
@@ -142,7 +170,11 @@ class FixedDiscountLateFeeLinearInterestFormulaServiceTest {
         assertEquals(smallEnds, afterTheLarge.validUntil());
     }
 
-    /** S2.6-AC3: the largest discount wins even when a smaller one would last longer. */
+    /**
+     * <b>X9-AMT-508</b> — the largest eligible discount wins even when a smaller one would last longer.
+     *
+     * <p>S2.6-AC3: the largest discount wins even when a smaller one would last longer.
+     */
     @Test
     void theLargestEligibleDiscountWinsAndCarriesItsOwnEdge() {
         DiscountVO lateButLarge = new DiscountVO(10, 3 * DISCOUNT, "large");
@@ -155,7 +187,11 @@ class FixedDiscountLateFeeLinearInterestFormulaServiceTest {
         assertEquals(DUE_DATE.minusDays(10), result.validUntil());
     }
 
-    /** S2.6-AC2, AC4: k days late, the fee is advertised until exactly dueDate + k × 24 h. */
+    /**
+     * <b>X9-AMT-509</b> — a late fee is advertised until the next 24-hour boundary from the due date.
+     *
+     * <p>S2.6-AC2, AC4: k days late, the fee is advertised until exactly dueDate + k × 24 h.
+     */
     @Test
     void aLateFeeIsAdvertisedUntilTheNextTwentyFourHourBoundaryFromTheDueDate() {
         FormulaResultDTO firstDay = at(DUE_DATE.plusHours(5), parameters(null));
@@ -170,7 +206,11 @@ class FixedDiscountLateFeeLinearInterestFormulaServiceTest {
         assertEquals(DUE_DATE.plusDays(3), thirdDay.validUntil());
     }
 
-    /** S2.6-AC2, AC4: the fee for k days applies at dueDate + k × 24 h, and the next one 1 ms later. */
+    /**
+     * <b>X9-AMT-510</b> — a late fee applies at its boundary and rises 1 ms after.
+     *
+     * <p>S2.6-AC2, AC4: the fee for k days applies at dueDate + k × 24 h, and the next one 1 ms later.
+     */
     @Test
     void aLateFeeAppliesAtItsBoundaryAndRisesOneMillisecondAfter() {
         OffsetDateTime boundary = DUE_DATE.plusDays(1);
@@ -184,7 +224,11 @@ class FixedDiscountLateFeeLinearInterestFormulaServiceTest {
         assertEquals(DUE_DATE.plusDays(2), justAfter.validUntil());
     }
 
-    /** S2.6-AC1, AC2: the advertised validUntil is capped by whatever ends sooner. */
+    /**
+     * <b>X9-AMT-511</b> — the advertised validUntil is capped by whatever ends sooner.
+     *
+     * <p>S2.6-AC1, AC2: the advertised validUntil is capped by whatever ends sooner.
+     */
     @Test
     void theAdvertisedValidUntilIsCappedByAnEarlierEnd() {
         OffsetDateTime eligibilityEnds = DUE_DATE.minusDays(10);
