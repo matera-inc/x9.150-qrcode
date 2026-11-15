@@ -27,6 +27,9 @@ POST = "/api/v1/payment-notification/post-payment"
 # The 502's detail (owner, 2026-11-15): no answer is not proof that nothing arrived.
 ANSWER_NOT_RECEIVED = ("The payee's answer was not received; the payee may have received the "
                        "notification. Retrying is safe.")
+# The 502's detail before the money moves when the answer does not carry our correlationId
+# (owner, 2026-11-15; ADR-0027).
+BAD_CORRELATION_ID = "failed to pay - payee is not responding (bad correlationId)"
 
 
 def notify_through(api, peer, *, post=False):
@@ -49,6 +52,15 @@ def assert_reported(response, *, signature, problem, status_code, accepted):
     else:
         assert result.get("signatureDetail"), "the words travel with the code"
     return result
+
+
+def assert_bad_correlation_id_refused(response):
+    """Owner, 2026-11-15 (ADR-0027): before the money moves, an answer that does not carry the
+    correlationId sent is refused: 502 notification-undeliverable, with its own detail."""
+    assert response.status == 502, f"a pre-commit answer under a bad correlationId: {response}"
+    assert response.body["type"] == "https://x9.matera.com/api/notification-undeliverable", response
+    assert response.body["detail"] == BAD_CORRELATION_ID, response
+    assert "accepted" not in response.body, "a 502 carries no verdict"
 
 
 def assert_untouched(api, events, qr):
@@ -117,14 +129,6 @@ def _alg_none(question):
 CASES = {
     # case: (answer factory taking the peer, expected signature, problem, statusCode, accepted)
     "01-signed-yes": (lambda p: p.yes, "VERIFIED", None, 200, True),
-    "02-wrong-correlation-id": (
-        lambda p: lambda q: p.signed(q, 200, correlation_id="00000000-0000-4000-8000-000000000000"),
-        "INVALID", "CORRELATION_ID_MISMATCH", 200, True),
-    "03-no-correlation-id": (
-        lambda p: lambda q: p.signed(q, 200, drop=("correlationId",)),
-        "INVALID", "BAD_HEADER", 200, True),
-    "04-a-yes-replayed-from-another-notification": (
-        _replay, "INVALID", "CORRELATION_ID_MISMATCH", 200, True),
     "05-empty-body": (
         lambda p: lambda q: peer_module.Answer(200, b"", content_type=None),
         "ABSENT", "ABSENT_BODY", 200, True),
@@ -161,19 +165,15 @@ CASES = {
 
 @pytest.mark.parametrize("case", sorted(CASES))
 def test_the_service_reports_each_answer_for_what_it_is(api, peer, events, case):
-    """X9-SIG-502 — each of the payee's answers (cases 1-8, 11-16) is reported for what it is:
+    """X9-SIG-502 — each of the payee's answers (cases 1, 5-8, 11-16) is reported for what it is:
     signature, signatureProblem, statusCode, accepted.
 
-    S3.5-AC2 (cases 1-8 and 11-16), S3.5-AC3 — statusCode, accepted, signature,
-    signatureProblem; and the QR Code untouched."""
+    S3.5-AC2 (cases 1, 5-8 and 11-16), S3.5-AC3 — statusCode, accepted, signature,
+    signatureProblem; and the QR Code untouched. Cases 2 to 4, an answer under another
+    correlationId or none, are no longer reported but refused before the money moves (X9-SIG-529)
+    and sent again after it (X9-SIG-530, X9-SIG-531), by the owner's decision of 2026-11-15."""
     factory, signature, problem, status_code, accepted = CASES[case]
-    answer = factory(peer)
-
-    if case.startswith("04"):
-        peer.answer = answer
-        first, _ = notify_through(api, peer)       # the notification whose yes gets replayed
-        assert first.body["signature"] == "VERIFIED", first.body
-    peer.answer = answer
+    peer.answer = factory(peer)
 
     response, qr = notify_through(api, peer)
 
@@ -282,8 +282,12 @@ def test_every_tampered_answer_is_named_by_its_fixed_code(api, peer, pki, events
 
     response, qr = notify_through(api, peer)
 
-    assert_reported(response, signature="INVALID", problem=jws.Tamperer.CASES[case],
-                    status_code=200, accepted=True)
+    if case == "correlation_id_not_canonical":
+        # 1-2-3-4-5 is not the correlationId sent: before the money moves, refused (X9-SIG-529).
+        assert_bad_correlation_id_refused(response)
+    else:
+        assert_reported(response, signature="INVALID", problem=jws.Tamperer.CASES[case],
+                        status_code=200, accepted=True)
     assert_untouched(api, events, qr)
 
 
@@ -307,4 +311,96 @@ def test_a_signed_answer_whose_status_code_is_not_an_integer_is_invalid(api, pee
 
     assert_reported(response, signature="INVALID", problem="STATUS_MISSING", status_code=200,
                     accepted=True)
+    assert_untouched(api, events, qr)
+
+
+# ------------------------------------------------------------------ a bad correlationId (2026-11-15)
+
+BAD_CORRELATION_IDS = {
+    # case: answer factory taking the peer (Story 3.5 cases 2 to 4)
+    "02-wrong-correlation-id": lambda p: lambda q: p.signed(
+        q, 200, correlation_id="00000000-0000-4000-8000-000000000000"),
+    "03-no-correlation-id": lambda p: lambda q: p.signed(q, 200, drop=("correlationId",)),
+    "04-a-yes-replayed-from-another-notification": _replay,
+}
+
+
+@pytest.mark.parametrize("case", sorted(BAD_CORRELATION_IDS))
+def test_a_bad_correlation_id_before_the_money_moves_is_502(api, peer, events, case):
+    """X9-SIG-529 — a pre-commit notification whose answer carries another correlationId, or none,
+    is refused: 502 notification-undeliverable, "failed to pay - payee is not responding (bad
+    correlationId)", after exactly one delivery.
+
+    Source: Ours. Owner, 2026-11-15 (ADR-0027); ANSI X9.150-2026 §10.3.2 has the responder echo
+      the correlationId. Until then the answer was reported INVALID in a 200 (Story 3.5 cases 2-4).
+    Why: Before the money moves, an answer this service cannot tie to the question is no answer,
+      and the payer must not pay on it.
+    """
+    answer = BAD_CORRELATION_IDS[case](peer)
+    if case.startswith("04"):
+        peer.answer = answer
+        first, _ = notify_through(api, peer)       # the notification whose yes gets replayed
+        assert first.body["signature"] == "VERIFIED", first.body
+        peer.received.clear()
+        peer.answers_given.clear()
+
+    response, qr = notify_through(api, peer)
+
+    assert_bad_correlation_id_refused(response)
+    assert len(peer.received) == 1, f"{len(peer.received)} deliveries: none is repeated pre-commit"
+    assert_untouched(api, events, qr)
+
+
+@pytest.mark.parametrize("missing", [False, True], ids=["another-id", "no-id"])
+def test_a_bad_correlation_id_after_the_money_moved_is_sent_once_more(api, peer, events, missing):
+    """X9-SIG-530 — a post-commit notification whose answer carries another correlationId, or none,
+    is sent once more, the same notification under a new correlationId; the payee's good answer to
+    it is reported as any other: 200, VERIFIED, accepted. The test payee sees two notifications.
+
+    Source: Ours. Owner, 2026-11-15 (ADR-0027): "money was sent already, so we can try one more
+      time".
+    Why: After the money moved the payee must hear of it; one bad answer is not the end of that.
+      The retry is a new exchange, so under the old id a replayed answer would pass for it.
+    """
+    peer.answer = peer.bad_correlation_id(1, missing=missing)
+
+    response, qr = notify_through(api, peer, post=True)
+
+    assert_reported(response, signature="VERIFIED", problem=None, status_code=200, accepted=True)
+    assert len(peer.received) == 2, f"{len(peer.received)} deliveries, want 2"
+    first, retry = peer.received
+    assert retry.correlation_id and retry.correlation_id != first.correlation_id, \
+        "the retry goes out under a new correlationId"
+    assert retry.claims == first.claims, "the same notification, sent again"
+    assert_untouched(api, events, qr)
+
+
+@pytest.mark.parametrize("missing", [False, True], ids=["another-id", "no-id"])
+def test_a_bad_correlation_id_twice_after_the_money_moved_is_reported(api, peer, events, missing):
+    """X9-SIG-531 — a post-commit notification whose answer, sent twice, never carries the
+    correlationId sent ends there: exactly two notifications, and the retry's answer reported as it
+    is (200, INVALID, CORRELATION_ID_MISMATCH or BAD_HEADER). Nothing else starts: the QR Code is
+    untouched.
+
+    The record of it (QR Code, transactionId, both correlationIds sent, what came back, when) is a
+    WARN log line on both builds, which this suite does not read; it is pinned by
+    ``SendPaymentNotificationUseCaseTest`` (X9-SIG-156) and Go's
+    ``TestABadCorrelationIDTwiceAfterTheMoneyMovedIsRecorded``.
+
+    Source: Ours. Owner, 2026-11-15 (ADR-0027): "in case it fails again, we just log the tentative
+      on the log for the QR Code, letting the payer bank know about it. We don't start any
+      operational work on this".
+    Why: One retry, not a loop: a payee that never echoes is not hammered, and the payer bank keeps
+      what it needs to investigate.
+    """
+    peer.answer = peer.bad_correlation_id(2, missing=missing)
+
+    response, qr = notify_through(api, peer, post=True)
+
+    assert_reported(response, signature="INVALID",
+                    problem="BAD_HEADER" if missing else "CORRELATION_ID_MISMATCH",
+                    status_code=200, accepted=True)
+    assert len(peer.received) == 2, f"{len(peer.received)} deliveries, want exactly 2"
+    assert peer.bad_answers == 2
+    assert peer.received[1].correlation_id != peer.received[0].correlation_id
     assert_untouched(api, events, qr)
