@@ -336,10 +336,9 @@ def test_a_bad_correlation_id_before_the_money_moves_is_502(api, peer, events, c
     Why: Before the money moves, an answer this service cannot tie to the question is no answer,
       and the payer must not pay on it.
     """
-    answer = BAD_CORRELATION_IDS[case](peer)
+    peer.answer = BAD_CORRELATION_IDS[case](peer)
     if case.startswith("04"):
-        peer.answer = answer
-        first, _ = notify_through(api, peer)       # the notification whose yes gets replayed
+        first, _ = notify_through(api, peer)      # the notification whose yes gets replayed
         assert first.body["signature"] == "VERIFIED", first.body
         peer.received.clear()
         peer.answers_given.clear()
