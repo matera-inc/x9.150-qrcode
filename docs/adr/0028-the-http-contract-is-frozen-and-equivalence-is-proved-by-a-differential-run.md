@@ -153,6 +153,7 @@ of them is `go_only`, or a strict expected failure on Java.
 | 13 | Number spelling in the body `signature/generate` signs | Jackson's (`1e2` becomes `100.0`) | **as sent** (`1e2`) | Both are the same JSON number; a token from either build verifies on the other | Story 10.2 |
 | 14 | A blank `transactionId` (`""`, spaces) on an outbound notification | signed verbatim | **left off the wire** | A blank is never a reference, and the phase is read from its absence ([ADR-0004](0004-phase-inferred-from-transaction-id.md)) | Story 10.6 |
 | 15 | The payee's answer to an outbound notification, over 1 MiB | read | **502** | A signed `{"statusCode": n}` is a few kilobytes; the cap bounds memory | Story 10.6 |
+| 16 | GET `paymentNotification.data` after the holder's `NOT_SENT` once a hash is registered | the earlier notification (the accepted `NOT_SENT` is not recorded) | **the `NOT_SENT`** | GET shows the latest accepted notification; an accepted notification that goes unrecorded is a Java defect, not a contract ([ADR-0036](0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md)) | Story 10.5 |
 
 Numbers 1 and 2 are the intended differences above. Row 8 (an unknown field in `fednow`, `rtp`
 or `ach` on create or PATCH: ignored by Java, refused by Go) left this list on 2026-11-15, when the

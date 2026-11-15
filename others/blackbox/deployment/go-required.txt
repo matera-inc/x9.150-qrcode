@@ -251,6 +251,7 @@ X9-RAIL-521
 X9-RAIL-522
 X9-CUR-520
 X9-CUR-521
+X9-CUR-522
 # The notification cases of X9-LOC-306, -307 and -311, which Story 10.3 excluded.
 tests/test_payers.py::TestPayload::
 # Whatever else passes on Go once Story 10.5 is in: every other file of the suite, but the EMV
