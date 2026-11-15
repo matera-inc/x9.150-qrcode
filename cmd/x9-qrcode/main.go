@@ -163,6 +163,7 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	paymentrequest.New(st, currencies, cfg.PublicEndpoints.Host, businessClock.Now).Register(api)
 	paymentrequest.NewStatusUpdates(st, time.Duration(cfg.Reservation.TTLSeconds)*time.Second).Register(api)
 	signature.New(keyStore, signer, verifier, logger).Register(api)
+	paymentrequest.NewPayloads(st, keyStore, signer, verifier, cfg.PublicEndpoints.Host, businessClock.Now, logger).Register(api)
 	srv := newServer(cfg.Server.Port, httplog.Middleware(logger, testclock.OffsetHeader(businessClock, api)))
 	// On SIGTERM, parked long-polls answer with their current page instead of holding the drain (ADR-0031).
 	srv.RegisterOnShutdown(events.Stop)

@@ -113,3 +113,39 @@ tests/test_contract.py::test_a_contract_constraint_is_refused[status-update:
 # JWK set but resolves the location through /pub/api/v1/loc, and joins with Story 10.3.
 X9-SIG-507
 tests/test_contract.py::test_a_contract_constraint_is_refused[signature-validate:
+
+# Story 10.3: a payer fetches the signed payload (POST /pub/api/v1/loc/{id}).
+tests/test_payload.py
+tests/test_clock.py
+X9-LOC-301
+X9-LOC-302
+X9-LOC-303
+X9-LOC-304
+X9-LOC-305
+X9-LOC-306
+X9-LOC-307
+X9-LOC-308
+X9-LOC-309
+X9-LOC-310
+X9-LOC-311
+X9-LOC-420
+X9-LOC-470
+X9-LOC-471
+X9-LOC-472
+X9-LOC-473
+X9-LOC-502
+X9-TIME-012
+X9-TIME-014
+X9-TIME-017
+# X9-LOC-306, -307 and -311 run each revocation case against both endpoints; their notification
+# cases, X9-LOC-312 (a notification's x5u), X9-PATCH-440 (a notification moves the lock) and the
+# X9-TIME-* edges that announce a payment join with Story 10.4, which adds the notification endpoint.
+!tests/test_payers.py::TestPayload::test_ocsp_decides_when_there_is_no_crl[good-notification]
+!tests/test_payers.py::TestPayload::test_ocsp_decides_when_there_is_no_crl[revoked-notification]
+!tests/test_payers.py::TestPayload::test_an_unreachable_revocation_source_soft_fails[crl-and-ocsp-unreachable-notification]
+!tests/test_payers.py::TestPayload::test_an_unreachable_revocation_source_soft_fails[ocsp-unreachable-no-crl-notification]
+!tests/test_payers.py::TestPayload::test_an_unreachable_revocation_source_soft_fails[crl-unreachable-no-ocsp-notification]
+!tests/test_payers.py::TestPayload::test_an_unreachable_revocation_source_soft_fails[crl-unreadable-no-ocsp-notification]
+!tests/test_payers.py::TestPayload::test_an_unreachable_revocation_source_soft_fails[crl-unreadable-and-ocsp-unreachable-notification]
+!tests/test_payers.py::TestPayload::test_ocsp_decides_when_the_crl_cannot_be_read[good-notification]
+!tests/test_payers.py::TestPayload::test_ocsp_decides_when_the_crl_cannot_be_read[revoked-notification]

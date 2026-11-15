@@ -5,6 +5,8 @@
 The payload is a JWS, not JSON: the payee signs it so the payer can prove where the bank details
 came from. Here it is verified against the payee's certificate, not merely decoded.
 """
+import datetime
+
 import pytest
 
 from x9client import jws
@@ -86,3 +88,29 @@ def test_protection_type_is_read_back_as_sent(api, payee_certificate, business_n
             protection_type, (rail, read.body)
         assert claims["paymentMethods"][0]["networks"][rail]["protectionType"] == \
             protection_type, (rail, claims)
+
+
+def test_sent_at_is_when_the_payload_was_sent(api, payee_certificate, business_now):
+    """X9-LOC-513 — ``sentAt`` is the instant the payload was composed, on the service's clock: within
+    the request's window, never before ``revisedAt`` and never after ``validUntil``.
+
+    Source: ANSI X9.150-2026 §6: Sent At is "the time when the Payload was sent to the Payer's PSP";
+      it SHALL be ≥ revisedAt, and validUntil SHALL be ≥ sentAt. The owner fixed it as the business
+      clock's now, and revisedAt if that is later (2026-11-15).
+    Why: A payer may judge freshness by sentAt. A value taken from anywhere else (the creation, a
+      cache, another clock) would date a payload by something other than its sending.
+    """
+    created = api.create_qr_detailed()
+    assert created.status == 201, created
+    before = business_now()
+    response = api.fetch_payload(created.body["location"]["id"], created.body["qrCode"])
+    after = business_now()
+    assert response.status == 200, response
+    _, claims = jws.verify(response.text, payee_certificate, now_ms=business_now)
+
+    def millis(text):
+        return int(datetime.datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp() * 1000)
+
+    sent = millis(claims["sentAt"])
+    assert before - 1000 <= sent <= after + 1000, (before, claims["sentAt"], after)
+    assert millis(claims["revisedAt"]) <= sent <= millis(claims["validUntil"]), claims

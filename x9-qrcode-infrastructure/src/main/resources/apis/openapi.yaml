@@ -1173,7 +1173,7 @@ components:
         sentAt:
           type: string
           format: date-time
-          description: "UTC timestamp indicating when the payment request was sent. Expected pattern: `^(\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d{1,3})?Z$`"
+          description: "UTC timestamp of when this payload was sent to the payer's PSP (ANSI X9.150 §6): the payee's clock when it composed the answer, and never earlier than `revisedAt`. Expected pattern: `^(\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d{1,3})?Z$`"
           example: "2030-05-01T21:30:00Z"
         validUntil:
           type: string

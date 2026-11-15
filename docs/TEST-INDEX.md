@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**829 tests documented** — every JUnit test and every black-box case.
+**830 tests documented** — every JUnit test and every black-box case.
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
 (STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036 and ADR-0027's EMV and JWS verification rules), the
@@ -489,6 +489,7 @@ The status-update matrix itself is `X9-MAP-010` to `-013` above.
 | `X9-LOC-510` | qrCodeB64 decodes to the EMV string, byte for byte | `test_qr_code.py` |
 | `X9-LOC-511` | the advertised location endpoint is https and ends with the location id | `test_qr_code.py` |
 | `X9-LOC-512` | a new QR Code reads back ACTIVE with its Solana recipient | `test_qr_code.py` |
+| `X9-LOC-513` | sentAt is the instant the payload was composed, on the service's clock: within the request's window, never before revisedAt and never after validUntil | `test_payload.py` |
 
 ### What the payer is told when a decode is refused
 
