@@ -106,14 +106,27 @@ public final class PatchQRCodeBillMapper {
     }
 
     private static TipVO buildTip(TipVO tip, TipUpdateDTO tipUpdateDTO) {
-        if (isNull(tipUpdateDTO) || !tipUpdateDTO.allowed()) {
+        if (isNull(tipUpdateDTO)) {
             return TipVO.noTip();
+        }
+
+        TipRangeDTO range = tipUpdateDTO.range();
+
+        if (!Boolean.TRUE.equals(tipUpdateDTO.allowed())) {
+            // Tips refused: the stored range and presets go with the offer. A range or presets the
+            // PATCH itself sends beside "allowed: false" are kept as sent, and the tip rule then
+            // refuses the merged bill as it refuses a create (ADR-0017).
+            List<Integer> sent = tipUpdateDTO.presets().isPresent() ? tipUpdateDTO.presets().get() : null;
+
+            if (isNull(range)) {
+                return isNull(sent) ? TipVO.noTip() : TipVO.of(false, sent);
+            }
+
+            return TipVO.of(false, range.minimum(), range.maximum(), sent);
         }
 
         List<Integer> presets = tipUpdateDTO.presets().isPresent() ? tipUpdateDTO.presets().get()
             : (isNull(tip) ? null : tip.presets());
-
-        TipRangeDTO range = tipUpdateDTO.range();
 
         if (isNull(range)) {
             return TipVO.of(true, presets);

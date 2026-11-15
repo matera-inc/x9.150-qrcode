@@ -230,6 +230,28 @@ class QRCodeEntityPatchRulesTest extends AbstractTest {
     }
 
     /**
+     * <b>X9-PATCH-057</b> — the merged tip is held to the other half of the create's rule too: not
+     * allowed with a range or presets is refused, in the create's words; not allowed with neither
+     * is no tip.
+     *
+     * <p><b>Source:</b> Ours. ADR-0017, INTERPRETATION I-10; the merged tip is held to the
+     * create's rule by the owner's decision of 2026-11-15.
+     *
+     * <p><b>Why:</b> A bill that refuses tips and publishes a tip range contradicts itself; a
+     * create refused it while a PATCH answered 200 and dropped the range.
+     */
+    @Test
+    void aMergedTipNotAllowedCarriesNoOffer() {
+        QRCodeEntity qrCode = qrCode(now().plusDays(30));
+        String words = "cannot provided range or presets when tip is not allowed";
+
+        assertRefused(() -> qrCode.updateBill(bill(TipVO.of(false, 5, 25, null), null, null)), "tip.allow", words);
+        assertRefused(() -> qrCode.updateBill(bill(TipVO.of(false, List.of(10, 15)), null, null)), "tip.allow", words);
+        assertRefused(() -> qrCode.updateBill(bill(TipVO.of(false, 5, 25, List.of(10)), null, null)), "tip.allow", words);
+        assertDoesNotThrow(() -> qrCode.updateBill(bill(TipVO.noTip(), null, null)));
+    }
+
+    /**
      * <b>X9-PATCH-049</b> — a PATCH that names a currency twice is refused naming it, in the
      * create's words.
      *

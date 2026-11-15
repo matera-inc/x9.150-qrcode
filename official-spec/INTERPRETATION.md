@@ -489,7 +489,9 @@ a legitimate choice rather than an error.
 **A tip offer must carry a range or presets**, which is stricter than §13.6.2 and §13.6.3 — both
 make those `MAY`. `{"allowed": true}` alone is refused at creation, and by a PATCH whose merged
 bill would carry it (owner, 2026-11-15; presets the PATCH leaves out keep their stored value and
-count): it renders as nothing in a payer-facing application, so it is an offer only in name. The consequence of pairing that rule with
+count): it renders as nothing in a payer-facing application, so it is an offer only in name. The
+opposite contradiction, `"allowed": false` sent with a range or presets, is refused in both places
+too; on a PATCH, `"allowed": false` alone turns the stored offer off, its range and presets with it. The consequence of pairing that rule with
 the one above is worth stating plainly: a bill publishing **presets and no range accepts a tip of any
 size**, because presets do not bind. A biller who wants a ceiling must publish a range.
 

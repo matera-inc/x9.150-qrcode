@@ -148,7 +148,9 @@ paths:
         **What a create refuses, a patch refuses, on the merged result** (owner, 2026-11-15):
 
         - the tip: `allowed: true` with neither a `range` nor `presets` is refused, in the create's
-          words (presets the patch leaves out keep their stored value, and count);
+          words (presets the patch leaves out keep their stored value, and count); `allowed: false`
+          sent with a `range` or `presets` is refused in the create's words too, while
+          `allowed: false` alone turns the stored offer off, its range and presets with it;
         - a date the patch **sets** that is already past on the payee's clock: `validUntil`, the
           bill's `dueDate`, a discount's edge (`dueDate − daysBefore`), and the `validUntil` of a
           payment method the patch changes. The edge is inclusive, as at creation. A date the patch
