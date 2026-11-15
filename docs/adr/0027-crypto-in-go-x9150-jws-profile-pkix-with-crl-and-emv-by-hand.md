@@ -107,6 +107,9 @@ The test CA covers each branch: valid, revoked by CRL, revoked by OCSP, no respo
 **Keys:**
 
 - **PKCS#12 and PEM;** JKS is converted ([0031](0031-same-image-lighter-and-3-0-is-a-configuration-migration.md)).
+  PKCS#12 is read with `software.sslmate.com/src/go-pkcs12` (BSD-3-Clause), approved by the owner on
+  2026-11-15, because neither the standard library nor `golang.org/x/crypto/pkcs12` reads what
+  current keytool and OpenSSL write (PBES2 with AES, an HMAC-SHA-256 MAC).
 - **The signer is `crypto.Signer`.** The file-backed signer ships. PKCS#11 is deferred until a
   deployment needs it (plan B2).
 - **Reload:** the mounted files are re-read on a timer.

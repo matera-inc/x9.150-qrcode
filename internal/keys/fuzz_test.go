@@ -19,10 +19,10 @@ func FuzzReadStores(f *testing.F) {
 	f.Add([]byte{0x30, 0x82, 0x01})
 	f.Add([]byte("-----BEGIN PRIVATE KEY-----\n-----END PRIVATE KEY-----\n"))
 	f.Fuzz(func(t *testing.T, data []byte) {
-		if key, certs, err := readKeystore(data, config.PrivateKeystore{}, unsupportedPKCS12{}); err == nil && (key == nil || len(certs) == 0) {
+		if key, certs, err := readKeystore(data, config.PrivateKeystore{}, SSLMatePKCS12{}); err == nil && (key == nil || len(certs) == 0) {
 			t.Fatal("a keystore read without error has no key or no certificate")
 		}
-		if certs, err := readTruststore(data, config.Truststore{}, unsupportedPKCS12{}); err == nil && len(certs) == 0 {
+		if certs, err := readTruststore(data, config.Truststore{}, SSLMatePKCS12{}); err == nil && len(certs) == 0 {
 			t.Fatal("a truststore read without error is empty")
 		}
 	})

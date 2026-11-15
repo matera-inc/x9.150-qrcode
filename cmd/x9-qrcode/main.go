@@ -73,7 +73,7 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 		"certificate", cfg.Certificate)
 
 	// ── 1b. The signing keys and the truststore, re-read on a timer until shutdown ──────────
-	keyStore, err := keys.Load(cfg.Certificate, logger)
+	keyStore, err := keys.Load(cfg.Certificate, logger, keys.WithPKCS12(keys.SSLMatePKCS12{}))
 	if err != nil {
 		return fmt.Errorf("loading the signing keys: %w", err)
 	}

@@ -52,8 +52,8 @@ reservation:
 # variables. A location is a path (Spring's file: prefix is accepted); left empty, the bundled DEMO
 # identity is used, as in Java: NON-PRODUCTION, its private key is public, and a WARN says so.
 # The file's content decides its format: PEM (one unencrypted private key, RSA or EC, and its
-# certificate, in one file) or PKCS#12. A JKS file is refused: convert it with x9-config-convert.
-# PKCS#12 is not readable yet in this build: convert it with `openssl pkcs12 -in f.p12 -nodes -out f.pem`.
+# certificate, in one file) or PKCS#12 (keytool's and OpenSSL's, AES or legacy 3DES / RC2). A JKS
+# or JCEKS file is refused: convert it with x9-config-convert.
 # An ENC(…) value is refused: x9-config-convert decrypts it once. HSM / provider settings are refused.
 certificate:
   private-keystore:
@@ -61,11 +61,11 @@ certificate:
     type: ""                     # X9_CERTIFICATE_PRIVATEKEYSTORE_TYPE. Informative: PKCS12, PEM or JKS
                                  #   (Java's default name); PKCS11 is refused.
     password: ""                 # X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD (PKCS#12)
-    private-key-password: ""     # X9_CERTIFICATE_PRIVATEKEYSTORE_PRIVATEKEYPASSWORD (PKCS#12; defaults
-                                 #   to the password)
+    private-key-password: ""     # X9_CERTIFICATE_PRIVATEKEYSTORE_PRIVATEKEYPASSWORD. Empty, or equal to
+                                 #   the password: a PKCS#12 file has one password.
     alias: x9-private-keystore   # X9_CERTIFICATE_PRIVATEKEYSTORE_ALIAS. Names the keystore in logs.
-    enforced-alias: ""           # X9_CERTIFICATE_PRIVATEKEYSTORE_ENFORCEDALIAS. The PKCS#12 entry to sign
-                                 #   with; without it the file must hold exactly one private key.
+    enforced-alias: ""           # X9_CERTIFICATE_PRIVATEKEYSTORE_ENFORCEDALIAS. Accepted, not used: the
+                                 #   file must hold exactly one private key.
   truststore:
     location: ""                 # X9_CERTIFICATE_TRUSTSTORE_LOCATION. Empty: the bundled demo truststore.
     type: ""                     # X9_CERTIFICATE_TRUSTSTORE_TYPE
