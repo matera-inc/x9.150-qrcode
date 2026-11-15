@@ -350,7 +350,8 @@ None. The service has no UI.
 | FR20 | Epic 7 | `internal/clock` + lint bans |
 | FR21 | Epic 7 | CI Go job |
 | FR22 | Epic 7 | multi-stage `Dockerfile` + `make` wrappers |
-| FR23–FR32 | Epics 8–17 | stubs for plan phases 4–12 |
+| FR23 | Epic 8 | EMV, keys, PKI and revocation, JWS signing and verification, the test clock in Go |
+| FR24–FR32 | Epics 9–17 | stubs for plan phases 5–12 |
 
 ## Epic List
 
@@ -360,7 +361,7 @@ alongside 3–4.
 **Track B: Go/PostgreSQL foundations.** Epics 6–7 follow each other, and the track runs in parallel
 with track A.
 
-**Stubs.** Epics 8–17. Epics 10–12 (the code that carries the business rules) wait for Epic 4.
+**Stubs.** Epics 9–17. Epic 8 was detailed on 2026-11-14, once Epic 4 was green.
 
 ### Epic 1: The docs tell the truth
 
@@ -417,11 +418,15 @@ CI enforces the code rules from the first commit. There are no business endpoint
 
 **FRs covered:** FR19, FR20, FR21, FR22
 
-### Epics 8–17: stubs (detailed later)
+### Epic 8: X9.150's signatures and QR Codes, in Go
+
+Go signs, verifies and encodes exactly as Java does, proved by the golden set of Story 4.7.
+**FRs covered:** FR23
+
+### Epics 9–17: stubs (detailed later)
 
 | Epic | Phase | Scope |
 |---|---|---|
-| 8 | 4 | X9.150 crypto in Go: EMV, JWS, keys (FR23) |
 | 9 | 5 | Billers manage payment requests on Go (FR24) |
 | 10 | 6 | Payers fetch, notify and are evented on Go (FR25) |
 | 11 | 7 | Proven equivalent to Java: differential run and interop (FR26) |
@@ -1633,15 +1638,183 @@ wrap `go` and `docker`.
 **S7.6-AC3.** **Given** the image
 **Then** it starts as non-root, and its size is recorded for S7 (Epic 5).
 
-## Epics 8–17: stubs
+## Epic 8: X9.150's signatures and QR Codes, in Go
 
-Detailed in a later run of this workflow, once Epic 4 is green. Scope now includes the Epic 2
+The Go build signs, verifies and encodes exactly as Java does, before any endpoint exists. Done means
+Go reproduces every verdict and every `signatureProblem` code of the golden set Java exported
+(Story 4.7, `others/blackbox/golden/`), and decodes and encodes every golden EMV string.
+
+**Implements:** FR23; ADR-0027, ADR-0033 (owner decisions of 2026-11-14 recorded in ADR-0027 included:
+`typ` not checked, each `ES` algorithm bound to its curve, Java's catch-all codes kept).
+
+Order: 8.1, 8.2 and 8.3 in parallel; then 8.4 (needs 8.2), 8.5 (needs 8.3 and 8.4) and 8.6 (needs
+8.2). No story adds an HTTP endpoint to the public API; Epics 9 and 10 do.
+
+### Story 8.1: EMV is encoded and decoded by hand
+
+As a **Go implementer**,
+I want `internal/emv` to produce and read the one EMV shape X9.150 uses,
+So that a QR Code printed by Go is byte-for-byte the one Java prints.
+
+**Implements:** FR23; ADR-0027 ("EMV: `internal/emv`, by hand")
+
+**Acceptance Criteria:**
+
+**S8.1-AC1.** **Given** `internal/emv`
+**Then** it encodes and decodes TLV, computes CRC16-CCITT (poly `0x1021`, init `0xFFFF`) and builds
+tag 26 with GUI `org.x9` and sub-tag `01` carrying the location URL; no vendored code, no third-party
+EMV library.
+
+**S8.1-AC2.** **Given** the 24 golden EMV strings (`others/blackbox/golden/manifest.json`)
+**Then** Go decodes each to the manifest's fields and CRC, and encodes each manifest request back to
+the identical string.
+
+**S8.1-AC3.** **Given** malformed input (bad length, bad CRC, truncated TLV, wrong GUI)
+**Then** the decoder refuses it with an error and never panics; a fuzz target covers the decoder.
+
+**S8.1-AC4.** **Given** a configured host longer than 37 characters (tag 26 would exceed 99)
+**Then** the service refuses to start, naming the limit, as Java does (`X9-LOC-480`).
+
+### Story 8.2: Keys and the truststore are loaded from files, and reloaded
+
+As an **operator**,
+I want the Go service to read the signing key and the truststore I already mount,
+So that moving to Go needs no new secrets and no Jasypt.
+
+**Implements:** FR23; ADR-0027 ("Keys"), ADR-0031
+
+**Acceptance Criteria:**
+
+**S8.2-AC1.** **Given** a PKCS#12 or PEM signing key with its certificate chain, and a PKCS#12 or PEM
+truststore, configured under the Java build's property and environment names (ADR-0031)
+**Then** `internal/keys` loads them and exposes the signer as a `crypto.Signer` (RSA and EC) with its
+chain; a JKS file is refused at startup with a message pointing to the conversion (ADR-0031).
+
+**S8.2-AC2.** **Given** an `ENC(...)` value
+**Then** startup refuses it with a message pointing to the configuration converter (Epic 13); Go
+never decrypts Jasypt.
+
+**S8.2-AC3.** **Given** the mounted files change
+**Then** they are re-read on a timer (Java: every 30 s); a reload that fails keeps the last good
+keys and logs the error; a reload never interrupts a signature in progress.
+
+**S8.2-AC4.** **Given** the bundled demo and test material
+**Then** PKCS#12/PEM equivalents of Java's demo keystore and truststore ship, so the image starts out
+of the box exactly as Java's does, with the same NON-PRODUCTION warning; no new private key is
+committed except test-CA material.
+
+### Story 8.3: Certificates are checked for trust and revocation, as Java checks them
+
+As a **payee**,
+I want Go to trust and refuse the same certificates Java does,
+So that no payer is accepted or refused differently after the cutover.
+
+**Implements:** FR23; ADR-0027 ("Certificate fetching", "Revocation, parity with Java")
+
+**Acceptance Criteria:**
+
+**S8.3-AC1.** **Given** a chain
+**Then** `internal/pki` builds it with `x509.Certificate.Verify` against the truststore, checks the
+issuer name, skips revocation for a self-signed end entity, and returns the signer subject (the
+reservation holder's identity, ADR-0021).
+
+**S8.3-AC2.** **Given** the end entity's revocation sources
+**Then** the CRL from its distribution point is checked first (cached until `NextUpdate`, its
+signature verified against the issuer), OCSP from its AIA is the fallback, and the four answers of
+ADR-0027's table hold: CRL and OCSP unreachable, OCSP only unreachable, CRL only unreachable → accepted
+(soft-fail); neither named → refused; a revoked serial → refused.
+
+**S8.3-AC3.** **Given** a certificate referenced by `jku` or `x5u`
+**Then** it is fetched with no redirects, no credentials, connect and read timeouts, a size cap and
+HTTPS only except the deployment's own host, and cached by `x5t#S256` (the cache skips the fetch,
+never the checks).
+
+**S8.3-AC4.** **Given** the test CA (valid, revoked by CRL, revoked by OCSP, no responder,
+untrusted, EC)
+**Then** a Go test covers each branch, with local CRL and OCSP servers, and none reaches the network.
+
+### Story 8.4: Go signs X9.150 messages and signed answers
+
+As a **payer or payee talking to the Go build**,
+I want Go's signatures to carry exactly the headers Java's carry,
+So that every counterpart verifying Java today verifies Go tomorrow.
+
+**Implements:** FR23; ADR-0027 ("Signing"); Story 2.3
+
+**Acceptance Criteria:**
+
+**S8.4-AC1.** **Given** `internal/jws`
+**Then** it signs with go-jose v4 and `WithCritical(correlationId, iat, ttl[, statusCode])`, `iat` and
+`ttl` in milliseconds from `internal/clock`, `typ`, `x5t#S256`, and `jku`/`x5u`/`x5c` as configured;
+PS512 by default, RS*, PS* and ES* available.
+
+**S8.4-AC2.** **Given** a signed answer to a notification (Story 2.3)
+**Then** it is a JWS over `{"statusCode":n}` with `typ: JOSE` and the same headers as Java's.
+
+**S8.4-AC3.** **Given** a token Go signed
+**Then** the suite's independent verifier (`x9client`) accepts it, and its header has the same field
+set, types and units as the matching golden token Java signed.
+
+### Story 8.5: Go verifies X9.150 messages with Java's verdicts and codes
+
+As a **payee**,
+I want Go to accept, refuse and explain exactly as Java does,
+So that a payer sees the same `signatureProblem` from either build.
+
+**Implements:** FR23; ADR-0027 ("Verification is our own sequence", "Fuzzing and corpus")
+
+**Acceptance Criteria:**
+
+**S8.5-AC1.** **Given** a compact JWS
+**Then** verification runs ADR-0027's six steps in order: parse with an explicit allowed-algorithm
+list; split the raw header and signing input; check `crit` is exactly the supported set,
+`correlationId` is a UUID, `iat + ttl` is in the future and `iat` no further ahead than
+`X9_JWS_CLOCK_SKEW_SECONDS` (default 60, `FUTURE_IAT`); resolve the certificate and check
+`x5t#S256`; PKIX and revocation (Story 8.3); the signature, with each `ES` algorithm bound to its
+curve. `typ` is not checked.
+
+**S8.5-AC2.** **Given** the 89 golden JWS cases (`others/blackbox/golden/manifest.json`)
+**Then** Go gives every case the manifest's verdict and `signatureProblem` code at its `verifyAt`
+instant, including `UNVERIFIABLE` for an `ES256` header over an RSA certificate and `NOT_JWS` for a
+token whose signature was removed but its last dot kept.
+
+**S8.5-AC3.** **Given** header parsing and `crit` handling
+**Then** fuzz targets cover them, a millisecond `iat` never passes through `float64`, and nothing
+panics.
+
+### Story 8.6: The test clock can be moved in Go, in test deployments only
+
+As a **test author**,
+I want Go to offer the same `/test/clock` control as Java, behind the same guards,
+So that the black-box suite drives time on both builds the same way.
+
+**Implements:** FR23; ADR-0033; Story 7.4 (deferred AC)
+
+**Acceptance Criteria:**
+
+**S8.6-AC1.** **Given** `X9_TESTING_CLOCKCONTROL=true`
+**Then** `/test/clock` (`PUT`, `DELETE`, `GET`) is served on its own listener
+(`X9_TESTING_CLOCKLISTEN`, `127.0.0.1:8099` by default), never on the API port, with the same
+requests, answers and units as the Java build; the per-request `X-Test-Clock-Offset` header works as
+in Java.
+
+**S8.6-AC2.** **Given** the flag is on
+**Then** startup refuses unless the signing certificate's SHA-256 fingerprint is one of the bundled
+demo or test-CA fingerprints compiled into the binary; startup logs a `WARN`; every API response
+carries `X-Test-Clock-Offset` while the offset is non-zero.
+
+**S8.6-AC3.** **Given** the flag is off (the default)
+**Then** no listener exists and the clock has no offset; certificate validity is always judged on
+the real clock, as in Java.
+
+## Epics 9–17: stubs
+
+Detailed in a later run of this workflow. Scope now includes the Epic 2
 behaviour (signed answers and their verification, pre-commit on every rail, the holder retry and
 takeover event, exact `validUntil`), which Epics 9–10 port and Epic 11 proves equivalent.
 
 | Epic | Phase | Scope |
 |---|---|---|
-| 8 | 4 | X9.150 crypto in Go: EMV, JWS (including signed answers), keys; the test-clock listener and its certificate guard (FR23) |
 | 9 | 5 | Billers manage payment requests on Go (FR24) |
 | 10 | 6 | Payers fetch, notify and are evented on Go, under the pre-commit / post-commit rule (FR25) |
 | 11 | 7 | Proven equivalent to Java: differential run and interop (FR26) |
