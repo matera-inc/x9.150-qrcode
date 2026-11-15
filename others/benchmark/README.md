@@ -31,6 +31,7 @@ it, and the `readme` profile keeps its load shape.
 ```
 others/benchmark/
 ├── README.md            this file
+├── host.sh              macOS: a Colima profile with Kubernetes for campaigns (up, env, down)
 ├── prepare.sh           test-CA payers PKCS#12 → PKCS#8 + x5c for k6; CRL; truststores → build/ (git-ignored)
 ├── build-images.sh      x9-qrcode:git-<sha>, x9-qrcode-go:git-<sha>, x9-qrcode-liquibase:git-<sha>; never pushed
 ├── collect.sh           runs a campaign: J-G-J-G-J-G, S1/S2/S7, results/<build>/<campaign>-r<n>/
@@ -62,6 +63,27 @@ others/benchmark/
 | **3 runs per build, interleaved J-G-J-G-J-G** | `SEQUENCE` (default `J G J G J G`) |
 
 ## Running a campaign
+
+### 0. A machine for it (macOS, any number of times)
+
+[`host.sh`](host.sh) turns a Mac into a benchmark host: a dedicated Colima profile (`bench`, kube
+context `colima-bench`) running Kubernetes on the **docker** runtime, so the images `build-images.sh`
+makes in that profile's Docker are the images the cluster runs, and nothing needs loading.
+
+```bash
+others/benchmark/host.sh check            # tools (Homebrew line printed if any is missing), Java 25, the machine's size
+others/benchmark/host.sh up               # 8 vCPU / 10 GiB / 60 GiB disk by default; BENCH_CPUS, BENCH_MEMORY, BENCH_DISK
+eval "$(others/benchmark/host.sh env)"    # DOCKER_HOST, KUBE_CONTEXT, IMAGE_LOADER="", BENCH_VIRTUALISATION
+others/benchmark/build-images.sh
+SEQUENCE="J G J G J G" GO_SERVES_API=1 others/benchmark/collect.sh
+others/benchmark/host.sh down             # stop the VM; `delete` removes it and its disk
+```
+
+`up` refuses to start while another Colima profile runs, because the two would share the machine's
+CPUs and memory. `ALLOW_OTHER_VMS=1` overrides that for a **rehearsal**, and `env` then says so in
+`BENCH_VIRTUALISATION`, which every run records. A measurement runs on a machine doing nothing else.
+`up` checks Kubernetes 1.29 or later, 6 vCPU and 6.3 GiB allocatable on one node, and a default
+StorageClass, and leaves your current kube context as it was.
 
 ### 1. Build the images
 
