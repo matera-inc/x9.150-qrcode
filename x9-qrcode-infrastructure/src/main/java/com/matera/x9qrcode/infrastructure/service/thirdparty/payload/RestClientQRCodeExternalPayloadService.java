@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Base64.Encoder;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -68,6 +69,10 @@ public class RestClientQRCodeExternalPayloadService implements QRCodeExternalPay
             String payloadLocation,
             LocalDate dateForPayment,
             UUID correlationId) {
+        // Required, not defaulted: the caller checks the payee's answer against the id sent, so it
+        // must be the one to choose it.
+        Objects.requireNonNull(correlationId, "correlationId");
+
         log.info("Retrieving payload with dateForPayment {} from location {}", dateForPayment, payloadLocation);
 
         URI payloadUri = qrCodeLocationService.parseLocation(payloadLocation, true);
@@ -194,14 +199,10 @@ public class RestClientQRCodeExternalPayloadService implements QRCodeExternalPay
         PaymentPayloadRequestDTO requestDTO = new PaymentPayloadRequestDTO().qrCodeContent(qrCodeB64);
 
         SignatureOutputDataDTO signatureOutput = qrCodeSignatureService.signData(
-                new SignatureInputDataDTO(SignatureTypeEnumDTO.X9, requestDTO, getCorrelationId(correlationId), null,
+                new SignatureInputDataDTO(SignatureTypeEnumDTO.X9, requestDTO, correlationId, null,
                         null));
 
         return signatureOutput.jwsToken();
-    }
-
-    private static UUID getCorrelationId(UUID correlationId) {
-        return nonNull(correlationId) ? correlationId : UUID.randomUUID();
     }
 
 }

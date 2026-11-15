@@ -6,13 +6,18 @@
  */
 package com.matera.x9qrcode.infrastructure.web.controller;
 
+import com.matera.x9qrcode.app.dto.SignatureInputDataDTO;
+import com.matera.x9qrcode.app.dto.enumerated.SignatureTypeEnumDTO;
 import com.matera.x9qrcode.app.service.QRCodeExternalPayloadService;
+import com.matera.x9qrcode.app.service.QRCodeSignatureService;
 import com.matera.x9qrcode.app.usecase.decodeemv.DecodeEmvOutput;
 import com.matera.x9qrcode.infrastructure.AbstractIntegrationTest;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import io.restassured.path.json.JsonPath;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
@@ -59,6 +64,9 @@ class OpaqueNetworkOnDecodeApiTest extends AbstractIntegrationTest {
     @MockitoBean
     private QRCodeExternalPayloadService qrCodeExternalPayloadService;
 
+    @Autowired
+    private QRCodeSignatureService qrCodeSignatureService;
+
     /**
      * A payload from another implementation: one rail we interpret, one we have never heard of, and
      * a third whose owner has published nothing.
@@ -88,14 +96,17 @@ class OpaqueNetworkOnDecodeApiTest extends AbstractIntegrationTest {
             """;
     }
 
-    private String sign(String payload) {
-        return given().contentType("application/json")
-                .header("Correlation-Id", UUID.randomUUID().toString())
-                .header("TTL-Seconds", "300")
-                .body(payload)
-                .when().post("/api/v1/signature/generate")
-                .then().statusCode(HttpStatus.OK.value())
-                .extract().body().asString();
+    /**
+     * The payee's answer: {@code payload}, signed with this deployment's key (which the test
+     * configuration trusts) under {@code correlationId}, the one the request went out under.
+     */
+    private String sign(String payload, UUID correlationId) {
+        try {
+            return qrCodeSignatureService.signData(new SignatureInputDataDTO(SignatureTypeEnumDTO.X9,
+                objectMapper.readTree(payload), correlationId, null, null)).jwsToken();
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /**
@@ -130,8 +141,8 @@ class OpaqueNetworkOnDecodeApiTest extends AbstractIntegrationTest {
 
     private JsonPath decode() {
         Mockito.when(qrCodeExternalPayloadService.retrievePayload(anyString(), anyString(), any(), any()))
-            .thenReturn(new DecodeEmvOutput(
-                URI.create("https://payee.example.com/loc/1"), 200, sign(foreignPayload())));
+            .thenAnswer(asked -> new DecodeEmvOutput(
+                URI.create("https://payee.example.com/loc/1"), 200, sign(foreignPayload(), asked.getArgument(3))));
 
         return given().contentType("application/json")
                 .body("{\"qrCode\": \"%s\"}".formatted(anEmvThatParses()))

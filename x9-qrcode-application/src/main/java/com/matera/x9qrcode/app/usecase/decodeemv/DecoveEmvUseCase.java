@@ -18,6 +18,8 @@ import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.UUID;
+
 import static java.util.Objects.nonNull;
 
 @Slf4j
@@ -33,13 +35,18 @@ public class DecoveEmvUseCase extends UseCase<DecodeEmvInput, DecodeEmvOutput> {
         String payloadLocation = qrCodeEMVService.extractPayloadUrl(input.emv());
 
         if (nonNull(payloadLocation)) {
+            // The payee's answer must echo the correlationId of the request we sent, whether the
+            // caller chose it or we did: an answer under no correlationId, or under another one, is
+            // not an answer to our request (ADR-0027, amendment of 2026-11-15).
+            UUID sent = nonNull(input.correlationId()) ? input.correlationId() : UUID.randomUUID();
+
             DecodeEmvOutput response = qrCodeExternalPayloadService
-                .retrievePayload(input.emv(), payloadLocation, input.dateForPayment(), input.correlationId());
+                .retrievePayload(input.emv(), payloadLocation, input.dateForPayment(), sent);
 
             SignatureValidationInput signatureValidationInput =
                 new SignatureValidationInput(
                     SignatureTypeEnumDTO.X9,
-                    input.correlationId(),
+                    sent,
                     response.jwsToken(),
                     null);
 
