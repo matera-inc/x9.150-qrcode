@@ -11,7 +11,8 @@ import com.matera.x9qrcode.app.service.PrivateKeyRetriever;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import java.io.InputStream;
@@ -19,10 +20,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
+import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -91,28 +95,49 @@ class TestClockCertificateGuardTest {
         {"/certificate/x9-test-payer-revoked.p12", "PKCS12", "x9test123", "x9-test-payer-revoked"},
         {"/certificate/x9-test-untrusted-ca.p12", "PKCS12", "x9test123", "x9-test-untrusted-ca"},
         {"/certificate/x9-test-untrusted-payer.p12", "PKCS12", "x9test123", "x9-test-untrusted-payer"},
+        {"/certificate/x9-test-payer-no-revocation.p12", "PKCS12", "x9test123", "x9-test-payer-no-revocation"},
+        {"/certificate/x9-test-payer-crl-unreachable.p12", "PKCS12", "x9test123", "x9-test-payer-crl-unreachable"},
+        {"/certificate/x9-test-payer-ocsp-unreachable.p12", "PKCS12", "x9test123", "x9-test-payer-ocsp-unreachable"},
+        {"/certificate/x9-test-payer-both-unreachable.p12", "PKCS12", "x9test123", "x9-test-payer-both-unreachable"},
+        {"/certificate/x9-test-payer-crl-unreadable.p12", "PKCS12", "x9test123", "x9-test-payer-crl-unreadable"},
+        {"/certificate/x9-test-payer-crl-unreadable-payload.p12", "PKCS12", "x9test123",
+            "x9-test-payer-crl-unreadable-payload"},
+        {"/certificate/x9-test-payer-crl-unreadable-ocsp-unreachable.p12", "PKCS12", "x9test123",
+            "x9-test-payer-crl-unreadable-ocsp-unreachable"},
+        {"/certificate/x9-test-payer-crl-unreadable-ocsp-unreachable-payload.p12", "PKCS12", "x9test123",
+            "x9-test-payer-crl-unreadable-ocsp-unreachable-payload"},
+        // The test CA re-issued with digitalSignature (BUG-006): no keystore, its key is x9-test-ca.p12's.
+        {"/certificate/x9-test-ca-digital-signature.pem", "PEM", "", ""},
     };
+
+    /** The certificate of one {@link #BUNDLED} entry. */
+    static X509Certificate bundled(String[] entry) throws Exception {
+        if ("PEM".equals(entry[1])) {
+            try (InputStream in = TestClockCertificateGuardTest.class.getResourceAsStream(entry[0])) {
+                return (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(in);
+            }
+        }
+        return certificate(entry[0], entry[1], entry[2], entry[3]);
+    }
+
+    static Stream<Arguments> bundledEntries() {
+        return Arrays.stream(BUNDLED).map(entry -> Arguments.of(entry[0], entry));
+    }
 
     /**
      * <b>X9-TIME-523</b> — every certificate bundled with this repository satisfies the test-clock guard.
      *
      * <p>S2.1-AC1: every certificate bundled with this repository satisfies the guard — the revoked and
-     * untrusted fixtures included, because their private keys are just as public as the others'.
+     * untrusted fixtures included, because their private keys are just as public as the others', and so
+     * are the revocation fixtures added later and the test CA re-issued with {@code digitalSignature}
+     * (ADR-0033, note of 2026-11-14: every certificate whose private key is committed).
      */
-    @ParameterizedTest
-    @CsvSource({
-        "/certificate/x9-demo.jks,                  JKS,    x9demo123, x9-private-keystore",
-        "/certificate/x9-test-ca.p12,               PKCS12, x9test123, x9-test-ca",
-        "/certificate/x9-test-payer.p12,            PKCS12, x9test123, x9-test-payer",
-        "/certificate/x9-test-payer-ec.p12,         PKCS12, x9test123, x9-test-payer-ec",
-        "/certificate/x9-test-payer-revoked.p12,    PKCS12, x9test123, x9-test-payer-revoked",
-        "/certificate/x9-test-untrusted-ca.p12,     PKCS12, x9test123, x9-test-untrusted-ca",
-        "/certificate/x9-test-untrusted-payer.p12,  PKCS12, x9test123, x9-test-untrusted-payer"
-    })
-    void aBundledCertificateIsAccepted(String resource, String type, String password, String alias) throws Exception {
-        X509Certificate cert = certificate(resource, type, password, alias);
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("bundledEntries")
+    void aBundledCertificateIsAccepted(String resource, String[] entry) throws Exception {
+        X509Certificate cert = bundled(entry);
 
-        assertDoesNotThrow(() -> TestClockCertificateGuard.requireBundled(cert));
+        assertDoesNotThrow(() -> TestClockCertificateGuard.requireBundled(cert), resource);
     }
 
     /**
@@ -124,7 +149,7 @@ class TestClockCertificateGuardTest {
     void theListIsExactlyTheBundledCertificates() throws Exception {
         Set<String> bundled = new HashSet<>();
         for (String[] entry : BUNDLED) {
-            bundled.add(TestClockCertificateGuard.sha256(certificate(entry[0], entry[1], entry[2], entry[3])));
+            bundled.add(TestClockCertificateGuard.sha256(bundled(entry)));
         }
 
         assertThat(TestClockCertificateGuard.BUNDLED_FINGERPRINTS).containsExactlyInAnyOrderElementsOf(bundled);
