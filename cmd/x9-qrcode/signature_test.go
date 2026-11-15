@@ -75,4 +75,14 @@ func TestRunSignsAndVerifiesThroughItsOwnJWKSet(t *testing.T) {
 	if err != nil || status != http.StatusOK || header.Get("Correlation-Id") != cid {
 		t.Fatalf("validate: %d %v %s\n%s", status, err, answer, out.String())
 	}
+
+	// S10.3-AC1: the payload route is wired to the same verifier. The token verifies, but its
+	// qrCodeContent names no location, so the request is refused before any row is read: a 400 with
+	// the one generic reason, never a 401.
+	status, _, answer, err = post("/pub/api/v1/loc/0123456789ABCDEF0123456789ABCDEF",
+		map[string]string{"Content-Type": "application/jose"}, token)
+	if err != nil || status != http.StatusBadRequest ||
+		!strings.Contains(answer, "Invalid JWS signature for payment payload request.") {
+		t.Fatalf("payload: %d %v %s", status, err, answer)
+	}
 }

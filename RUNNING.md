@@ -288,6 +288,15 @@ the variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`.
   read as `0`) and `X9_CERTIFICATE_ISSUERNAME` (`X9`; empty skips the issuer check), the Java
   build's settings. A `jku` or `x5u` on the public host is read from the process itself over
   `localhost`, as Java reads it; any other is fetched over HTTPS only.
+- **The payload a payer fetches.** `POST /pub/api/v1/loc/{id}` takes the payer's signed request
+  (`application/jose`) and answers the signed payload, as the Java build does: priced at the later
+  of the `dateForPayment` header's UTC start and now, with only the payment methods still valid at
+  that instant, and `sentAt` the business clock's now (never before `revisedAt`). A request that
+  does not verify, or whose content names another location, is a 400 with one generic reason
+  (never a 401); content that is well formed but not the EMV string issued is a 400 naming
+  `qrCodeContent`; a PAID or CANCELLED QR Code is refused naming which. An expired one is refused
+  with its expiry reason, because the Go build keeps the row (ADR-0029), where the Java build
+  answers the generic reason once MongoDB has deleted it. Nothing is written.
 - **Signing** (`internal/jws`) uses the Java build's settings and
   header profile: `X9_CERTIFICATE_JWKALGORITHM` (default `PS512`; RS\*, PS\*, or ES256/ES384/ES512
   each on its own curve), `X9_CERTIFICATE_ENDPOINTTYPE` (`JWK_SET` → `jku`, the default; `PEM` →
