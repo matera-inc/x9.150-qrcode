@@ -151,7 +151,7 @@ public class PaymentNotificationQRCodeUseCase extends UseCase<PaymentNotificatio
                 warnOnDeviations(qrCodeEntity, sender, receipt);
 
                 if (!receipt.notOffered().isEmpty()) {
-                    return NotOfferedPolicy.refusal(receipt.notOffered(), data);
+                    return NotOfferedPolicy.refusal(qrCodeEntity.getPaymentMethods(), receipt.notOffered(), data);
                 }
             }
             case RELEASE -> warnOnDeviations(qrCodeEntity, sender, qrCodeEntity.releaseByPayer(data, sender));

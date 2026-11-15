@@ -14,6 +14,8 @@ import com.matera.x9qrcode.domain.vo.AmountDueVO;
 import com.matera.x9qrcode.domain.vo.AmountVO;
 import com.matera.x9qrcode.domain.vo.BankPaymentAddressVO;
 import com.matera.x9qrcode.domain.vo.BillVO;
+import com.matera.x9qrcode.domain.vo.BlockchainVO;
+import com.matera.x9qrcode.domain.vo.CryptoWalletPaymentAddressVO;
 import com.matera.x9qrcode.domain.vo.CurrencyAmountVO;
 import com.matera.x9qrcode.domain.vo.DescriptionVO;
 import com.matera.x9qrcode.domain.vo.ExpectedDateVO;
@@ -23,8 +25,10 @@ import com.matera.x9qrcode.domain.vo.PaymentNotificationDataVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationPayerVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationPaymentVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationVO;
+import com.matera.x9qrcode.domain.vo.SolanaPaymentAddressVO;
 import com.matera.x9qrcode.domain.vo.TipVO;
 import com.matera.x9qrcode.domain.vo.UnstructuredVO;
+import com.matera.x9qrcode.domain.vo.enumerated.ActionEnum;
 import com.matera.x9qrcode.domain.vo.enumerated.NotificationDeviationEnum;
 import com.matera.x9qrcode.domain.vo.enumerated.NotificationKindEnum;
 import com.matera.x9qrcode.domain.vo.enumerated.PaymentTimingEnum;
@@ -52,6 +56,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class NotOfferedPolicyTest extends AbstractTest {
 
     private static final OffsetDateTime NOW = OffsetDateTime.now(ZoneOffset.UTC);
+    private static final String WALLET = "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV";
+    private static final String PAYER_WALLET = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
     private static final BankPaymentAddressVO BANK = new BankPaymentAddressVO("021000021", "1234567890");
 
     private final PaymentNotificationAcceptancePolicy gate =
@@ -149,17 +155,18 @@ class NotOfferedPolicyTest extends AbstractTest {
     @Test
     void theRefusalNamesWhatIsNotOffered() {
         PaymentNotificationDataVO data = bank("RTP", "EUR");
+        List<PaymentMethodVO> methods = offeringOnly("fednow").getPaymentMethods();
 
-        BusinessRuleException rail = NotOfferedPolicy.refusal(List.of(NotificationDeviationEnum.NOT_OFFERED_RAIL), data);
+        BusinessRuleException rail = NotOfferedPolicy.refusal(methods, List.of(NotificationDeviationEnum.NOT_OFFERED_RAIL), data);
         assertEquals("paymentNotification.data.payment.network", rail.field());
         assertEquals("This QR Code does not offer the RTP rail.", rail.getMessage());
 
         BusinessRuleException currency =
-            NotOfferedPolicy.refusal(List.of(NotificationDeviationEnum.NOT_OFFERED_CURRENCY), data);
+            NotOfferedPolicy.refusal(methods, List.of(NotificationDeviationEnum.NOT_OFFERED_CURRENCY), data);
         assertEquals("paymentNotification.data.payment.currency", currency.field());
         assertEquals("This QR Code does not offer the EUR currency.", currency.getMessage());
 
-        BusinessRuleException both = NotOfferedPolicy.refusal(
+        BusinessRuleException both = NotOfferedPolicy.refusal(methods,
             List.of(NotificationDeviationEnum.NOT_OFFERED_RAIL, NotificationDeviationEnum.NOT_OFFERED_CURRENCY), data);
         assertEquals("paymentNotification.data.payment", both.field());
         assertEquals("This QR Code does not offer the RTP rail nor the EUR currency.", both.getMessage());
@@ -198,6 +205,85 @@ class NotOfferedPolicyTest extends AbstractTest {
             () -> gate.accept(offeringOnly("fednow"), bank("RTP", "EUR"), NOW));
 
         assertTrue(refused.getMessage().contains("RTP") && refused.getMessage().contains("EUR"), refused.getMessage());
+    }
+
+    /** USD on FedNow and USDC on Solana: each rail and each currency offered, but not every pair. */
+    private QRCodeEntity usdOnFedNowAndUsdcOnSolana() {
+        OffsetDateTime validUntil = NOW.plusDays(30);
+
+        return QRCodeEntity.create(
+            UUID::randomUUID, null, validUntil, CREDITOR_FIXTURE.creditor(),
+            new BillVO(new DescriptionVO("not offered together"), null, null, TipVO.noTip(),
+                new AmountDueVO(new CurrencyAmountVO(1_000L, "USD"), null), PaymentTimingEnum.IMMEDIATE),
+            new UnstructuredVO("not offered together"), List.of(),
+            new PaymentNotificationVO(NotificationKindEnum.DEFAULT, null, null),
+            List.of(
+                new PaymentMethodVO("USD", validUntil, new AmountVO(1_000L), null,
+                    new NetworksVO(BANK, null, null, null, Map.of())),
+                new PaymentMethodVO("USDC", validUntil, new AmountVO(1_000L), null,
+                    new NetworksVO(null, null, null, new SolanaPaymentAddressVO(WALLET, null), Map.of()))));
+    }
+
+    private static PaymentNotificationDataVO solana(String network, String currency) {
+        return new PaymentNotificationDataVO(
+            new PaymentNotificationPaymentVO(new AmountVO(1_000L), null, currency, network, null),
+            new PaymentNotificationPayerVO("payer-a"),
+            null,
+            new BlockchainVO(ActionEnum.PAYMENT_INITIATED, new CryptoWalletPaymentAddressVO(PAYER_WALLET),
+                new CryptoWalletPaymentAddressVO(WALLET)));
+    }
+
+    /**
+     * <b>X9-CUR-092</b> — a rail and a currency each offered, but not on the same payment method,
+     * earn {@code NOT_OFFERED_CURRENCY}, matched case-insensitively; the pairs a method offers earn
+     * nothing.
+     *
+     * <p><b>Source:</b> Ours. Owner decision of 2026-11-15, amending ADR-0036.
+     *
+     * <p><b>Why:</b> Offering USD somewhere and Solana somewhere is not offering USD on Solana; the
+     * rail is offered, the currency is not offered on it.
+     */
+    @Test
+    void aRailAndACurrencyOnDifferentMethodsAreNotOffered() {
+        List<PaymentMethodVO> methods = usdOnFedNowAndUsdcOnSolana().getPaymentMethods();
+
+        assertEquals(List.of(NotificationDeviationEnum.NOT_OFFERED_CURRENCY),
+            NotOfferedPolicy.notOffered(methods, solana("Solana", "USD")));
+        assertEquals(List.of(NotificationDeviationEnum.NOT_OFFERED_CURRENCY),
+            NotOfferedPolicy.notOffered(methods, solana("SOLANA", "usd")));
+        assertEquals(List.of(NotificationDeviationEnum.NOT_OFFERED_CURRENCY),
+            NotOfferedPolicy.notOffered(methods, bank("fednow", "USDC")));
+        assertEquals(List.of(), NotOfferedPolicy.notOffered(methods, solana("solana", "usdc")));
+        assertEquals(List.of(), NotOfferedPolicy.notOffered(methods, bank("FedNow", "usd")));
+    }
+
+    /**
+     * <b>X9-CUR-093</b> — the refusal for a currency offered only on another rail names both, as
+     * the payer spelled them: "This QR Code does not offer the USD currency on the Solana rail."
+     * The gate refuses such a pre-commit with those words.
+     *
+     * <p><b>Source:</b> Ours. Owner decision of 2026-11-15, amending ADR-0036.
+     *
+     * <p><b>Why:</b> "does not offer the USD currency" would be false: the QR Code offers USD, on
+     * another rail.
+     */
+    @Test
+    void theRefusalForACurrencyOfferedOnAnotherRailNamesBoth() {
+        QRCodeEntity qrCode = usdOnFedNowAndUsdcOnSolana();
+        PaymentNotificationDataVO usdOnSolana = solana("Solana", "USD");
+
+        BusinessRuleException refusal = NotOfferedPolicy.refusal(qrCode.getPaymentMethods(),
+            NotOfferedPolicy.notOffered(qrCode.getPaymentMethods(), usdOnSolana), usdOnSolana);
+        assertEquals("paymentNotification.data.payment.currency", refusal.field());
+        assertEquals("This QR Code does not offer the USD currency on the Solana rail.", refusal.getMessage());
+
+        BusinessRuleException refused = assertThrows(BusinessRuleException.class,
+            () -> gate.accept(qrCode, usdOnSolana, NOW));
+        assertEquals("This QR Code does not offer the USD currency on the Solana rail.", refused.getMessage());
+
+        BusinessRuleException bankRail = assertThrows(BusinessRuleException.class,
+            () -> gate.accept(qrCode, bank("FedNow", "usdc"), NOW));
+        assertEquals("This QR Code does not offer the usdc currency on the FedNow rail.", bankRail.getMessage());
     }
 
 }

@@ -205,7 +205,10 @@ Messages from a payer:
 
 † **A rail or currency the QR Code does not offer is an error** (ADR-0036, amended 2026-11-15
 by the owner). Each rail stands on its own: a QR Code publishing only `fednow` does not offer
-RTP. A pre-commit naming one is refused and nothing is recorded. A post-commit naming one is
+RTP. A rail and a currency each offered, but not on the same payment method (USD on Solana, when
+the QR Code offers USD on FedNow and USDC on Solana), are not offered either: the code is
+`NOT_OFFERED_CURRENCY` and the refusal reads `This QR Code does not offer the USD currency on the
+Solana rail.` A pre-commit naming one is refused and nothing is recorded. A post-commit naming one is
 recorded "just in case", since the money may have moved, and still answered with the same signed
 400: its notification, transaction id and `receivedInStatus` travel on a `payment.sent`, and
 nothing about the QR Code changes, not even the reservation's window.
@@ -244,7 +247,7 @@ re-runs answers 409 "busy" with the current status, never 500.
 `PAYMENT_INITIATED` held by this payer; `ACTION_CONTRADICTS_HASH` when
 `blockchain.action = PAYMENT_INITIATED` carries a hash; `NOT_OFFERED_RAIL` and
 `NOT_OFFERED_CURRENCY` when a post-commit named a rail or currency no payment method
-offers (†). Absent when the payer followed the rules. The Java document keeps only the latest notification; every
+offers, or a currency offered only on another rail (†). Absent when the payer followed the rules. The Java document keeps only the latest notification; every
 hash survives in the event log as its own `payment.sent`, and two hashes for one QR
 Code are the payment system's signal of a duplicate payment.
 

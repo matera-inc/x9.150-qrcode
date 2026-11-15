@@ -19,7 +19,7 @@ this module adds what was missing, and the table says where the rest lives:
 | E: wrong amount | ``X9-AMT-001``, ``X9-AMT-002`` |
 | E: tip outside its range; tip on top of the bill (ADR-0017) | ``X9-TIP-104``; ``X9-TIP-101``, ``X9-TIP-102`` |
 | E: unoffered currency | ``X9-CUR-001`` |
-| E: rail or currency not offered, pre- and post-commit (ADR-0036, amended 2026-11-15) | ``X9-RAIL-520`` to ``-522``, ``X9-CUR-520``, ``X9-CUR-521`` (``TestNotOffered``) |
+| E: rail or currency not offered, pre- and post-commit (ADR-0036, amended 2026-11-15) | ``X9-RAIL-520`` to ``-522``, ``X9-CUR-520`` to ``-522`` (``TestNotOffered``) |
 | E: destination not on the QR Code | ``X9-RAIL-001`` |
 | E: second payer → 409 | ``X9-HOLD-011``, ``X9-MAP-024`` |
 | E: holder re-announces (refresh, no event) | ``X9-MAP-021``, ``X9-HOLD-010``, ``X9-HOLD-012`` |
@@ -1026,3 +1026,44 @@ class TestNotOffered:
         assert sent["receivedInStatus"] == "PAID", sent
         assert sorted(sent["deviations"]) == sorted(
             [RIWS, "NOT_OFFERED_RAIL", "NOT_OFFERED_CURRENCY"]), sent
+
+    def test_a_currency_offered_only_on_another_rail_is_not_offered(
+            self, api, events, payee_certificate, business_now):
+        """X9-CUR-522 — a rail and a currency each offered, but not on the same payment method (USD
+        on Solana, when the QR Code offers USD on FedNow and USDC on Solana), are not offered: a
+        pre-commit is a signed 400 and records nothing; the holder's post-commit is the same signed
+        400, recorded on one payment.sent flagged NOT_OFFERED_CURRENCY, the QR Code unchanged.
+
+        Source: Ours. Owner decision of 2026-11-15, amending ADR-0036: the rail is offered, the
+          currency is not offered on it.
+        Why: Java registered that post-commit as an ordinary one, so its hash stopped the holder's
+          window on a currency the QR Code never offered on that rail.
+        """
+        reason = "This QR Code does not offer the USD currency on the Solana rail."
+        methods = [samples.payment_method(currency="USD", networks={"fednow": FEDNOW}),
+                   samples.payment_method(currency="USDC")]
+
+        untouched = api.create_qr(currency="USD", paymentMethods=methods)
+        before = snapshot(api, untouched)
+        body = signed(api.notify(untouched, currency="USD"), payee_certificate, business_now, 400)
+        assert reason in str(body), body
+        assert snapshot(api, untouched) == before
+        assert exactly(events, untouched, 0) == []
+
+        qr = api.create_qr(currency="USD", paymentMethods=methods)
+        signed(api.notify(qr), payee_certificate, business_now, 200)
+        exactly(events, qr, 1)
+        before = snapshot(api, qr)
+
+        body = signed(api.notify(qr, currency="USD", action="SENT", transaction_id=TX_HASH),
+                      payee_certificate, business_now, 400)
+
+        assert reason in str(body), body
+        assert snapshot(api, qr) == before, "nothing about the QR Code changes"
+        initiated, sent = exactly(events, qr, 2)
+        assert (initiated["type"], sent["type"]) == ("payment.initiated", "payment.sent")
+        assert sent["transactionId"] == TX_HASH, sent
+        assert sent["currency"] == "USD", sent
+        assert sent["receivedInStatus"] == "PAYMENT_INITIATED", sent
+        assert sent["deviations"] == ["NOT_OFFERED_CURRENCY"], sent
+        signed(api.notify(qr), payee_certificate, business_now, 200)  # no hash registered: a retry

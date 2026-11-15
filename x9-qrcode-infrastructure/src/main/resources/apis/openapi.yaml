@@ -706,7 +706,10 @@ paths:
 
         **A rail or a currency the QR Code does not offer is an error, in either phase** (ADR-0036,
         amended 2026-11-15). Each rail stands on its own: a QR Code that publishes only `fednow`
-        does not offer RTP. A pre-commit naming one is refused with a signed `400` naming the rail
+        does not offer RTP. A rail and a currency are offered together only when one payment
+        method offers both: with USD on FedNow and USDC on Solana, USD on Solana is not offered,
+        and is refused as `This QR Code does not offer the USD currency on the Solana rail.`
+        A pre-commit naming one is refused with a signed `400` naming the rail
         or currency, and nothing is recorded. A post-commit naming one gets the same signed `400`,
         but the money may have moved, so the call is recorded first: one `payment.sent` event (on
         every rail, bank rails included) carries your notification, its `transactionId`,
@@ -1129,7 +1132,8 @@ components:
             - `NOT_OFFERED_RAIL`: a post-commit named a rail (`network`) no payment method of the
               QR Code offers. The payer was answered `400`; this `payment.sent` is the only record
               of the call, on every rail, and the QR Code did not change.
-            - `NOT_OFFERED_CURRENCY`: the same, for a currency. Both appear when both are true.
+            - `NOT_OFFERED_CURRENCY`: the same, for a currency no payment method offers, or one
+              offered only on another rail. Both appear when both are true.
 
             A closed list owned by ADR-0036; ignore a code you do not know. Added in schema `1.1`;
             `NOT_OFFERED_RAIL` and `NOT_OFFERED_CURRENCY` added 2026-11-15, still `1.1`, because

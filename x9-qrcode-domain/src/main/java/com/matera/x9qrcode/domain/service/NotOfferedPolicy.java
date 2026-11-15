@@ -36,16 +36,19 @@ import static java.util.Objects.isNull;
  * {@link com.matera.x9qrcode.domain.vo.NetworksVO#supports(String)} matches it, and the currency
  * case-insensitively, as the acceptance gate always has: both are a third-party payer's spelling.
  *
- * <p>This asks only whether <em>some</em> payment method offers the rail, and whether some offers
- * the currency. Whether one method offers the two together is the acceptance gate's question for a
- * pre-commit, and is not asked of a post-commit.
+ * <p><b>The rail and the currency on one payment method.</b> A rail and a currency that are each
+ * offered, but not on the same payment method, are not offered either (owner decision,
+ * 2026-11-15): USD on Solana, when the QR Code offers USD on FedNow and USDC on Solana. That earns
+ * {@code NOT_OFFERED_CURRENCY}, because the rail is offered and the currency is not offered on it,
+ * and the refusal says so: "This QR Code does not offer the USD currency on the Solana rail."
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class NotOfferedPolicy {
 
     /**
      * @return {@code NOT_OFFERED_RAIL} then {@code NOT_OFFERED_CURRENCY}, each only when true;
-     *         empty when the QR Code offers both
+     *         {@code NOT_OFFERED_CURRENCY} alone when both are offered but no one payment method
+     *         offers the currency on the rail; empty when one payment method offers both
      */
     public static List<NotificationDeviationEnum> notOffered(List<PaymentMethodVO> methods,
                                                              PaymentNotificationDataVO notification) {
@@ -63,18 +66,25 @@ public final class NotOfferedPolicy {
             notOffered.add(NotificationDeviationEnum.NOT_OFFERED_CURRENCY);
         }
 
+        if (notOffered.isEmpty() && !offeredTogether(offered, network, currency)) {
+            notOffered.add(NotificationDeviationEnum.NOT_OFFERED_CURRENCY);
+        }
+
         return List.copyOf(notOffered);
     }
 
     /**
      * The refusal the payer receives, the same words for a pre-commit and a post-commit.
      *
+     * @param methods    the QR Code's payment methods, the ones {@link #notOffered} was asked about
      * @param notOffered the codes {@link #notOffered} returned; must not be empty
      */
-    public static BusinessRuleException refusal(List<NotificationDeviationEnum> notOffered,
+    public static BusinessRuleException refusal(List<PaymentMethodVO> methods,
+                                                List<NotificationDeviationEnum> notOffered,
                                                 PaymentNotificationDataVO notification) {
         String network = notification.payment().network();
         String currency = notification.payment().currency();
+        List<PaymentMethodVO> offered = isNull(methods) ? List.of() : methods;
 
         boolean rail = notOffered.contains(NotificationDeviationEnum.NOT_OFFERED_RAIL);
         boolean money = notOffered.contains(NotificationDeviationEnum.NOT_OFFERED_CURRENCY);
@@ -89,8 +99,19 @@ public final class NotOfferedPolicy {
                 "This QR Code does not offer the %s rail.".formatted(network));
         }
 
+        if (offered.stream().anyMatch(m -> m.currency().equalsIgnoreCase(currency))) {
+            // The currency is offered, only not on this rail.
+            return new BusinessRuleException("paymentNotification.data.payment.currency",
+                "This QR Code does not offer the %s currency on the %s rail.".formatted(currency, network));
+        }
+
         return new BusinessRuleException("paymentNotification.data.payment.currency",
             "This QR Code does not offer the %s currency.".formatted(currency));
+    }
+
+    private static boolean offeredTogether(List<PaymentMethodVO> methods, String network, String currency) {
+        return methods.stream()
+            .anyMatch(m -> m.networks().supports(network) && m.currency().equalsIgnoreCase(currency));
     }
 
 }

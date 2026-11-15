@@ -129,7 +129,7 @@ that is here must still be marked `GAP`.
 | `R-SM-45` | `payment.sent` and `payment.failed` are published on chains only, except the `payment.sent` that records a post-commit on a rail or currency not offered (R-SM-48). | `X9-HOLD-112`, `X9-HOLD-131`, `X9-HOLD-205`, `X9-MAP-030` | `S2.4-AC2`, `S2.4-AC3`, `S2.5-AC2`, `S4.1-AC1`, `S4.1-AC3` |
 | `R-SM-46` | There is no `txHash` field: `payment.transactionId` carries the reference of every rail. | `X9-HOLD-101`, `X9-EVT-503` | `S2.4-AC5`, `S3.4-AC1` |
 | `R-SM-47` | A PATCH that moves `validUntil` before the end of a running reservation cuts the reservation back to the new `validUntil`; it never lengthens one, and leaves alone a reservation that no longer lapses (a hash registered, or `ttl-seconds: 0`); past the new `validUntil` the QR Code reads `ACTIVE` (owner, 2026-11-15). | `X9-PATCH-044`, `X9-PATCH-045`, `X9-PATCH-053`, `X9-PATCH-515`, `row_test.go::TestCapReservation`, `patch_rules_test.go::TestPatchRulesAgainstPostgres` | — |
-| `R-SM-48` | A pre-commit on a rail or currency the QR Code does not offer is 400, nothing recorded; a post-commit is 400 too, recorded on one `payment.sent` flagged `NOT_OFFERED_RAIL` / `NOT_OFFERED_CURRENCY`, nothing about the QR Code changed (amended 2026-11-15). | `X9-HOLD-230`, `X9-HOLD-231`, `X9-HOLD-232`, `X9-HOLD-233`, `X9-RAIL-520`, `X9-RAIL-521` | — |
+| `R-SM-48` | A pre-commit on a rail or currency the QR Code does not offer (a currency offered only on another rail included) is 400, nothing recorded; a post-commit is 400 too, recorded on one `payment.sent` flagged `NOT_OFFERED_RAIL` / `NOT_OFFERED_CURRENCY`, nothing about the QR Code changed (amended 2026-11-15). | `X9-HOLD-230`, `X9-HOLD-231`, `X9-HOLD-232`, `X9-HOLD-233`, `X9-HOLD-234`, `X9-RAIL-520`, `X9-RAIL-521`, `X9-CUR-522` | — |
 
 ## ENDPOINTS.md
 
@@ -449,7 +449,7 @@ rules the ADR states outside the table.
 | `R-ADR0036-39` | A post-commit naming a rail or currency not offered is recorded on one `payment.sent`, on every rail, with its `transactionId`, `receivedInStatus` and `NOT_OFFERED_RAIL` / `NOT_OFFERED_CURRENCY`, then answered with a signed 400 (amended 2026-11-15). | `X9-HOLD-150`, `X9-HOLD-231`, `X9-HOLD-232`, `X9-RAIL-521`, `X9-CUR-521` | — |
 | `R-ADR0036-40` | Such a post-commit changes nothing about the QR Code: status, reservation, holder, window and the notification of record (amended 2026-11-15). | `X9-HOLD-150`, `X9-HOLD-151`, `X9-HOLD-153`, `X9-HOLD-232`, `X9-CUR-521` | — |
 | `R-ADR0036-41` | Both codes appear when both are true, beside any other code that applies; the schema stays `1.1` (amended 2026-11-15). | `X9-CUR-090`, `X9-HOLD-152`, `X9-HOLD-233`, `X9-RAIL-522` | — |
-| `R-ADR0036-42` | An offered rail and an offered currency on different payment methods are not "not offered": a post-commit is registered as before (amended 2026-11-15). | `X9-HOLD-154` | — |
+| `R-ADR0036-42` | An offered rail and an offered currency on different payment methods are not offered: `NOT_OFFERED_CURRENCY`, refused as `This QR Code does not offer the USD currency on the Solana rail.` (rail and currency as the payer spelled them); a pre-commit records nothing, a post-commit is recorded on a flagged `payment.sent` and changes nothing about the QR Code (owner, 2026-11-15). | `X9-CUR-092`, `X9-CUR-093`, `X9-HOLD-154`, `X9-HOLD-234`, `X9-CUR-522` | — |
 
 ## ADR-0027: EMV
 

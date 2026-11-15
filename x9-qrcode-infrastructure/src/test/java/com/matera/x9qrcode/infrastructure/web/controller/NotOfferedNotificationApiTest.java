@@ -43,6 +43,7 @@ class NotOfferedNotificationApiTest extends NotificationMatrixApiSupport {
 
     private static final String E2E = "20261115021000021P1BRJQ0000000002";
     private static final String TRACE = "021000021.0000002";
+    private static final String SOLANA_HASH = "5VfydnLu4XwV2FquzyFbENPBqbCyJLxq5wRhtZ8rLraBdHfDDmWXnc8nBtCqPU4f";
     private static final Set<String> CRITICAL_HEADERS = Set.of("correlationId", "iat", "ttl", "statusCode");
 
     /** A QR Code offering USD on FedNow, and nothing else. */
@@ -229,6 +230,63 @@ class NotOfferedNotificationApiTest extends NotificationMatrixApiSupport {
         assertEquals("PAID", sent.get("receivedInStatus"));
         assertEquals(List.of("RECEIVED_IN_WRONG_STATUS", "NOT_OFFERED_RAIL", "NOT_OFFERED_CURRENCY"),
             sent.get("deviations"));
+    }
+
+    /** A Solana notification in any currency; no {@code hash} makes it a pre-commit. */
+    private MockMvcResponse solanaIn(String qrCodeId, String currency, String action, String hash, String payerInfo) {
+        String reference = hash == null ? "" : "\"transactionId\": \"%s\",".formatted(hash);
+        String body = """
+            {
+              "payment": { "qrcodeId": "%s", %s "amount": %d, "currency": "%s", "network": "Solana" },
+              "payer": { "info": "%s" },
+              "blockchain": { "action": "%s", "to": "%s", "from": "%s" }
+            }
+            """.formatted(qrCodeId, reference, AMOUNT, currency, payerInfo, action, RECIPIENT, PAYER_WALLET);
+
+        return given().contentType(APPLICATION_JOSE).body(sign(body)).when().post(NOTIFY);
+    }
+
+    /**
+     * <b>X9-HOLD-234</b> — a rail and a currency each offered, but not on the same payment method
+     * (USD on Solana, when the QR Code offers USD on the bank rails and USDC on Solana), are not
+     * offered: a pre-commit is a signed 400 and records nothing; the holder's post-commit is the
+     * same signed 400, recorded on a payment.sent flagged {@code NOT_OFFERED_CURRENCY}, and nothing
+     * about the QR Code changes.
+     *
+     * <p><b>Source:</b> Ours. Owner decision of 2026-11-15, amending ADR-0036.
+     *
+     * <p><b>Why:</b> The post-commit was registered as an ordinary one: its hash stopped the
+     * holder's window on a currency the QR Code never offered on that rail.
+     */
+    @Test
+    void aCurrencyOfferedOnlyOnAnotherRailIsNotOffered() throws Exception {
+        String reason = "This QR Code does not offer the USD currency on the Solana rail.";
+
+        String untouched = createQRCode();
+        assertSignedRefusal(solanaIn(untouched, "USD", "PAYMENT_INITIATED", null, PAYER_A), reason);
+        assertEquals("ACTIVE", statusOf(untouched));
+        assertEquals(List.of(), eventTypesFor(untouched), "a refused pre-commit records nothing");
+
+        String qrCodeId = createQRCode();
+        assertEquals(HttpStatus.OK.value(), solana(qrCodeId, "PAYMENT_INITIATED", null, PAYER_A).statusCode());
+
+        assertSignedRefusal(solanaIn(qrCodeId, "USD", "SENT", SOLANA_HASH, PAYER_A), reason);
+
+        assertEquals("PAYMENT_INITIATED", statusOf(qrCodeId));
+        List<Map<String, Object>> events = eventsFor(qrCodeId);
+        assertEquals(List.of("payment.initiated", "payment.sent"),
+            events.stream().map(event -> event.get("type")).toList());
+        Map<String, Object> sent = events.getLast();
+        assertEquals(SOLANA_HASH, sent.get("transactionId"));
+        assertEquals("USD", sent.get("currency"));
+        assertEquals("Solana", sent.get("network"));
+        assertEquals("PAYMENT_INITIATED", sent.get("receivedInStatus"));
+        assertEquals(List.of("NOT_OFFERED_CURRENCY"), sent.get("deviations"));
+
+        assertEquals(HttpStatus.OK.value(), solana(qrCodeId, "PAYMENT_INITIATED", null, PAYER_A).statusCode(),
+            "no hash was registered, so the holder may still retry its pre-commit");
+        assertEquals(HttpStatus.CONFLICT.value(), solana(qrCodeId, "PAYMENT_INITIATED", null, PAYER_B).statusCode(),
+            "and the holder still holds it");
     }
 
 }

@@ -145,7 +145,7 @@ not reserved by that payer: `ACTIVE`, held by another payer, `PAID` or `CANCELLE
 `ACTION_CONTRADICTS_HASH` (a Solana `PAYMENT_INITIATED` carrying a hash). The hash is registered
 either way; a payment system may hold a deviating registration for review. Two more codes,
 `NOT_OFFERED_RAIL` and `NOT_OFFERED_CURRENCY`, mark a post-commit that named a rail or currency
-the QR Code does not offer: the payer was answered `400`, the QR Code did not change, and that
+the QR Code does not offer (a currency offered only on another rail counts as not offered): the payer was answered `400`, the QR Code did not change, and that
 `payment.sent` (published on every rail in this one case, bank rails included) is the only record
 of the call. Still schema `1.1`: codes are only added. More than one
 `payment.sent` for one QR Code is the signal of a duplicate payment

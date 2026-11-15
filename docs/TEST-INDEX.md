@@ -143,8 +143,11 @@ single most important thing this index exists for.
 | `X9-CUR-080` | of several repeated currencies, the first in request order is named | `QRCodeEntityDuplicateCurrencyTest.java` |
 | `X9-CUR-090` | a currency no payment method offers earns `NOT_OFFERED_CURRENCY`; with an unoffered rail too, both codes, rail first | `NotOfferedPolicyTest.java` |
 | `X9-CUR-091` | the acceptance gate refuses a pre-commit naming an unoffered rail and currency with both names | `NotOfferedPolicyTest.java` |
+| `X9-CUR-092` | a rail and a currency each offered, but not on the same payment method, earn `NOT_OFFERED_CURRENCY`, case-insensitively | `NotOfferedPolicyTest.java` |
+| `X9-CUR-093` | the refusal for a currency offered only on another rail names both as the payer spelled them (`… the USD currency on the Solana rail.`); the gate refuses a pre-commit with it | `NotOfferedPolicyTest.java` |
 | `X9-CUR-520` | a pre-commit in a currency the QR Code does not offer is a signed 400 naming it (with the rail too when both); nothing recorded | `test_payers.py` |
 | `X9-CUR-521` | the holder's post-commit in an unoffered currency is a signed 400, recorded on a `payment.sent` flagged `NOT_OFFERED_CURRENCY`; the reservation untouched, no hash registered | `test_payers.py` |
+| `X9-CUR-522` | USD on Solana, when the QR Code offers USD on FedNow and USDC on Solana, is not offered: a pre-commit is a signed 400 recording nothing; the holder's post-commit is a signed 400 recorded on a `payment.sent` flagged `NOT_OFFERED_CURRENCY`, the QR Code unchanged | `test_payers.py` |
 | `X9-CUR-501` | a currency outside supported-currencies.json is refused at create, naming it, with no id | `test_create_refusals.py` |
 
 ## The event stream
@@ -332,7 +335,7 @@ Only the party that announced a payment may re-announce it, report it, or give i
 | `X9-HOLD-151` | the holder's post-commit in an unoffered currency is recorded and flagged; the reservation and its window are left alone | `QRCodeEntityNotificationMatrixTest.java` |
 | `X9-HOLD-152` | a post-commit offering neither rail nor currency carries both codes; a closed QR Code stays closed | `QRCodeEntityNotificationMatrixTest.java` |
 | `X9-HOLD-153` | another payer's post-commit on an unoffered rail does not stop the holder's window | `QRCodeEntityNotificationMatrixTest.java` |
-| `X9-HOLD-154` | an offered rail and an offered currency on different payment methods are registered as before | `QRCodeEntityNotificationMatrixTest.java` |
+| `X9-HOLD-154` | an offered rail and an offered currency on different payment methods are not offered: the post-commit earns `NOT_OFFERED_CURRENCY`, is recorded on a flagged `payment.sent`, and the QR Code stays as it was | `QRCodeEntityNotificationMatrixTest.java` |
 | `X9-HOLD-130` | a refused retry from the holder releases the reservation, with payment.failed on a chain | `QRCodeEntityNotificationMatrixTest.java` |
 | `X9-HOLD-131` | a refused retry on a bank rail releases the reservation without an event | `QRCodeEntityNotificationMatrixTest.java` |
 | `X9-HOLD-132` | a holder without payer.info cannot retry: 409 | `QRCodeEntityNotificationMatrixTest.java` |
@@ -366,6 +369,7 @@ Only the party that announced a payment may re-announce it, report it, or give i
 | `X9-HOLD-231` | a post-commit on an unoffered rail is a signed 400, recorded on a `payment.sent` flagged `NOT_OFFERED_RAIL`; the QR Code stays `ACTIVE` | `NotOfferedNotificationApiTest.java` |
 | `X9-HOLD-232` | the holder's post-commit in an unoffered currency is a signed 400, recorded flagged; the holder may still retry | `NotOfferedNotificationApiTest.java` |
 | `X9-HOLD-233` | a post-commit offering neither carries both codes, and a `PAID` QR Code stays `PAID` | `NotOfferedNotificationApiTest.java` |
+| `X9-HOLD-234` | USD on Solana, offered only as USD on the bank rails and USDC on Solana: a pre-commit is a signed 400 recording nothing; the holder's post-commit is a signed 400 recorded flagged `NOT_OFFERED_CURRENCY`, the reservation untouched | `NotOfferedNotificationApiTest.java` |
 | `X9-HOLD-301` | the holder's retry is judged again at the payee's clock, and its refusal frees the QR Code | `HolderRetryAndIdentityApiTest.java` |
 | `X9-HOLD-302` | after a refused retry on a bank rail, the same payer may pre-commit again with the right amount | `HolderRetryAndIdentityApiTest.java` |
 | `X9-HOLD-303` | a refused pre-commit from a non-holder, or on an ACTIVE QR Code, changes nothing | `HolderRetryAndIdentityApiTest.java` |

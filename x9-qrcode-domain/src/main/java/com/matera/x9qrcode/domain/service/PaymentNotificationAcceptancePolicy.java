@@ -103,14 +103,15 @@ public class PaymentNotificationAcceptancePolicy {
 
         List<PaymentMethodVO> methods = qrCode.getPaymentMethods();
 
-        // A rail or a currency no method offers, each rail on its own (FedNow is not RTP): refused,
-        // naming them, in the words a post-commit gets too (ADR-0036, amended 2026-11-15). The
+        // A rail or a currency no method offers, each rail on its own (FedNow is not RTP), or the
+        // two offered only on different methods: refused, naming them, in the words a post-commit
+        // gets too (ADR-0036, amended 2026-11-15). The
         // currency is compared case-insensitively, as the rail is: this is a third-party payer's
         // message, and what it echoes back is not ours to police.
         List<NotificationDeviationEnum> notOffered = NotOfferedPolicy.notOffered(methods, notification);
 
         if (!notOffered.isEmpty()) {
-            throw NotOfferedPolicy.refusal(notOffered, notification);
+            throw NotOfferedPolicy.refusal(methods, notOffered, notification);
         }
 
         Optional<PaymentMethodVO> matched = methods.stream()
@@ -119,14 +120,13 @@ public class PaymentNotificationAcceptancePolicy {
             .filter(m -> destinationMatches(m, notification, notifiedNetwork))
             .findFirst();
 
+        // Some method offers the currency on the rail (NotOfferedPolicy said so), and a bank rail
+        // matches on those two alone; only a destination address published by none of them is left.
         return matched.orElseThrow(() -> new BusinessRuleException(
             "paymentNotification.data",
-            notification.payment().isBankRail()
-                ? "This QR Code offers no %s payment method on the %s rail."
-                      .formatted(notifiedCurrency, notifiedNetwork)
-                : ("No %s payment method on this QR Code publishes the destination address %s. "
-                   + "The currency, the rail and the address must belong to the same payment method.")
-                      .formatted(notifiedCurrency, destinationOf(notification))));
+            ("No %s payment method on this QR Code publishes the destination address %s. "
+             + "The currency, the rail and the address must belong to the same payment method.")
+                .formatted(notifiedCurrency, destinationOf(notification))));
     }
 
     private boolean destinationMatches(PaymentMethodVO method,
