@@ -25,6 +25,8 @@ import (
 	"strings"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/matera-inc/x9.150-qrcode/internal/emv"
 )
 
 // Converter is the tool that turns the Java build's configuration into this one (ADR-0031).
@@ -36,11 +38,20 @@ var ErrOldConfiguration = errors.New("old configuration")
 // Config is the whole configuration. Its YAML keys are the Go keys; the environment variable that
 // overrides each one is listed in envVars.
 type Config struct {
-	Server      Server      `yaml:"server"`
-	Database    Database    `yaml:"database"`
-	Log         Log         `yaml:"log"`
-	Reservation Reservation `yaml:"reservation"`
-	Testing     Testing     `yaml:"testing"`
+	Server          Server          `yaml:"server"`
+	PublicEndpoints PublicEndpoints `yaml:"public-endpoints"`
+	Database        Database        `yaml:"database"`
+	Log             Log             `yaml:"log"`
+	Reservation     Reservation     `yaml:"reservation"`
+	Testing         Testing         `yaml:"testing"`
+}
+
+// PublicEndpoints is where payers reach this service. Its environment variable is the Java
+// build's (x9.public-endpoints.host, X9_PUBLICENDPOINTS_HOST).
+type PublicEndpoints struct {
+	// Host is the public host, with no scheme, written into every QR Code's location URL (EMV tag
+	// 26). At most 37 characters, or the URL would not fit the tag (emv.MaxHostLength).
+	Host string `yaml:"host"`
 }
 
 // Server is the HTTP listener. Health is served on the same port, as the Java build does.
@@ -126,6 +137,7 @@ type envVar struct {
 var envVars = []envVar{
 	{"X9_SERVER_PORT", "server.port", setInt(func(c *Config) *int { return &c.Server.Port })},
 	{"X9_SERVER_SHUTDOWNDELAYSECONDS", "server.shutdown-delay-seconds", setInt(func(c *Config) *int { return &c.Server.ShutdownDelaySeconds })},
+	{"X9_PUBLICENDPOINTS_HOST", "public-endpoints.host", setString(func(c *Config) *string { return &c.PublicEndpoints.Host })},
 	{"DATABASE_HOST", "database.host", setString(func(c *Config) *string { return &c.Database.Host })},
 	{"DATABASE_PORT", "database.port", setInt(func(c *Config) *int { return &c.Database.Port })},
 	{"DATABASE_NAME", "database.name", setString(func(c *Config) *string { return &c.Database.Name })},
@@ -343,6 +355,12 @@ func (c Config) validate() []error {
 	port("server.port", c.Server.Port)
 	if c.Server.ShutdownDelaySeconds < 0 {
 		errs = append(errs, problem("server.shutdown-delay-seconds", "must not be negative, got %d", c.Server.ShutdownDelaySeconds))
+	}
+
+	if h := c.PublicEndpoints.Host; h != "" {
+		if err := emv.CheckHost(h); err != nil {
+			errs = append(errs, problem("public-endpoints.host", "%v", err))
+		}
 	}
 
 	d := c.Database
