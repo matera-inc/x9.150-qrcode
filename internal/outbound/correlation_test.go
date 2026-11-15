@@ -68,11 +68,10 @@ func hangUp(w http.ResponseWriter, _ *http.Request) {
 // sentUnder is the correlationId each delivery was signed under, and its signed payload.
 func (f *fixture) sentUnder(t *testing.T) ([]uuid.UUID, []string) {
 	t.Helper()
-	var (
-		ids      []uuid.UUID
-		payloads []string
-	)
-	for _, d := range f.payee.received() {
+	deliveries := f.payee.received()
+	ids := make([]uuid.UUID, 0, len(deliveries))
+	payloads := make([]string, 0, len(deliveries))
+	for _, d := range deliveries {
 		v, err := f.verifier.Verify(t.Context(), d.body, jws.Expect{})
 		if err != nil {
 			t.Fatalf("a delivery does not verify: %v", err)
