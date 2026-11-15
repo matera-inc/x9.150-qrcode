@@ -66,7 +66,8 @@ normal outcome to handle, not an error to log and ignore.
 
 ```
 POST /api/v1/qrcode-emv-decoder   { "qrCode": "<scanned EMV>" }
-   → X9.150 fetches the payee's payload over HTTPS and verifies their signature for you
+   → X9.150 fetches the payee's payload over HTTPS and verifies their signature for you,
+     and that it answers OUR request: its correlationId must be the one we sent, or it is refused
    → read paymentNotification (where to notify) and paymentMethods[] (what you may pay)
 
 POST /api/v1/payment-notification/pre-payment      ← announce; NO transactionId

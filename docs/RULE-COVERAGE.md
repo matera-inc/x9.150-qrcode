@@ -466,13 +466,15 @@ and the black-box suite's.
 
 Three rules of ANSI X9.150-2026 that Java broke and Go's verifier (Story 8.5) keeps, fixed in Java
 on 2026-11-15 so both builds give the same code; recorded in ADR-0027's verification steps. The Go
-build's tests are in `internal/jws` and `internal/pki`.
+build's tests are in `internal/jws` and `internal/pki`. `R-ADR0027-12` is the owner's rule of the
+same date that every signed answer from another party echoes our correlationId.
 
 | Rule | What it says | Tests | Proves |
 |---|---|---|---|
 | `R-ADR0027-09` | `x5t#S256` must be the thumbprint of the end-entity certificate, the first of the chain (§10.3.1, §10.7 step 7); one naming any other certificate of the chain is refused `UNTRUSTED_CHAIN`, as one naming none is. | `X9-SIG-069`, `X9-SIG-510`, `X9-LOC-304`, `X9-SIG-506` | — |
 | `R-ADR0027-10` | `correlationId` must be a UUID in its canonical form, 8-4-4-4-12 hexadecimal digits in either case (§10.7 step 3.1); any other text is refused `BAD_HEADER`. | `X9-SIG-152`, `X9-SIG-526`, `X9-SIG-510`, `X9-LOC-304`, `X9-SIG-506` | — |
 | `R-ADR0027-11` | A signed answer's body `statusCode` must be a JSON integer within 32 bits (A.4.5 note); a fraction, an exponent or a larger integer is `STATUS_MISSING`, never truncated. | `X9-SIG-153`, `X9-SIG-527` | — |
+| `R-ADR0027-12` | Every signed answer from another party must carry in its header exactly the `correlationId` of the request this service sent, the caller's or the one generated for it (owner, 2026-11-15). The decoder refuses a payload under another id or none (400, `Payload JWS signature is invalid.`); the outbound notification reports such an answer `INVALID`, `CORRELATION_ID_MISMATCH` or `BAD_HEADER`. | `X9-DEC-022`, `X9-DEC-023`, `X9-DEC-024`, `X9-DEC-025`, `X9-DEC-506`, `X9-DEC-507`, `X9-SIG-132`, `X9-SIG-143`, `X9-SIG-502`, `decoder_test.go::TestAPayloadThatDoesNotVerifyIsRefused`, `outbound_test.go::TestTheAnswerIsReported` | — |
 
 ---
 

@@ -662,7 +662,9 @@ notification naming a rail or currency the QR Code never offered; this is our re
   question verified, which echoes it. Only a failure to sign leaves an answer unsigned.
 
 When this service sends a notification on a payer's behalf, it checks the payee's answer the same
-way, against the payee's X9 certificate and the `correlationId` it sent, and reports `signature` as
+way, against the payee's X9 certificate and the `correlationId` it sent (the caller's, or the one it
+generated when the caller gave none: every signed answer from another party must echo ours, owner
+2026-11-15, ADR-0027), and reports `signature` as
 `VERIFIED`, `ABSENT` (not a JWS at all) or `INVALID` (a JWS failing a check, including a signed
 `statusCode` that differs from the HTTP status). When it is not `VERIFIED`, `signatureProblem` is a
 fixed code from a closed list (`ABSENT_BODY`, `NOT_JWS`, `ALG_NONE`, `ENCRYPTED`, `BAD_HEADER`,
@@ -924,6 +926,10 @@ These are still refused, on both builds:
   refused before anything is fetched ([ADR-0027](../docs/adr/0027-crypto-in-go-x9150-jws-profile-pkix-with-crl-and-emv-by-hand.md),
   2026-11-15);
 - **a bad signature** on the payload, or a signer the truststore does not chain to;
+- **a payload that is not an answer to our request**: its JWS header must carry exactly the
+  `correlationId` our payload request went out under — the caller's `correlationID`, or the one we
+  generated when the caller gave none. Another one, or none, is refused (owner, 2026-11-15:
+  "No correlationId, I can't trust the other side"; ADR-0027);
 - **a content mismatch**: a payload request whose signed content is not the QR Code that was
   issued.
 
