@@ -1,0 +1,82 @@
+# PostgreSQL 16, defaults except max_connections, on its own volume (plan §9.2).
+#
+# Durability parity (S5.1-AC4): synchronous_commit=on and fsync=on, stated rather than assumed, so a
+# commit is acknowledged only once it is flushed to the WAL on disk, as MongoDB's { w: "majority",
+# j: true } is. collect.sh records both settings for every run.
+#
+# max_connections=20: the Go build's two pools (DATABASE_POOL_WRITES 8 + DATABASE_POOL_READS 4, its
+# defaults), the 3 superuser-reserved connections, and room for the schema Job and collect.sh's psql.
+#
+# The DBA's one-time step (db/local/bootstrap.sql: the owner role and the schema) runs on the
+# empty volume's first start, from /docker-entrypoint-initdb.d. ConfigMap x9-bench-db-bootstrap is
+# made by collect.sh from that file and initdb-bootstrap.sh. The schema itself is the Liquibase
+# changelog, applied by db-init.yaml.
+#
+# Limits: 2 vCPU / 2 GiB, requests equal to limits. Same volume size and storage class as MongoDB's.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels: {app.kubernetes.io/name: postgres, app.kubernetes.io/part-of: x9-bench, x9-bench/stage: database}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector: {app.kubernetes.io/name: postgres}
+  ports:
+    - {name: postgres, port: 5432, targetPort: 5432}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels: {app.kubernetes.io/name: postgres, app.kubernetes.io/part-of: x9-bench, x9-bench/role: database, x9-bench/stage: database}
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: postgres}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: postgres, app.kubernetes.io/part-of: x9-bench, x9-bench/role: database, x9-bench/stage: database}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: database
+          image: postgres:16
+          imagePullPolicy: IfNotPresent
+          args: ["postgres", "-c", "synchronous_commit=on", "-c", "fsync=on", "-c", "max_connections=20"]
+          env:
+            # In-cluster, throwaway, as db/docker-compose.yml: no password exists in this setup.
+            - {name: POSTGRES_HOST_AUTH_METHOD, value: trust}
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+          ports:
+            - {name: postgres, containerPort: 5432}
+          resources:
+            requests: {cpu: "2", memory: 2Gi}
+            limits: {cpu: "2", memory: 2Gi}
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "postgres", "-h", "127.0.0.1"]
+            initialDelaySeconds: 2
+            periodSeconds: 2
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+            - {name: bootstrap-script, mountPath: /docker-entrypoint-initdb.d, readOnly: true}
+            - {name: bootstrap-sql, mountPath: /x9, readOnly: true}
+      volumes:
+        - name: bootstrap-script
+          configMap:
+            name: x9-bench-db-bootstrap
+            items: [{key: initdb-bootstrap.sh, path: 00-bootstrap.sh}]
+        - name: bootstrap-sql
+          configMap:
+            name: x9-bench-db-bootstrap
+            items: [{key: bootstrap.sql, path: bootstrap.sql}]
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests: {storage: 10Gi}

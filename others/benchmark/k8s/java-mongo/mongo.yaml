@@ -1,0 +1,72 @@
+# MongoDB 7.0.45, a single-node replica set as shipped (plan §9.2), on its own volume.
+#
+# Durability parity (S5.1-AC4): the readiness probe initiates the replica set on first start and
+# sets the cluster-wide default write concern to { w: "majority", j: true }; the service's URI asks
+# for the same (app.yaml). On a single node, majority means this node's journal:
+# writeConcernMajorityJournalDefault is true by default, and collect.sh records it and the default
+# write concern for every run.
+#
+# Limits: 2 vCPU / 2 GiB, requests equal to limits (Guaranteed QoS). The volume's size and storage
+# class are the same as PostgreSQL's (go-postgres/postgres.yaml); each run gets a new, empty one.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo
+  labels: {app.kubernetes.io/name: mongo, app.kubernetes.io/part-of: x9-bench, x9-bench/stage: database}
+spec:
+  clusterIP: None
+  # The replica set names its member mongo-0.mongo before the pod is ready.
+  publishNotReadyAddresses: true
+  selector: {app.kubernetes.io/name: mongo}
+  ports:
+    - {name: mongo, port: 27017, targetPort: 27017}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongo
+  labels: {app.kubernetes.io/name: mongo, app.kubernetes.io/part-of: x9-bench, x9-bench/role: database, x9-bench/stage: database}
+spec:
+  serviceName: mongo
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: mongo}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: mongo, app.kubernetes.io/part-of: x9-bench, x9-bench/role: database, x9-bench/stage: database}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: database
+          image: mongo:7.0.45
+          imagePullPolicy: IfNotPresent
+          args: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+          ports:
+            - {name: mongo, containerPort: 27017}
+          resources:
+            requests: {cpu: "2", memory: 2Gi}
+            limits: {cpu: "2", memory: 2Gi}
+          readinessProbe:
+            exec:
+              command:
+                - mongosh
+                - --quiet
+                - --eval
+                - >-
+                  try { rs.status().ok } catch (e) {
+                    rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongo-0.mongo:27017'}]}) };
+                  if (!db.hello().isWritablePrimary) quit(1);
+                  db.adminCommand({setDefaultRWConcern: 1, defaultWriteConcern: {w: 'majority', j: true}});
+            initialDelaySeconds: 2
+            periodSeconds: 2
+            timeoutSeconds: 10
+          volumeMounts:
+            - {name: data, mountPath: /data/db}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests: {storage: 10Gi}
