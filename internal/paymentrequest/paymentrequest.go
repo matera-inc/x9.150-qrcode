@@ -200,7 +200,7 @@ func (s *Service) get(w http.ResponseWriter, r *http.Request) error {
 	if !ok {
 		return httpapi.InvalidQRCodeID()
 	}
-	q, err := s.store.Get(r.Context(), id)
+	q, notification, err := s.store.GetWithNotification(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) {
 		return notFound(id)
 	}
@@ -212,7 +212,7 @@ func (s *Service) get(w http.ResponseWriter, r *http.Request) error {
 		return notFound(id)
 	}
 	now := s.now()
-	body, err := s.view(q, now)
+	body, err := s.view(q, notification, now)
 	if err != nil {
 		return err
 	}

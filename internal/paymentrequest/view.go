@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json/jsontext"
+	"fmt"
 	"strings"
 	"time"
 
@@ -61,7 +62,7 @@ func (s *Service) endpoint(locationID string) string {
 // request_json (ADR-0024): the request as Java reads it back, with its defaults filled in and no
 // null member (ADR-0028), the location from its column, and the lifecycle at now. The members come
 // in Java's order: the response's, the request's, then the lifecycle's.
-func (s *Service) view(q store.QRCode, now time.Time) (jsontext.Value, error) {
+func (s *Service) view(q store.QRCode, notification []byte, now time.Time) (jsontext.Value, error) {
 	req, err := readRequest(q.RequestJSON)
 	if err != nil {
 		return nil, err
@@ -69,6 +70,10 @@ func (s *Service) view(q store.QRCode, now time.Time) (jsontext.Value, error) {
 	javaDefaults(&req)
 	req.LocationID, req.ValidUntil = contract.String{}, contract.Timestamp{}
 	request, err := withoutNulls(req)
+	if err != nil {
+		return nil, err
+	}
+	data, err := notificationData(notification)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +88,7 @@ func (s *Service) view(q store.QRCode, now time.Time) (jsontext.Value, error) {
 	w.member("qrCodeB64", head.QRCodeB64)
 	w.member("location", head.Location)
 	w.member("validUntil", contract.FormatInstant(q.ValidUntil))
-	w.members(request)
+	w.members(request, data)
 	w.member("revision", q.Revision)
 	w.member("createdAt", contract.FormatInstant(q.CreatedAt))
 	w.member("revisedAt", contract.FormatInstant(q.RevisedAt))
@@ -178,8 +183,30 @@ func (w *writer) member(name string, v any) {
 	w.err = w.enc.WriteValue(raw)
 }
 
-// members writes every member of the object obj.
-func (w *writer) members(obj jsontext.Value) {
+// notificationData is paymentNotification.data as Java's GET writes it: the latest notification the
+// QR Code accepted, without payment.qrcodeId (Java's mapper does not copy it) and with no null
+// member; nil when none was accepted.
+func notificationData(stored []byte) (jsontext.Value, error) {
+	if len(stored) == 0 {
+		return nil, nil
+	}
+	var data contract.NotificationData
+	if err := httpapi.Unmarshal(stored, &data); err != nil {
+		return nil, fmt.Errorf("reading the stored notification: %w", err)
+	}
+	if data.Payment.IsSet() {
+		data.Payment.Value.QRCodeID = contract.String{}
+	}
+	raw, err := httpapi.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	return jsontext.Value(raw), nil
+}
+
+// members writes every member of the object obj; data, when given, as the last member of
+// paymentNotification, after kind and endpoint, as Java writes it.
+func (w *writer) members(obj jsontext.Value, data jsontext.Value) {
 	if w.err != nil {
 		return
 	}
@@ -201,6 +228,16 @@ func (w *writer) members(obj jsontext.Value) {
 			return
 		}
 		w.token(name)
+		if data != nil && name.String() == "paymentNotification" {
+			w.token(jsontext.BeginObject)
+			w.members(value, nil)
+			w.token(jsontext.String("data"))
+			if w.err == nil {
+				w.err = w.enc.WriteValue(data)
+			}
+			w.token(jsontext.EndObject)
+			continue
+		}
 		if w.err == nil {
 			w.err = w.enc.WriteValue(value)
 		}
