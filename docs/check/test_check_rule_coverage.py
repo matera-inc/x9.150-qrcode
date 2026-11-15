@@ -234,6 +234,36 @@ class S46AC2ARuleRowHasNoTest(unittest.TestCase):
         self.assertIn("proves no criterion", out[0])
 
 
+class ARuleForSomethingNeverBuilt(unittest.TestCase):
+    """A rule decided by an ADR and never built is marked NOT BUILT (ADR-nnnn), not a gap."""
+
+    def test_a_not_built_rule_naming_its_adr_passes(self):
+        out = run(table=changed("R-SM-01", "| `R-SM-01` | A thing holds. | NOT BUILT (ADR-0006) | — |"))
+        self.assertEqual([], out)
+
+    def test_it_must_name_an_adr_that_exists(self):
+        out = run(table=changed("R-SM-01", "| `R-SM-01` | A thing holds. | NOT BUILT (ADR-0999) | — |"))
+        self.assertEqual(1, len(out), out)
+        self.assertIn("NOT BUILT under ADR-0999", out[0])
+
+    def test_without_an_adr_it_is_not_a_test_name_and_fails(self):
+        out = run(table=changed("R-SM-01", "| `R-SM-01` | A thing holds. | NOT BUILT | — |"))
+        self.assertEqual(1, len(out), out)
+        self.assertIn("has no test", out[0])
+
+    def test_it_proves_nothing(self):
+        out = run(table=changed("R-SM-01",
+                                f"| `R-SM-01` | A thing holds. | NOT BUILT (ADR-0006) | `{AC1}` |"))
+        self.assertEqual(1, len(out), out)
+        self.assertIn("proves no criterion", out[0])
+
+    def test_it_is_not_also_a_gap(self):
+        out = run(table=changed("R-SM-01", "| `R-SM-01` | A thing holds. | NOT BUILT (ADR-0006) | — |"),
+                  gaps=["| `R-SM-01` | Nobody built it. | Build it. |"])
+        self.assertEqual(1, len(out), out)
+        self.assertIn("marked NOT BUILT", out[0])
+
+
 class S46AC2ARuleRowNamesATestThatDoesNotExist(unittest.TestCase):
     def test_an_unknown_key_fails(self):
         out = run(table=changed("R-SM-01", "| `R-SM-01` | A thing holds. | `X9-LIFE-999` | — |"))

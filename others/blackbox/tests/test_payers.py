@@ -483,6 +483,39 @@ class TestNotifications:
         assert api.status_of(qr) == "ACTIVE"
         assert events.none_for(qr) == []
 
+    @pytest.mark.parametrize("missing", ["payer", "payer.info", "expectedDate"])
+    def test_an_ach_notification_without_payer_info_or_expected_date_is_refused(
+            self, api, events, payee_certificate, business_now, missing):
+        """X9-HOLD-407 — an ACH notification without ``payer.info`` (no payer at all, or a payer
+        with no info) or without ``expectedDate`` is refused, signed, and reserves nothing.
+
+        Source: Ours. STATE-MACHINE.md (``payer.info`` and ``expectedDate`` on ACH); ADR-0036
+          ("ACH already requires ``payer.info``").
+        Why: An ACH transfer settles a day or more later. Without ``expectedDate`` nobody knows
+          when to look for the money; without ``payer.info`` the holder cannot be told apart from
+          the next payer (ADR-0036: no info is not the same payer), so a reservation taken on it
+          could be neither refreshed nor given back by the one who took it.
+        """
+        qr = api.create_qr(**RAILS["ach"]["create"])
+        body = samples.notification(qr, **RAILS["ach"]["notify"])
+        if missing == "payer":
+            del body["payer"]
+        elif missing == "payer.info":
+            body["payer"] = {}
+        else:
+            del body["expectedDate"]
+
+        response = api.send_notification(api.sign(body))
+
+        signed(response, payee_certificate, business_now, 400)
+        assert_refused(response, naming="payer.info" if missing.startswith("payer")
+                       else "ExpectedDate", status=400)
+        assert api.status_of(qr) == "ACTIVE", "a refused pre-commit reserves nothing"
+        assert events.none_for(qr) == []
+        control = api.notify(qr, **RAILS["ach"]["notify"])
+        assert control.status == 200, f"the control: with both, the same notification is " \
+                                      f"accepted: {control}"
+
     @pytest.mark.parametrize("case, status, naming", [
         ("wrong-amount", 400, "payment.amount"),
         ("tip-outside-range", 400, "payment.tipAmount"),

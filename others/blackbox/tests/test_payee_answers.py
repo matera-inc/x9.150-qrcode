@@ -219,6 +219,36 @@ def test_a_payee_answering_after_the_timeout_is_502(api, peer, events):
     assert_untouched(api, events, qr)
 
 
+@pytest.mark.parametrize("redirect", [302, 307])
+def test_a_redirect_from_the_payee_is_not_followed(api, peer, events, redirect):
+    """X9-SIG-150 — a payee answering 302 or 307 with a ``Location`` that would answer a signed
+    yes is not followed: one delivery, and the redirect is reported as the payee's answer.
+
+    Source: Ours. ADR-0015 ("redirects are not followed"); openapi.yaml, the pre-payment and
+      post-payment endpoints. The outbound client is built with ``Redirect.NEVER``.
+    Why: The destination is trusted because it arrived inside a signed payload. A redirect leads
+      somewhere that signature never attested, so following it would deliver a payer's signed
+      notification, and take its answer, from a host nobody vouched for.
+    """
+    target = peer.endpoint + "/redirected"
+
+    def answer(question):
+        if len(peer.received) == 1:
+            return peer_module.Answer(redirect, b"", content_type=None,
+                                      headers={"Location": target})
+        return peer.yes(question)
+    peer.answer = answer
+
+    response, qr = notify_through(api, peer)
+
+    assert len(peer.received) == 1, \
+        f"the redirect was followed: {len(peer.received)} deliveries"
+    assert response.status == 200, f"the service reports, it does not fail: {response}"
+    assert response.body["statusCode"] == redirect, response.body
+    assert response.body["accepted"] is False, response.body
+    assert_untouched(api, events, qr)
+
+
 @pytest.mark.parametrize("case", sorted(jws.Tamperer.CASES))
 def test_every_tampered_answer_is_named_by_its_fixed_code(api, peer, pki, events, case):
     """S3.2-AC2's reasons, named: each of the tamperer's defects, in a payee's answer, gets the

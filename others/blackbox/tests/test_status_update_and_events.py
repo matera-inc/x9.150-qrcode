@@ -470,6 +470,49 @@ def test_wait_above_30_is_refused(api, wait):
     assert held < 5.0, f"refused at once, not held: {held:.1f} s"
 
 
+@pytest.mark.parametrize("limit", [0, 501])
+def test_a_limit_outside_1_to_500_is_refused(api, limit):
+    """X9-EVT-056 — ``limit`` 0 and ``limit`` 501 are refused: 400 naming ``limit``. 1 and 500 are
+    accepted.
+
+    Source: Ours. ENDPOINTS.md (``limit`` 1 to 500, 100 by default); openapi.yaml ``minimum: 1``,
+    ``maximum: 500``. The same validation as ``wait`` (X9-EVT-053).
+    Why: A consumer asking for 0 would page forever without moving its cursor; one asking for more
+    than 500 would be served a page the deployment never sized for. Either is told so, by name,
+    rather than silently clamped into a page size it did not ask for.
+    """
+    response = api.get(f"{PATH}?after={END}&limit={limit}")
+
+    assert response.status == 400, response
+    assert "limit" in str(response.body), f"the refusal names `limit`: {response.body}"
+    for edge in (1, 500):
+        assert api.get(f"{PATH}?after={END}&limit={edge}").status == 200, f"limit={edge} is valid"
+
+
+def test_without_limit_a_page_holds_at_most_100_events(api):
+    """X9-EVT-057 — a read without ``limit`` returns 100 events when more stand behind the cursor,
+    and says so with ``hasMore``.
+
+    Source: Ours. ENDPOINTS.md and openapi.yaml (``limit`` defaults to 100).
+    Why: A consumer that never sets ``limit`` still gets bounded pages; a default that served the
+    whole stream would turn its first catch-up into one unbounded answer.
+    """
+    whole = page(api, after="", limit=500)
+    while len(whole["events"]) < 101:
+        qr = create(api)
+        assert api.set_status(qr, "PAYMENT_INITIATED").status == 200
+        assert api.set_status(qr, "CANCELLED").status == 200
+        time.sleep(0.2)
+        whole = page(api, after="", limit=500)
+
+    response = api.get(f"{PATH}?after=")
+    assert response.status == 200, response
+    assert len(response.body["events"]) == 100, f"{len(response.body['events'])} events"
+    assert response.body["hasMore"] is True, response.body.get("hasMore")
+    assert [e["eventId"] for e in response.body["events"]] == \
+        [e["eventId"] for e in whole["events"][:100]], "the first 100 of the stream, in order"
+
+
 @pytest.mark.parametrize("wait, low, high", [(0, 0.0, 1.5), (2, 1.8, 4.0), (30, 29.0, 34.0)])
 def test_wait_holds_an_empty_poll_for_as_long_as_asked(api, wait, low, high):
     """X9-EVT-054 — with nothing to return, the poll is held for `wait` seconds (0 returns at

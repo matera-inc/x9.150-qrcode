@@ -41,12 +41,14 @@ class Received:
 
 
 class Answer:
-    """What the payee sends back: an HTTP status, a body, a content type, an optional delay, or
-    nothing at all (``hang_up``: the connection is closed without a response)."""
+    """What the payee sends back: an HTTP status, a body, a content type, extra headers (a
+    ``Location`` for a redirect), an optional delay, or nothing at all (``hang_up``: the
+    connection is closed without a response)."""
 
     def __init__(self, status, body=b"", content_type="application/jose", delay=0.0,
-                 hang_up=False):
+                 hang_up=False, headers=None):
         self.status = status
+        self.headers = dict(headers or {})
         self.body = body.encode() if isinstance(body, str) else (body or b"")
         self.content_type = content_type
         self.delay = delay
@@ -68,6 +70,9 @@ class TestPayee:
         payee = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):                           # noqa: N802 - http.server API
+                self.do_POST()                          # a followed 302 may arrive as a GET
+
             def do_POST(self):                          # noqa: N802 - http.server API
                 length = int(self.headers.get("Content-Length") or 0)
                 question = Received(self.rfile.read(length).decode(errors="replace"),
@@ -84,6 +89,8 @@ class TestPayee:
                     self.send_response(answer.status)
                     if answer.content_type:
                         self.send_header("Content-Type", answer.content_type)
+                    for name, value in answer.headers.items():
+                        self.send_header(name, value)
                     self.send_header("Content-Length", str(len(answer.body)))
                     self.end_headers()
                     self.wfile.write(answer.body)

@@ -7,7 +7,9 @@ These exist because a suite that exercises only the payment flow would pass agai
 had silently lost ETag support, If-Match enforcement or the revision rule; that happened once, and
 cost an adopter an afternoon proving a published image wrong when their node served a stale one.
 """
-from x9client import samples
+import json
+
+from x9client import jws, samples
 
 STALE = '"never-existed"'
 
@@ -66,3 +68,30 @@ def test_a_status_change_is_not_a_new_revision(api):
     after = api.qr(qr).body
     assert after["status"] == "PAYMENT_INITIATED"
     assert after["revision"] == before, f"{before} -> {after['revision']}"
+
+
+def test_lock_version_is_never_exposed(api):
+    """X9-PATCH-440 — ``lockVersion`` appears in no answer: not in the create, a GET or a PATCH,
+    and not in the signed payload a payer fetches.
+
+    Source: Ours. ADR-0016: ``lockVersion`` is the store's optimistic lock, internal; ``revision``
+      is the public version, and only a PATCH moves it.
+    Why: ``lockVersion`` moves on every write, a payer's notification included. A client that saw
+      it would read it as a version of the payment request, see "changes" that changed nothing it
+      can read, and come to depend on a field another build is free not to have.
+    """
+    created = api.create_qr_detailed()
+    assert created.status == 201, created
+    qr = created.body["id"]
+    assert api.notify(qr).status == 200, "a write that moves the lock but not the revision"
+    read = api.qr(qr)
+    patched = api.patch(f"/api/v1/payment-request/{qr}", if_match=read.etag, body={
+        "paymentMethods": [samples.payment_method(valid_until="2030-12-30T23:59:59Z")]})
+    assert patched.status == 200, patched
+    payload = api.fetch_payload(created.body["location"]["id"], created.body["qrCode"])
+    assert payload.status == 200, payload
+    _, claims = jws.parse(payload.text)
+
+    for name, text in (("create", created.text), ("GET", api.qr(qr).text),
+                       ("PATCH", patched.text), ("payload", json.dumps(claims))):
+        assert "lockVersion" not in text, f"the {name} answer exposes lockVersion: {text[:300]}"
