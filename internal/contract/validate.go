@@ -237,6 +237,11 @@ func (n *Networks) check(c *checker, path string) {
 			c.str(p+".accountNumber", b.AccountNumber, ruleAccountNumber, size(4, 17))
 		}
 		c.notNull(p+".protectionType", b.ProtectionType.presence)
+		// The bank rails are closed on what this service generates, as solana is (owner,
+		// 2026-11-15; INTERPRETATION I-16). The Java build ignores an unknown key here today.
+		for _, name := range b.Unknown.Names() {
+			c.add(p+"."+name, "is not a field of "+rail.name+", whose fields are routingNumber, accountNumber and protectionType")
+		}
 	}
 	if n.Solana.IsSet() {
 		p, s := path+".solana", n.Solana.Value

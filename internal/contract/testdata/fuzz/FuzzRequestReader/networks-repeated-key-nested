@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"paymentMethods\":[{\"networks\":{\"solana\":{\"x\":[{\"a\":1,\"a\":{\"b\":1,\"b\":2}}]},\"\":1,\"\":2}}]}")

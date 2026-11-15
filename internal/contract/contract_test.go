@@ -187,6 +187,84 @@ func TestViolationsAreJavas(t *testing.T) {
 	}
 }
 
+// INTERPRETATION I-16 (owner, 2026-11-15): on the QR Codes this service generates, the bank rails
+// are closed as solana is. An unknown field in fednow, rtp or ach is refused by name, on create and
+// on PATCH, beside the body's other violations.
+func TestBankRailsAreClosedOnCreateAndPatch(t *testing.T) {
+	const bank = `"protectionType": "plaintext"}`
+	const fields = "is not a field of %s, whose fields are routingNumber, accountNumber and protectionType"
+	for _, op := range []struct {
+		name   string
+		sample string
+		target func() validator
+	}{
+		{"create", sampleCreate, func() validator { return &CreateRequest{} }},
+		{"patch", samplePatch, func() validator { return &PatchRequest{} }},
+	} {
+		for i, rail := range []string{"fednow", "rtp", "ach"} {
+			t.Run(op.name+"/"+rail, func(t *testing.T) {
+				// The i-th bank rail of the sample gets the unknown field.
+				parts := strings.SplitN(op.sample, bank, 4)
+				if len(parts) != 4 {
+					t.Fatal("the sample has not three bank rails")
+				}
+				parts[i] += `"protectionType": "plaintext", "x": 1, "routingNumber": "021000021"}`
+				for j := range 3 {
+					if j != i {
+						parts[j] += bank
+					}
+				}
+				body := strings.Join(parts, "")
+				target := op.target()
+				if err := httpapi.Unmarshal([]byte(body), target); err != nil {
+					t.Fatal(err)
+				}
+				want := []string{"paymentMethods[0].networks." + rail + ".x: " + strings.ReplaceAll(fields, "%s", rail)}
+				if diff := cmp.Diff(want, target.Validate()); diff != "" {
+					t.Errorf("violations (-want +got):\n%s", diff)
+				}
+			})
+		}
+	}
+
+	// Named beside the rail's other violations, as solana's unknown field is.
+	var r CreateRequest
+	body := replace(t, sampleCreate, `"fednow": {"routingNumber": "021000021", "accountNumber": "1234567890", "protectionType": "plaintext"}`,
+		`"fednow": {"routing": "021000021", "accountNumber": "1234567890", "protectionType": "plaintext"}`)
+	if err := httpapi.Unmarshal([]byte(body), &r); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"paymentMethods[0].networks.fednow.routingNumber: must not be null",
+		"paymentMethods[0].networks.fednow.routing: " + strings.ReplaceAll(fields, "%s", "fednow")}
+	if diff := cmp.Diff(want, r.Validate()); diff != "" {
+		t.Errorf("violations (-want +got):\n%s", diff)
+	}
+}
+
+// S9.2-AC2: a repeated key keeps its last value, one entry, also inside a member kept as sent (an
+// unknown network, an unknown field of a rail), at any depth, so what was read can be written back.
+// FuzzRequestReader found a repeated key inside an unknown network that could not be.
+func TestARepeatedKeyKeepsItsLastValueEverywhere(t *testing.T) {
+	body := `{"paymentMethods": [{"networks": {
+		"": {"": 0, "": 1}, "x": [{"a": 1, "a": {"b": 1, "b": 2}}], "": {"": 2, "c": 3, "": 4},
+		"solana": {"recipient": "r", "y": {"d": 1, "d": 2}}}}]}`
+	var r CreateRequest
+	if err := httpapi.Unmarshal([]byte(body), &r); err != nil {
+		t.Fatal(err)
+	}
+	out, err := json.Marshal(r.PaymentMethods.Items[0].Networks.Value)
+	if err != nil {
+		t.Fatalf("written back: %v", err)
+	}
+	want := `{"solana":{"recipient":"r","y":{"d":2}},"x":[{"a":{"b":2}}],"":{"c":3,"":4}}`
+	if string(out) != want {
+		t.Errorf("written back:\n got %s\nwant %s", out, want)
+	}
+	if diff := cmp.Diff([]string{"x", ""}, r.PaymentMethods.Items[0].Networks.Value.OtherNames()); diff != "" {
+		t.Errorf("unknown networks, once each (-want +got):\n%s", diff)
+	}
+}
+
 // S9.2-AC2: a PATCH knows which members it carried and which it cleared (ADR-0024).
 func TestAPatchTracksWhatItCarried(t *testing.T) {
 	var p PatchRequest
