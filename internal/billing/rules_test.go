@@ -6,6 +6,7 @@
 package billing
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -322,7 +323,7 @@ func TestTheLateFeeBound(t *testing.T) {
 			t.Errorf("%s:\n got %q (%s)\nwant %q", c.name, text, kind, c.want)
 		}
 		// PATCH is held to the same bound against the merged state.
-		if err := CheckPatch(c.r, BundledCurrencies()); err == nil {
+		if err := CheckPatch(c.r, c.r, BundledCurrencies(), now); err == nil {
 			t.Errorf("%s: CheckPatch accepted it", c.name)
 		}
 	}
@@ -345,34 +346,72 @@ func TestTheLateFeeBound(t *testing.T) {
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 
 // S9.4-AC1: on PATCH the merged state is held to the date rules, whichever side moved (R-EP-27),
-// and to the currencies; the past is not judged.
+// and to the currencies. A date the PATCH changes must not be in the past at now, the edge
+// included; a date it leaves as stored is not judged again (owner, 2026-11-15).
 func TestCheckPatch(t *testing.T) {
+	invoiced := func(r *Request, dueAt time.Time, discounts ...Discount) {
+		*r = withInvoice(*r, dueAt, 0, 0, discounts...)
+	}
+	discount := func(daysBefore int32) Discount {
+		return Discount{DaysBefore: daysBefore, Discount: 1, Explanation: "d"}
+	}
 	cases := []struct {
 		name   string
+		stored func(r *Request)
 		change func(r *Request)
 		want   string
 	}{
-		{"a valid merged state", func(*Request) {}, ""},
-		{"a validUntil already past is the merge's business", func(r *Request) {
-			r.ValidUntil = now.Add(-day)
-			r.PaymentMethods[0].ValidUntil = r.ValidUntil
-		}, ""},
-		{"validUntil moved before the due date", func(r *Request) {
-			*r = withInvoice(*r, due, 0, 0)
+		{"a valid merged state", nil, func(*Request) {}, ""},
+		{"validUntil moved before the due date", nil, func(r *Request) {
+			invoiced(r, due)
 			r.ValidUntil = due.Add(-ms)
 			r.PaymentMethods[0].ValidUntil = r.ValidUntil
 		}, "bill.invoice.dueDate: must be before or equal to validUntil date."},
-		{"validUntil moved before a method's", func(r *Request) { r.ValidUntil = r.ValidUntil.Add(-ms) },
+		{"validUntil moved before a method's", nil, func(r *Request) { r.ValidUntil = r.ValidUntil.Add(-ms) },
 			"paymentMethods[0].validUntil: must be before or equal than payment request validUntil."},
-		{"a duplicate currency", func(r *Request) { r.PaymentMethods = append(r.PaymentMethods, r.PaymentMethods[0]) },
+		{"a duplicate currency", nil, func(r *Request) { r.PaymentMethods = append(r.PaymentMethods, r.PaymentMethods[0]) },
 			"paymentMethods: must not contain duplicated currency: USD"},
-		{"an unsupported currency", func(r *Request) { r.PaymentMethods[0].Currency = "EUR" },
+		{"an unsupported currency", nil, func(r *Request) { r.PaymentMethods[0].Currency = "EUR" },
 			"currency: Currency EUR is not settled by any payment rail this deployment supports. Supported: USD, USDC, FRNT."},
+
+		{"validUntil set in the past", nil, func(r *Request) {
+			r.ValidUntil = now.Add(-ms)
+			r.PaymentMethods[0].ValidUntil = r.ValidUntil
+		}, "validUntil: must not be less than the current date."},
+		{"validUntil set to now exactly", nil, func(r *Request) {
+			r.ValidUntil = now
+			r.PaymentMethods[0].ValidUntil = now
+		}, ""},
+		{"validUntil already past and left alone", func(r *Request) {
+			r.ValidUntil = now.Add(-day)
+			r.PaymentMethods[0].ValidUntil = r.ValidUntil
+		}, func(*Request) {}, ""},
+		{"the due date set in the past", nil, func(r *Request) { invoiced(r, now.Add(-ms)) },
+			"bill.invoice.dueDate: must be after or equal to actual date."},
+		{"the due date set to now exactly", nil, func(r *Request) { invoiced(r, now) }, ""},
+		{"the due date already past and restated", func(r *Request) { invoiced(r, now.Add(-day)) },
+			func(r *Request) { invoiced(r, now.Add(-day)) }, ""},
+		{"a discount whose edge the PATCH puts in the past", func(r *Request) { invoiced(r, due) },
+			func(r *Request) { invoiced(r, due, discount(11)) },
+			"bill.amountDue.adjustments.discounts[0]: target date must be after the current date."},
+		{"a due date moved so that a kept discount's edge is past", func(r *Request) { invoiced(r, due, discount(5)) },
+			func(r *Request) { invoiced(r, now.Add(4*day), discount(5)) },
+			"bill.amountDue.adjustments.discounts[0]: target date must be after the current date."},
+		{"a discount edge at now exactly", nil, func(r *Request) { invoiced(r, due, discount(10)) }, ""},
+		{"a discount edge already past and left alone", func(r *Request) { invoiced(r, due, discount(11)) },
+			func(r *Request) { invoiced(r, due, discount(11), discount(2)) }, ""},
+		{"the methods first, then the past", nil, func(r *Request) { r.ValidUntil = now.Add(-ms) },
+			"paymentMethods[0].validUntil: must be before or equal than payment request validUntil."},
 	}
 	for _, tc := range cases {
-		r := valid()
+		stored := valid()
+		if tc.stored != nil {
+			tc.stored(&stored)
+		}
+		r := stored
+		r.PaymentMethods = slices.Clone(stored.PaymentMethods)
 		tc.change(&r)
-		err := CheckPatch(r, BundledCurrencies())
+		err := CheckPatch(r, stored, BundledCurrencies(), now)
 		if tc.want == "" {
 			if err != nil {
 				t.Errorf("%s: %v", tc.name, err)
@@ -381,6 +420,32 @@ func TestCheckPatch(t *testing.T) {
 		}
 		if text, _ := violation(t, err); text != tc.want {
 			t.Errorf("%s:\n got %q\nwant %q", tc.name, text, tc.want)
+		}
+	}
+}
+
+// ADR-0017, I-10: a tip offer agrees with itself, on a create and on a PATCH's merged bill alike.
+func TestCheckTip(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		tip  *Tip
+		want string
+	}{
+		{"no tip block", nil, ""},
+		{"allowed with a range", &Tip{Allowed: true, Range: &TipRange{Max: 20}}, ""},
+		{"allowed with presets", &Tip{Allowed: true, Presets: []int32{10}}, ""},
+		{"allowed with neither", &Tip{Allowed: true}, "tip.allow: should inform range or presets when tip is allowed"},
+		{"refused with presets", &Tip{Presets: []int32{10}}, "tip.allow: cannot provided range or presets when tip is not allowed"},
+	} {
+		err := CheckTip(tc.tip)
+		if tc.want == "" {
+			if err != nil {
+				t.Errorf("%s: %v", tc.name, err)
+			}
+			continue
+		}
+		if text, _ := violation(t, err); text != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.name, text, tc.want)
 		}
 	}
 }

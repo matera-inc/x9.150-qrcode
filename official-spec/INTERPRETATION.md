@@ -487,8 +487,9 @@ therefore accepts any positive tip, and a payer who types 13% where 10/15/20 wer
 a legitimate choice rather than an error.
 
 **A tip offer must carry a range or presets**, which is stricter than §13.6.2 and §13.6.3 — both
-make those `MAY`. `{"allowed": true}` alone is refused at creation: it renders as nothing in a
-payer-facing application, so it is an offer only in name. The consequence of pairing that rule with
+make those `MAY`. `{"allowed": true}` alone is refused at creation, and by a PATCH whose merged
+bill would carry it (owner, 2026-11-15; presets the PATCH leaves out keep their stored value and
+count): it renders as nothing in a payer-facing application, so it is an offer only in name. The consequence of pairing that rule with
 the one above is worth stating plainly: a bill publishing **presets and no range accepts a tip of any
 size**, because presets do not bind. A biller who wants a ceiling must publish a range.
 
@@ -921,6 +922,34 @@ fails on one, and a payment notification read on its own is not refused. The Go 
 10.7 is not built yet, and must read somebody else's payload as described above. The black-box
 suite pins the words on both builds (X9-RAIL-507 to -509) and generates a case for every closed
 object of the contract (`contract.py`, kind `closed`).
+
+## I-17 — `sentAt` is when we generate the JSON, never before `revisedAt`
+
+**Where:** §6 (the payload's timestamps: `createdAt`, `revisedAt`, `sentAt`, `validUntil`)
+
+**What the standard says.** `sentAt` is when the payload was sent to the payer's PSP. It
+**SHALL** be greater than or equal to `revisedAt`, and `validUntil` **SHALL** be greater than or
+equal to `sentAt`. It does not say which clock reads "sent", nor what an implementation does when
+its clock reads earlier than the last revision.
+
+**What we do** (owner, 2026-11-15), on both builds:
+
+- **`sentAt` is the instant we generate that JSON**, read from the payee's business clock: the
+  clock every rule here is judged by, which a test deployment can move (ADR-0033). It is not
+  stored. Each payload, and each `GET /api/v1/payment-request/{id}` answer, carries its own.
+- **Never earlier than `revisedAt`.** `sentAt = max(now, revisedAt)`. A clock behind the last
+  revision (a test clock moved back, or a replica whose clock lags the one that wrote the
+  revision) answers `revisedAt` rather than an instant the standard forbids.
+- **`validUntil ≥ sentAt` is kept by refusing, not by rewriting.** A payload is never served past
+  the QR Code's `validUntil`: the payer's fetch is refused instead (ADR-0020). The biller's GET
+  still answers after expiry, and there `sentAt` may be later than `validUntil`; that answer is not
+  a payload and is sent to nobody's PSP.
+- **A PATCH never compares `sentAt`.** A PATCH may carry the whole GET answer (I-16), and its
+  `sentAt` is the instant of that earlier answer, so it is ignored, never refused.
+
+Tests: X9-PATCH-046, X9-TIME-022, X9-TIME-023 (Java), `view_test.go::TestSentAtIsNowButNeverBeforeRevisedAt`
+(Go), and X9-TIME-024 (black-box, both builds). The Go payload follows the same rule with Story
+10.3.
 
 ## Reporting
 

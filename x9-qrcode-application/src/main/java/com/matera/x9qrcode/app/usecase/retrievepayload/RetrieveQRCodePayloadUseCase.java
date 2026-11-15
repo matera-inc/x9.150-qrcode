@@ -123,7 +123,8 @@ public class RetrieveQRCodePayloadUseCase extends UseCase<RetrieveQRCodePayloadI
             qrCodeContent,
             qrCodeEntity.getCreatedAt(),
             qrCodeEntity.getRevisedAt(),
-            DateTimeUtils.nowUTC(),
+            // sentAt: when this payload is generated, never before revisedAt (X9.150 §6, I-17).
+            qrCodeEntity.sentAt(DateTimeUtils.nowUTC()),
             qrCodeEntity.getValidUntil(),
             // effectiveStatus: a lapsed reservation reads as ACTIVE, so a caller is told what is
             // true now rather than what was last reported. See QRCodeEntity.effectiveStatus.

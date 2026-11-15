@@ -74,17 +74,26 @@ public final class PatchQRCodePaymentMethodsMapper {
                 paymentMethodUpdateDTO.validUntil(),
                 new AmountVO(paymentMethodUpdateDTO.amount()),
                 paymentMethodUpdateDTO.currencyEditableUpdateDTO().isPresent()
-                    ? buildPaymentMethod(editable, paymentMethodUpdateDTO.currencyEditableUpdateDTO().get())
+                    ? buildEditable(editable, paymentMethodUpdateDTO.currencyEditableUpdateDTO().get())
                     : editable,
                 buildNetworks(paymentMethod.networks(), paymentMethodUpdateDTO.networksUpdateDTO()));
         };
     }
 
-    private static EditableAmountVO buildPaymentMethod(EditableAmountVO editable, CurrencyEditableUpdateDTO currencyEditableUpdateDTO) {
+    /**
+     * {@code editable: null} removes it; {@code editable} without a range keeps the stored range,
+     * and on a method that had none is the create's refusal (the range is required). Both used to
+     * end in a NullPointerException, a 500 (Story 9.7).
+     */
+    private static EditableAmountVO buildEditable(EditableAmountVO editable, CurrencyEditableUpdateDTO currencyEditableUpdateDTO) {
+        if (isNull(currencyEditableUpdateDTO)) {
+            return null;
+        }
+
         PartialInput<AmountRangeDTO> amountRangeDTO = currencyEditableUpdateDTO.amountRangeUpdateDTO();
 
         return new EditableAmountVO(
-            amountRangeDTO.isPresent() ? buildAmountRange(amountRangeDTO.get()) : editable.range()
+            amountRangeDTO.isPresent() ? buildAmountRange(amountRangeDTO.get()) : (isNull(editable) ? null : editable.range())
         );
     }
 

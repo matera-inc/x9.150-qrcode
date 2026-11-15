@@ -49,6 +49,13 @@ import java.util.List;
 import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
+/**
+ * Applies a PATCH's bill to the stored one. The PATCH restates the bill; what it may leave out
+ * inside the order, the invoice, the invoicee and its address, the tip and the adjustments keeps
+ * its stored value. An order, an invoice, an invoicee, a tip or adjustments sent to a bill that had
+ * none are applied as sent, and then held to the bill's rules: they used to be dropped while the
+ * PATCH answered 200 (Story 9.7).
+ */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class PatchQRCodeBillMapper {
 
@@ -70,7 +77,7 @@ public final class PatchQRCodeBillMapper {
     }
 
     private static OrderVO buildOrder(OrderVO order, OrderUpdateDTO orderUpdateDTO) {
-        if (isNull(orderUpdateDTO) || isNull(order)) {
+        if (isNull(orderUpdateDTO)) {
             return null;
         }
 
@@ -78,31 +85,33 @@ public final class PatchQRCodeBillMapper {
 
         return new OrderVO(
             new NumberIdentifierVO(orderUpdateDTO.number()),
-            date.isPresent() ? date.get() : order.date()
+            date.isPresent() ? date.get() : (isNull(order) ? null : order.date())
         );
     }
 
     private static InvoiceVO buildInvoice(InvoiceVO invoice, InvoiceUpdateDTO invoiceUpdateDTO) {
-        if (isNull(invoiceUpdateDTO) || isNull(invoice)) {
+        if (isNull(invoiceUpdateDTO)) {
             return null;
         }
 
         PartialInput<InvoiceeUpdateDTO> invoiceeUpdateDTO = invoiceUpdateDTO.invoiceeUpdateDTO();
+        InvoiceeVO storedInvoicee = isNull(invoice) ? null : invoice.invoicee();
 
         return new InvoiceVO(
             invoiceUpdateDTO.number(),
             invoiceUpdateDTO.date(),
             invoiceUpdateDTO.dueDate(),
-            invoiceeUpdateDTO.isPresent() ? buildInvoicee(invoice.invoicee(), invoiceeUpdateDTO.get()) : invoice.invoicee()
+            invoiceeUpdateDTO.isPresent() ? buildInvoicee(storedInvoicee, invoiceeUpdateDTO.get()) : storedInvoicee
         );
     }
 
     private static TipVO buildTip(TipVO tip, TipUpdateDTO tipUpdateDTO) {
-        if (isNull(tipUpdateDTO) || isNull(tip) || !tipUpdateDTO.allowed()) {
+        if (isNull(tipUpdateDTO) || !tipUpdateDTO.allowed()) {
             return TipVO.noTip();
         }
 
-        List<Integer> presets = tipUpdateDTO.presets().isPresent() ? tipUpdateDTO.presets().get() : tip.presets();
+        List<Integer> presets = tipUpdateDTO.presets().isPresent() ? tipUpdateDTO.presets().get()
+            : (isNull(tip) ? null : tip.presets());
 
         TipRangeDTO range = tipUpdateDTO.range();
 
@@ -114,19 +123,21 @@ public final class PatchQRCodeBillMapper {
     }
 
     private static InvoiceeVO buildInvoicee(InvoiceeVO invoicee, InvoiceeUpdateDTO invoiceeUpdateDTO) {
-        if (isNull(invoiceeUpdateDTO) || isNull(invoicee)) {
+        if (isNull(invoiceeUpdateDTO)) {
             return null;
         }
 
         PartialInput<AddressUpdateDTO> addressUpdateDTO = invoiceeUpdateDTO.addressUpdateDTO();
         PartialInput<String> phone = invoiceeUpdateDTO.phone();
         PartialInput<String> email = invoiceeUpdateDTO.email();
+        boolean stored = nonNull(invoicee);
 
         return new InvoiceeVO(
             new NameVO(invoiceeUpdateDTO.name()),
-            phone.isPresent() ? new PhoneVO(phone.get()) : invoicee.phone(),
-            email.isPresent() ? new EmailVO(email.get()) : invoicee.email(),
-            addressUpdateDTO.isPresent() ? buildAddress(invoicee.address(), addressUpdateDTO.get()) : invoicee.address()
+            phone.isPresent() ? new PhoneVO(phone.get()) : (stored ? invoicee.phone() : new PhoneVO(null)),
+            email.isPresent() ? new EmailVO(email.get()) : (stored ? invoicee.email() : new EmailVO(null)),
+            addressUpdateDTO.isPresent() ? buildAddress(stored ? invoicee.address() : null, addressUpdateDTO.get())
+                : (stored ? invoicee.address() : null)
         );
     }
 
@@ -151,25 +162,27 @@ public final class PatchQRCodeBillMapper {
         PartialInput<String> line2 = addressUpdateDTO.line2();
         PartialInput<String> state = addressUpdateDTO.state();
         PartialInput<String> postalCode = addressUpdateDTO.postalCode();
+        boolean stored = nonNull(address);
 
         return new AddressVO(
             addressUpdateDTO.line1(),
-            line2.isPresent() ? line2.get() : address.line2(),
+            line2.isPresent() ? line2.get() : (stored ? address.line2() : null),
             addressUpdateDTO.city(),
-            state.isPresent() ? state.get() : address.state(),
-            postalCode.isPresent() ? postalCode.get() : address.postalCode(),
+            state.isPresent() ? state.get() : (stored ? address.state() : null),
+            postalCode.isPresent() ? postalCode.get() : (stored ? address.postalCode() : null),
             addressUpdateDTO.country()
         );
     }
 
     private static AdjustmentVO buildAdjustment(AdjustmentVO adjustment, AdjustmentUpdateDTO adjustmentUpdateDTO) {
-        if (isNull(adjustment) || isNull(adjustmentUpdateDTO)) {
+        if (isNull(adjustmentUpdateDTO)) {
             return null;
         }
 
         return new AdjustmentVO(
             FormulaEnum.fromValue(adjustmentUpdateDTO.formulaDTO().value()),
-            buildAdjustmentParameters(adjustment.parameters(), adjustmentUpdateDTO.adjustmentParametersUpdateDTO())
+            buildAdjustmentParameters(isNull(adjustment) ? null : adjustment.parameters(),
+                adjustmentUpdateDTO.adjustmentParametersUpdateDTO())
         );
     }
 
@@ -182,7 +195,7 @@ public final class PatchQRCodeBillMapper {
         LateFeesVO lateFeesVO = new LateFeesVO(lateFeesDTO.fixed(), lateFeesDTO.perDay(), lateFeesDTO.explanation());
 
         if (!discounts.isPresent()) {
-            return new AdjustmentParametersVO(parameters.discounts(), lateFeesVO);
+            return new AdjustmentParametersVO(isNull(parameters) ? null : parameters.discounts(), lateFeesVO);
         }
 
         if (isNull(discounts.get())) {

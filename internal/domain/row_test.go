@@ -114,6 +114,33 @@ func TestReservationEnd(t *testing.T) {
 	}
 }
 
+// ADR-0019, owner 2026-11-15: a PATCH that moves validUntil earlier cuts a running reservation
+// back to it, since a reservation cannot outlive what it reserves; a later validUntil never
+// lengthens one, and a reservation that never lapses (a hash registered, or ttl 0) is left alone.
+func TestCapReservation(t *testing.T) {
+	window := t0.Add(ttl)
+	tests := []struct {
+		name       string
+		reserved   time.Time
+		validUntil time.Time
+		want       time.Time
+	}{
+		{"validUntil before the window's end cuts it back", window, t0.Add(time.Second), t0.Add(time.Second)},
+		{"validUntil at the window's end changes nothing", window, window, window},
+		{"a later validUntil never lengthens it", window, window.Add(time.Hour), window},
+		{"no lapse is left alone", NoLapse, t0.Add(time.Second), NoLapse},
+		{"no stamp is left alone", time.Time{}, t0.Add(time.Second), time.Time{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			row := Row{Status: StatusPaymentInitiated, ReservedUntil: tt.reserved, ValidUntil: tt.validUntil}
+			if got := CapReservation(row); !got.ReservedUntil.Equal(tt.want) {
+				t.Errorf("reserved until %v, want %v", got.ReservedUntil, tt.want)
+			}
+		})
+	}
+}
+
 // S9.3-AC3: "<revision>-<effective status>", and If-Match compared against the same function.
 func TestETag(t *testing.T) {
 	if got := ETag(active(), t0); got != "3-ACTIVE" {

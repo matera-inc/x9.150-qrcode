@@ -19,17 +19,20 @@ import com.matera.x9qrcode.domain.entity.QRCodeEntity;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
 import com.matera.x9qrcode.domain.service.CurrencyMixPolicy;
 import com.matera.x9qrcode.domain.service.SupportedCurrencyPolicy;
+import com.matera.x9qrcode.domain.vo.BillVO;
 import com.matera.x9qrcode.domain.vo.LocationIdVO;
 import com.matera.x9qrcode.domain.vo.PaymentMethodVO;
 import com.matera.x9qrcode.domain.vo.QRCodeIdVO;
 
 import lombok.RequiredArgsConstructor;
 
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 
+import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
 @RequiredArgsConstructor
@@ -59,13 +62,20 @@ public class PatchQRCodeUseCase extends UseCase<PatchQRCodeInput, PatchQRCodeOut
         // treatLocationUpdate RETURNS the consumer that assigns the location; it has to be applied.
         // Discarding it released the previous holder and gave the location to nobody, which is worse
         // than doing nothing: the QR Code already printed stops resolving.
+        // What the merged state is judged against: a date the PATCH leaves as it was is not judged
+        // again (owner decision 2026-11-15).
+        OffsetDateTime previousValidUntil = qrCodeEntity.getValidUntil();
+        BillVO previousBill = qrCodeEntity.getBill();
+
         input.locationId().ifPresent(locationId ->
             treatLocationUpdate(locationId, qrCodeEntity).accept(locationId));
         input.validUntil().ifPresent(qrCodeEntity::updateValidUntil);
         input.additionalInformationMap().ifPresent(qrCodeEntity::updateAdditionalInformation);
         input.unstructured().ifPresent(qrCodeEntity::updateUnstructured);
-        input.billUpdateDTO().ifPresent(billUpdateDTO ->
-            qrCodeEntity.updateBill(PatchQRCodeBillMapper.map(qrCodeEntity.getBill(), billUpdateDTO)));
+        // bill: null reaches updateBill as null, which refuses it by name; it used to reach the mapper
+        // and end in a NullPointerException (Story 9.7).
+        input.billUpdateDTO().ifPresent(billUpdateDTO -> qrCodeEntity.updateBill(
+            isNull(billUpdateDTO) ? null : PatchQRCodeBillMapper.map(qrCodeEntity.getBill(), billUpdateDTO)));
 
         // Before the mapper touches them: a patch that names any currency must name them all, and
         // only ones this QR Code already offers. The mapper matches by currency and silently
@@ -86,6 +96,10 @@ public class PatchQRCodeUseCase extends UseCase<PatchQRCodeInput, PatchQRCodeOut
             || input.additionalInformationMap().isPresent();
 
         qrCodeEntity.updatePaymentMethods(updatedPaymentMethods, changedSomethingElse);
+
+        // A date the PATCH set is not already past on the payee's clock, as on create; a date it
+        // left as it was is not judged again, so an expired QR Code can still be extended.
+        qrCodeEntity.requireChangedDatesNotPast(previousValidUntil, previousBill);
 
         // Against the merged state, as creation checks them: dueDate and every method's validUntil
         // no later than validUntil. A PATCH moving only validUntil used to skip the dueDate check,

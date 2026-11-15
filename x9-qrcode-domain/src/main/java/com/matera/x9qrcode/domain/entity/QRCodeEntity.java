@@ -39,6 +39,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -334,8 +335,40 @@ public class QRCodeEntity {
         this.revisedAt = DateTimeUtils.nowUTC();
     }
 
+    /**
+     * Moves the QR Code's {@code validUntil}, and cuts a running reservation back to it when the
+     * reservation would otherwise end after it: a reservation cannot outlive the thing reserved
+     * (ADR-0019, owner decision 2026-11-15). A later {@code validUntil} never lengthens a window,
+     * and a reservation that never lapses ({@link #NO_LAPSE}: a hash registered, or no window) is
+     * left alone, since only the payment system ends it (ADR-0036).
+     */
     public void updateValidUntil(OffsetDateTime validUntil) {
         this.validUntil = new ValidUntilVO(validUntil);
+
+        if (nonNull(this.initiatedExpiresAt) && !this.isWindowStopped()
+            && validUntil.isBefore(this.initiatedExpiresAt)) {
+            this.initiatedExpiresAt = validUntil;
+        }
+    }
+
+    /**
+     * The {@code sentAt} of a JSON generated about this QR Code at {@code now}: the instant it is
+     * generated, on the business clock, but never earlier than {@code revisedAt}, which ANSI X9.150
+     * §6 requires {@code sentAt} to follow (INTERPRETATION I-17). The GET answer and the signed
+     * payload both carry it.
+     */
+    public OffsetDateTime sentAt(OffsetDateTime now) {
+        return now.isBefore(this.revisedAt) ? this.revisedAt : now;
+    }
+
+    /**
+     * Refuses a PATCH that set a date already past on the payee's clock, judged on the merged state
+     * against the values the QR Code had before it (owner decision 2026-11-15): {@code validUntil},
+     * the due date, and each discount's edge. A date left as it was is not judged again. Run by the
+     * PATCH use case once every change is applied, before the cross-field date rules.
+     */
+    public void requireChangedDatesNotPast(OffsetDateTime previousValidUntil, BillVO previousBill) {
+        this.qrCodeEntityValidator.validateChangedDatesNotPast(previousValidUntil, previousBill);
     }
 
     public void updateAdditionalInformation(List<AdditionalInformationVO> additionalInformation) {
@@ -354,6 +387,10 @@ public class QRCodeEntity {
         this.bill = bill;
 
         this.qrCodeEntityValidator.validateInvoiceDueDate();
+
+        // ADR-0017 as on create, on the merged tip (owner decision 2026-11-15): an allowed tip
+        // with neither a range nor presets is no offer at all.
+        this.qrCodeEntityValidator.validateTip();
     }
 
     /**
@@ -512,6 +549,17 @@ public class QRCodeEntity {
                 "A patch that changes amounts must inform every currency this QR Code offers (%s); %s was left out."
                     .formatted(String.join(", ", offered), String.join(", ", notInformed)));
         }
+
+        // A currency named twice used to keep the last one, in silence. Refused in the create's
+        // words, naming the first one repeated (Story 9.7).
+        informedCurrencies.stream()
+            .collect(Collectors.groupingBy(Function.identity(), LinkedHashMap::new, Collectors.counting()))
+            .forEach((currency, count) -> {
+                if (count > 1) {
+                    throw new BusinessRuleException("paymentMethods",
+                        "must not contain duplicated currency: %s".formatted(currency));
+                }
+            });
     }
 
     public void updatePaymentMethods(List<PaymentMethodVO> updatedPaymentMethods) {
