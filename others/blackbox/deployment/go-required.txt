@@ -208,9 +208,13 @@ X9-AMT-002
 X9-AMT-006
 X9-TIP-106
 
-# Story 10.5: pre-commit and post-commit under the transition map (ADR-0035, ADR-0036).
+# Story 10.5: pre-commit and post-commit under the transition map (ADR-0035, ADR-0036), every hash
+# registered; a post-commit naming a rail or currency the QR Code does not offer is recorded and
+# refused (ADR-0036, amended 2026-11-15). X9-TIME-013 is java_only and X9-TIME-015 (retention) is
+# Epic 12's; TestDecoderRefusals reads /api/v1/qrcode-emv-decoder, Story 10.7's.
 tests/test_transition_map.py
 tests/test_payment_notification.py
+!tests/test_payment_notification.py::TestDecoderRefusals::
 tests/test_two_phase.py
 tests/test_settlement.py
 tests/test_tip_offers.py
@@ -241,4 +245,20 @@ X9-LOC-312
 X9-LOC-422
 X9-LOC-423
 X9-PATCH-440
+# The notification cases of X9-LOC-306, -307 and -311, which Story 10.3 excluded.
 tests/test_payers.py::TestPayload::
+# Whatever else passes on Go once Story 10.5 is in: every other file of the suite, but the EMV
+# decoder's cases (/api/v1/qrcode-emv-decoder), which are Story 10.7's.
+tests/test_status_update_and_events.py
+tests/test_signatures.py
+tests/test_payers.py
+tests/test_conditional_requests.py
+tests/test_closed_requests.py
+tests/test_location_handover.py
+tests/test_payment_requests_pinned.py
+tests/test_database.py
+tests/test_deployment.py
+tests/test_public_metadata.py
+tests/test_golden.py
+tests/test_contract.py
+!tests/test_contract.py::test_a_contract_constraint_is_refused[emv-decoder:

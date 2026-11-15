@@ -71,9 +71,10 @@ func publishes(n billing.Networks, network string) bool {
 //   - ACH without payer.info or expectedDate (an ACH transfer settles later; without payer.info the
 //     holder is nobody, ADR-0036).
 //
-// A rail or a currency the QR Code does not offer is not among them. It is refused by name too, but
-// only before the money moves (Decide); a post-commit naming one is recorded and refused
-// (domain.PostCommit, ADR-0036 amended 2026-11-15). The destination address, the amount and the
+// A rail or a currency the QR Code does not offer is not among them, since what a payer is told
+// depends on the phase (Decide; ADR-0036 amended 2026-11-15): a pre-commit's is the gate's, a
+// NOT_SENT's is refused before its status, and a post-commit naming one is recorded and refused
+// (domain.PostCommit). Whatever is malformed for its rail, above, comes first. The destination address, the amount and the
 // validity are the acceptance gate's (Gate): a pre-commit's only, because a post-commit reports
 // money that has already moved and is never judged on amount or time (ADR-0036).
 func RefuseByName(req contract.CreateRequest, data *contract.NotificationData, now time.Time) *domain.Refusal {

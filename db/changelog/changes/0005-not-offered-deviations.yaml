@@ -1,0 +1,43 @@
+# Copyright © 2026 Matera Systems, Inc.
+# Licensed under the Matera Source License v1.0 (source-available; not open source). See LICENSE.md.
+# Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
+# based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
+#
+# 0005 — the deviations columns' COMMENTs list the two codes ADR-0036's amendment of 2026-11-15
+# added: NOT_OFFERED_RAIL and NOT_OFFERED_CURRENCY. Applied changesets are never edited; changes go
+# in a new numbered file. No constraint lists the codes, so only the comments change.
+#
+# A post-commit naming a rail or a currency the QR Code does not offer is an error that is still
+# recorded: its qr_code_notification row and its payment.sent carry the code, the QR Code does not
+# change, and the payer is answered with a 400. Such a row is never the source of a later event
+# body, nor the notification a GET shows.
+
+databaseChangeLog:
+- changeSet:
+    id: 0005-01-notification-deviations-comment
+    author: x9-qrcode
+    comment: qr_code_notification.deviations lists the not-offered codes.
+    changes:
+    - setColumnRemarks:
+        schemaName: ${x9.schema}
+        tableName: qr_code_notification
+        columnName: deviations
+        columnDataType: VARCHAR(255)
+        remarks: 'How the payer broke the protocol (ADR-0036), comma-separated codes in a closed list:
+          RECEIVED_IN_WRONG_STATUS (including a post-commit while another payer held the QR Code, where
+          received_in_status_code is INIT), ACTION_CONTRADICTS_HASH, NOT_OFFERED_RAIL, NOT_OFFERED_CURRENCY
+          (a post-commit on a rail or in a currency the QR Code does not offer: recorded, refused to the
+          payer, never the source of an event body). Empty string = the payer followed the rules.'
+- changeSet:
+    id: 0005-02-event-deviations-comment
+    author: x9-qrcode
+    comment: payment_event.deviations lists the not-offered codes.
+    changes:
+    - setColumnRemarks:
+        schemaName: ${x9.schema}
+        tableName: payment_event
+        columnName: deviations
+        columnDataType: VARCHAR(255)
+        remarks: 'How the payer broke the protocol (ADR-0036), comma-separated codes in a closed list:
+          RECEIVED_IN_WRONG_STATUS, ACTION_CONTRADICTS_HASH, NOT_OFFERED_RAIL, NOT_OFFERED_CURRENCY. Empty
+          string = the payer followed the rules.'

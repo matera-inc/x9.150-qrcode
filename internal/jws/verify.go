@@ -522,6 +522,13 @@ func verifySignature(alg jose.SignatureAlgorithm, pub crypto.PublicKey, input, s
 	}
 }
 
+// lenientBase64 decodes base64 as Java's Nimbus Base64 does: the standard or the URL-safe alphabet,
+// with or without its padding (X9-LIFE-126 sends base64url without padding).
+func lenientBase64(s string) ([]byte, error) {
+	s = strings.NewReplacer("-", "+", "_", "/").Replace(strings.TrimRight(s, "="))
+	return base64.RawStdEncoding.DecodeString(s)
+}
+
 // qrCodeContent is Java's validateLocationId: the payload of a payload request carries
 // qrCodeContent, the QR Code's EMV string in base64, whose location URL contains the location id
 // asked for (ignoring case). It returns the decoded string. A payload that is not a JSON object is
@@ -535,7 +542,7 @@ func qrCodeContent(payload []byte, locationID string) (string, *Refusal) {
 	if !ok {
 		return "", refusal(ContentMismatch, nil, "the payload has no qrCodeContent string")
 	}
-	decoded, err := base64.StdEncoding.DecodeString(value)
+	decoded, err := lenientBase64(value)
 	if err != nil {
 		return "", refusal(ContentMismatch, err, "the payload's qrCodeContent is not base64")
 	}

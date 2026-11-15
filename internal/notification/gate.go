@@ -30,8 +30,9 @@ const tipTolerance = 1
 //  1. the QR Code's validUntil, inclusive;
 //  2. the payment method whose currency is the notification's (matched whatever the case), whose
 //     network object for the notified rail is published and, on a chain, whose destination address
-//     is blockchain.to: one lookup that covers the currency, the rail and the address together (a
-//     rail or a currency that no method offers at all was refused by name before, in Decide);
+//     is blockchain.to: one lookup that covers the currency, the rail and the address together,
+//     after a rail or a currency that no method offers at all is refused naming it, each rail on
+//     its own (ADR-0036, amended 2026-11-15);
 //  3. that method's validUntil, inclusive;
 //  4. the tip: only on a bill that offers one, inside its range in percent of what is paid to the
 //     merchant, give or take one minor unit;
@@ -46,6 +47,11 @@ func Gate(row domain.Row, req billing.Request, data *contract.NotificationData, 
 		return refusal("validUntil", fmt.Sprintf("This QR Code expired at %s and can no longer be paid.",
 			contract.FormatInstant(row.ValidUntil))), nil
 	}
+	pay := data.Payment.Value
+	notified := domain.Notification{Network: pay.Network.Value, Currency: pay.Currency.Value}
+	if missing := notOffered(req.PaymentMethods, notified); len(missing) > 0 {
+		return domain.NotOfferedRefusal(notified, missing), nil
+	}
 	method, r := matchMethod(req.PaymentMethods, data)
 	if r != nil {
 		return r, nil
@@ -54,7 +60,6 @@ func Gate(row domain.Row, req billing.Request, data *contract.NotificationData, 
 		return refusal("paymentMethods.validUntil", fmt.Sprintf("The %s payment method expired at %s.",
 			method.Currency, contract.FormatInstant(method.ValidUntil))), nil
 	}
-	pay := data.Payment.Value
 	total := pay.Amount.Value
 	var tip int64
 	if pay.TipAmount.IsSet() {
@@ -65,6 +70,25 @@ func Gate(row domain.Row, req billing.Request, data *contract.NotificationData, 
 	}
 	req.ValidUntil = row.ValidUntil
 	return checkAmount(req, method, total, tip, now)
+}
+
+// notOffered is domain.NotOffered over the methods the gate reads: NOT_OFFERED_RAIL when no method
+// publishes the notified rail, each rail on its own, then NOT_OFFERED_CURRENCY when none is in the
+// notified currency, both matched whatever their case.
+func notOffered(methods []billing.PaymentMethod, n domain.Notification) []domain.Deviation {
+	rail, currency := false, false
+	for _, m := range methods {
+		rail = rail || publishes(m.Networks, n.Network)
+		currency = currency || strings.EqualFold(m.Currency, n.Currency)
+	}
+	var out []domain.Deviation
+	if !rail {
+		out = append(out, domain.DeviationNotOfferedRail)
+	}
+	if !currency {
+		out = append(out, domain.DeviationNotOfferedCurrency)
+	}
+	return out
 }
 
 func refusal(field, message string) *domain.Refusal {
