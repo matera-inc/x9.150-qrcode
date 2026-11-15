@@ -36,6 +36,8 @@ import (
 	"github.com/matera-inc/x9.150-qrcode/internal/jws"
 	"github.com/matera-inc/x9.150-qrcode/internal/keys"
 	"github.com/matera-inc/x9.150-qrcode/internal/paymentrequest"
+	"github.com/matera-inc/x9.150-qrcode/internal/pki"
+	"github.com/matera-inc/x9.150-qrcode/internal/signature"
 	"github.com/matera-inc/x9.150-qrcode/internal/store"
 	"github.com/matera-inc/x9.150-qrcode/internal/testclock"
 )
@@ -132,6 +134,16 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 		}()
 	}
 
+	// ── 1d. The one signer and the one verifier (S10.2-AC1). Both read the key store on every use,
+	// so a reload is followed without a restart. Signatures carry the business clock's iat, and a
+	// received iat and ttl are judged on it; certificate validity, CRLs and the fetch cache run on
+	// clock.New(), never moved. A jku or x5u on this deployment's own host is read from this process
+	// over localhost, as the Java build reads it; any other is fetched over HTTPS only.
+	signer, verifier, err := signing(cfg, keyStore, businessClock, logger)
+	if err != nil {
+		return err
+	}
+
 	// ── 2. Database pools (they connect lazily) and the health probes ─────────────────────────
 	pools, err := database.Open(ctx, cfg.Database)
 	if err != nil {
@@ -150,6 +162,7 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	events.Register(api)
 	paymentrequest.New(st, currencies, cfg.PublicEndpoints.Host, businessClock.Now).Register(api)
 	paymentrequest.NewStatusUpdates(st, time.Duration(cfg.Reservation.TTLSeconds)*time.Second).Register(api)
+	signature.New(keyStore, signer, verifier, logger).Register(api)
 	srv := newServer(cfg.Server.Port, httplog.Middleware(logger, testclock.OffsetHeader(businessClock, api)))
 	// On SIGTERM, parked long-polls answer with their current page instead of holding the drain (ADR-0031).
 	srv.RegisterOnShutdown(events.Stop)
@@ -233,6 +246,37 @@ func shutdown(ctx context.Context, logger *slog.Logger, srv *http.Server, served
 	}
 	pools.Close()
 	return err
+}
+
+// signing builds the deployment's signer and verifier from the configuration (S10.2-AC1).
+func signing(cfg config.Config, keyStore *keys.Store, business *clock.Clock, logger *slog.Logger) (*jws.Signer, *jws.Verifier, error) {
+	signer, err := jws.New(jws.ConfigFrom(cfg), business)
+	if err != nil {
+		return nil, nil, fmt.Errorf("the signer: %w", err)
+	}
+	fetcher, err := pki.NewFetcher(pki.FetcherConfig{
+		Clock:      clock.New(),
+		OwnHost:    cfg.PublicEndpoints.Host,
+		OwnBaseURL: "http://localhost:" + strconv.Itoa(cfg.Server.Port),
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("the certificate fetcher: %w", err)
+	}
+	issuer := cfg.Certificate.IssuerName
+	if strings.TrimSpace(issuer) == "" {
+		issuer = "" // a blank x9.certificate.issuer-name skips the check, as in Java
+	}
+	verifier, err := jws.NewVerifier(jws.VerifierConfig{
+		Truststore: keyStore,
+		IssuerName: issuer,
+		ClockSkew:  cfg.PublicEndpoints.JWSClockSkew(),
+		Fetcher:    fetcher,
+		Logger:     logger,
+	}, business)
+	if err != nil {
+		return nil, nil, fmt.Errorf("the verifier: %w", err)
+	}
+	return signer, verifier, nil
 }
 
 // awaitSchema runs the schema check until it passes, retrying while the database cannot be

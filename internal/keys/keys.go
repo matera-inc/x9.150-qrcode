@@ -160,6 +160,14 @@ func withDemoPasswords(cfg config.Certificate) config.Certificate {
 // its identity and its truststore: a reload never changes a snapshot already taken.
 func (s *Store) Current() *Keys { return s.current.Load() }
 
+// Roots is the current truststore's pool. With Certificates it makes the Store the truststore of
+// the verifier (internal/pki asks on every verification), so a reloaded truststore is trusted, and
+// a removed anchor no longer is, without a restart (S10.2-AC1).
+func (s *Store) Roots() *x509.CertPool { return s.Current().Truststore.Pool() }
+
+// Certificates are the current truststore's certificates; see Roots.
+func (s *Store) Certificates() []*x509.Certificate { return s.Current().Truststore.Certificates() }
+
 // Reload re-reads both files. When their content is unchanged it does nothing. When it changed and
 // reads well, the new snapshot replaces the current one; when it does not, the current one stays,
 // and the error is logged, once until it changes (Java logs a failed reload and keeps going).
