@@ -1795,8 +1795,9 @@ So that the black-box suite drives time on both builds the same way.
 **S8.6-AC1.** **Given** `X9_TESTING_CLOCKCONTROL=true`
 **Then** `/test/clock` (`PUT`, `DELETE`, `GET`) is served on its own listener
 (`X9_TESTING_CLOCKLISTEN`, `127.0.0.1:8099` by default), never on the API port, with the same
-requests, answers and units as the Java build; the per-request `X-Test-Clock-Offset` header works as
-in Java.
+requests, answers and units as the Java build (offsets in milliseconds). There is no per-request
+clock header: ADR-0033 rejects one, and Java has none; `X-Test-Clock-Offset` is only a response
+header (S8.6-AC2).
 
 **S8.6-AC2.** **Given** the flag is on
 **Then** startup refuses unless the signing certificate's SHA-256 fingerprint is one of the bundled
