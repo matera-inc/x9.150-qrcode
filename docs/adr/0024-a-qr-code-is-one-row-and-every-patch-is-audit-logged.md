@@ -23,6 +23,8 @@ minutes or days, and nobody reads it "as of" an instant.
 - **Allowed** only when the stored status is `ACTIVE` or `PAYMENT_INITIATED` (lines 55-57).
 - **Six top-level tags can change:** `locationId`, `validUntil`, `unstructured`,
   `additionalInformation`, `bill` and `paymentMethods`.
+  Any other key, at any level, is refused by name (2026-11-15, INTERPRETATION I-16: what we
+  generate is closed); until then it was ignored.
 - **What counts as changed:** a tag counts when it is **present**; `paymentMethods` counts when its
   value differs (lines 82-86).
 - **A PATCH that changes nothing is refused.**

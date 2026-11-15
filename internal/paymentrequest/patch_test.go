@@ -337,8 +337,13 @@ func testOnlyTheSixTagsChange(t *testing.T, e *env) {
 		t.Errorf("a PATCH changing only a member that is not a tag: %d %s, want 400 (X9-PATCH-421)", a.status, a.text)
 	}
 
+	// The amount the refused PATCH carried, applied on its own, so the restated bill below is the
+	// only change of its PATCH.
+	if a := e.patch(t, id, patchOf(900, nil), ""); a.status != http.StatusOK {
+		t.Fatalf("the amount alone: %d %s", a.status, a.text)
+	}
 	restated := map[string]any{"description": "blackbox", "paymentTiming": "immediate", "amountDue": map[string]any{"amount": 1000}}
-	if a := e.patch(t, id, patchOf(900, map[string]any{"bill": restated}), ""); a.status != http.StatusOK || a.etag != `"1-ACTIVE"` {
+	if a := e.patch(t, id, patchOf(900, map[string]any{"bill": restated}), ""); a.status != http.StatusOK || a.etag != `"2-ACTIVE"` {
 		t.Fatalf("a restated bill: %d %s %s", a.status, a.etag, a.text)
 	}
 	if got := e.get(t, id).body; !cmp.Equal(got["bill"], before["bill"]) {
