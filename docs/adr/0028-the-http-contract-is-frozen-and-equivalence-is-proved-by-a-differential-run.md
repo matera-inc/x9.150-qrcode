@@ -129,6 +129,13 @@ of them is `go_only`, or a strict expected failure on Java.
 | 5 | Any unexpected failure | Spring Boot's error body (only the signed notification answer uses `internal-error`) | **every 500 is the `internal-error` problem**, with no stack, SQL or internal detail | One shape for "our fault" | Story 9.2 |
 | 6 | A JSON request body over 1 MiB | read | **400 `malformed-json`** | The largest legitimate body is a few kilobytes; the cap bounds memory | Story 9.2 |
 | 7 | JSON edge cases Jackson lets through: a lone surrogate escape (`"\ud800"`), a date written as an array (`[2030,1,10]`) | read | **400 `malformed-json`** | Go's decoder is stricter; a body a strict parser refuses is not one a payer can rely on elsewhere | Story 9.2 |
+| 9 | `POST /api/v1/payment-requests` (create) | no `ETag` header | **`ETag: "0-ACTIVE"`** | The first PATCH can send `If-Match` without a GET first ([ADR-0016](0016-a-revision-is-a-version-of-the-request-not-of-its-status.md)) | Story 9.6 |
+| 10 | A database statement timeout while serving the signed payload | the generic 400 (every exception is caught) | **503** | "Try again" is not "your request is wrong" ([ADR-0025](0025-a-transition-is-one-transaction-and-its-event-is-in-it.md)) | Story 10.3 |
+| 11 | `GET /pub/.well-known/certificate/{name}` with a name other than `x9-key.pem` | 200 with the certificate, whatever the name | **404** | Only the name every `x5u` gives is published | Story 10.2 |
+| 12 | `POST /api/v1/signature/generate` with the nil UUID as `Correlation-Id` | signed | **400**, the missing-`correlationId` refusal | The nil UUID identifies no exchange | Story 10.2 |
+| 13 | Number spelling in the body `signature/generate` signs | Jackson's (`1e2` becomes `100.0`) | **as sent** (`1e2`) | Both are the same JSON number; a token from either build verifies on the other | Story 10.2 |
+| 14 | A blank `transactionId` (`""`, spaces) on an outbound notification | signed verbatim | **left off the wire** | A blank is never a reference, and the phase is read from its absence ([ADR-0004](0004-phase-inferred-from-transaction-id.md)) | Story 10.6 |
+| 15 | The payee's answer to an outbound notification, over 1 MiB | read | **502** | A signed `{"statusCode": n}` is a few kilobytes; the cap bounds memory | Story 10.6 |
 
 Numbers 1 and 2 are the intended differences above. Row 8 (an unknown field in `fednow`, `rtp`
 or `ach` on create or PATCH: ignored by Java, refused by Go) left this list on 2026-11-15, when the

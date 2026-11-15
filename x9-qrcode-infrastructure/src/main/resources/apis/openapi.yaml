@@ -469,8 +469,6 @@ paths:
               $ref: "#/components/headers/correlationId"
         "400":
           $ref: "#/components/responses/BadRequestErrorResponse"
-        "422":
-          $ref: "#/components/responses/UnprocessableEntityErrorResponse"
 
   /pub/.well-known/jwks:
     get:
