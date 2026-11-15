@@ -164,3 +164,15 @@ type NotificationRecord struct {
 	ReceivedAt   time.Time
 	Receipt      Receipt
 }
+
+// EventBodySource is the stored notification an event body is built from (ADR-0035), given every
+// notification stored for the QR Code in arrival order: the last one, or nil when none is stored.
+// The store reads them all and leaves the choice here, so that a change to the rule changes this
+// function and nothing in SQL.
+func EventBodySource(stored []NotificationRecord) *NotificationRecord {
+	if len(stored) == 0 {
+		return nil
+	}
+	last := stored[len(stored)-1]
+	return &last
+}
