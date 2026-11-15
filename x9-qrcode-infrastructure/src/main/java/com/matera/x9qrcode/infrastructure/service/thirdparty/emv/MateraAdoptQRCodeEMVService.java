@@ -15,21 +15,9 @@ import com.matera.x9qrcode.domain.vo.CreditorVO;
 import com.matera.x9qrcode.infrastructure.configuration.property.X9Properties;
 import com.matera.x9qrcode.infrastructure.service.thirdparty.emv.mapper.QRCodeEMVDataMapper;
 
-import com.emv.qrcode.core.exception.PresentedModeException;
-import com.emv.qrcode.core.model.TLV;
-import com.emv.qrcode.decoder.mpm.DecoderMpm;
-import com.emv.qrcode.model.mpm.MerchantAccountInformation;
-import com.emv.qrcode.model.mpm.MerchantAccountInformationReservedAdditional;
-import com.emv.qrcode.model.mpm.MerchantAccountInformationTemplate;
 import com.emv.qrcode.model.mpm.MerchantPresentedMode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
-import java.util.Objects;
-import java.util.Optional;
-import java.util.function.Function;
-
-import static java.util.Objects.nonNull;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -51,7 +39,7 @@ public class MateraAdoptQRCodeEMVService implements QRCodeEMVService {
                     x9Properties.getEmv().getMaiTagId(),
                     x9Properties.getEmv().getMaiGui(),
                     x9Properties.getEmv().getUrlId(),
-                    qrCodeLocationService.generateLocation(qrCodeEntity.getLocationId(), true), 
+                    qrCodeLocationService.generateLocation(qrCodeEntity.getLocationId(), true),
                     creditor.merchantCategoryCode().value(),
                     creditorAddress.country(),
                     creditor.name().value(),
@@ -69,40 +57,24 @@ public class MateraAdoptQRCodeEMVService implements QRCodeEMVService {
         }
     }
 
+    /**
+     * The location URL of the scanned string's org.x9 template, or null when it carries none.
+     *
+     * <p>Read by hand ({@link EmvReader}), not by the EMV library: the library read a bad, missing or
+     * non-hex CRC and a truncated string as good, and let other breakages escape as raw exceptions.
+     * A malformed string is refused here, before anything is fetched from the host it names
+     * (ADR-0027, EMV: malformed EMV is refused, never tolerated).
+     *
+     * @throws MalformedEmvException when the string is not well-formed EMV
+     */
     @Override
     public String extractPayloadUrl(String emv) throws ServiceException {
-        String payloadUrl = decodeEMV(emv).getMerchantAccountInformation().values().stream()
-            .flatMap(template -> extractMaiData(x9Properties.getEmv().getMaiGui()).apply(template).stream())
-            .flatMap(mai -> extractPayloadUri(x9Properties.getEmv().getUrlId()).apply(mai).stream())
-            .findFirst().orElse(null);
+        String payloadUrl = EmvReader.readPayloadUrl(emv, x9Properties.getEmv().getMaiGui(), x9Properties.getEmv().getUrlId())
+            .orElse(null);
 
         log.info("Extracted payload URL: {}", payloadUrl);
 
         return payloadUrl;
-    }
-
-    private static Function<MerchantAccountInformationTemplate, Optional<MerchantAccountInformationReservedAdditional>> extractMaiData(String maiGui) {
-        return template -> {
-            MerchantAccountInformation mai = template.getValue();
-            if (nonNull(mai) && mai instanceof MerchantAccountInformationReservedAdditional reservedAdditional) {
-                if (Objects.equals(maiGui, reservedAdditional.getGloballyUniqueIdentifier().getValue())) {
-                    return Optional.of(reservedAdditional);
-                }
-            }
-            return Optional.empty();
-        };
-    }
-
-    private static Function<MerchantAccountInformationReservedAdditional, Optional<String>> extractPayloadUri(String urlId) {
-        return mai -> Optional.ofNullable(mai.getPaymentNetworkSpecific().get(urlId)).map(TLV :: getValue);
-    }
-
-    private static MerchantPresentedMode decodeEMV(String emv) {
-        try {
-            return DecoderMpm.decode(emv, MerchantPresentedMode.class);
-        } catch (PresentedModeException e) {
-            throw new ServiceException("Could not decode EMV. Details: %s".formatted(e.getMessage()));
-        }
     }
 
 }

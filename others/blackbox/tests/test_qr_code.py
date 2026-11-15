@@ -6,6 +6,8 @@ The CRC decides whether a scanner accepts the code at all, so the EMV string is 
 field with ``x9client.emv`` rather than searched for substrings.
 """
 import base64
+import json
+import os
 import re
 
 import pytest
@@ -76,3 +78,70 @@ def test_it_reads_back_active_with_its_recipient(api, created):
     status, fetched = api.qr(created["id"])
     assert status == 200 and fetched["status"] == "ACTIVE", fetched
     assert fetched["paymentMethods"][0]["networks"]["solana"]["recipient"] == RECIPIENT
+
+
+# --- Malformed EMV is refused, never tolerated (ADR-0027, EMV) ---------------------------------
+
+def _with_crc(body):
+    """``body`` with tag 63 appended and its CRC computed, as an encoder would write it."""
+    body += "6304"
+    return body + emv.crc16(body)
+
+
+_GOLDEN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "golden")
+with open(os.path.join(_GOLDEN, "manifest.json")) as _manifest:
+    _GOOD = json.load(_manifest)["emv"][0]["qrCode"]
+
+_X9 = "26800006org.x90166x9-150.example.com/pub/api/v1/loc/01A1DC2A6A37D73D6313076E9BFE04F5"
+_SHORT = _with_crc("000201")
+MALFORMED, NO_X9 = "malformed", "no org.x9"
+
+# The Go build's TestDecodeRefusesMalformedInput (internal/emv), case for case, by its names.
+MALFORMED_EMV = [
+    ("empty", "", MALFORMED),
+    ("bad CRC", _GOOD[:-4] + "0000", MALFORMED),
+    ("CRC not hex", _GOOD[:-4] + "ZZZZ", MALFORMED),
+    ("no CRC", _GOOD[:-8], MALFORMED),
+    ("CRC not last", _with_crc("6304AAAA" + "000201"), MALFORMED),
+    ("CRC too short", _SHORT[:-8] + "6303ABC", MALFORMED),
+    ("truncated", _GOOD[:-30], MALFORMED),
+    ("truncated header", "000", MALFORMED),
+    ("length beyond the end", "000501", MALFORMED),
+    ("length not digits", _with_crc("00AB01"), MALFORMED),
+    ("length zero", _with_crc("0000" + "000201"), MALFORMED),
+    ("tag not digits", _with_crc("A00201"), MALFORMED),
+    ("duplicate tag", _with_crc("000201000201" + _X9), MALFORMED),
+    ("not UTF-8", b"\xff\xfe", MALFORMED),
+    ("no template", _with_crc("000201010212"), NO_X9),
+    ("wrong GUI", _with_crc("000201" + "26220006org.x80108x9.a/loc"), NO_X9),
+    ("org.x9 without URL", _with_crc("000201" + "26100006org.x9"), NO_X9),
+    ("template not TLV", _with_crc("000201" + "2603abc"), MALFORMED),
+    ("template truncated", _with_crc("000201" + "26140006org.x90199"), MALFORMED),
+]
+
+
+@pytest.mark.parametrize("name,code,kind", MALFORMED_EMV, ids=[case[0] for case in MALFORMED_EMV])
+def test_a_malformed_emv_is_refused_before_any_fetch(api, name, code, kind):
+    """X9-DEC-016 — a malformed EMV string is refused by the decoder with a 400, before anything is
+    fetched: the Go build's 19 malformed cases, by name.
+
+    Source: Ours (owner decision 2026-11-15, ADR-0027 EMV section): "Don't tolerate bad QR Codes."
+    EMVCo defines the TLV layout and tag 63's CRC16-CCITT; refusing a string that breaks them, on
+    both builds alike, is ours.
+
+    Why: Java's EMV library read a bad, missing or non-hex CRC and a truncated string as good and
+    fetched the payload from the host the string named; a truncated header, a non-numeric length,
+    a non-TLV template and bytes that are not UTF-8 escaped as a 500. A scanner rejects all of them.
+    """
+    if isinstance(code, bytes):
+        response = api.call("POST", "/api/v1/qrcode-emv-decoder", raw=b'{"qrCode": "' + code + b'"}')
+    else:
+        response = api.call("POST", "/api/v1/qrcode-emv-decoder", body={"qrCode": code})
+
+    text = response.body if isinstance(response.body, str) else json.dumps(response.body)
+    assert response.status == 400, f"{name}: a malformed QR Code is the caller's fault: {response}"
+    assert "payload-refused" not in text, f"{name}: nothing may be fetched for it: {text}"
+    if isinstance(code, bytes):
+        return  # bytes that are not UTF-8 are refused while the body is read, before the decoder
+    expected = "The QR Code is malformed" if kind == MALFORMED else "does not contain a valid payload URL"
+    assert expected in text, f"{name}: the refusal must say why ({expected}): {text}"

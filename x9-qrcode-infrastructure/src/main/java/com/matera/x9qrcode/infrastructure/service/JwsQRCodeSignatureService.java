@@ -25,6 +25,7 @@ import com.matera.x9qrcode.app.usecase.validatesignature.SignatureValidationOutp
 import com.matera.x9qrcode.domain.dto.CertificateEndpointTypeEnum;
 import com.matera.x9qrcode.domain.utils.BusinessClock;
 import com.matera.x9qrcode.infrastructure.configuration.property.X9Properties;
+import com.matera.x9qrcode.infrastructure.service.thirdparty.emv.MalformedEmvException;
 import com.matera.x9qrcode.infrastructure.service.thirdparty.keystore.TrustManagersFacadeBean;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -964,7 +965,13 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
 
         String decodedQrCodeContent = new Base64(qrCodeContent).decodeToString();
 
-        String payloadUrl = qrCodeEMVService.extractPayloadUrl(decodedQrCodeContent);
+        String payloadUrl;
+        try {
+            payloadUrl = qrCodeEMVService.extractPayloadUrl(decodedQrCodeContent);
+        } catch (MalformedEmvException e) {
+            // Refused, never tolerated (ADR-0027, EMV): a malformed string is not a code anybody issued.
+            throw check(SignatureProblemEnumDTO.CONTENT_MISMATCH, "JWS payload qrCodeContent is malformed: %s".formatted(e.reason()));
+        }
 
         if (!Strings.CI.contains(payloadUrl, locationId)) {
             throw check(SignatureProblemEnumDTO.CONTENT_MISMATCH, "JWS payload URL does not contains ID %s".formatted(locationId));

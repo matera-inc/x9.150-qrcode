@@ -7,9 +7,12 @@
 package com.matera.x9qrcode.infrastructure.web.controller;
 
 import com.matera.x9qrcode.infrastructure.AbstractIntegrationTest;
+import com.matera.x9qrcode.infrastructure.service.thirdparty.emv.EmvReaderTest.Refusal;
 
 import io.restassured.module.mockmvc.response.MockMvcResponse;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.http.HttpStatus;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
@@ -249,6 +252,52 @@ class DecoderRelaysTheRefusalApiTest extends AbstractIntegrationTest {
         assertFalse(body.contains("localhost"), "and must not leak an address either: " + body);
         assertFalse(body.contains("invalid.tld"),
                 "a host chosen by whoever printed the code must not be rendered back: " + body);
+    }
+
+    /** The EMV as a JSON string literal, every character outside printable ASCII escaped as {@code \}{@code uXXXX}. */
+    private static String jsonString(String emv) {
+        StringBuilder json = new StringBuilder("\"");
+
+        for (char c : emv.toCharArray()) {
+            if (c == '"' || c == '\\' || c < 0x20 || c > 0x7E) {
+                json.append("\\u%04x".formatted((int) c));
+            } else {
+                json.append(c);
+            }
+        }
+
+        return json.append('"').toString();
+    }
+
+    /**
+     * <b>X9-DEC-015</b> — a malformed EMV string is refused with a 400 naming {@code qrCode}, before
+     * any fetch: the cases of X9-DEC-013, over HTTP.
+     *
+     * <p><b>Source:</b> Ours (owner decision 2026-11-15, ADR-0027 EMV section): "Don't tolerate bad QR
+     * Codes."
+     *
+     * <p><b>Why:</b> Before this, a bad CRC, a missing CRC or a truncated string decoded as good and
+     * the decoder fetched the payload from the host the string named; a truncated header or a length
+     * that was not digits escaped as a 500. The refusal is a {@code business-rule-violation}, never a
+     * {@code payload-refused} (which would mean the payee was asked) and never a 502 or a 500.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("com.matera.x9qrcode.infrastructure.service.thirdparty.emv.EmvReaderTest#malformed")
+    void aMalformedEmvIsRefusedBeforeAnyFetch(String name, String emv, Refusal refusal) {
+        MockMvcResponse response = given().contentType("application/json")
+                .body("{\"qrCode\": %s}".formatted(jsonString(emv)))
+                .when().post(DECODE)
+                .then().extract().response();
+        String body = response.asString();
+
+        assertEquals(HttpStatus.BAD_REQUEST.value(), response.statusCode(), name + ": " + body);
+        assertTrue(body.contains("business-rule-violation"), name + " must be refused here, not by the payee: " + body);
+        assertFalse(body.contains("payload-refused"), name + " must not have been fetched: " + body);
+
+        String expected = refusal == Refusal.MALFORMED
+                ? "qrCode: The QR Code is malformed"
+                : "does not contain a valid payload URL";
+        assertTrue(body.contains(expected), name + " must say why (" + expected + "): " + body);
     }
 
 }

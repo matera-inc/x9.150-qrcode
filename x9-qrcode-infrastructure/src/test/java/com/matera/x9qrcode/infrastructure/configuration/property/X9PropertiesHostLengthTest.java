@@ -60,4 +60,33 @@ class X9PropertiesHostLengthTest {
                 .hasMessageContaining("37 limit"));
     }
 
+    /**
+     * <b>X9-LOC-485</b> — a configured host with a character outside printable ASCII, or a space,
+     * stops the service at startup, naming the character; a plain host starts.
+     *
+     * <p><b>Source:</b> Ours (owner decision 2026-11-15, ADR-0027 EMV section). EMVCo's merchant-presented
+     * mode limits tag 26's sub-tags to its alphanumeric special set, which is printable ASCII; the Go
+     * build refuses the same hosts ({@code emv.CheckHost}).
+     *
+     * <p><b>Why:</b> Java refused a space (through {@code java.net.URI}) and started with a non-ASCII host,
+     * then printed every QR Code with a tag 26 that a scanner may reject, or that counts its length in
+     * a unit the next reader does not. A configuration error, caught once, before a single code is
+     * printed.
+     */
+    @Test
+    void aHostOutsidePrintableAsciiStopsTheServiceAtStartup() {
+        runner.withPropertyValues("x9.public-endpoints.host=x9.example.com")
+            .run(context -> assertThat(context).hasNotFailed());
+
+        for (String host : new String[] {"x9-éxample.com", "x9 example.com", "x9\texample.com", "x9\u007fexample.com",
+            "x9-с.example.com"}) {
+            runner.withPropertyValues("x9.public-endpoints.host=" + host)
+                .run(context -> assertThat(context).hasFailed()
+                    .getFailure().rootCause()
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("x9.public-endpoints.host")
+                    .hasMessageContaining("printable ASCII"));
+        }
+    }
+
 }

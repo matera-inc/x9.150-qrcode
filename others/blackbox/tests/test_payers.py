@@ -137,7 +137,7 @@ class TestPayload:
 
     @pytest.mark.parametrize("change, naming", [
         ("one-character", "qrCodeContent"),
-        ("wrong-crc", "qrCodeContent"),
+        ("wrong-crc", SIGNATURE_REFUSED),
         ("trailing-space", SIGNATURE_REFUSED),
     ])
     def test_content_not_byte_equal_to_the_issued_emv_is_refused(self, api, issued, change,
@@ -146,10 +146,11 @@ class TestPayload:
         issued with.
 
         S4.3-AC1, qrCodeContent not byte-equal. Each variant names the same location: a
-        different merchant name with a correct CRC (a well-formed, different QR Code) and the
-        issued string with a wrong CRC are refused by the comparison with the stored content,
-        naming ``qrCodeContent``; a trailing space is refused one step earlier, by the request
-        check that reads the location out of the content (today's reason pinned).
+        different merchant name with a correct CRC (a well-formed, different QR Code) is refused
+        by the comparison with the stored content, naming ``qrCodeContent``; the issued string
+        with a wrong CRC, and with a trailing space, are malformed EMV and refused one step
+        earlier, by the request check that reads the location out of the content (ADR-0027,
+        EMV: malformed EMV is refused, never tolerated; today's reason pinned).
 
         Source: Ours. ANSI X9.150 signs the request; binding it to the content issued for THIS
           location is this service's rule (X9-LOC-001..005).

@@ -240,6 +240,39 @@ class JwsQRCodeSignatureServiceTest extends AbstractIntegrationTest {
     }
 
     /**
+     * <b>X9-LOC-021</b> — a payload request whose signed {@code qrCodeContent} is malformed EMV is
+     * refused as a content mismatch that says the content is malformed.
+     *
+     * <p><b>Source:</b> Ours (owner decision 2026-11-15, ADR-0027 EMV section): malformed EMV is
+     * refused, never tolerated. The cases are X9-DEC-013's; here one stands for them, a bad CRC.
+     *
+     * <p><b>Why:</b> The byte-for-byte binding (X9-LOC-001..005) would refuse this string later anyway,
+     * since no issued code has a bad CRC. Refusing it here, as malformed, says what is wrong with it:
+     * before, the library read the bad CRC as good, and the refusal named the wrong reason.
+     */
+    @Test
+    void aPayloadRequestCarryingMalformedEmvIsRefused() {
+        var created = Objects.requireNonNull(paymentRequestApi.createPaymentRequest(fixtures.paymentRequest().paymentRequestInput()).getBody());
+        String qrCode = created.getQrCode();
+        String badCrc = qrCode.substring(0, qrCode.length() - 4) + (qrCode.endsWith("0000") ? "FFFF" : "0000");
+        UUID correlationId = UUID.randomUUID();
+
+        SignatureInputDataDTO signInput = new SignatureInputDataDTO(SignatureTypeEnumDTO.X9,
+            Map.of(JWS_PAYLOAD_QR_CODE_CONTENT, Base64.encode(badCrc).toString()), correlationId, TTL, null);
+
+        SignatureOutputDataDTO signResult = signatureService.signData(signInput);
+
+        SignatureValidationInput validationInput =
+            new SignatureValidationInput(SignatureTypeEnumDTO.X9, correlationId, signResult.jwsToken(),
+                created.getLocation().getId());
+
+        SignatureValidationOutput result = signatureService.validateSignature(validationInput);
+        assertFalse(result.isValid());
+        assertEquals(SignatureProblemEnumDTO.CONTENT_MISMATCH, result.problem());
+        assertTrue(result.problemDetail().contains("malformed"), result.problemDetail());
+    }
+
+    /**
      * <b>X9-SIG-144</b> — the shared verifier refuses an {@code iat} more than the allowed skew ahead of
      * its clock, and accepts one within it.
      *
