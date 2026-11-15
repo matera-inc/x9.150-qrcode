@@ -18,7 +18,7 @@ public record BankPaymentAddressVO(
 ) {
 
     private static final Pattern ROUTING_NUMBER_PATTERN = Pattern.compile("^\\d{9}$");
-    private static final Pattern ACCOUNT_NUMBER_PATTERN = Pattern.compile("^\\d{4,17}$");
+    private static final Pattern ACCOUNT_NUMBER_PATTERN = Pattern.compile("^[0-9A-Za-z]{4,17}$");
 
     public BankPaymentAddressVO {
         if (isNull(routingNumber) || routingNumber.isBlank()) {
@@ -33,7 +33,7 @@ public record BankPaymentAddressVO(
             throw new ValueObjectRuleException("RoutingNumber is invalid.");
         }
 
-        if (!ACCOUNT_NUMBER_PATTERN.matcher(routingNumber).matches()) {
+        if (!ACCOUNT_NUMBER_PATTERN.matcher(accountNumber).matches()) {
             throw new ValueObjectRuleException("AccountNumber is invalid.");
         }
     }

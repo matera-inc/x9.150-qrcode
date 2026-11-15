@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**782 tests documented** — every JUnit test and every black-box case.
+**787 tests documented** — every JUnit test and every black-box case.
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
 (STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036 and ADR-0027's EMV and JWS verification rules), the
@@ -85,6 +85,8 @@ single most important thing this index exists for.
 | `X9-AMT-124` | at creation, the bill plus its largest late fee is bounded at 18 nines, refused naming the field | `LateFeeEighteenDigitsApiTest.java` |
 | `X9-AMT-125` | at creation, each payment method is bounded with the largest late fee, refused naming the field | `LateFeeEighteenDigitsApiTest.java` |
 | `X9-AMT-126` | a PATCH with a later validUntil, a larger fee or a larger amount past the bound is refused, revision unmoved | `LateFeeEighteenDigitsApiTest.java` |
+| `X9-AMT-127` | a negative fixed late fee is refused naming `bill.amountDue.adjustments.parameters.lateFees.fixed` | `CheckedAsWrittenTest.java` |
+| `X9-AMT-128` | a negative per-day late fee is refused naming its field, the same way; zero fees are accepted | `CheckedAsWrittenTest.java` |
 | `X9-AMT-520` | a bill with no late-fee adjustment is not bounded by the 18-digit late-fee rule, at any amount | `QRCodeEntityLateFeeBoundTest.java` |
 | `X9-AMT-501` | a payment at exactly the due date is on time: the full amount, no late fee | `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java` |
 | `X9-AMT-502` | the due date is on time with no discount configured too | `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java` |
@@ -138,6 +140,7 @@ single most important thing this index exists for.
 | `X9-CUR-062` | a currency no supported rail settles is refused | `SupportedCurrencyApiTest.java` |
 | `X9-CUR-063` | a supported currency in the wrong case is refused at creation | `SupportedCurrencyApiTest.java` |
 | `X9-CUR-070` | peg groups load from strict JSON as upper-cased sets | `CurrencyConfigurationTest.java` |
+| `X9-CUR-080` | of several repeated currencies, the first in request order is named | `QRCodeEntityDuplicateCurrencyTest.java` |
 | `X9-CUR-501` | a currency outside supported-currencies.json is refused at create, naming it, with no id | `test_create_refusals.py` |
 
 ## The event stream
@@ -630,6 +633,8 @@ status is `X9-MAP-002`.
 | `X9-RAIL-073` | an uninterpreted network is still refused on a notification | `PayerNotificationLeniencyApiTest.java` |
 | `X9-RAIL-080` | an alphanumeric bank account number is accepted | `BankAccountNumberApiTest.java` |
 | `X9-RAIL-081` | anything outside digits and letters is refused | `BankAccountNumberApiTest.java` |
+| `X9-RAIL-082` | the bank address checks its account number, not its routing number twice | `CheckedAsWrittenTest.java` |
+| `X9-RAIL-083` | an account number of 4 to 17 digits or letters is accepted, the standard's own among them | `CheckedAsWrittenTest.java` |
 | `X9-RAIL-090` | a destination this QR Code never published is refused | `SolanaTwoPhaseNotificationApiTest.java` |
 | `X9-RAIL-100` | an ACH notification takes the QR Code out of circulation | `PaymentNotificationDispatchApiTest.java` |
 | `X9-RAIL-101` | a FedNow post-commit on an ACTIVE QR Code reserves it, and never settles it | `PaymentNotificationDispatchApiTest.java` |

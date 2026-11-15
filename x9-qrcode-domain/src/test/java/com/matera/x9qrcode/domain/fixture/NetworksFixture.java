@@ -61,7 +61,7 @@ public final class NetworksFixture {
     private BankPaymentAddressVO createBankPaymentAddressVO() {
         return new BankPaymentAddressVO(
                 faker.finance().usRoutingNumber(),
-                faker.number().randomNumber(4) + "," + faker.number().randomNumber(17));
+                faker.number().digits(4) + faker.regexify("[0-9A-Z]{0,13}"));
     }
 
 

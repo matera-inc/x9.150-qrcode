@@ -181,7 +181,7 @@ that is here must still be marked `GAP`.
 | `R-I4-01` | The notified network is read from `payment.network`. | `X9-RAIL-070`, `X9-RAIL-030` | — |
 | `R-I5-01` | `paymentMethods` is an array; a bare object is refused. | `X9-RAIL-120` | — |
 | `R-I5-02` | One `paymentMethods` entry carries every rail that settles its currency. | `X9-RAIL-110`, `X9-RAIL-111` | — |
-| `R-I6-01` | A bank account number is 4 to 17 digits or letters; anything else is refused. | `X9-RAIL-080`, `X9-RAIL-081` | — |
+| `R-I6-01` | A bank account number is 4 to 17 digits or letters; anything else is refused. | `X9-RAIL-080`, `X9-RAIL-081`, `X9-RAIL-082`, `X9-RAIL-083` | — |
 | `R-I7-01` | A payer signing with an RSA key or an EC key is verified, from the `alg` it presents. | `X9-SIG-050`, `X9-SIG-054`, `X9-SIG-509` | `S3.2-AC1`, `S3.2-AC2` |
 | `R-I7-02` | This service signs with the key it is given, EC or RSA. | `X9-SIG-040`, `X9-SIG-041`, `X9-SIG-090`, `X9-SIG-091` | — |
 | `R-I7-03` | A configured `alg` the key cannot produce fails at startup, naming both. | `X9-SIG-092`, `X9-SIG-093` | — |
