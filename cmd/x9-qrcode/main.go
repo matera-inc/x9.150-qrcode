@@ -25,6 +25,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/matera-inc/x9.150-qrcode/internal/billing"
 	"github.com/matera-inc/x9.150-qrcode/internal/clock"
 	"github.com/matera-inc/x9.150-qrcode/internal/config"
 	"github.com/matera-inc/x9.150-qrcode/internal/database"
@@ -34,6 +35,7 @@ import (
 	"github.com/matera-inc/x9.150-qrcode/internal/httplog"
 	"github.com/matera-inc/x9.150-qrcode/internal/jws"
 	"github.com/matera-inc/x9.150-qrcode/internal/keys"
+	"github.com/matera-inc/x9.150-qrcode/internal/paymentrequest"
 	"github.com/matera-inc/x9.150-qrcode/internal/store"
 	"github.com/matera-inc/x9.150-qrcode/internal/testclock"
 )
@@ -78,6 +80,19 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	slog.SetDefault(logger)
 	logger.Info("x9-qrcode starting", "version", version, "commit", commit, "database", cfg.Database,
 		"certificate", cfg.Certificate)
+	// The placeholder host lets the image start with nothing configured (S9.6-AC4); every QR Code
+	// it prints points payers at a host that is not this deployment.
+	if cfg.PublicEndpoints.Host == config.DefaultPublicHost {
+		logger.Warn("x9-qrcode public host is the placeholder: QR Codes printed with it cannot be scanned. "+
+			"Set X9_PUBLICENDPOINTS_HOST (public-endpoints.host) to this deployment's public host",
+			"host", cfg.PublicEndpoints.Host)
+	}
+
+	// ── 1a. The currencies this deployment settles (INTERPRETATION I-3), refused at start if broken ──
+	currencies, err := billing.LoadCurrencies(cfg.Currency.SupportedCurrenciesLocation, cfg.Currency.PeggedCurrenciesLocation)
+	if err != nil {
+		return fmt.Errorf("currency: %w", err)
+	}
 
 	// ── 1b. The signing keys and the truststore, re-read on a timer until shutdown ──────────
 	keyStore, err := keys.Load(cfg.Certificate, logger, keys.WithPKCS12(keys.SSLMatePKCS12{}))
@@ -133,6 +148,7 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	st := store.New(pools.Write, pools.Read, businessClock)
 	events := eventstream.New(st)
 	events.Register(api)
+	paymentrequest.New(st, currencies, cfg.PublicEndpoints.Host, businessClock.Now).Register(api)
 	srv := newServer(cfg.Server.Port, httplog.Middleware(logger, testclock.OffsetHeader(businessClock, api)))
 	// On SIGTERM, parked long-polls answer with their current page instead of holding the drain (ADR-0031).
 	srv.RegisterOnShutdown(events.Stop)
