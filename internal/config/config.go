@@ -49,11 +49,18 @@ type Config struct {
 	Keystore        Keystore        `yaml:"keystore"`
 }
 
+// DefaultPublicHost is the public host when neither the file nor the environment sets one: the
+// Java build's default profile's placeholder (RFC 2606), which no phone can reach. A deployment
+// that payers scan points it at its own host.
+const DefaultPublicHost = "x9-150.example.com"
+
 // PublicEndpoints is where payers reach this service. Its environment variable is the Java
 // build's (x9.public-endpoints.host, X9_PUBLICENDPOINTS_HOST).
 type PublicEndpoints struct {
 	// Host is the public host, with no scheme, written into every QR Code's location URL (EMV tag
-	// 26). At most 37 characters, or the URL would not fit the tag (emv.MaxHostLength).
+	// 26) and into every jku or x5u this service signs. DefaultPublicHost when unset; set to empty
+	// or blank, it stops the service at start, as in Java. At most 37 characters, or the URL would
+	// not fit the tag (emv.MaxHostLength), and printable ASCII with no space.
 	Host string `yaml:"host"`
 	// JWSTTLSeconds is the ttl of every JWS this service signs, in seconds; the header carries it in
 	// milliseconds. The Java build's x9.public-endpoints.jws-ttl-seconds, 300 by default.
@@ -191,11 +198,12 @@ type KeystoreReload struct {
 }
 
 // defaults are the values a key takes when neither the file nor the environment sets it. Nothing
-// security-relevant is here: no host, credential, TLS mode or certificate.
+// security-relevant is here: no database host, credential, TLS mode or certificate. The public
+// host defaults to the Java build's placeholder, DefaultPublicHost.
 func defaults() Config {
 	return Config{
 		Server:          Server{Port: 8080, ShutdownDelaySeconds: 5},
-		PublicEndpoints: PublicEndpoints{JWSTTLSeconds: 300},
+		PublicEndpoints: PublicEndpoints{Host: DefaultPublicHost, JWSTTLSeconds: 300},
 		Database:        Database{Port: 5432, Schema: "x9_qrcode", PoolWrites: 8, PoolReads: 4},
 		Log:             Log{Level: "info"},
 		Reservation:     Reservation{TTLSeconds: 90},
@@ -513,10 +521,13 @@ func (c Config) validate() []error {
 		errs = append(errs, problem("server.shutdown-delay-seconds", "must not be negative, got %d", c.Server.ShutdownDelaySeconds))
 	}
 
-	if h := c.PublicEndpoints.Host; h != "" {
-		if err := emv.CheckHost(h); err != nil {
-			errs = append(errs, problem("public-endpoints.host", "%v", err))
-		}
+	// Unset, the host is DefaultPublicHost; set to empty or blank, it is refused, as Java refuses a
+	// blank x9.public-endpoints.host at start.
+	if h := c.PublicEndpoints.Host; strings.TrimSpace(h) == "" {
+		errs = append(errs, problem("public-endpoints.host",
+			"is set but empty: set it to this deployment's public host, or leave it unset for %s", DefaultPublicHost))
+	} else if err := emv.CheckHost(h); err != nil {
+		errs = append(errs, problem("public-endpoints.host", "%v", err))
 	}
 
 	d := c.Database

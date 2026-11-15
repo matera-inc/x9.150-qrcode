@@ -8,8 +8,8 @@
 # X9_CONFIG_FILE; without one, the environment alone must supply every required key.
 #
 # The service validates everything at start and refuses to start on any problem, naming the key and
-# its variable. Keys marked REQUIRED have no default, on purpose: a host, a credential or a TLS mode
-# is never guessed. Unknown keys are refused, so a typo is not silently ignored.
+# its variable. Keys marked REQUIRED have no default, on purpose: a database host, a credential or a
+# TLS mode is never guessed. Unknown keys are refused, so a typo is not silently ignored.
 #
 # The Java build's configuration (Spring YAML, application-secrets.yml, Jasypt ENC(…), SPRING_* or
 # MongoDB variables) is refused at start: convert it with x9-config-convert.
@@ -21,8 +21,10 @@ server:
 
 public-endpoints:
   host: x9-150.example.com       # X9_PUBLICENDPOINTS_HOST. The public host, no scheme, written into
-                                 # every QR Code's location URL. At most 37 characters, or the URL
-                                 # would not fit EMV tag 26: a longer host is refused at start.
+                                 # every QR Code's location URL and every jku/x5u. Default
+                                 # x9-150.example.com, the Java build's placeholder: set your own
+                                 # for real scans. At most 37 characters (EMV tag 26), printable
+                                 # ASCII, no space; set to empty, it is refused at start.
   jws-ttl-seconds: 300           # X9_PUBLICENDPOINTS_JWSTTLSECONDS. The ttl of every JWS this service
                                  # signs; the header carries it in milliseconds (300000).
 

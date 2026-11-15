@@ -213,6 +213,41 @@ func TestPublicHostLongerThan37IsRefused(t *testing.T) {
 	}
 }
 
+// Owner, 2026-11-15: with no public host set, the host is the Java build's default profile's,
+// x9-150.example.com; the file or the variable replace it.
+func TestPublicHostDefaultsToJavasPlaceholder(t *testing.T) {
+	cfg, err := Load("", complete())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.PublicEndpoints.Host != "x9-150.example.com" || DefaultPublicHost != "x9-150.example.com" {
+		t.Fatalf("public-endpoints.host = %q, want x9-150.example.com", cfg.PublicEndpoints.Host)
+	}
+	path := writeFile(t, "x9.yaml", "public-endpoints:\n  host: from-file.example.com\n")
+	if cfg, err = Load(path, complete()); err != nil || cfg.PublicEndpoints.Host != "from-file.example.com" {
+		t.Fatalf("host from the file: %q, %v", cfg.PublicEndpoints.Host, err)
+	}
+	cfg, err = Load(path, append(complete(), "X9_PUBLICENDPOINTS_HOST=from-env.example.com"))
+	if err != nil || cfg.PublicEndpoints.Host != "from-env.example.com" {
+		t.Fatalf("host from the environment: %q, %v", cfg.PublicEndpoints.Host, err)
+	}
+}
+
+// A public host set explicitly to empty or blank stops the service, naming the key, as Java's
+// X9Properties refuses a blank x9.public-endpoints.host; it never falls back to the placeholder.
+func TestEmptyPublicHostIsRefused(t *testing.T) {
+	want := "public-endpoints.host (X9_PUBLICENDPOINTS_HOST): is set but empty"
+	for _, v := range []string{"", " ", "\t"} {
+		if _, err := Load("", append(complete(), "X9_PUBLICENDPOINTS_HOST="+v)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("X9_PUBLICENDPOINTS_HOST=%q: err = %v, want it to contain %q", v, err, want)
+		}
+	}
+	path := writeFile(t, "x9.yaml", "public-endpoints:\n  host: \"\"\n")
+	if _, err := Load(path, complete()); err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("an empty host in the file: err = %v, want it to contain %q", err, want)
+	}
+}
+
 func TestPasswordFile(t *testing.T) {
 	path := writeFile(t, "password", "secret\n")
 	cfg, err := Load("", append(without(complete(), "DATABASE_PASSWORD"), "DATABASE_PASSWORD_FILE="+path))
