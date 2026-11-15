@@ -82,6 +82,16 @@ const (
 	sqlSelectLastLegacySeq = `SELECT COALESCE(MAX(seq), 0) FROM payment_event_legacy_cursor`
 )
 
+// sqlStatementTimeout sets StatementTimeout for the current transaction only (is_local true).
+const sqlStatementTimeout = `SELECT set_config('statement_timeout', '` + StatementTimeout + `', true)`
+
+func setStatementTimeout(ctx context.Context, tx pgx.Tx) error {
+	if _, err := tx.Exec(ctx, sqlStatementTimeout); err != nil {
+		return fmt.Errorf("setting the statement timeout: %w", err)
+	}
+	return nil
+}
+
 // lockTimeoutSQL is ADR-0025's guard on an event transaction. SET takes no parameter; timeout is
 // a constant of this package.
 func lockTimeoutSQL(timeout string) string {

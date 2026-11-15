@@ -42,6 +42,7 @@ func TestPostgres(t *testing.T) {
 		{"StatementOrderOfANotification", testStatementOrderOfANotification},
 		{"EventRow", testEventRow},
 		{"Pools", testPools},
+		{"StatementTimeout", testStatementTimeout},
 		{"StaleRowReruns", testStaleRowReruns},
 		{"ExhaustedRerunsAreBusy", testExhaustedRerunsAreBusy},
 		{"LockTimeoutRerunsThenBusy", testLockTimeoutRerunsThenBusy},
@@ -572,11 +573,15 @@ func testPools(t *testing.T, e *env) {
 		t.Fatalf("reads sent %d statements on the write pool", n)
 	}
 	reads := e.reads.take()
-	var selects int
+	var selects, timeouts int
 	for _, s := range reads {
 		head := strings.ToLower(strings.Fields(s.sql)[0])
 		switch head {
 		case "select":
+			if s.sql == sqlStatementTimeout {
+				timeouts++
+				continue
+			}
 			selects++
 		case "begin", "commit":
 			if head == "begin" && !strings.Contains(strings.ToLower(s.sql), "read committed") {
@@ -588,6 +593,55 @@ func testPools(t *testing.T, e *env) {
 	}
 	if selects != 4 {
 		t.Fatalf("%d selects on the read pool, want 4", selects)
+	}
+	if timeouts != 4 {
+		t.Fatalf("%d of 4 read transactions set the statement timeout", timeouts)
+	}
+}
+
+// Every transaction, on either pool, runs under StatementTimeout, set first, for itself only: a
+// stuck query is cancelled (57014) and answered 503, never left to hang a request.
+func testStatementTimeout(t *testing.T, e *env) {
+	ctx := t.Context()
+	var inTransition, inRead string
+	_, err := e.store.Run(ctx, func(ctx context.Context, r *Reader, _ time.Time) (Change, error) {
+		return Change{}, r.tx.QueryRow(ctx, "SELECT current_setting('statement_timeout')").Scan(&inTransition)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first := e.writes.take(); len(first) < 2 || first[1].sql != sqlStatementTimeout {
+		t.Fatalf("the statement timeout is not the transition's first statement: %v", describe(first))
+	}
+	err = e.store.readOnly(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, "SELECT current_setting('statement_timeout')").Scan(&inRead)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inTransition != StatementTimeout || inRead != StatementTimeout {
+		t.Fatalf("statement_timeout: transition %q, read %q, want %q", inTransition, inRead, StatementTimeout)
+	}
+	var outside string
+	if err := e.write.QueryRow(ctx, "SELECT current_setting('statement_timeout')").Scan(&outside); err != nil {
+		t.Fatal(err)
+	}
+	if outside == StatementTimeout {
+		t.Fatalf("statement_timeout leaked out of the transaction: %q", outside)
+	}
+
+	// A statement past the timeout is ErrUnavailable, and is not re-run.
+	attempts := 0
+	_, err = e.store.Run(ctx, func(ctx context.Context, r *Reader, _ time.Time) (Change, error) {
+		attempts++
+		if _, err := r.tx.Exec(ctx, "SELECT set_config('statement_timeout', '50ms', true)"); err != nil {
+			return Change{}, err
+		}
+		_, err := r.tx.Exec(ctx, "SELECT pg_sleep(1)")
+		return Change{}, err
+	})
+	if !errors.Is(err, ErrUnavailable) || attempts != 1 {
+		t.Fatalf("a cancelled statement: err %v after %d attempts, want ErrUnavailable after 1", err, attempts)
 	}
 }
 
