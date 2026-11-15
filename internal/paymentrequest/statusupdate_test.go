@@ -51,8 +51,8 @@ func (e *env) mustPut(t *testing.T, id, payload, ifMatch string, want int) reply
 	return a
 }
 
-// row reads the QR Code as stored.
-func (e *env) row(t *testing.T, id string) store.QRCode {
+// stored reads the QR Code as the store reads it.
+func (e *env) stored(t *testing.T, id string) store.QRCode {
 	t.Helper()
 	uid, _ := httpapi.ParseID(id)
 	q, err := e.store.Get(t.Context(), uid)
@@ -114,7 +114,7 @@ func testInitiatedReservesForNobody(t *testing.T, e *env) {
 	if a.body["id"] != id || a.body["status"] != "PAYMENT_INITIATED" || len(a.body) != 2 {
 		t.Fatalf("answer %s", a.text)
 	}
-	q := e.row(t, id)
+	q := e.stored(t, id)
 	if q.Status != domain.StatusPaymentInitiated || q.ReservedBy != (domain.Holder{}) || q.HashRegistered ||
 		!q.ReservedUntil.Equal(start.Add(ttl)) || q.Revision != 0 || !q.RevisedAt.Equal(start) {
 		t.Fatalf("row %+v", q.Row)
@@ -138,7 +138,7 @@ func testInitiatedOnALapsedReservationReservesAgain(t *testing.T, e *env) {
 		t.Fatalf("a lapsed reservation reads %v", g.body["status"])
 	}
 	e.mustPut(t, id, putInitiated, "", http.StatusOK)
-	if q := e.row(t, id); !q.ReservedUntil.Equal(later.Add(ttl)) {
+	if q := e.stored(t, id); !q.ReservedUntil.Equal(later.Add(ttl)) {
 		t.Fatalf("reserved_until %v, want a fresh window", q.ReservedUntil)
 	}
 	if got := e.events(t, id); len(got) != 2 {
@@ -157,12 +157,12 @@ func testInitiatedRefusals(t *testing.T, e *env) {
 	for _, closing := range []string{putPaid, putCancelled} {
 		id := e.create(t, nil)
 		e.mustPut(t, id, closing, "", http.StatusOK)
-		before := e.row(t, id)
+		before := e.stored(t, id)
 		a := e.mustPut(t, id, putInitiated, "", http.StatusConflict)
 		if a.body["type"] != httpapi.TypeStatusConflict || a.body["currentStatus"] != string(before.Status) {
 			t.Fatalf("409 %s", a.text)
 		}
-		if after := e.row(t, id); after.LockVersion != before.LockVersion || len(e.events(t, id)) != 1 {
+		if after := e.stored(t, id); after.LockVersion != before.LockVersion || len(e.events(t, id)) != 1 {
 			t.Fatalf("a refused PAYMENT_INITIATED wrote: %+v", after.Row)
 		}
 	}
@@ -201,7 +201,7 @@ func testPaidAndCancelledFromEveryOpenStatus(t *testing.T, e *env) {
 				if a.body["status"] != to.status {
 					t.Fatalf("answer %s", a.text)
 				}
-				q := e.row(t, id)
+				q := e.stored(t, id)
 				if string(q.Status) != to.status || q.Revision != 0 || q.ReservedBy != (domain.Holder{}) ||
 					!q.ReservedUntil.Equal(domain.NoLapse) {
 					t.Fatalf("row %+v", q.Row)
@@ -239,12 +239,12 @@ func testPaidAndCancelledRefusals(t *testing.T, e *env) {
 			if tc.first != "" {
 				e.mustPut(t, id, tc.first, "", http.StatusOK)
 			}
-			before, events := e.row(t, id), len(e.events(t, id))
+			before, events := e.stored(t, id), len(e.events(t, id))
 			a := e.mustPut(t, id, tc.then, "", http.StatusBadRequest)
 			if v := a.body["violations"].([]any); len(v) != 1 || v[0] != tc.violation {
 				t.Fatalf("violations %v", v)
 			}
-			if after := e.row(t, id); after.LockVersion != before.LockVersion || len(e.events(t, id)) != events {
+			if after := e.stored(t, id); after.LockVersion != before.LockVersion || len(e.events(t, id)) != events {
 				t.Fatal("a refused status-update wrote")
 			}
 		})
@@ -268,7 +268,7 @@ func testActiveReleasesAReservation(t *testing.T, e *env) {
 		if a.body["status"] != "ACTIVE" {
 			t.Fatalf("answer %s", a.text)
 		}
-		q := e.row(t, id)
+		q := e.stored(t, id)
 		if q.Status != domain.StatusActive || q.ReservedBy != (domain.Holder{}) || q.HashRegistered ||
 			!q.ReservedUntil.Equal(domain.NoLapse) || q.Revision != 0 {
 			t.Fatalf("hash %v: row %+v", hash, q.Row)
@@ -297,12 +297,12 @@ func testActiveRefusals(t *testing.T, e *env) {
 			if tc.lapse {
 				e.clock.set(start.Add(ttl + time.Second))
 			}
-			before := e.row(t, id)
+			before := e.stored(t, id)
 			a := e.mustPut(t, id, putActive, "", http.StatusBadRequest)
 			if v := a.body["violations"].([]any); v[0] != "Only QR Codes with PAYMENT_INITIATED status can be reactivated." {
 				t.Fatalf("violations %v", v)
 			}
-			if after := e.row(t, id); after.LockVersion != before.LockVersion {
+			if after := e.stored(t, id); after.LockVersion != before.LockVersion {
 				t.Fatal("a refused ACTIVE wrote")
 			}
 		})
@@ -324,13 +324,13 @@ func testTheSameStatusIsARetry(t *testing.T, e *env) {
 		if tc.first != "" {
 			e.mustPut(t, id, tc.first, "", http.StatusOK)
 		}
-		before, events := e.row(t, id), e.events(t, id)
+		before, events := e.stored(t, id), e.events(t, id)
 		e.clock.set(start.Add(time.Second))
 		a := e.mustPut(t, id, tc.again, "", http.StatusOK)
 		if a.body["status"] != string(before.Status) {
 			t.Fatalf("%s: answer %s", tc.again, a.text)
 		}
-		after := e.row(t, id)
+		after := e.stored(t, id)
 		if after.LockVersion != before.LockVersion || !after.RevisedAt.Equal(before.RevisedAt) ||
 			after.Revision != before.Revision || after.EndToEndID != before.EndToEndID ||
 			!after.ReservedUntil.Equal(before.ReservedUntil) {
@@ -349,7 +349,7 @@ func testIfMatch(t *testing.T, e *env) {
 	id := e.create(t, nil)
 	tag := e.get(t, id).etag
 	e.mustPut(t, id, putInitiated, `"7-ACTIVE"`, http.StatusPreconditionFailed)
-	if len(e.events(t, id)) != 0 || e.row(t, id).Status != domain.StatusActive {
+	if len(e.events(t, id)) != 0 || e.stored(t, id).Status != domain.StatusActive {
 		t.Fatal("a 412 wrote")
 	}
 	e.mustPut(t, id, putPaid, tag, http.StatusOK)
