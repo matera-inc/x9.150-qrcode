@@ -156,8 +156,8 @@ type Receipt struct {
 	Deviations []Deviation
 }
 
-// NotificationRecord is an accepted notification as qr_code_notification stores it. The newest
-// one for a QR Code is the "last stored notification" event bodies are built from (ADR-0035).
+// NotificationRecord is an accepted notification as qr_code_notification stores it. Which stored
+// one an event body is built from is EventBodySource's choice (ADR-0035).
 type NotificationRecord struct {
 	Notification Notification
 	Phase        Phase
@@ -166,12 +166,25 @@ type NotificationRecord struct {
 }
 
 // EventBodySource is the stored notification an event body is built from (ADR-0035), given every
-// notification stored for the QR Code in arrival order: the last one, or nil when none is stored.
+// notification stored for the QR Code in arrival order:
+//
+//  1. the latest one that carries a transactionId, so that the hash a payer reported stays in the
+//     body even after a later notification without one was stored (a NOT_SENT once a hash is
+//     registered is stored, flagged ACTION_CONTRADICTS_HASH; it must not erase the hash);
+//  2. else the last one stored;
+//  3. else nil, and BuildEvent uses the first payment method.
+//
 // The store reads them all and leaves the choice here, so that a change to the rule changes this
-// function and nothing in SQL.
+// function and nothing in SQL. The result is a copy.
 func EventBodySource(stored []NotificationRecord) *NotificationRecord {
 	if len(stored) == 0 {
 		return nil
+	}
+	for i := len(stored) - 1; i >= 0; i-- {
+		if stored[i].Notification.HasTransactionID() {
+			found := stored[i]
+			return &found
+		}
 	}
 	last := stored[len(stored)-1]
 	return &last

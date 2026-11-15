@@ -102,8 +102,9 @@ type Cause struct {
 // BuildEvent is the one door every payment event goes through (ADR-0035). Field for field as Java
 // builds it:
 //
-//   - the body (amount, tip, payer, currency, network, transaction id) comes from the last stored
-//     notification when there is one; otherwise the amount and currency of the first payment method,
+//   - the body (amount, tip, payer, currency, network, transaction id) comes from last, the stored
+//     notification EventBodySource picked (the latest carrying a transactionId, else the last
+//     stored), when there is one; otherwise the amount and currency of the first payment method,
 //     and the network and End-to-End ID of the payment details, with no tip and no payer;
 //   - the invoice and order numbers come from the bill, the revision and location from the row;
 //   - receivedInStatus and deviations come from the cause's receipt; deviations are absent rather

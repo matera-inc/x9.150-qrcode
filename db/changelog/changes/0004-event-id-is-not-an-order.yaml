@@ -1,0 +1,25 @@
+# Copyright © 2026 Matera Systems, Inc.
+# Licensed under the Matera Source License v1.0 (source-available; not open source). See LICENSE.md.
+# Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
+# based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
+#
+# 0004 — payment_event.event_id's COMMENT no longer promises seq order (ADR-0037, amended
+# 2026-11-15 by the owner). Applied changesets are never edited; changes go in a new numbered file.
+#
+# 0001 said event ids are "minted in seq order". That holds within one Go instance only: another
+# instance on the same database mints from its own clock, so across instances event_id order is not
+# seq order. seq is the only order; event_id is the dedupe key, roughly in time order.
+
+databaseChangeLog:
+- changeSet:
+    id: 0004-01-event-id-comment
+    author: x9-qrcode
+    comment: payment_event.event_id is an identity, not an order.
+    changes:
+    - setColumnRemarks:
+        schemaName: ${x9.schema}
+        tableName: payment_event
+        columnName: event_id
+        columnDataType: UUID
+        remarks: 'eventId on the wire: UUIDv7 for new events, roughly in time order but NOT an order (use seq,
+          the only order; ADR-0037); the original id for migrated ones. The consumer''s dedupe key.'

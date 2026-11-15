@@ -44,7 +44,9 @@ var eventIDs struct {
 }
 
 // newEventID mints the next event id. The store calls it under its gate, after which the event
-// batch takes the sequence row's lock, so event_id order is seq order (ADR-0037).
+// batch takes the sequence row's lock, so this process mints ids in seq order. Another instance
+// mints from its own clock, so across instances there is no such guarantee: seq is the only order
+// (ADR-0037, amended 2026-11-15).
 func newEventID() (uuid.UUID, error) {
 	eventIDs.mu.Lock()
 	defer eventIDs.mu.Unlock()

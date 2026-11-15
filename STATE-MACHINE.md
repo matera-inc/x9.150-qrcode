@@ -212,7 +212,11 @@ has" means both the stored and the effective status: a lapsed reservation reads 
 the current tag.
 
 § **Once a hash is registered, no payer message changes the QR Code's status** (owner,
-2026-11-14): money has moved, so only the payment system ends the reservation.
+2026-11-14): money has moved, so only the payment system ends the reservation. A `NOT_SENT` from
+the holder at that point is stored and flagged `ACTION_CONTRADICTS_HASH`, but it never erases the
+hash from the events: an event's payment fields come from the latest stored notification that
+carries a `transactionId`, else the last one stored, else the QR Code's first payment method
+(ADR-0035, amended 2026-11-15 by the owner).
 
 **Losing a concurrent write.** A notification that keeps losing the race after its
 re-runs answers 409 "busy" with the current status, never 500.

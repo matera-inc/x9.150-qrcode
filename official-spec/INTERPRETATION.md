@@ -407,6 +407,10 @@ to *break* a message that was never ours.
 where it matters. `Solana` itself is closed — opacity is for rails we do *not* interpret; a rail we
 do interpret, on a published embedding, should report an unknown field rather than carry it.
 
+> **Update, 2026-11-15 (owner).** The bank rails `fednow`, `rtp` and `ach` are now closed too, on
+> create and PATCH: an unknown field in them is refused by name, as in `solana`. Both halves of this
+> entry are one rule, written out in **I-16, strict to generate, tolerant to read**.
+
 ---
 
 ## I-10 — A tip is money on top of the bill, and we enforce that at the payee
@@ -758,6 +762,94 @@ not want would be **refused with an error saying it is not needed on that rail**
 needed for FedNow: the payee relies on the network"). **This version does not build that refusal:** it
 accepts and answers notifications on every rail, so such a payee simply receives notifications it
 may ignore.
+
+## I-16 — Strict to generate, tolerant to read
+
+**Where:** §2.4 (the closed list of networks, then "**MAY** also carry a network not listed above
+for early adopters"), §14.5 (each network's contents deferred to "network documentation")
+
+**The idea in one line.** Be strict about what you *write* and tolerant about what you *read*. This
+is the soul of X9.150 interoperability: thousands of banks and PSPs will each implement the standard
+a little differently and at a different pace, and a payment between two of them works only if
+neither side breaks on what the other added and both sides send only what they mean.
+
+**What the standard leaves open.** §2.4 closes the list of networks and, in the same breath, lets a
+payload carry one that is not on it. §14.5 hands each network's inner fields to that network's
+owner. So a conformant payload can legitimately contain a rail, a field or a currency that a given
+implementation has never heard of. The standard does not say what an implementation should do with
+them. We answer by asking one question: **are we generating this QR Code, or reading somebody
+else's?** (owner, 2026-11-15).
+
+### When we generate: strict, and every refusal names what it refuses
+
+On `POST /api/v1/payment-request` and `PATCH /api/v1/payment-request/{id}`, the QR Codes this
+deployment issues and signs, we refuse with a 400 that names the offending key:
+
+| What | Example | Refused because |
+|---|---|---|
+| A network we do not interpret | `networks.tron`, `networks.zelle`, a network with an empty name | We could not validate a payment against it (I-2, I-9, ADR-0012) |
+| An unknown field inside a rail we interpret | `networks.fednow.x`, `networks.solana.walletAddress` | The rail's fields are fixed (by X9.150 for `fednow`, `rtp`, `ach`; by the Solana Foundation for `solana`), so an extra one is a mistake, not an extension |
+| A currency this deployment does not settle | `EUR`, when `supported-currencies.json` lists `USD`, `USDC`, `FRNT` | We would be promising a payment we cannot receive (I-3, ADR-0012) |
+
+The answer reads, for example:
+
+```
+paymentMethods[0].networks.fednow.x: is not a field of fednow, whose fields are routingNumber, accountNumber and protectionType
+```
+
+**Closing `fednow`, `rtp` and `ach` is new** (owner, 2026-11-15). Until then only `solana` was
+closed, and an unknown field in a bank rail was silently dropped. Silently dropping is the worst of
+the three answers: the biller believes it published something it did not. The Go build refuses it
+now; the Java build still drops it until it is changed too, a difference listed in ADR-0028.
+
+Why strict here: a QR Code is a promise to every payer who scans it. What we put in it must be
+something we understand and can honour, and the biller is still at a keyboard and can fix a mistake.
+The payer at the till cannot.
+
+### When we read: tolerant, and we present what we understand
+
+When this service reads a QR Code or a payload that **another** bank or PSP generated (the EMV
+decoder, `POST /api/v1/qrcode-emv-decoder`, and the payer-side flows that fetch and present a
+payee's payload), anything unknown is **parsed past, never a reason to refuse**:
+
+- an unknown **payment method** entry or **rail** (`networks.tron`) is not interpreted;
+- an unknown **field** inside a rail we know (`networks.fednow.x`) is not interpreted;
+- an unknown **currency** (`EUR` on a deployment that settles only dollars) is not a reason to
+  refuse: whether we could *issue* in that currency says nothing about whether somebody else may;
+- the payment methods and rails we **do** know are presented, interpreted, exactly as if the unknown
+  parts were not there.
+
+"Not interpreted" is I-9's word: an unknown network in someone else's payload is still **carried**,
+byte for byte, to whoever asked us to decode it, because that software may understand the rail and
+pay it. Tolerant reading is about never *refusing* a payload for what it adds; it does not license
+rewriting the payload.
+
+Why tolerant here: the payload is not ours. The bank that wrote it may be a release ahead of us, or
+may serve a rail we will never support. Refusing its whole payload because one part is new to us
+would make every extension anyone ever ships a breaking change for everyone else, and the standard's
+"MAY carry a network not listed" would be a dead letter.
+
+### What tolerance never covers: integrity
+
+Tolerant reading is about **content we do not know**, never about **content we cannot trust**.
+These are still refused, on both builds:
+
+- **malformed EMV** (a bad CRC, a length that runs past the end, no `org.x9` template with a URL):
+  refused before anything is fetched ([ADR-0027](../docs/adr/0027-crypto-in-go-x9150-jws-profile-pkix-with-crl-and-emv-by-hand.md),
+  2026-11-15);
+- **a bad signature** on the payload, or a signer the truststore does not chain to;
+- **a content mismatch**: a payload request whose signed content is not the QR Code that was
+  issued.
+
+An unknown field is somebody else's progress. A broken signature is somebody else's attack, or
+their bug, and in either case not a payment anyone should make.
+
+**Where this is visible in the code.** In the Go build, `internal/contract` reads `fednow`, `rtp`,
+`ach` and `solana` keeping any unknown key aside (`Unknown`), and only the create and PATCH checks
+refuse it; reading never fails on one. The decoder of Story 10.7 is not built yet, and it must read
+somebody else's payload with a reader that never refuses an unknown member, as described above. In
+the Java build the decoder already reads tolerantly (an unknown network is carried, X9-RAIL-060 to
+-064); closing the rails on create and PATCH there is separate work.
 
 ## Reporting
 

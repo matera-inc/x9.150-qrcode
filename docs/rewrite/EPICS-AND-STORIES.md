@@ -1406,7 +1406,8 @@ column.
 **Given** `payment_event`
 **Then** it has `read_status_code` (default `PEND`) and `read_at` (sentinel `9999-12-31 00:00:00`),
 an index on `(read_status_code, seq)`, and `deviations` (ADR-0036, `''` when none)
-**And** `event_id` is documented as a UUIDv7 minted in `seq` order
+**And** `event_id` is documented as a UUIDv7, roughly in time order but not an order (amended
+2026-11-15, owner: `seq` is the only order; ADR-0037)
 **And** a pending row can be claimed with `FOR UPDATE SKIP LOCKED` and marked `DONE`, on a real
 PostgreSQL.
 
@@ -1515,8 +1516,9 @@ event-reader role, and the HTTP API as the third way
 **And** it says the read status serves one logical consumer; another uses its own `seq` cursor.
 
 **S6.5-AC3. Order and identity.**
-**Then** it says `seq` is the exact order, `event_id` (UUIDv7) sorts the same way and is the dedupe
-key, and migrated events keep their original ids.
+**Then** it says `seq` is the exact and only order, `event_id` (UUIDv7) is roughly in time order but
+not an order across instances (amended 2026-11-15, owner; ADR-0037) and is the dedupe key, and
+migrated events keep their original ids.
 
 **S6.5-AC4. What can change.**
 **Then** it states the contract: within a major `schemaVersion`, columns and codes are only added;
@@ -1526,7 +1528,8 @@ readers ignore what they do not know
 
 **S6.5-AC5.** **Given** the black-box suite
 **Then** a test reads the table with the event-reader role, claims the pending rows of a fresh
-transition, marks them `DONE`, and sees them in `seq` order with matching `event_id` order.
+transition, marks them `DONE`, and sees them in `seq` order, with matching `event_id` order for
+what one writer wrote (across instances that is not promised: ADR-0037, amended 2026-11-15).
 
 ## Epic 7: An operator can run the Go service and see it healthy
 
@@ -1911,7 +1914,9 @@ an answer; an unknown path or a wrong method is answered with Java's status and 
 
 **S9.2-AC2.** **Given** a JSON request body
 **Then** keys match case-sensitively; unknown properties are treated as Java treats them for that
-schema (an interpreted rail stays closed: an unknown field in `solana` is refused, `R-I9-03`); a
+schema (an interpreted rail stays closed: an unknown field in `solana` is refused, `R-I9-03`, and,
+since 2026-11-15 by the owner's decision, in `fednow`, `rtp` and `ach` too, on create and PATCH
+only, `R-I16-04`); a
 body that is not JSON, or a number past 2^63−1, is a 400 `malformed-json` (`X9-AMT-422`). The type
 decoded is the type validated and stored (ADR-0024), and it tracks which fields a PATCH carried.
 
@@ -1990,7 +1995,9 @@ nobody (ADR-0036, superseding ADR-0021's fallback).
 
 **S9.3-AC6.** **Given** `BuildEvent(type, row, lastNotification, now, reason)`
 **Then** it is the only code that constructs a `payment_event`: the body comes from the last stored
-notification, else from the first payment method and the payment details, field for field as Java;
+notification, else from the first payment method and the payment details, field for field as Java
+(amended 2026-11-15, owner: the latest stored notification carrying a `transactionId` comes first,
+chosen by `domain.EventBodySource`; ADR-0035);
 `deviations` is a closed list (`RECEIVED_IN_WRONG_STATUS`, `ACTION_CONTRADICTS_HASH`), absent rather
 than empty; `receivedInStatus` and `schemaVersion` as Java writes them. A test fails if another
 package builds an event.
@@ -2078,7 +2085,8 @@ asserts the order.
 
 **S9.5-AC3.** **Given** an event row
 **Then** its `event_id` is a UUIDv7 minted after the sequence lock is taken, from one monotonic
-generator, so `event_id` order equals `seq` order (ADR-0037); `read_status_code` is `PEND` and
+generator, so within one instance `event_id` order equals `seq` order (amended 2026-11-15, owner:
+across instances it is not promised, and `seq` is the only order; ADR-0037); `read_status_code` is `PEND` and
 `read_at` is `9999-12-31 00:00:00`, and X9.150 never updates either.
 
 **S9.5-AC4.** **Given** new rows
@@ -2552,6 +2560,16 @@ whose `violations` carry the payee's reason, capped and reduced to plain strings
 `payload-unreachable` carrying no address; a payload is a 200 `PaymentPayloadResponse` with the
 amount due priced by S9.4-AC3, and an unknown network in someone else's payload is carried intact
 (I-9).
+
+**S10.7-AC5. Strict to generate, tolerant to read (INTERPRETATION I-16; owner, 2026-11-15).**
+**Given** a well-formed, correctly signed payload that another bank generated
+**Then** nothing in it that this deployment does not know is a reason to refuse it: an unknown
+payment method entry, an unknown rail, an unknown field inside `fednow`, `rtp`, `ach` or `solana`, and
+a currency outside `supported-currencies.json` are parsed past and not interpreted, and the methods
+and rails this deployment knows are presented as usual. The payload is read with a reader that never
+refuses an unknown member: not with the create and PATCH checks of `internal/contract`, which refuse
+them. Integrity failures stay refusals: malformed EMV (S10.7-AC1), a payload whose signature does not
+verify (S10.7-AC2), a content mismatch the payee reports (S10.7-AC3).
 
 **S10.7-AC4.** **Given** the harness
 **Then** these keys are added and pass: `X9-DEC-016`; `X9-DEC-006`, `-007`; `test_contract.py`'s

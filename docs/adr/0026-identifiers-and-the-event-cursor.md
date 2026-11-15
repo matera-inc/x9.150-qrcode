@@ -39,6 +39,12 @@ some have persisted ULID cursors.
     no nullable unique column is needed.
   - An `after=` that parses as a ULID is translated to the `seq` of the matching row. A ULID that
     matches no row positions the cursor at the first migrated event whose legacy cursor is greater.
+  - *(Added 2026-11-15, owner.)* **A ULID later than every migrated cursor resumes after the last
+    migrated event,** and so does any ULID when nothing was migrated (the "last migrated event" is
+    then position 0, the start). Every event the Go build writes comes after every migrated one, so
+    a consumer whose cursor ran past the copied history (it read Java events written after the
+    migration snapshot, say) gets every Go event and loses nothing; `eventId` dedupe absorbs any
+    overlap. This is Story 10.1's reading, written down.
   - Consumers do nothing at cutover ([0030](0030-a-black-box-suite-defines-done-and-migration-writes-only-runtime-valid-rows.md)).
 - **No new idempotency mechanism during the rewrite.** An `Idempotency-Key` for create is a
   feature, not a port. It is deferred until after cutover, under the contract's own versioning

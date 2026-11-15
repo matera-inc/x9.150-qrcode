@@ -115,6 +115,25 @@ Where Java is known to break X9.150 or an ADR (an **Open** entry in
 [`known-bugs.md`](../../known-bugs.md), or a black-box test marked as an expected failure on Java),
 that behaviour is excluded from the Java↔Go differential comparison, and Go follows the spec.
 
+### Known differences between the builds (owner, 2026-11-15)
+
+Answers the Go build gives and the Java build does not, each where Go follows the standard, an ADR
+or the contract. Epic 11's `others/blackbox/TOLERATED-DIFFERENCES.md` takes them over, with their
+test keys, when it is written; until then this list is where they are kept. A black-box test of one
+of them is `go_only`, or a strict expected failure on Java.
+
+| # | Where | Java | Go | Why | From |
+|---|---|---|---|---|---|
+| 3 | `GET /pub/api/v1/events?after=` past the end of the log | an empty page (the cursor is compared as a string) | **409 "cursor ahead of log"**, carrying the current `last_seq` | A cursor ahead of the log means the consumer is reading the wrong deployment or a restored database; an empty page would hide it ([ADR-0031](0031-same-image-lighter-and-3-0-is-a-configuration-migration.md)) | Story 10.1 |
+| 4 | `GET /pub/api/v1/events?after=` that is neither empty, a decimal `seq`, nor a ULID | compared as a string: an empty page, or whatever sorts after it | **400 naming `after`** | A malformed cursor is the consumer's bug, and it should hear about it | Story 10.1 |
+| 5 | Any unexpected failure | Spring Boot's error body (only the signed notification answer uses `internal-error`) | **every 500 is the `internal-error` problem**, with no stack, SQL or internal detail | One shape for "our fault" | Story 9.2 |
+| 6 | A JSON request body over 1 MiB | read | **400 `malformed-json`** | The largest legitimate body is a few kilobytes; the cap bounds memory | Story 9.2 |
+| 7 | JSON edge cases Jackson lets through: a lone surrogate escape (`"\ud800"`), a date written as an array (`[2030,1,10]`) | read | **400 `malformed-json`** | Go's decoder is stricter; a body a strict parser refuses is not one a payer can rely on elsewhere | Story 9.2 |
+| 8 | An unknown field in `fednow`, `rtp` or `ach` on create or PATCH | ignored, 201 / 200 | **400, naming the field** | The bank rails are closed on what this service generates, as `solana` is (owner, 2026-11-15; [INTERPRETATION I-16](../../official-spec/INTERPRETATION.md)). Until the Java build refuses it too | this pull request |
+
+Numbers 1 and 2 are the intended differences above. Row 8 is a difference only until the Java
+build closes the bank rails as well; then it leaves this list.
+
 ## Alternatives rejected
 
 - **Byte-identity checked by schema validation.** It catches nothing that matters here.

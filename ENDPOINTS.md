@@ -130,6 +130,14 @@ either way; a payment system may hold a deviating registration for review. More 
 `payment.sent` for one QR Code is the signal of a duplicate payment
 ([ADR-0036](docs/adr/0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md)).
 
+**Where an event's payment fields come from.** `amount`, `tipAmount`, `payerInfo`, `currency`,
+`network` and `transactionId` are the payment as a payer reported it: from the latest stored
+notification that carries a `transactionId`, else the last one stored, else (no notification at
+all) the QR Code's first payment method with the network and End-to-End ID the status-update gave.
+A hash, once reported, therefore stays on every later event for that QR Code, even after a
+contradictory `NOT_SENT`
+([ADR-0035](docs/adr/0035-one-event-builder-and-a-written-transition-map.md), amended 2026-11-15).
+
 Ordering is per `qrCodeId`. Nothing is promised across QR Codes, and `qrCodeRevision` is monotonic
 per QR Code but **not gap-free**: a PATCH moves the revision and emits no event, and a status
 change emits an event without moving it

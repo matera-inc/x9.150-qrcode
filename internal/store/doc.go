@@ -25,8 +25,10 @@
 // The sequence row's lock is held until commit, so a second event-producing transaction takes the
 // next number only once the first has committed or rolled back: seq is gapless and in commit order
 // (ADR-0025). Each event_id is a UUIDv7 from one monotonic generator, minted under an in-process
-// gate that is held until the batch has taken that lock, so event_id order is seq order
-// (ADR-0037). A commit that inserted an event closes the channel [Store.EventCommitted] returned,
+// gate that is held until the batch has taken that lock, so within this process ids are minted in
+// seq order. That is tidiness, not a promise: another instance on the same database mints from its
+// own clock, so across instances event_id order is not seq order, and seq is the only order
+// (ADR-0037, amended 2026-11-15). A commit that inserted an event closes the channel [Store.EventCommitted] returned,
 // waking parked event readers; a rollback never does.
 //
 // Reads that answer a request (GET, the payload, the events) run on the read pool, each in its own

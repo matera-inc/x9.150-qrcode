@@ -37,6 +37,7 @@ func TestPostgres(t *testing.T) {
 	}{
 		{"CreateAndRead", testCreateAndRead},
 		{"HashRegisteredIsItsOwnColumn", testHashRegisteredIsItsOwnColumn},
+		{"EventBodyKeepsTheHash", testEventBodyKeepsTheHash},
 		{"StatementOrder", testStatementOrder},
 		{"StatementOrderOfANotification", testStatementOrderOfANotification},
 		{"EventRow", testEventRow},
@@ -347,6 +348,36 @@ func testHashRegisteredIsItsOwnColumn(t *testing.T, e *env) {
 	}
 	if b, err = e.store.Get(ctx, hashed.ID); err != nil || b.HashRegistered {
 		t.Fatalf("after ACTIVE: hash_registered %v, %v", b.HashRegistered, err)
+	}
+}
+
+// ADR-0035 (owner, 2026-11-15): a NOT_SENT once a hash is registered is stored, flagged
+// ACTION_CONTRADICTS_HASH, and carries no transactionId; the next event's body still comes from the
+// latest stored notification that carries one, so payment.cancelled reports the hash.
+func testEventBodyKeepsTheHash(t *testing.T, e *env) {
+	ctx := t.Context()
+	q := e.create(t)
+	if _, err := e.notify(ctx, q.ID, payer("payer-a", ""), nil, settings); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.notify(ctx, q.ID, payer("payer-a", "5ig"), nil, settings); err != nil {
+		t.Fatal(err)
+	}
+	notSent := payer("payer-a", "")
+	notSent.Action = domain.ActionNotSent
+	r, err := e.notify(ctx, q.ID, notSent, nil, settings)
+	if err != nil || r.Decision.Refusal != nil || len(r.Events) != 0 {
+		t.Fatalf("NOT_SENT after the hash: %v, %v, %d events", r.Decision.Refusal, err, len(r.Events))
+	}
+	if n := e.count(t, "SELECT COUNT(*) FROM qr_code_notification WHERE qr_code_id = $1", q.ID); n != 3 {
+		t.Fatalf("%d notifications stored, want 3 (the NOT_SENT included)", n)
+	}
+	r, err = e.setStatus(ctx, q.ID, domain.StatusCancelled)
+	if err != nil || len(r.Events) != 1 {
+		t.Fatalf("CANCELLED: %v, %v, %d events", r.Decision.Refusal, err, len(r.Events))
+	}
+	if ev := r.Events[0]; ev.Type != domain.EventCancelled || ev.TransactionID == nil || *ev.TransactionID != "5ig" {
+		t.Fatalf("payment.cancelled: %+v, want the hash 5ig in its body", ev.Event)
 	}
 }
 
@@ -814,7 +845,9 @@ func testConcurrentPatchesLoseNoUpdate(t *testing.T, e *env) {
 }
 
 // S9.5-AC6, S9.5-AC3: event-producing transactions on different rows, at once: seq is gapless, no
-// reader ever sees a gap (so seq order is commit order), and event_id sorts as seq does.
+// reader ever sees a gap (so seq order is commit order), and, within this one instance (one Store,
+// one generator), event_id sorts as seq does. Across instances that is not promised (ADR-0037,
+// amended 2026-11-15), and nothing here asserts it.
 func testGaplessSeqInCommitOrder(t *testing.T, e *env) {
 	ctx := t.Context()
 	const n = 32

@@ -39,15 +39,26 @@ outbox to drain; the event table plays that role itself.
 | **Plain SQL** | the read-status columns below | One logical consumer; any number of its workers. |
 | **HTTP** | `GET /pub/api/v1/events?after=…` (ADR-0001) | Kept: it is the contract Docker Hub users have today. |
 
-### Order: `seq`, and `event_id` agrees with it
+### Order: `seq` only; `event_id` is roughly in time order
 
-- **`seq` is the exact order.** It is gapless and equals commit order (ADR-0025).
-- **`event_id` is a UUIDv7** (ADR-0026). It is minted after the event-sequence lock is taken, from a
-  monotonic generator in the single active instance, so sorting by `event_id` gives the same order
-  as `seq`. Events migrated from Java keep their original ids, which are random UUIDv4s: they do not
-  sort by time, so order migrated events by `seq` (corrected 2026-11-14).
-- Use `seq` when exactness matters; use `event_id` when only a UUID is at hand (a CDC message key,
-  for example).
+- **`seq` is the exact order, and the only one.** It is gapless and equals commit order (ADR-0025).
+- **`event_id` is a UUIDv7** (ADR-0026): it starts with a millisecond timestamp, so ids sort
+  *roughly* in the order the events happened. That is all it promises. Events migrated from Java
+  keep their original ids, which are random UUIDv4s and do not sort by time at all (corrected
+  2026-11-14).
+- **Use `seq` to order events; use `event_id` to recognise one** (the dedupe key, a CDC message
+  key).
+
+**Amended 2026-11-15 (owner): `event_id` order is not `seq` order.** This section used to promise
+that sorting by `event_id` gives the same order as `seq`. That holds only inside one process: the
+Go build mints ids from one monotonic generator, under an in-process gate held until the event
+batch has taken the sequence lock (Story 9.5). Two Go instances writing to the same database each
+have their own generator and their own clock, so an instance whose clock runs a few milliseconds
+ahead can mint a larger id for an event that takes a smaller `seq`. Nothing in the database
+reconciles the two, and a cross-instance lock to do so would serialise every transition for no
+consumer benefit. So the promise is withdrawn: `seq` is the order; `event_id` is an identity that
+happens to be roughly time-ordered. The in-process gate stays (it is harmless and keeps one
+instance's ids tidy), but no reader may rely on it.
 
 ### Read status, for plain SQL readers
 
