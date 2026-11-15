@@ -44,6 +44,8 @@ type Config struct {
 	Log             Log             `yaml:"log"`
 	Reservation     Reservation     `yaml:"reservation"`
 	Testing         Testing         `yaml:"testing"`
+	Certificate     Certificate     `yaml:"certificate"`
+	Keystore        Keystore        `yaml:"keystore"`
 }
 
 // PublicEndpoints is where payers reach this service. Its environment variable is the Java
@@ -116,6 +118,60 @@ type Testing struct {
 	ClockControl bool `yaml:"clock-control"`
 }
 
+// Certificate is where the signing key and the truststore are read from (ADR-0027, ADR-0031). Its
+// keys and variables are the Java build's x9.certificate.* ones, so a mounted keystore keeps its
+// configuration. An empty location is the bundled DEMO identity (NON-PRODUCTION), as in Java.
+type Certificate struct {
+	PrivateKeystore PrivateKeystore `yaml:"private-keystore"`
+	Truststore      Truststore      `yaml:"truststore"`
+}
+
+// LogValue keeps the passwords out of every log line.
+func (c Certificate) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("privateKeystore", c.PrivateKeystore.Location),
+		slog.String("privateKeystoreAlias", c.PrivateKeystore.Alias),
+		slog.String("truststore", c.Truststore.Location),
+		slog.String("truststoreAlias", c.Truststore.Alias),
+	)
+}
+
+// PrivateKeystore is the file holding the signing key and its certificate: PKCS#12 or PEM. A JKS
+// file is refused when it is read, naming the conversion (ADR-0031).
+type PrivateKeystore struct {
+	// Location is a path; Spring's file: prefix is accepted and dropped. Empty is the bundled demo.
+	Location string `yaml:"location"`
+	// Type is informative, as in Java, whose default "JKS" reads PKCS#12 too: the file's content
+	// decides. PKCS11 is refused: the Go build has no HSM signer yet (ADR-0027).
+	Type               string `yaml:"type"`
+	Password           string `yaml:"password"`
+	PrivateKeyPassword string `yaml:"private-key-password"`
+	// Alias names the keystore in logs, as in Java; it does not select an entry.
+	Alias string `yaml:"alias"`
+	// EnforcedAlias selects the entry of a PKCS#12 file holding several; without it the file must
+	// hold exactly one private key, as in Java.
+	EnforcedAlias string `yaml:"enforced-alias"`
+}
+
+// Truststore is the file of trusted certificates: PKCS#12 or PEM.
+type Truststore struct {
+	Location string `yaml:"location"`
+	Type     string `yaml:"type"`
+	Password string `yaml:"password"`
+	Alias    string `yaml:"alias"`
+}
+
+// Keystore is the Java build's keystore.reload.frequency: how often, in milliseconds, the keystore
+// and truststore files are re-read.
+type Keystore struct {
+	Reload KeystoreReload `yaml:"reload"`
+}
+
+// KeystoreReload is the re-read interval.
+type KeystoreReload struct {
+	Frequency int `yaml:"frequency"`
+}
+
 // defaults are the values a key takes when neither the file nor the environment sets it. Nothing
 // security-relevant is here: no host, credential, TLS mode or certificate.
 func defaults() Config {
@@ -124,6 +180,7 @@ func defaults() Config {
 		Database:    Database{Port: 5432, Schema: "x9_qrcode", PoolWrites: 8, PoolReads: 4},
 		Log:         Log{Level: "info"},
 		Reservation: Reservation{TTLSeconds: 90},
+		Keystore:    Keystore{Reload: KeystoreReload{Frequency: 30000}},
 	}
 }
 
@@ -153,6 +210,29 @@ var envVars = []envVar{
 	{"X9_LOG_LEVEL", "log.level", setString(func(c *Config) *string { return &c.Log.Level })},
 	{"X9_RESERVATION_TTL_SECONDS", "reservation.ttl-seconds", setInt(func(c *Config) *int { return &c.Reservation.TTLSeconds })},
 	{"X9_TESTING_CLOCKCONTROL", "testing.clock-control", setBool(func(c *Config) *bool { return &c.Testing.ClockControl })},
+	{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION", "certificate.private-keystore.location", setString(func(c *Config) *string { return &c.Certificate.PrivateKeystore.Location })},
+	{"X9_CERTIFICATE_PRIVATEKEYSTORE_TYPE", "certificate.private-keystore.type", setString(func(c *Config) *string { return &c.Certificate.PrivateKeystore.Type })},
+	{"X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD", "certificate.private-keystore.password", setString(func(c *Config) *string { return &c.Certificate.PrivateKeystore.Password })},
+	{"X9_CERTIFICATE_PRIVATEKEYSTORE_PRIVATEKEYPASSWORD", "certificate.private-keystore.private-key-password", setString(func(c *Config) *string { return &c.Certificate.PrivateKeystore.PrivateKeyPassword })},
+	{"X9_CERTIFICATE_PRIVATEKEYSTORE_ALIAS", "certificate.private-keystore.alias", setString(func(c *Config) *string { return &c.Certificate.PrivateKeystore.Alias })},
+	{"X9_CERTIFICATE_PRIVATEKEYSTORE_ENFORCEDALIAS", "certificate.private-keystore.enforced-alias", setString(func(c *Config) *string { return &c.Certificate.PrivateKeystore.EnforcedAlias })},
+	{"X9_CERTIFICATE_TRUSTSTORE_LOCATION", "certificate.truststore.location", setString(func(c *Config) *string { return &c.Certificate.Truststore.Location })},
+	{"X9_CERTIFICATE_TRUSTSTORE_TYPE", "certificate.truststore.type", setString(func(c *Config) *string { return &c.Certificate.Truststore.Type })},
+	{"X9_CERTIFICATE_TRUSTSTORE_PASSWORD", "certificate.truststore.password", setString(func(c *Config) *string { return &c.Certificate.Truststore.Password })},
+	{"X9_CERTIFICATE_TRUSTSTORE_ALIAS", "certificate.truststore.alias", setString(func(c *Config) *string { return &c.Certificate.Truststore.Alias })},
+	{"KEYSTORE_RELOAD_FREQUENCY", "keystore.reload.frequency", setInt(func(c *Config) *int { return &c.Keystore.Reload.Frequency })},
+}
+
+// unsupportedKeystoreVars are the Java build's HSM and provider settings, each with the value it
+// has by default there. Any other value is refused: the Go build signs only with a file-backed key
+// (ADR-0027; a PKCS#11 signer is deferred until a deployment needs it).
+var unsupportedKeystoreVars = []struct{ suffix, javaDefault string }{
+	{"PROVIDER", ""},
+	{"EXTERNALPROVIDERCLASS", ""},
+	{"LOADSTRATEGY", "LOAD_INPUT_STREAM"},
+	{"PKCS11_CONFIGFILEPATH", ""},
+	{"PKCS11_CONFIGURABLEBASEPROVIDER", "SunPKCS11"},
+	{"HSMENABLED", "false"},
 }
 
 // envName returns the variable that overrides key, for error messages.
@@ -213,6 +293,9 @@ func Load(path string, env []string) (Config, error) {
 			vars[name] = value
 		}
 	}
+	if err := refuseEncryptedValues(vars); err != nil {
+		return Config{}, err
+	}
 	var errs []error
 	for _, e := range envVars {
 		v, ok := vars[e.name]
@@ -223,6 +306,9 @@ func Load(path string, env []string) (Config, error) {
 			errs = append(errs, fmt.Errorf("%s (%s): %w", e.key, e.name, err))
 		}
 	}
+	errs = append(errs, refuseUnsupportedKeystores(vars)...)
+	cfg.Certificate.PrivateKeystore.Location = trimFileScheme(cfg.Certificate.PrivateKeystore.Location)
+	cfg.Certificate.Truststore.Location = trimFileScheme(cfg.Certificate.Truststore.Location)
 	errs = append(errs, cfg.validate()...)
 	if len(errs) > 0 {
 		return Config{}, fmt.Errorf("invalid configuration:\n%w", errors.Join(errs...))
@@ -248,6 +334,51 @@ func refuseOldEnvironment(env []string) error {
 	}
 	return fmt.Errorf("%w: the environment sets %s, which the Java build read and this build does not; "+
 		"convert the configuration with %s and remove them (ADR-0031)", ErrOldConfiguration, strings.Join(found, ", "), Converter)
+}
+
+// refuseEncryptedValues refuses a Jasypt ENC(…) value in any variable this service reads. Go never
+// decrypts Jasypt: the converter decrypts it once and writes the plain secret (ADR-0027, ADR-0031).
+func refuseEncryptedValues(vars map[string]string) error {
+	var found []string
+	for _, e := range envVars {
+		if strings.Contains(vars[e.name], "ENC(") {
+			found = append(found, e.name)
+		}
+	}
+	if len(found) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w: %s holds a Jasypt ENC(…) value, which this build never decrypts; "+
+		"decrypt it once with %s, which writes the plain secret, and pass that instead (ADR-0031)",
+		ErrOldConfiguration, strings.Join(found, ", "), Converter)
+}
+
+func refuseUnsupportedKeystores(vars map[string]string) []error {
+	var errs []error
+	for _, store := range []string{"PRIVATEKEYSTORE", "TRUSTSTORE"} {
+		for _, u := range unsupportedKeystoreVars {
+			name := "X9_CERTIFICATE_" + store + "_" + u.suffix
+			v, ok := vars[name]
+			if !ok || strings.EqualFold(strings.TrimSpace(v), u.javaDefault) {
+				continue
+			}
+			errs = append(errs, fmt.Errorf("%s: %q selects an HSM or a security provider, which the Go build does not "+
+				"support yet: it signs with a PKCS#12 or PEM file (ADR-0027); unset it, or stay on the Java build", name, v))
+		}
+	}
+	return errs
+}
+
+// trimFileScheme drops Spring's file: prefix (file:/x, file:///x), which the Java build's
+// documented values carry, so that the same variable keeps its meaning.
+func trimFileScheme(location string) string {
+	if rest, ok := strings.CutPrefix(location, "file://"); ok {
+		return rest
+	}
+	if rest, ok := strings.CutPrefix(location, "file:"); ok {
+		return rest
+	}
+	return location
 }
 
 // springKeys are top-level keys that only a Spring configuration has.
@@ -411,10 +542,43 @@ func (c Config) validate() []error {
 	if c.Reservation.TTLSeconds < 0 {
 		errs = append(errs, problem("reservation.ttl-seconds", "must not be negative (0 means no window), got %d", c.Reservation.TTLSeconds))
 	}
+	errs = append(errs, c.Certificate.validate()...)
+	if c.Keystore.Reload.Frequency < 1 {
+		errs = append(errs, problem("keystore.reload.frequency", "must be at least 1 (milliseconds), got %d", c.Keystore.Reload.Frequency))
+	}
 	if c.Testing.ClockControl {
 		errs = append(errs, problem("testing.clock-control",
 			"the movable test clock is not available in this build yet: its listener and certificate guard need the signing keys (ADR-0033)"))
 	}
+	return errs
+}
+
+var keystoreTypes = map[string]bool{"": true, "JKS": true, "PKCS12": true, "PEM": true}
+
+func (c Certificate) validate() []error {
+	var errs []error
+	store := func(prefix, location, typ string) {
+		switch t := strings.ToUpper(strings.TrimSpace(typ)); {
+		case t == "PKCS11":
+			errs = append(errs, problem(prefix+".type", "PKCS11 (an HSM) is not supported by the Go build yet (ADR-0027); "+
+				"use a PKCS#12 or PEM file, or stay on the Java build"))
+		case !keystoreTypes[t]:
+			errs = append(errs, problem(prefix+".type", "must be PKCS12 or PEM (JKS is accepted as a name, as in Java, "+
+				"but a JKS file is refused); got %q", typ))
+		}
+		switch {
+		case location == "":
+		case strings.HasPrefix(location, "classpath:"):
+			errs = append(errs, problem(prefix+".location", "%q is a Java classpath location; leave it empty for the "+
+				"bundled demo identity, or mount the file and give its path (%s converts the configuration, ADR-0031)", location, Converter))
+		default:
+			if _, err := os.Stat(location); err != nil {
+				errs = append(errs, problem(prefix+".location", "cannot be read: %v", err))
+			}
+		}
+	}
+	store("certificate.private-keystore", c.PrivateKeystore.Location, c.PrivateKeystore.Type)
+	store("certificate.truststore", c.Truststore.Location, c.Truststore.Type)
 	return errs
 }
 

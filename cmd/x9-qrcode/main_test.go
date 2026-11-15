@@ -21,6 +21,7 @@ import (
 
 	"github.com/matera-inc/x9.150-qrcode/internal/database"
 	"github.com/matera-inc/x9.150-qrcode/internal/dbtest"
+	"github.com/matera-inc/x9.150-qrcode/internal/keys"
 	"github.com/matera-inc/x9.150-qrcode/internal/leaktest"
 )
 
@@ -134,6 +135,25 @@ func TestRunLogsJSONWithTraceIDs(t *testing.T) {
 	}
 	if !sawRequest {
 		t.Fatalf("no request line in:\n%s", out.String())
+	}
+	// S8.2-AC4: with no keystore configured, the bundled demo identity signs, and a WARN says it is
+	// NON-PRODUCTION.
+	if !strings.Contains(out.String(), keys.DemoFingerprint) || !strings.Contains(out.String(), "NON-PRODUCTION") {
+		t.Errorf("no demo identity warning in:\n%s", out.String())
+	}
+}
+
+// S8.2-AC1: a JKS keystore is refused at start, naming the conversion; the database is never
+// reached.
+func TestRunRefusesAJKSTruststore(t *testing.T) {
+	env := []string{
+		"DATABASE_HOST=127.0.0.1", "DATABASE_PORT=1", "DATABASE_NAME=bank", "DATABASE_USER=app", "DATABASE_PASSWORD=pw",
+		"DATABASE_SSLMODE=disable",
+		"X9_CERTIFICATE_TRUSTSTORE_LOCATION=file:../../x9-qrcode-infrastructure/src/test/resources/certificate/x9-test-truststore.jks",
+	}
+	err := run(t.Context(), nil, env, io.Discard)
+	if err == nil || !errors.Is(err, keys.ErrUnsupportedFormat) || !strings.Contains(err.Error(), "x9-config-convert") {
+		t.Fatalf("err = %v, want a JKS refusal naming x9-config-convert", err)
 	}
 }
 

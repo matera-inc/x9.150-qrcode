@@ -28,6 +28,7 @@ import (
 	"github.com/matera-inc/x9.150-qrcode/internal/database"
 	"github.com/matera-inc/x9.150-qrcode/internal/health"
 	"github.com/matera-inc/x9.150-qrcode/internal/httplog"
+	"github.com/matera-inc/x9.150-qrcode/internal/keys"
 )
 
 // Stamped at build time with -ldflags "-X main.version=… -X main.commit=…".
@@ -68,7 +69,24 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	}
 	logger := httplog.NewLogger(stdout, cfg.Log.SlogLevel())
 	slog.SetDefault(logger)
-	logger.Info("x9-qrcode starting", "version", version, "commit", commit, "database", cfg.Database)
+	logger.Info("x9-qrcode starting", "version", version, "commit", commit, "database", cfg.Database,
+		"certificate", cfg.Certificate)
+
+	// ── 1b. The signing keys and the truststore, re-read on a timer until shutdown ──────────
+	keyStore, err := keys.Load(cfg.Certificate, logger)
+	if err != nil {
+		return fmt.Errorf("loading the signing keys: %w", err)
+	}
+	reloadCtx, stopReload := context.WithCancel(ctx)
+	reloading := make(chan struct{})
+	go func() {
+		defer close(reloading)
+		keyStore.Run(reloadCtx, time.Duration(cfg.Keystore.Reload.Frequency)*time.Millisecond)
+	}()
+	defer func() {
+		stopReload()
+		<-reloading
+	}()
 
 	// ── 2. Database pools (they connect lazily) and the health probes ─────────────────────────
 	pools, err := database.Open(ctx, cfg.Database)
