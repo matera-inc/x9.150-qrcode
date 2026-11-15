@@ -15,11 +15,35 @@ package com.matera.x9qrcode.app.exception;
  * <p>Separate from a refusal on purpose. "The payee said no" and "we never got an answer" look alike
  * from a distance and call for opposite things: one is a decision to act on, the other is a delivery
  * to attempt again. Collapsing them would leave a payer unable to tell a rejection from an outage.
+ *
+ * <p>Also raised, with its own {@link #detail()}, for an answer that cannot be tied to the question:
+ * a pre-commit notification whose answer carries no correlationId, or another one, has no answer
+ * this service can trust (owner, 2026-11-15; ADR-0027).
  */
 public class NotificationUndeliverableException extends ServiceException {
 
+    /** The detail of a pre-commit answer that does not carry the correlationId sent. */
+    public static final String DETAIL_BAD_CORRELATION_ID =
+        "failed to pay - payee is not responding (bad correlationId)";
+
+    private final String detail;
+
     public NotificationUndeliverableException(String message, Throwable cause) {
         super(message, cause);
+        this.detail = null;
+    }
+
+    /**
+     * @param detail the problem's detail, in place of the one for an answer not received
+     */
+    public NotificationUndeliverableException(String message, String detail) {
+        super(message);
+        this.detail = detail;
+    }
+
+    /** The problem's detail when it is not the usual one; null for the usual one. */
+    public String detail() {
+        return detail;
     }
 
 }

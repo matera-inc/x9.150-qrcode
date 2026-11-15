@@ -52,6 +52,7 @@ import com.nimbusds.jose.jwk.KeyUse;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.util.Base64;
 import com.nimbusds.jose.util.Base64URL;
+import com.nimbusds.jose.util.JSONObjectUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.codec.digest.MessageDigestAlgorithms;
@@ -119,6 +120,9 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
     private static final Set<String> SUPPORTED_CRITICAL_HEADERS =
         Set.of(JWS_HEADER_CORRELATION_ID, JWS_HEADER_IAT, JWS_HEADER_TTL, JWS_HEADER_STATUS_CODE);
 
+    /** The longest header value {@link #headerCorrelationId} returns whole, as Go's clip. */
+    private static final int HEADER_VALUE_CLIP = 64;
+
     /**
      * A UUID in its canonical text form: 8-4-4-4-12 hexadecimal digits, either case (ANSI
      * X9.150-2026 §10.7 step 3.1). {@code UUID.fromString} alone also takes {@code 1-2-3-4-5}.
@@ -182,6 +186,35 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
 
             return SignatureValidationOutput.invalidSignature(SignatureProblemEnumDTO.UNVERIFIABLE,
                 isBlank(e.getMessage()) ? e.getClass().getSimpleName() : e.getMessage());
+        }
+    }
+
+    /**
+     * Reads the header's {@code correlationId} without verifying anything (ADR-0027, amendments of
+     * 2026-11-15): the decoder and the outbound notification tell a bad correlationId from any other
+     * failure by it, and the post-commit record says what came back. Go's
+     * {@code jws.AnsweredCorrelationID} reads it the same way.
+     */
+    @Override
+    public String headerCorrelationId(String jwsToken) {
+        if (isNull(jwsToken)) {
+            return null;
+        }
+        String token = jwsToken.trim();
+        int dot = token.indexOf('.');
+        if (dot < 0) {
+            return null;
+        }
+        try {
+            Object value = JSONObjectUtils.parse(new Base64URL(token.substring(0, dot)).decodeToString())
+                .get(JWS_HEADER_CORRELATION_ID);
+            if (isNull(value)) {
+                return null;
+            }
+            String written = value.toString();
+            return written.length() > HEADER_VALUE_CLIP ? written.substring(0, HEADER_VALUE_CLIP) + "…" : written;
+        } catch (ParseException | RuntimeException notAHeader) {
+            return null;
         }
     }
 

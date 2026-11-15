@@ -132,7 +132,7 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
             Map.of("statusCode", statusCode), correlationId, null, statusCode)).jwsToken();
     }
 
-    private MockMvcResponse notifyPayee() {
+    private MockMvcResponse notifyPayeeAnyStatus() {
         String request = """
             {
               "endpoint": "%s",
@@ -146,8 +146,26 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
             """.formatted(PAYEE);
 
         MockMvcResponse response = given().contentType("application/json").body(request).when().post(PRE_PAYMENT);
+        return response;
+    }
+
+    private MockMvcResponse notifyPayee() {
+        MockMvcResponse response = notifyPayeeAnyStatus();
         assertEquals(HttpStatus.OK.value(), response.statusCode(), response.asString());
         return response;
+    }
+
+    /**
+     * Owner, 2026-11-15 (ADR-0027): a pre-commit answer under no correlationId, or another one, is
+     * refused: 502 notification-undeliverable, "failed to pay - payee is not responding (bad
+     * correlationId)".
+     */
+    private static void assertBadCorrelationIdRefused(MockMvcResponse response) {
+        assertEquals(HttpStatus.BAD_GATEWAY.value(), response.statusCode(), response.asString());
+        assertEquals("https://x9.matera.com/api/notification-undeliverable", response.jsonPath().getString("type"),
+            response.asString());
+        assertEquals("failed to pay - payee is not responding (bad correlationId)",
+            response.jsonPath().getString("detail"), response.asString());
     }
 
     private static void assertReported(MockMvcResponse response, int statusCode, boolean accepted, String signature) {
@@ -201,16 +219,18 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
     // ---------------------------------------------------------------------------------- INVALID
 
     /**
-     * <b>X9-SIG-132</b> — a signed yes under another correlationId is INVALID, and still an unsigned yes.
+     * <b>X9-SIG-132</b> — a signed yes to a pre-commit notification, under another correlationId, is
+     * refused: 502, "failed to pay - payee is not responding (bad correlationId)".
      *
-     * <p><b>Source:</b> ANSI X9.150-2026 §10.3.2 (the responder echoes correlationId). S2.3-AC6; Story
-     * 3.5 cases 2 and 4.
+     * <p><b>Source:</b> ANSI X9.150-2026 §10.3.2 (the responder echoes correlationId). Story 3.5 cases
+     * 2 and 4. Owner, 2026-11-15 (ADR-0027): before the money moves, an answer that is not tied to
+     * the question is no answer. Until then it was reported INVALID, CORRELATION_ID_MISMATCH, in a 200.
      *
      * <p><b>Why:</b> A correctly signed yes to some other question, replayed, must not pass for the
-     * answer to this one. It is reported, not refused: the payer decides what it is worth.
+     * answer to this one; and a payer must not pay on it.
      */
     @Test
-    void aSignedYesUnderAnotherCorrelationIdIsInvalid() {
+    void aSignedYesUnderAnotherCorrelationIdIsRefusedBeforeTheMoneyMoves() {
         answering.set(received -> {
             String yes = signed(200, correlationIdOf(received));
             lastSignedYes.set(yes);
@@ -220,10 +240,8 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
         String replayed = lastSignedYes.get();
 
         answering.set(received -> new Answer(200, replayed));
-        MockMvcResponse response = notifyPayee();
 
-        assertReported(response, 200, true, "INVALID");
-        assertProblem(response, "CORRELATION_ID_MISMATCH");
+        assertBadCorrelationIdRefused(notifyPayeeAnyStatus());
     }
 
     /**
@@ -432,8 +450,9 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
     }
 
     /**
-     * <b>X9-SIG-143</b> — a correctly signed answer with an unknown {@code crit} header, or without a
-     * {@code correlationId} header, is INVALID, {@code BAD_HEADER}.
+     * <b>X9-SIG-143</b> — a correctly signed answer with an unknown {@code crit} header is INVALID,
+     * {@code BAD_HEADER}; one without a {@code correlationId} header, to a pre-commit notification, is
+     * refused, 502 (owner, 2026-11-15).
      *
      * <p><b>Source:</b> RFC 7515 §4.1.11 (crit); ANSI X9.150-2026 §10.3.2. Story 3.5 cases 13 and 3.
      *
@@ -459,9 +478,8 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
             params.remove("correlationId");
             return new JWSHeader.Builder(header).customParams(params).build();
         })));
-        MockMvcResponse noCorrelationId = notifyPayee();
-        assertReported(noCorrelationId, 200, true, "INVALID");
-        assertProblem(noCorrelationId, "BAD_HEADER");
+        // Owner, 2026-11-15 (ADR-0027): before the money moves, no correlationId is refused.
+        assertBadCorrelationIdRefused(notifyPayeeAnyStatus());
     }
 
     /** Signed by this deployment while its clock reads {@code offsetSeconds} away from now. */

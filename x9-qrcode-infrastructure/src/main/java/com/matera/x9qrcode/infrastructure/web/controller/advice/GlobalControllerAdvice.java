@@ -30,6 +30,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import static com.matera.x9qrcode.infrastructure.web.controller.advice.error.ErrorTypeEnum.BUSINESS_RULE;
@@ -223,7 +224,10 @@ public class GlobalControllerAdvice {
         ProblemDetail problemDetail = ProblemDetail.forStatus(NOTIFICATION_UNDELIVERABLE.status());
         problemDetail.setTitle(NOTIFICATION_UNDELIVERABLE.title());
         problemDetail.setType(NOTIFICATION_UNDELIVERABLE.uriType());
-        problemDetail.setDetail(NOTIFICATION_UNDELIVERABLE.description());
+        // The type stays notification-undeliverable (ADR-0028 freezes the list); an answer that
+        // cannot be tied to the question says so in its own detail.
+        problemDetail.setDetail(Objects.isNull(ex.detail())
+            ? NOTIFICATION_UNDELIVERABLE.description() : ex.detail());
 
         return problemDetail;
     }

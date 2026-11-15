@@ -93,7 +93,14 @@ public class RestClientOutboundNotificationService implements QRCodeOutboundNoti
                 "Could not deliver the payment notification to %s".formatted(endpoint), unreachable);
         }
 
-        return checkAnswer(response.getStatusCode().value(), response.getBody(), callCorrelationId);
+        OutboundNotificationResult checked =
+            checkAnswer(response.getStatusCode().value(), response.getBody(), callCorrelationId);
+
+        // What the answer's header says it answers, read whatever the verdict, for the caller to tell
+        // a bad correlationId from any other failure (ADR-0027, amendments of 2026-11-15).
+        return new OutboundNotificationResult(checked.statusCode(), checked.body(), checked.signature(),
+            checked.signatureProblem(), checked.signatureDetail(),
+            isBlank(response.getBody()) ? null : qrCodeSignatureService.headerCorrelationId(response.getBody()));
     }
 
     /**
@@ -138,7 +145,7 @@ public class RestClientOutboundNotificationService implements QRCodeOutboundNoti
                 "statusCode mismatch: HTTP %d, signed %d".formatted(httpStatus, signedStatus));
         }
 
-        return new OutboundNotificationResult(signedStatus, body, AnswerSignatureEnumDTO.VERIFIED, null, null);
+        return new OutboundNotificationResult(signedStatus, body, AnswerSignatureEnumDTO.VERIFIED, null, null, null);
     }
 
     private static Integer signedStatusCode(String verifiedJws) {
@@ -175,7 +182,7 @@ public class RestClientOutboundNotificationService implements QRCodeOutboundNoti
 
         log.warn("Payee answer reported as {} ({}: {}), HTTP {}", signature, problem, detail, httpStatus);
 
-        return new OutboundNotificationResult(httpStatus, body, signature, problem, detail);
+        return new OutboundNotificationResult(httpStatus, body, signature, problem, detail, null);
     }
 
     /**
