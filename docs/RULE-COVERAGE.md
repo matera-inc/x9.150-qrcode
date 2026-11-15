@@ -77,8 +77,7 @@ that is here must still be marked `GAP`.
 
 | Rule | Why there is no test | Recommendation |
 |---|---|---|
-
-None today.
+| `R-ADR0027-06` | In Java the JDK's OCSP checker gives these answers, and the suite's responder (`x9client.ocsp`) can only answer correctly. Go's `internal/pki` tests them in Story 8.3 (#143), not yet merged. | Name Go's tests here once #143 is merged; for Java, add modes to `x9client.ocsp.OcspResponder` that answer each way. |
 
 ## STATE-MACHINE.md
 
@@ -160,8 +159,9 @@ None today.
 | `R-EP-23` | The stream returns every QR Code's events for the deployment; there is no filter. | `X9-EVT-050` | `S4.4-AC2` |
 | `R-EP-24` | The loc URL fits in tag 26 (99 characters), so the host is at most 37 characters. | `X9-LOC-425` | `S4.2-AC1`, `S4.2-AC2` |
 | `R-EP-25` | A host longer than 37 characters is rejected at startup. | `X9-LOC-480` | — |
-| `R-EP-26` | A payer fetches a payload or a JWK set from another host over `https` only. | `X9-LOC-481`, `X9-LOC-482` | — |
+| `R-EP-26` | A payer fetches a payload or a JWK set from another host over `https` only. | `X9-LOC-481`, `X9-LOC-482`, `X9-LOC-483` | — |
 | `R-EP-27` | A PATCH is checked on its merged result: `dueDate` and every payment method's `validUntil` no later than `validUntil`, whichever side it moved; a refused PATCH changes nothing, the revision included. | `X9-PATCH-040`, `X9-PATCH-041`, `X9-PATCH-426` | — |
+| `R-EP-28` | A URL is this deployment's own only when its host, port included, is the configured host (case-insensitive); a URL that only mentions that host is another host's. | `X9-LOC-483`, `X9-LOC-484`, `X9-SIG-068`, `X9-LOC-312` | — |
 
 ## INTERPRETATION.md
 
@@ -320,6 +320,19 @@ the ADR that changed it.
 | `R-ADR0021-05` | `NOT_SENT` from anybody else is 409. | `X9-HOLD-023` | — |
 | `R-ADR0021-06` | A holder whose window has lapsed may still report `SENT`. | `X9-TIME-008` | `S2.5-AC5`, `S4.5-AC1` |
 | `R-ADR0021-07` | The payment event carries `payerInfo`, null when the payer sent none. | `X9-HOLD-013`, `X9-HOLD-014` | — |
+
+## ADR-0027: certificate fetching and revocation
+
+The rules both builds must agree on ("Certificate fetching" and "Revocation, parity with Java").
+
+| Rule | What it says | Tests | Proves |
+|---|---|---|---|
+| `R-ADR0027-01` | A `jku` or `x5u` is fetched over `https`, without user information, unless its host, port included, is the deployment's own; a URL that only mentions that host is another host's. | `X9-LOC-483`, `X9-LOC-484`, `X9-SIG-068`, `X9-LOC-312` | — |
+| `R-ADR0027-02` | A revocation source the end entity names but that cannot be reached soft-fails: CRL and OCSP, OCSP only, or CRL only. | `X9-SIG-055`, `X9-SIG-056`, `X9-SIG-057`, `X9-SIG-058`, `X9-LOC-307` | `S4.3-AC1` |
+| `R-ADR0027-03` | A named CRL that answers with something that is not a CRL soft-fails as an unreachable one does: accepted alone or beside an unreachable OCSP responder; with a responder that answers, OCSP decides. | `X9-SIG-064`, `X9-SIG-065`, `X9-SIG-066`, `X9-SIG-067`, `X9-LOC-307`, `X9-LOC-311` | `S4.3-AC1` |
+| `R-ADR0027-04` | A CA-issued certificate naming no revocation source is refused. | `X9-SIG-059`, `X9-LOC-308` | `S4.3-AC1` |
+| `R-ADR0027-05` | A certificate a source reports as revoked is refused, by CRL or by OCSP. | `X9-SIG-053`, `X9-LOC-305`, `X9-LOC-306`, `X9-LOC-311` | `S4.3-AC1` |
+| `R-ADR0027-06` | These OCSP answers are refused, not soft-failed: an error status other than `tryLater` or `internalError`, a signature by an unauthorised responder, a delegated responder without `OCSPSigning`, an out-of-date answer, no answer for the certificate. | GAP | — |
 
 ## ADR-0035: the transition map
 

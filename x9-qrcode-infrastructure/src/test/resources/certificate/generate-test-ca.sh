@@ -29,6 +29,10 @@ CRL_URI_REVOKED="http://127.0.0.1:${CRL_PORT}/test-ca-revoked.crl"
 # listens, so the fetch is refused at once rather than timing out. Used by the soft-fail leaves
 # (BUG-003): each has its own path, so no cached result of one can answer for another.
 UNREACHABLE="http://127.0.0.1:1"
+# A CRL source that answers, but with something that is not a CRL (an HTML error page): the test's
+# own server serves one under this prefix. A named source that cannot be read soft-fails, like one
+# that cannot be reached (owner, 2026-11-15; ADR-0027).
+UNREADABLE="http://127.0.0.1:${CRL_PORT}/not-a-crl"
 DAYS_CA=7300                           # 20y: a fixture that expires is a test that breaks mysteriously
 DAYS_LEAF=7300
 DAYS_CRL=7300
@@ -36,6 +40,9 @@ DAYS_CRL=7300
 rm -f x9-test-ca.p12 x9-test-payer.p12 x9-test-payer-ec.p12 x9-test-payer-revoked.p12 \
       x9-test-payer-crl-unreachable.p12 x9-test-payer-ocsp-unreachable.p12 \
       x9-test-payer-both-unreachable.p12 x9-test-payer-no-revocation.p12 \
+      x9-test-payer-crl-unreadable.p12 x9-test-payer-crl-unreadable-payload.p12 \
+      x9-test-payer-crl-unreadable-ocsp-unreachable.p12 \
+      x9-test-payer-crl-unreadable-ocsp-unreachable-payload.p12 \
       x9-test-untrusted-ca.p12 x9-test-untrusted-payer.p12 x9-test-truststore.jks \
       test-ca.crl test-ca-revoked.crl ./*.cer ./*.csr ./*-chain.pem
 
@@ -124,6 +131,26 @@ issue x9-test-ca.p12 x9-test-ca x9-test-payer-both-unreachable.p12 x9-test-payer
   "CN=Test Payer PSP Both Unreachable,O=Example PSP,C=US" "$UNREACHABLE/both.crl" "$UNREACHABLE/both-ocsp"
 issue x9-test-ca.p12 x9-test-ca x9-test-payer-no-revocation.p12 x9-test-payer-no-revocation \
   "CN=Test Payer PSP No Revocation Source,O=Example PSP,C=US" "" ""
+
+# A CRL source that answers with an HTML page instead of a CRL: alone, and beside an unreachable
+# OCSP responder. Both soft-fail, as an unreachable CRL does. Each case has one leaf per payer
+# endpoint, each with its own distribution point: the JDK does not fetch a URL again within 30
+# seconds of a failed fetch and answers "no CRL" instead, so a shared URL would make the second
+# test pass whatever the first one proved.
+say "6c   Payer leaves whose CRL answers with something that is not a CRL"
+issue x9-test-ca.p12 x9-test-ca x9-test-payer-crl-unreadable.p12 x9-test-payer-crl-unreadable \
+  "CN=Test Payer PSP CRL Unreadable,O=Example PSP,C=US" "$UNREADABLE/crl-only.crl" ""
+issue x9-test-ca.p12 x9-test-ca x9-test-payer-crl-unreadable-payload.p12 \
+  x9-test-payer-crl-unreadable-payload \
+  "CN=Test Payer PSP CRL Unreadable Payload,O=Example PSP,C=US" "$UNREADABLE/crl-only-payload.crl" ""
+issue x9-test-ca.p12 x9-test-ca x9-test-payer-crl-unreadable-ocsp-unreachable.p12 \
+  x9-test-payer-crl-unreadable-ocsp-unreachable \
+  "CN=Test Payer PSP CRL Unreadable OCSP Unreachable,O=Example PSP,C=US" \
+  "$UNREADABLE/with-ocsp.crl" "$UNREACHABLE/unreadable-ocsp"
+issue x9-test-ca.p12 x9-test-ca x9-test-payer-crl-unreadable-ocsp-unreachable-payload.p12 \
+  x9-test-payer-crl-unreadable-ocsp-unreachable-payload \
+  "CN=Test Payer PSP CRL Unreadable OCSP Unreachable Payload,O=Example PSP,C=US" \
+  "$UNREADABLE/with-ocsp-payload.crl" "$UNREACHABLE/unreadable-ocsp-payload"
 
 say "7/8  Truststore holding ONLY the Test Root CA"
 keytool -importcert -noprompt -alias x9-test-ca -file x9-test-ca.cer \

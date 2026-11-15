@@ -78,7 +78,9 @@ properties.
 - no credentials;
 - connect and read timeouts;
 - a size cap;
-- HTTPS only, except the deployment's own host;
+- HTTPS only, except the deployment's own host: the URL's host, port included, equal to
+  `x9.public-endpoints.host` (case-insensitive), never a URL that merely contains that string
+  (BUG-005, fixed in Java 2026-11-15);
 - results cached by `x5t#S256` (the cache skips the fetch, never the checks).
 
 **Revocation, parity with Java:**
@@ -90,17 +92,41 @@ properties.
 4. **Soft-fail** when neither answers. A listed or revoked serial refuses.
 5. Self-signed end entities skip revocation.
 
-The one rule steps 2 to 4 give, and the four answers both builds must agree on: a revocation source
-the certificate **names but that cannot be reached** soft-fails; a certificate a source reports as
-**revoked** is refused; a CA-issued certificate that **names no source at all** is refused, since
-nothing could ever revoke it.
+The one rule steps 2 to 4 give, and the answers both builds must agree on: a revocation source
+the certificate **names but that cannot be reached, or cannot be read**, soft-fails; a certificate
+a source reports as **revoked** is refused; a CA-issued certificate that **names no source at all**
+is refused, since nothing could ever revoke it.
 
-| Sources the end entity names, none reachable | Answer | Pinned by |
+| Sources the end entity names, and what they answer | Answer | Pinned by |
 |---|---|---|
-| CRL and OCSP | accepted (soft-fail) | `X9-SIG-058`, `X9-LOC-307` |
-| OCSP only | accepted (soft-fail) | `X9-SIG-057`, `X9-LOC-307` |
-| CRL only | accepted (soft-fail) | `X9-SIG-055`, `X9-SIG-056`, `X9-LOC-307` |
+| CRL and OCSP, neither reachable | accepted (soft-fail) | `X9-SIG-058`, `X9-LOC-307` |
+| OCSP only, unreachable | accepted (soft-fail) | `X9-SIG-057`, `X9-LOC-307` |
+| CRL only, unreachable | accepted (soft-fail) | `X9-SIG-055`, `X9-SIG-056`, `X9-LOC-307` |
 | neither | refused | `X9-SIG-059`, `X9-LOC-308` |
+| CRL named, answers with something that is not a CRL (an HTML error page); no OCSP, or OCSP unreachable | accepted (soft-fail) | `X9-SIG-064` to `X9-SIG-067`, `X9-LOC-307` |
+| CRL named, answers with something that is not a CRL; OCSP answers | OCSP decides: good accepted, revoked refused | `X9-LOC-311` |
+
+**A CRL that is not a CRL** (owner, 2026-11-15: "a named source that can't be read soft-fails").
+The JDK refuses it: the parse fails with a `CRLException`, which `SOFT_FAIL` does not forgive, as
+it forgives an `IOException`. Java now validates the chain again as if the CRL had been
+unreachable: with no OCSP responder named, without revocation; with one, on OCSP alone, which
+still soft-fails when the responder cannot be reached. A CRL with a bad signature already
+soft-failed (the JDK discards it and finds no CRL), and still does. A CRL that is read and lists
+the certificate refuses, as before.
+
+**OCSP answers that are refused, not soft-failed**, in the JDK and in Go's `internal/pki` alike
+(owner, 2026-11-15). They are answers, not a responder that cannot be reached, so `SOFT_FAIL`
+does not cover them:
+
+- an error status other than `tryLater` or `internalError` (`malformedRequest`, `sigRequired`,
+  `unauthorized`); those two soft-fail;
+- an answer signed by a responder that is neither the issuer nor authorised by it;
+- a delegated responder certificate without the `OCSPSigning` extended key usage;
+- an out-of-date answer (`nextUpdate` passed, or `thisUpdate` in the future, beyond the 15-minute
+  clock skew the JDK allows);
+- an answer with no response for the certificate asked about.
+
+An answer that cannot be parsed at all is unreadable, and soft-fails.
 
 The test CA covers each branch: valid, revoked by CRL, revoked by OCSP, no responder, untrusted, EC.
 

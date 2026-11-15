@@ -20,6 +20,10 @@ using only `keytool` (plus `bc` for one hex→decimal conversion) if you ever ne
 | `x9-test-payer-ocsp-unreachable.p12` | Names only an OCSP responder, on `127.0.0.1:1` |
 | `x9-test-payer-both-unreachable.p12` | Names a CRL and an OCSP responder, both on `127.0.0.1:1` |
 | `x9-test-payer-no-revocation.p12` | Names no revocation source at all — refused, as it should be |
+| `x9-test-payer-crl-unreadable.p12` | Names only a CRL, on the test's server, which answers with an HTML page |
+| `x9-test-payer-crl-unreadable-payload.p12` | The same, its own distribution point, for the payload endpoint |
+| `x9-test-payer-crl-unreadable-ocsp-unreachable.p12` | That CRL, plus an OCSP responder on `127.0.0.1:1` |
+| `x9-test-payer-crl-unreadable-ocsp-unreachable-payload.p12` | The same, its own distribution point, for the payload endpoint |
 | `x9-test-untrusted-ca.p12` | A CA in **no** truststore |
 | `x9-test-untrusted-payer.p12` | Leaf from that unknown issuer |
 | `x9-test-truststore.jks` | Holds **only** the Test Root CA |
@@ -56,6 +60,11 @@ outright with `UNDETERMINED_REVOCATION_STATUS`: `SOFT_FAIL` tolerates a revocati
 *unreachable*, not one being *absent*. A leaf without a CDP would make the tests fail for a reason
 that has nothing to do with what they check. (`x9-test-payer-no-revocation.p12` exists to pin
 exactly that refusal; the three `*-unreachable` leaves pin the soft-fail, BUG-003.)
+
+The `*-unreadable` leaves were issued from the committed CA without regenerating the others
+(step 6c of the script). Each endpoint has its own leaf because, within 30 seconds of a failed
+fetch, the JDK does not fetch a distribution point again and answers "no CRL" instead, which
+soft-fails: a second test sharing the URL would pass whatever the code did.
 
 The revoked leaf uses its **own** distribution point rather than sharing one and swapping the file,
 because the JDK caches a fetched CRL — sharing a URL would make the revocation test depend on
