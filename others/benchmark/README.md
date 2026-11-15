@@ -83,7 +83,13 @@ others/benchmark/host.sh down             # stop the VM; `delete` removes it and
 CPUs and memory. `ALLOW_OTHER_VMS=1` overrides that for a **rehearsal**, and `env` then says so in
 `BENCH_VIRTUALISATION`, which every run records. A measurement runs on a machine doing nothing else.
 `up` checks Kubernetes 1.29 or later, 6 vCPU and 6.3 GiB allocatable on one node, and a default
-StorageClass, and leaves your current kube context as it was.
+StorageClass, and leaves your current kube and Docker contexts as they were.
+
+To run in a machine's existing Colima instead of adding a second VM (one VM per machine is the
+simplest way to keep nothing else running), set `BENCH_PROFILE=default`: `up` then only checks it,
+and `env` points at it (context `colima`). Size it first, e.g.
+`colima stop && colima start --cpu 8 --memory 12 --runtime docker --kubernetes`. Leave macOS at
+least 4 GiB.
 
 ### 1. Build the images
 

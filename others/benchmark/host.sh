@@ -46,12 +46,12 @@ die() { say "FAIL  $*"; exit 1; }
 check() {
   [ "$(uname -s)" = Darwin ] || die "this script sets up Colima on macOS; on Linux use any Kubernetes 1.29+ (README)"
   local missing=() tool
-  for tool in colima docker kubectl python3 openssl keytool java curl gzip git; do
+  for tool in colima docker kubectl python3 openssl keytool java mvn curl gzip git; do
     command -v "$tool" >/dev/null || missing+=("$tool")
   done
   if [ ${#missing[@]} -gt 0 ]; then
     say "missing: ${missing[*]}"
-    say "install with Homebrew: brew install colima docker kubectl python openssl git && brew install --cask temurin@25"
+    say "install with Homebrew: brew install colima docker kubectl python openssl git maven && brew install --cask temurin@25"
     exit 1
   fi
   local jv
@@ -85,12 +85,19 @@ up() {
     say "starting Colima profile $PROFILE: $CPUS vCPU, $MEMORY GiB, $DISK GiB disk, Kubernetes on docker"
     local previous
     previous="$(kubectl config current-context 2>/dev/null || true)"
+    local previous_docker
+    previous_docker="$(DOCKER_HOST="" docker context show 2>/dev/null || true)"
     colima start -p "$PROFILE" --cpu "$CPUS" --memory "$MEMORY" --disk "$DISK" \
       --runtime docker --kubernetes --vm-type vz >&2
     # Colima makes its context the current one; the campaign never relies on that (KUBE_CONTEXT),
     # so give the operator's kubectl back the context it had.
     if [ -n "$previous" ] && [ "$previous" != "$CONTEXT" ]; then
       kubectl config use-context "$previous" >/dev/null
+    fi
+    # Colima switches the Docker CLI's context too; the campaign uses DOCKER_HOST (env), so give
+    # the operator's Docker back the context it had, or every other tool talks to this VM.
+    if [ -n "$previous_docker" ] && [ "$previous_docker" != "$CONTEXT" ]; then
+      DOCKER_HOST="" docker context use "$previous_docker" >/dev/null 2>&1 || true
     fi
   fi
   verify
@@ -117,6 +124,11 @@ best = max(nodes, key=lambda n: cpu(n["status"]["allocatable"]["cpu"]))
 c, m = cpu(best["status"]["allocatable"]["cpu"]), mem(best["status"]["allocatable"]["memory"]) / 2**30
 assert c >= 6 and m >= 6.3, f"a node has {c} vCPU / {m:.1f} GiB allocatable; the campaign needs 6 vCPU / 6.3 GiB"
 print(f"allocatable on one node: {c:g} vCPU, {m:.1f} GiB: ok", file=sys.stderr)'
+  # k3s installs its local-path StorageClass a little after the node is Ready.
+  local tries=0
+  until kubectl --context "$CONTEXT" get storageclass -o name 2>/dev/null | grep -q . || [ $tries -ge 60 ]; do
+    tries=$((tries + 1)); sleep 2
+  done
   kubectl --context "$CONTEXT" get storageclass -o json | python3 -I -c '
 import json, sys
 d = [s["metadata"]["name"] for s in json.load(sys.stdin)["items"]
