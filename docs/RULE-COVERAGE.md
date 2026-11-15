@@ -238,7 +238,7 @@ that is here must still be marked `GAP`.
 | `R-I12-05` | Every answer from the endpoint is signed, also a 400 or 415 refused before the controller and an unmapped 500. | `X9-SIG-146`, `X9-SIG-147`, `X9-SIG-148`, `X9-SIG-149`, `X9-SIG-523` | `S3.2-AC7` |
 | `R-I12-06` | Sending for a payer, the service checks the payee's answer and reports `signature` as `VERIFIED`, `ABSENT` or `INVALID`. | `X9-SIG-130`, `X9-SIG-131`, `X9-SIG-133`, `X9-SIG-134`, `X9-SIG-136`, `X9-SIG-137`, `X9-SIG-502` | `S2.3-AC6`, `S3.5-AC2`, `S3.5-AC3` |
 | `R-I12-07` | When the answer is not verified, `signatureProblem` is a fixed code from a closed list. | `X9-SIG-135`, `X9-SIG-142`, `X9-SIG-143`, `X9-SIG-506` | `S3.2-AC2` |
-| `R-I12-08` | It reports and never refuses: a 200 that is not verified is an unsigned yes. | `X9-SIG-132`, `X9-SIG-136`, `X9-SIG-138` | `S2.3-AC6` |
+| `R-I12-08` | It reports and never refuses: a 200 that is not verified is an unsigned yes. The one exception is a bad correlationId (`R-ADR0027-13`). | `X9-SIG-136`, `X9-SIG-138`, `X9-SIG-157` | `S2.3-AC6` |
 | `R-I12-09` | A JWS whose `iat + ttl` has passed is refused (`EXPIRED`). | `X9-SIG-141`, `X9-TIME-011` | `S4.5-AC1` |
 | `R-I12-10` | A JWS whose `iat` is ahead of our clock by more than the skew is refused (`FUTURE_IAT`), in questions and in answers. | `X9-SIG-140`, `X9-SIG-144`, `X9-SIG-145` | — |
 | `R-I12-11` | The answer is signed with `typ: JOSE`. | `X9-SIG-151` | — |
@@ -467,14 +467,16 @@ and the black-box suite's.
 Three rules of ANSI X9.150-2026 that Java broke and Go's verifier (Story 8.5) keeps, fixed in Java
 on 2026-11-15 so both builds give the same code; recorded in ADR-0027's verification steps. The Go
 build's tests are in `internal/jws` and `internal/pki`. `R-ADR0027-12` is the owner's rule of the
-same date that every signed answer from another party echoes our correlationId.
+same date that every signed answer from another party echoes our correlationId, and `R-ADR0027-13`
+what a bad one means on each path (owner, later the same day).
 
 | Rule | What it says | Tests | Proves |
 |---|---|---|---|
 | `R-ADR0027-09` | `x5t#S256` must be the thumbprint of the end-entity certificate, the first of the chain (§10.3.1, §10.7 step 7); one naming any other certificate of the chain is refused `UNTRUSTED_CHAIN`, as one naming none is. | `X9-SIG-069`, `X9-SIG-510`, `X9-LOC-304`, `X9-SIG-506` | — |
 | `R-ADR0027-10` | `correlationId` must be a UUID in its canonical form, 8-4-4-4-12 hexadecimal digits in either case (§10.7 step 3.1); any other text is refused `BAD_HEADER`. | `X9-SIG-152`, `X9-SIG-526`, `X9-SIG-510`, `X9-LOC-304`, `X9-SIG-506` | — |
 | `R-ADR0027-11` | A signed answer's body `statusCode` must be a JSON integer within 32 bits (A.4.5 note); a fraction, an exponent or a larger integer is `STATUS_MISSING`, never truncated. | `X9-SIG-153`, `X9-SIG-527` | — |
-| `R-ADR0027-12` | Every signed answer from another party must carry in its header exactly the `correlationId` of the request this service sent, the caller's or the one generated for it (owner, 2026-11-15). The decoder refuses a payload under another id or none (400, `Payload JWS signature is invalid.`); the outbound notification reports such an answer `INVALID`, `CORRELATION_ID_MISMATCH` or `BAD_HEADER`. | `X9-DEC-022`, `X9-DEC-023`, `X9-DEC-024`, `X9-DEC-025`, `X9-DEC-506`, `X9-DEC-507`, `X9-SIG-132`, `X9-SIG-143`, `X9-SIG-502`, `decoder_test.go::TestAPayloadThatDoesNotVerifyIsRefused`, `outbound_test.go::TestTheAnswerIsReported` | — |
+| `R-ADR0027-12` | Every signed answer from another party must carry in its header exactly the `correlationId` of the request this service sent, the caller's or the one generated for it (owner, 2026-11-15). The decoder refuses a payload under another id or none; the outbound notification does not take such an answer as the payee's (what each does: `R-ADR0027-13`). | `X9-DEC-022`, `X9-DEC-023`, `X9-DEC-024`, `X9-DEC-025`, `X9-DEC-506`, `X9-DEC-507`, `X9-SIG-132`, `X9-SIG-143`, `X9-SIG-529`, `decoder_test.go::TestAPayloadThatDoesNotVerifyIsRefused`, `outbound_test.go::TestTheAnswerIsReported` | — |
+| `R-ADR0027-13` | A bad correlationId is `CORRELATION_ID_MISMATCH`, or `BAD_HEADER` with none or another in the header; the verifier's code decides first. The decoder refuses it, 400, `QR Code is invalid (bad correlationId)`. Before the money moves (no `transactionId`) the outbound notification refuses it, 502 notification-undeliverable, `failed to pay - payee is not responding (bad correlationId)`, after one delivery. After it moved, the notification is sent once more under a new correlationId; a good answer is reported, a second bad one (or none) is reported as it is and recorded in a WARN line with the QR Code, the `transactionId`, both correlationIds sent and answered, and when (owner, 2026-11-15). | `X9-DEC-023`, `X9-DEC-024`, `X9-DEC-026`, `X9-DEC-506`, `X9-DEC-507`, `X9-DEC-508`, `X9-SIG-132`, `X9-SIG-143`, `X9-SIG-154`, `X9-SIG-155`, `X9-SIG-156`, `X9-SIG-157`, `X9-SIG-158`, `X9-SIG-506`, `X9-SIG-529`, `X9-SIG-530`, `X9-SIG-531`, `echo_test.go::TestNotEchoed`, `decoder_test.go::TestAPayloadThatDoesNotVerifyIsRefused`, `correlation_test.go::TestABadCorrelationIDBeforeTheMoneyMovesIs502`, `correlation_test.go::TestABadCorrelationIDAfterTheMoneyMovedIsSentOnceMore`, `correlation_test.go::TestABadCorrelationIDTwiceAfterTheMoneyMovedIsRecorded` | — |
 
 ---
 

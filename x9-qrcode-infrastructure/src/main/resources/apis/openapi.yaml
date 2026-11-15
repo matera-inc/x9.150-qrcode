@@ -360,12 +360,21 @@ paths:
                 $ref: "#/components/schemas/BaseError"
         "502":
           description: |-
-            No answer came back from the payee: it could not be reached, it closed the connection
-            without answering, or its whole answer (headers and body) did not arrive within 15
-            seconds. The payee may still have received the notification, so this does not mean that
-            nothing was delivered. Retrying is safe: a payee must tolerate seeing the same
-            notification again. The problem's `detail` reads: "The payee's answer was not received;
-            the payee may have received the notification. Retrying is safe."
+            `type` is `https://x9.matera.com/api/notification-undeliverable`, in one of two cases.
+
+            - **No answer came back from the payee**: it could not be reached, it closed the
+              connection without answering, or its whole answer (headers and body) did not arrive
+              within 15 seconds. The payee may still have received the notification, so this does
+              not mean that nothing was delivered. Retrying is safe: a payee must tolerate seeing
+              the same notification again. The problem's `detail` reads: "The payee's answer was
+              not received; the payee may have received the notification. Retrying is safe."
+            - **The payee answered, but not to this notification**: its answer is a JWS whose
+              header carries another `correlationId` than the one this notification was signed
+              under, or none (owner, 2026-11-15). An answer that cannot be tied to the question is
+              no answer: **do not pay**. The problem's `detail` reads: "failed to pay - payee is
+              not responding (bad correlationId)". The notification was delivered once and is not
+              sent again; a new pre-payment may be tried. Any other problem with the payee's
+              answer is still reported in the `200`.
           content:
             application/problem+json:
               schema:
@@ -390,6 +399,20 @@ paths:
         retrying is safe. Hold the report and send it later:
         the durable copy has to live with the caller, because an outbox on this side would be no help
         when the caller cannot reach this service either.
+
+        **An answer under the wrong `correlationId` is followed by one more try** (owner,
+        2026-11-15). The money has moved, so when the payee's answer is a JWS whose header carries
+        another `correlationId` than the one sent, or none, this service sends the same notification
+        once more, as a new exchange under a **new** `correlationId` it generates (the caller's, if
+        given, was used for the first). A good answer to that is reported as any answer is. If the
+        second answer is bad too, nothing more is sent and nothing operational starts: the `200`
+        reports the second answer as it is (`signature: INVALID`, with `CORRELATION_ID_MISMATCH` or
+        `BAD_HEADER`), and this service writes a record for the payer bank to investigate: one log
+        line at WARN carrying the QR Code id, the `transactionId`, both `correlationId`s sent, what
+        each answer carried (or `missing`), and when. If the second try gets no answer at all, the
+        record says so and the call answers the usual `502`. A post-payment that carries no
+        `transactionId` (`NOT_SENT`) is read by the payee as before the money moves, and a bad
+        `correlationId` in its answer is refused as on the pre-payment.
       operationId: sendPostPaymentNotification
       tags:
         - Payment Notification
@@ -419,7 +442,12 @@ paths:
             seconds. The payee may still have received the notification, so this does not mean that
             nothing was delivered. Retrying is safe: a payee must tolerate seeing the same
             notification again. The problem's `detail` reads: "The payee's answer was not received;
-            the payee may have received the notification. Retrying is safe."
+            the payee may have received the notification. Retrying is safe." That includes the
+            second try after an answer under the wrong `correlationId`, which is also recorded.
+
+            A post-payment without a `transactionId` (`NOT_SENT`) whose answer carries the wrong
+            `correlationId`, or none, gets this `502` with the detail "failed to pay - payee is not
+            responding (bad correlationId)", as a pre-payment does.
           content:
             application/problem+json:
               schema:
@@ -614,11 +642,16 @@ paths:
               Any other 4xx the payee answered with is relayed the same way.
             - **The payload came back, and cannot be trusted.** `type` is
               `https://x9.matera.com/api/business-rule-violation` and `violations` reads
-              `Payload JWS signature is invalid.`: its signature does not verify, its signer does
-              not chain to this deployment's truststore, or its JWS header does not carry exactly
-              the `correlationId` the payload request went out under (the `correlationID` given
-              here, or the one this service generated when none was). An answer under another
-              `correlationId`, or none, is not an answer to this request. Do not pay.
+              `Payload JWS signature is invalid.`: its signature does not verify, or its signer
+              does not chain to this deployment's truststore. Do not pay.
+            - **The payload came back, and is not an answer to this request.** `type` is
+              `https://x9.matera.com/api/business-rule-violation` and `violations` reads
+              `QR Code is invalid (bad correlationId)`: the payload's signature verifies, but its
+              JWS header does not carry exactly the `correlationId` the payload request went out
+              under (the `correlationID` given here, or the one this service generated when none
+              was); it carries another one, or none. Do not pay. Decoding again may succeed (each
+              try is a new request, under a new `correlationId` unless one is given), but nothing
+              in this request can fix it: the fault is in the payee's answer.
           content:
             application/problem+json:
               schema:
@@ -2349,8 +2382,10 @@ components:
           description: |-
             Ties this call to the payer's own request: the notification is signed under it. Generated
             if omitted. Either way, the payee's answer must carry exactly this `correlationId` in its
-            JWS header; under another one, or none, it is reported `INVALID`
-            (`CORRELATION_ID_MISMATCH` or `BAD_HEADER`).
+            JWS header. Under another one, or none (owner, 2026-11-15): before the money moves (no
+            `transactionId`) the call is refused, `502`; after it moved, the notification is sent
+            once more under a new `correlationId` this service generates, and a second bad answer is
+            reported `INVALID` (`CORRELATION_ID_MISMATCH` or `BAD_HEADER`) and recorded.
         notification:
           $ref: "#/components/schemas/OutboundPaymentNotificationData"
 
@@ -2404,7 +2439,9 @@ components:
 
             A 200 that is `ABSENT` or `INVALID` is still reported as `accepted`: an unsigned yes,
             not a refusal. Whether to act on an unsigned yes is the payer's decision; this service
-            only reports.
+            only reports. One exception (owner, 2026-11-15): a JWS answer under another
+            `correlationId` than the one sent, or none, is not reported but refused before the money
+            moves (`502`), and sent once more after it; only a second such answer is reported here.
           example: VERIFIED
         signatureProblem:
           type: string
