@@ -6,6 +6,7 @@
 package outbound
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -74,6 +75,12 @@ type fixture struct {
 // answers the test sets. answerTimeout stands in for the 15 s.
 func serve(t *testing.T, answerTimeout time.Duration) *fixture {
 	t.Helper()
+	return serveWith(t, Config{AnswerTimeout: answerTimeout})
+}
+
+// serveWith is serve with the delivery's whole configuration.
+func serveWith(t *testing.T, cfg Config) *fixture {
+	t.Helper()
 	logger := slog.New(slog.DiscardHandler)
 	store, err := keys.Load(config.Certificate{}, logger)
 	if err != nil {
@@ -105,7 +112,7 @@ func serve(t *testing.T, answerTimeout time.Duration) *fixture {
 	f.payee = p
 
 	api := httpapi.New(logger, clk.Now)
-	svc := New(store, signer, verifier, logger, Config{AnswerTimeout: answerTimeout})
+	svc := New(store, signer, verifier, logger, cfg)
 	svc.Register(api)
 	srv := httptest.NewServer(api)
 	f.url = srv.URL
@@ -484,6 +491,46 @@ func TestNoAnswerIsUndeliverable(t *testing.T) {
 		req["endpoint"] = "http://" + addr + "/pub/api/v1/payment-notification"
 
 		assertUndeliverable(t, f.post(PostPaymentPath, req))
+	})
+}
+
+// S10.6-AC2, as the Java build times it (#120): the connection gets its own timeout, and the
+// answer timeout starts once the request has been sent. Scaled down from 5 s and 15 s: a slow
+// connect followed by an answer inside its own window is a 200 (Java's 4 s connect + 12 s answer),
+// though the two together exceed the answer timeout; a connect past its timeout is a 502, and
+// nothing reaches the payee.
+func TestTheAnswerTimeoutStartsOnceTheRequestIsSent(t *testing.T) {
+	slowDial := func(delay time.Duration) func(ctx context.Context, network, addr string) (net.Conn, error) {
+		return func(ctx context.Context, network, addr string) (net.Conn, error) {
+			time.Sleep(delay)
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			return (&net.Dialer{}).DialContext(ctx, network, addr)
+		}
+	}
+	t.Run("a slow connect, then an answer in time", func(t *testing.T) {
+		f := serveWith(t, Config{ConnectTimeout: 2 * time.Second, AnswerTimeout: 400 * time.Millisecond,
+			DialContext: slowDial(300 * time.Millisecond)})
+		f.payee.answer = func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(250 * time.Millisecond)
+			f.signedAnswer(w, r, http.StatusOK)
+		}
+
+		got := f.post(PrePaymentPath, f.request(false))
+
+		if got.status != http.StatusOK || got.body["signature"] != "VERIFIED" {
+			t.Fatalf("status %d, want 200 VERIFIED: %s", got.status, got.raw)
+		}
+	})
+	t.Run("a connect past its timeout", func(t *testing.T) {
+		f := serveWith(t, Config{ConnectTimeout: 150 * time.Millisecond, AnswerTimeout: 5 * time.Second,
+			DialContext: slowDial(300 * time.Millisecond)})
+
+		assertUndeliverable(t, f.post(PrePaymentPath, f.request(false)))
+		if n := len(f.payee.received()); n != 0 {
+			t.Errorf("%d deliveries, want none", n)
+		}
 	})
 }
 
