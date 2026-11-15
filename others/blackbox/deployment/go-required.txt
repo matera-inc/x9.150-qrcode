@@ -173,3 +173,34 @@ tests/test_contract.py::test_a_contract_constraint_is_refused[pre-payment:
 tests/test_contract.py::test_a_contract_constraint_is_refused[post-payment:
 tests/test_contract.py::test_a_numeric_bound_itself_is_not_refused[pre-payment:
 tests/test_contract.py::test_a_numeric_bound_itself_is_not_refused[post-payment:
+
+# Story 10.4: the notification endpoint verifies, refuses by name and always answers signed.
+# X9-SIG-513, -514, -515 and -519 take a reservation in their setup and join with Story 10.5;
+# X9-HOLD-404 reads the payload (/pub/api/v1/loc) and joins with Story 10.3; X9-SIG-301 to -304 are
+# the payer-side endpoints of Story 10.6.
+X9-SIG-508
+X9-SIG-509
+X9-SIG-510
+X9-SIG-511
+X9-SIG-512
+X9-SIG-516
+X9-SIG-517
+X9-SIG-518
+X9-SIG-520
+X9-SIG-521
+X9-SIG-522
+X9-SIG-523
+X9-SIG-524
+X9-SIG-526
+X9-SIG-001
+X9-SIG-002
+X9-SIG-003
+X9-SIG-110
+X9-SIG-111
+X9-RAIL-001
+X9-RAIL-002
+X9-CUR-001
+X9-HOLD-403
+X9-AMT-002
+X9-AMT-006
+X9-TIP-106

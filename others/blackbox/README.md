@@ -94,10 +94,8 @@ whole suite. A service that never comes up fails the run too, since nothing info
 
 Before any test, the `api` fixture creates a QR Code and has payer A send it one pre-commit: the
 **trust probe**, which turns a deployment that does not trust the test CA into one clear message
-instead of a failure in every payer test. The Go build takes payer notifications from Epic 10 on;
-until then its notification endpoint answers 404, and on the Go build that 404 skips the probe, so
-every test that needs only the biller's API (create, read) runs, and the payer tests fail on their
-own as informative tests. On the Java build the probe is unchanged.
+instead of a failure in every payer test. Both builds take payer notifications (the Go build since
+Story 10.4), so the probe runs the same on each.
 
 The `blackbox-go` job, beside `blackbox`, builds the image with `make go-image` and runs exactly
 this on every pull request that touches the Go code, `db/` or `others/blackbox/`; on any other

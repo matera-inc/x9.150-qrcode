@@ -47,8 +47,8 @@ type Problem struct {
 	SignatureProblem string // 401: the closed code of the check that failed
 	Violations       []string
 
-	// Extra holds members a later story adds, such as the signed answer's statusCode. They are
-	// written after the members above.
+	// Extra holds members a later story adds. They are written after the members above. (A signed
+	// answer's statusCode is not one: AnswerBody writes it first, as the Java build signs it.)
 	Extra map[string]any
 }
 

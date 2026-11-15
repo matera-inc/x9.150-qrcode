@@ -161,11 +161,6 @@ def api(payer_a, pki):
         unavailable(f"no deployment answering at {base_url} (health returned {status})")
 
     probe = client.notify(client.create_qr(), payer_info="trust-probe@example.com")
-    if probe.status == 404 and builds.under_test() == "go":
-        # The Go build takes payer notifications from Epic 10 on (Story 9.6). Until then there is
-        # no trust to probe: the payer tests fail on their own, as informative tests, and every
-        # other test runs. Java always has the endpoint, so its run does not change.
-        return client
     if probe.status == 401:
         unavailable(
             f"the deployment at {base_url} refused a payer signed by the bundled test CA (401). "

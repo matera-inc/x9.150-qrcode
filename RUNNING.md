@@ -297,6 +297,17 @@ the variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`.
   `qrCodeContent`; a PAID or CANCELLED QR Code is refused naming which. An expired one is refused
   with its expiry reason, because the Go build keeps the row (ADR-0029), where the Java build
   answers the generic reason once MongoDB has deleted it. Nothing is written.
+
+- **Payment notifications.** `POST /pub/api/v1/payment-notification` takes a payer's signed
+  notification on every rail (INTERPRETATION I-15) and always answers with a JWS signed by this
+  payee (`application/jose`, `typ: JOSE`, `statusCode` in the header and the body): a yes is
+  `{"statusCode":200}` echoing the notification's `correlationId`; a refusal keeps its status and
+  its error fields. One that does not verify is a signed 401 carrying only the fixed
+  `signatureProblem` code, under a fresh `correlationId`; a wrong media type, an empty body and a
+  failure are signed too. What the QR Code cannot take is refused by name before any transition
+  (no `paymentNotification`, `kind: EXTERNAL`, a rail or currency it does not offer, `blockchain`
+  on a bank rail, ACH without `payer.info` or `expectedDate`); the rest is decided by the
+  transition map, in one transaction with the stored notification and its events.
 - **Signing** (`internal/jws`) uses the Java build's settings and
   header profile: `X9_CERTIFICATE_JWKALGORITHM` (default `PS512`; RS\*, PS\*, or ES256/ES384/ES512
   each on its own curve), `X9_CERTIFICATE_ENDPOINTTYPE` (`JWK_SET` → `jku`, the default; `PEM` →

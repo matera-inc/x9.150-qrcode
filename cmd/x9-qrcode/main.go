@@ -29,6 +29,7 @@ import (
 	"github.com/matera-inc/x9.150-qrcode/internal/clock"
 	"github.com/matera-inc/x9.150-qrcode/internal/config"
 	"github.com/matera-inc/x9.150-qrcode/internal/database"
+	"github.com/matera-inc/x9.150-qrcode/internal/domain"
 	"github.com/matera-inc/x9.150-qrcode/internal/eventstream"
 	"github.com/matera-inc/x9.150-qrcode/internal/health"
 	"github.com/matera-inc/x9.150-qrcode/internal/httpapi"
@@ -36,6 +37,8 @@ import (
 	"github.com/matera-inc/x9.150-qrcode/internal/jws"
 	"github.com/matera-inc/x9.150-qrcode/internal/keys"
 	"github.com/matera-inc/x9.150-qrcode/internal/outbound"
+
+	"github.com/matera-inc/x9.150-qrcode/internal/notification"
 	"github.com/matera-inc/x9.150-qrcode/internal/paymentrequest"
 	"github.com/matera-inc/x9.150-qrcode/internal/pki"
 	"github.com/matera-inc/x9.150-qrcode/internal/signature"
@@ -171,6 +174,11 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	payer := outbound.New(keyStore, signer, verifier, logger, outbound.Config{})
 	payer.Register(api)
 	defer payer.CloseIdleConnections()
+
+	// A payer's payment notification (Story 10.4): verified, refused by name, decided by the
+	// transition map, and always answered signed.
+	notification.New(st, keyStore, signer, verifier,
+		domain.Settings{ReservationTTL: time.Duration(cfg.Reservation.TTLSeconds) * time.Second}, logger).Register(api)
 	srv := newServer(cfg.Server.Port, httplog.Middleware(logger, testclock.OffsetHeader(businessClock, api)))
 	// On SIGTERM, parked long-polls answer with their current page instead of holding the drain (ADR-0031).
 	srv.RegisterOnShutdown(events.Stop)
