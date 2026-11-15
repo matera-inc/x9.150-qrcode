@@ -35,6 +35,15 @@ public interface QRCodeSignatureService {
     SignatureValidationOutput validateSignature(SignatureValidationInput input);
 
     /**
+     * The {@code correlationId} a JWS's protected header carries, read without verifying anything,
+     * for telling a bad correlationId from any other failure and for a record of what came back.
+     *
+     * @return the value as written (clipped to 64 characters), or null when the token is not a
+     *         compact JWS, its header is not a JSON object, or it carries no correlationId
+     */
+    String headerCorrelationId(String jwsToken);
+
+    /**
      * Retrieves the Public Certificate used for verification.
      */
     byte[] retrieveDigitalSignatureCertificate() throws ServiceException;

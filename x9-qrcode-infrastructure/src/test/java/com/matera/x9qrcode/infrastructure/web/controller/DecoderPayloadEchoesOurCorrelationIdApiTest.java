@@ -19,6 +19,7 @@ import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.JWSObject;
 import com.nimbusds.jose.JWSSigner;
 import com.nimbusds.jose.jwk.JWK;
+import com.nimbusds.jose.util.Base64URL;
 import io.restassured.module.mockmvc.response.MockMvcResponse;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -50,8 +51,9 @@ import static org.mockito.ArgumentMatchers.anyString;
  * answer echoes our correlationId. No correlationId, I can't trust the other side." The payload's
  * JWS must carry in its header exactly the correlationId the payload request went out under: the
  * caller's {@code correlationID} when it gave one, otherwise the one this service generated for the
- * request. Missing or different, the payload is refused in the words used for any payload whose
- * signature does not verify, and nothing of it is presented.
+ * request. Missing or different, the payload is refused, 400, in its own words (owner, 2026-11-15):
+ * "QR Code is invalid (bad correlationId)", and nothing of it is presented. A payload that fails its
+ * signature first keeps "Payload JWS signature is invalid.", whatever correlationId it carries.
  *
  * <p>The payload gateway is stubbed; it answers with a payload signed by this deployment's key,
  * which the test configuration trusts, so each wrong answer fails for the one reason the test names.
@@ -60,7 +62,8 @@ class DecoderPayloadEchoesOurCorrelationIdApiTest extends AbstractIntegrationTes
 
     private static final String DECODE = "/api/v1/qrcode-emv-decoder";
     private static final String CREATE = "/api/v1/payment-request";
-    private static final String REFUSED = "Payload JWS signature is invalid.";
+    private static final String REFUSED = "QR Code is invalid (bad correlationId)";
+    private static final String INVALID = "Payload JWS signature is invalid.";
     private static final String PAYLOAD_ID = "0196cb82afab46f1bf8dfff2f9c8a541";
 
     @MockitoBean
@@ -220,5 +223,31 @@ class DecoderPayloadEchoesOurCorrelationIdApiTest extends AbstractIntegrationTes
 
         assertRefused(decode(null));
         assertRefused(decode(UUID.randomUUID()));
+    }
+
+    /**
+     * <b>X9-DEC-026</b> — a payload altered after signing, under another correlationId, is refused as
+     * a bad signature, not as a bad correlationId: the verifier's verdict comes first.
+     *
+     * <p><b>Source:</b> Ours. Owner, 2026-11-15 (ADR-0027): only an answer refused for its
+     * correlationId gets "QR Code is invalid (bad correlationId)". Go's {@code jws.NotEchoed} draws the
+     * same line.
+     *
+     * <p><b>Why:</b> The two refusals tell the payer different things: a bad correlationId may clear
+     * on another try, a payload nobody signed will not. Both builds must pick the same one.
+     */
+    @Test
+    void aTamperedPayloadUnderAnotherCorrelationIdIsABadSignature() {
+        payeeAnswers(sent -> {
+            String[] parts = signed(UUID.randomUUID()).split("\\.");
+            parts[1] = Base64URL.encode(payload().replace("1250", "1")).toString();
+            return String.join(".", parts);
+        });
+
+        MockMvcResponse response = decode(null);
+
+        assertEquals(HttpStatus.BAD_REQUEST.value(), response.statusCode(), response.asString());
+        assertTrue(response.asString().contains(INVALID), response.asString());
+        assertFalse(response.asString().contains(REFUSED), response.asString());
     }
 }

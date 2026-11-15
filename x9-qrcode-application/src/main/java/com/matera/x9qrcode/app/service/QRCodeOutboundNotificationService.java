@@ -30,7 +30,8 @@ public interface QRCodeOutboundNotificationService {
     /**
      * @param notification the notification body, in the shape ANSI X9.150 §2 defines
      * @param endpoint     where the payee said to send it, taken from the payload the payer fetched
-     * @param correlationId ties this call to the payer's own request
+     * @param correlationId the correlationId the notification is signed under; the answer is checked
+     *                      against it. Generated when null
      * @return the payee's verdict, verbatim
      */
     OutboundNotificationResult send(PaymentNotificationDataDTO notification, URI endpoint, UUID correlationId);
@@ -49,12 +50,17 @@ public interface QRCodeOutboundNotificationService {
      *
      * @param signatureProblem why the answer is not {@code VERIFIED}, as a fixed code; null when it is
      * @param signatureDetail  the same reason in words, for a person; null when it is
+     * @param answeredCorrelationId the correlationId the answer's JWS header carries as written,
+     *                              unverified; null when it carries none or is not a JWS. Read to
+     *                              tell a bad correlationId from any other failure (ADR-0027,
+     *                              amendments of 2026-11-15), and recorded; never reported
      */
     record OutboundNotificationResult(int statusCode,
                                       String body,
                                       AnswerSignatureEnumDTO signature,
                                       SignatureProblemEnumDTO signatureProblem,
-                                      String signatureDetail) {
+                                      String signatureDetail,
+                                      String answeredCorrelationId) {
 
         public boolean accepted() {
             return statusCode >= 200 && statusCode < 300;

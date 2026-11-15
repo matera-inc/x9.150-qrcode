@@ -11,6 +11,7 @@ import com.matera.x9qrcode.app.service.QRCodeEMVService;
 import com.matera.x9qrcode.app.service.QRCodeExternalPayloadService;
 import com.matera.x9qrcode.app.service.QRCodeSignatureService;
 import com.matera.x9qrcode.app.usecase.UseCase;
+import com.matera.x9qrcode.app.usecase.validatesignature.CorrelationEcho;
 import com.matera.x9qrcode.app.usecase.validatesignature.SignatureValidationInput;
 import com.matera.x9qrcode.app.usecase.validatesignature.SignatureValidationOutput;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
@@ -25,6 +26,9 @@ import static java.util.Objects.nonNull;
 @Slf4j
 @RequiredArgsConstructor
 public class DecoveEmvUseCase extends UseCase<DecodeEmvInput, DecodeEmvOutput> {
+
+    /** The refusal of a payload that does not carry the correlationId it was asked under. */
+    public static final String BAD_CORRELATION_ID = "QR Code is invalid (bad correlationId)";
 
     private final QRCodeExternalPayloadService qrCodeExternalPayloadService;
     private final QRCodeEMVService qrCodeEMVService;
@@ -54,6 +58,13 @@ public class DecoveEmvUseCase extends UseCase<DecodeEmvInput, DecodeEmvOutput> {
 
             if (validationResult.isValid()) {
                 return response;
+            }
+
+            // Owner, 2026-11-15 (ADR-0027): a payload under no correlationId, or another one, gets its
+            // own words. Trying again may succeed; nothing in the caller's input can fix it.
+            if (CorrelationEcho.notEchoed(validationResult.problem(),
+                    qrCodeSignatureService.headerCorrelationId(response.jwsToken()), sent)) {
+                throw new BusinessRuleException(BAD_CORRELATION_ID);
             }
 
             throw new BusinessRuleException("Payload JWS signature is invalid.");
