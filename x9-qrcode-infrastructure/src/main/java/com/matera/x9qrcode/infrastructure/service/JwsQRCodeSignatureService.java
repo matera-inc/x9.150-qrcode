@@ -92,9 +92,9 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.matera.x9qrcode.app.service.SignatureConstants.DEFAULT_PKIX_ALGORITHM;
@@ -118,6 +118,13 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
 
     private static final Set<String> SUPPORTED_CRITICAL_HEADERS =
         Set.of(JWS_HEADER_CORRELATION_ID, JWS_HEADER_IAT, JWS_HEADER_TTL, JWS_HEADER_STATUS_CODE);
+
+    /**
+     * A UUID in its canonical text form: 8-4-4-4-12 hexadecimal digits, either case (ANSI
+     * X9.150-2026 §10.7 step 3.1). {@code UUID.fromString} alone also takes {@code 1-2-3-4-5}.
+     */
+    private static final Pattern CANONICAL_UUID =
+        Pattern.compile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
 
     /** Used when {@code x9.public-endpoints.jws-clock-skew-seconds} is not set: one minute. */
     private static final long DEFAULT_CLOCK_SKEW_MILLIS = 60_000L;
@@ -859,11 +866,11 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
 
         log.debug("Validating correlationId: {}", correlationId);
 
-        try {
-            return UUID.fromString(correlationId);
-        } catch (IllegalArgumentException e) {
+        if (!CANONICAL_UUID.matcher(correlationId).matches()) {
             throw check(SignatureProblemEnumDTO.BAD_HEADER, "Invalid correlationId format. Must be a valid UUID: %s".formatted(correlationId));
         }
+
+        return UUID.fromString(correlationId);
     }
 
     private long validateAndExtractIat(JWSHeader header) {
@@ -1030,6 +1037,14 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
         }
     }
 
+    /**
+     * The end-entity certificate, the first of the chain, provided the header's {@code x5t#S256} is
+     * its thumbprint (ANSI X9.150-2026 §10.3.1: "SHA-256 thumbprint of the end-entity certificate";
+     * §10.7 step 7). A thumbprint naming any other certificate of the chain is refused with
+     * {@code UNTRUSTED_CHAIN}, as one naming no certificate is: verifying with a CA's key because the
+     * header named it would let a CA whose key usage allows {@code digitalSignature} sign as the
+     * payer whose leaf it presents (BUG-006). Go's {@code internal/pki} gives the same answer.
+     */
     private X509Certificate validateAndExtractCertificateByThumbprint(JWSHeader header, List<X509Certificate> externalCertificates) {
         Base64URL thumbprint = header.getX509CertSHA256Thumbprint();
 
@@ -1038,27 +1053,30 @@ public class JwsQRCodeSignatureService implements QRCodeSignatureService {
                 "Missing required header parameter: x5t#S256 (certificate thumbprint)");
         }
 
-        return externalCertificates
-            .stream()
-            .map(certificate -> getX509CertificateIfMatch(thumbprint, certificate))
-            .flatMap(Optional::stream)
-            .findFirst()
-            .orElseThrow(() -> check(SignatureProblemEnumDTO.UNTRUSTED_CHAIN,
-                String.format("No matching certificate found for thumbprint: %s", thumbprint)));
+        X509Certificate endEntity = externalCertificates.getFirst();
+
+        if (matches(thumbprint, endEntity)) {
+            log.debug("Certificate thumbprint validation matched the end entity with thumbprint: {}", thumbprint);
+            return endEntity;
+        }
+
+        for (int i = 1; i < externalCertificates.size(); i++) {
+            if (matches(thumbprint, externalCertificates.get(i))) {
+                throw check(SignatureProblemEnumDTO.UNTRUSTED_CHAIN,
+                    "The thumbprint %s names certificate %d of the chain, not the end entity".formatted(thumbprint, i));
+            }
+        }
+
+        throw check(SignatureProblemEnumDTO.UNTRUSTED_CHAIN,
+            String.format("No matching certificate found for thumbprint: %s", thumbprint));
     }
 
-    private Optional<X509Certificate> getX509CertificateIfMatch(Base64URL thumbprint, X509Certificate certificate) {
+    private boolean matches(Base64URL thumbprint, X509Certificate certificate) {
         try {
-            Base64URL computedThumbprint = getDigestThumbprint(certificate);
-
-            if (thumbprint.equals(computedThumbprint)) {
-                log.debug("Certificate thumbprint validation matched with thumbprint: {}", thumbprint);
-                return Optional.of(certificate);
-            }
+            return thumbprint.equals(getDigestThumbprint(certificate));
         } catch (NoSuchAlgorithmException | CertificateEncodingException e) {
             throw new ServiceException("Error computing certificate thumbprint: %s".formatted(e.getMessage()), e);
         }
-        return Optional.empty();
     }
 
     private JWSVerifier createVerifier(JWK jwk, Algorithm algorithm) throws JOSEException {

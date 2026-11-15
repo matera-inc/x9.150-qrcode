@@ -65,6 +65,19 @@ properties.
      §3.4: `ES256`/P-256, `ES384`/P-384, `ES512`/P-521): `ES384` over a P-256 key is refused with
      `BAD_SIGNATURE` even though the ECDSA maths verify, as Java refuses it (owner, 2026-11-14).
      `ecdsa.Verify` alone would accept it.
+  - **2026-11-15 (owner rule: the standard wins over Java's behaviour; Java fixed, Go never
+    reproduces the bug).** Three rules Java broke and Go's verifier (Story 8.5) keeps; Java now
+    gives the same code ([RULE-COVERAGE](../RULE-COVERAGE.md), `R-ADR0027-09` to `-11`):
+    - step 4: `x5t#S256` is the thumbprint of the **end-entity** certificate, the first of the
+      chain (ANSI X9.150-2026 §10.3.1, §10.7 step 7). One naming any other certificate of the
+      chain is `UNTRUSTED_CHAIN`, as one naming none is. Java used to verify with whichever
+      certificate matched, so a CA whose key usage allows `digitalSignature` could sign as the
+      payer whose leaf it presented (BUG-006);
+    - step 3: `correlationId` is a UUID in its **canonical** form, 8-4-4-4-12 hexadecimal digits in
+      either case (§10.7 step 3.1); anything else is `BAD_HEADER`. Java's `UUID.fromString` also
+      took `1-2-3-4-5`;
+    - a signed answer's body `statusCode` is a JSON **integer** within 32 bits (A.4.5 note);
+      `200.5`, `200.0`, `2e2` or a larger integer is `STATUS_MISSING`. Java truncated any number.
 - **Fuzzing and corpus:** header parsing and `crit` handling are fuzzed, and a **golden corpus**
   produced by the Java build must give identical accept/reject results, **and the same
   `signatureProblem` code** (`others/blackbox/golden/`, Story 4.7). That includes two codes that

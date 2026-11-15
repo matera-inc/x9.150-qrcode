@@ -11,6 +11,7 @@ import com.matera.x9qrcode.app.dto.SignatureOutputDataDTO;
 import com.matera.x9qrcode.app.dto.enumerated.SignatureProblemEnumDTO;
 import com.matera.x9qrcode.app.dto.enumerated.SignatureTypeEnumDTO;
 import com.matera.x9qrcode.app.exception.ServiceException;
+import com.matera.x9qrcode.app.service.JwkService;
 import com.matera.x9qrcode.app.service.PEMService;
 import com.matera.x9qrcode.app.service.QRCodeSignatureService;
 import com.matera.x9qrcode.app.usecase.validatesignature.SignatureValidationInput;
@@ -24,12 +25,15 @@ import com.matera.x9qrcode.infrastructure.testing.fixture.DTOFixtures;
 
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.JWSObject;
+import com.nimbusds.jose.JWSSigner;
+import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.util.Base64;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.security.cert.X509Certificate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -60,6 +64,9 @@ class JwsQRCodeSignatureServiceTest extends AbstractIntegrationTest {
 
     @Autowired
     private PEMService pemService;
+
+    @Autowired
+    private JwkService<JWK, JWSSigner> jwkService;
 
     private DTOFixtures fixtures;
 
@@ -307,6 +314,58 @@ class JwsQRCodeSignatureServiceTest extends AbstractIntegrationTest {
 
         assertTrue(signatureService.validateSignature(
             new SignatureValidationInput(SignatureTypeEnumDTO.X9, correlationId, drifting, null)).isValid());
+    }
+
+    /**
+     * <b>X9-SIG-152</b> — a {@code correlationId} that is not a UUID in its canonical text form,
+     * 8-4-4-4-12 hexadecimal digits, is refused with {@code BAD_HEADER}; the canonical form is
+     * accepted in either case.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §10.7 step 3.1 ("Verify that correlationId is a valid UUID
+     * format"). Conformance. ADR-0027, verification step 3.
+     *
+     * <p><b>Why:</b> Java read the header with {@code UUID.fromString}, which also takes
+     * {@code 1-2-3-4-5} and pads it to {@code 00000001-0002-0003-0004-000000000005}: a payer could
+     * send one text and be answered under another, and two builds would not agree on which tokens
+     * are well formed. Go's verifier takes the canonical form only, in either case; so does Java now.
+     */
+    @Test
+    void aCorrelationIdThatIsNotACanonicalUuidIsRefused() {
+        UUID correlationId = UUID.fromString("0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d");
+
+        for (String notCanonical : List.of("1-2-3-4-5", "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4", "0a1b2c3d4e5f4a6b8c7d9e0f1a2b3c4d",
+                "{0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d}", "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4dd",
+                "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4g", " 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d")) {
+            SignatureValidationOutput refused = signatureService.validateSignature(new SignatureValidationInput(
+                SignatureTypeEnumDTO.X9, null, withCorrelationId(notCanonical), null));
+
+            assertFalse(refused.isValid(), notCanonical);
+            assertEquals(SignatureProblemEnumDTO.BAD_HEADER, refused.problem(), notCanonical);
+        }
+
+        for (String canonical : List.of(correlationId.toString(), correlationId.toString().toUpperCase())) {
+            SignatureValidationOutput accepted = signatureService.validateSignature(new SignatureValidationInput(
+                SignatureTypeEnumDTO.X9, correlationId, withCorrelationId(canonical), null));
+
+            assertTrue(accepted.isValid(), canonical + ": " + accepted.problemDetail());
+        }
+    }
+
+    /** A JWS this deployment signs, its {@code correlationId} header then set to {@code text}. */
+    private String withCorrelationId(String text) {
+        String signed = signatureService.signData(new SignatureInputDataDTO(SignatureTypeEnumDTO.X9,
+            Map.of("statusCode", 200), UUID.randomUUID(), TTL, 200)).jwsToken();
+        try {
+            JWSObject original = JWSObject.parse(signed);
+            Map<String, Object> params = new HashMap<>(original.getHeader().getCustomParams());
+            params.put(JWS_HEADER_CORRELATION_ID, text);
+            JWSHeader header = new JWSHeader.Builder(original.getHeader()).customParams(params).build();
+            JWSObject rewritten = new JWSObject(header, original.getPayload());
+            rewritten.sign(jwkService.retrieveSigner());
+            return rewritten.serialize();
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /**

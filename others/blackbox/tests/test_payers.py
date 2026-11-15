@@ -191,7 +191,9 @@ class TestPayload:
         nothing.
 
         S4.3-AC1: bad signature (wrong key, altered payload), expired iat + ttl, iat in the
-        future, missing or unknown crit, missing x5c, untrusted CA, alg none.
+        future, missing or unknown crit, missing x5c, untrusted CA, alg none; and an x5t#S256
+        naming the issuing CA rather than the end entity (BUG-006), and a correlationId that is
+        not a canonical UUID (ANSI X9.150-2026 §10.3.1, §10.7 steps 3.1 and 7).
 
         Source: Ours, ANSI X9.150 §8 profile as INTERPRETATION reads it. Mechanism for the
           status and the words: this endpoint answers 400 with one generic reason, never 401

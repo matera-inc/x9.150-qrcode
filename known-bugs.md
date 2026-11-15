@@ -48,6 +48,47 @@ Java is to agree with the suite, make `releaseLocation` also accept `isExpired()
 
 ---
 
+## BUG-006 — `x5t#S256` naming a CA of the chain made that CA the signer
+
+- **Reported:** 2026-11-15 (Story 8.5, Go's verifier)
+- **Severity:** Medium — the chain still had to validate against the truststore and the CA's key
+  usage had to allow `digitalSignature`, so only a trusted CA's own key could exploit it. But such
+  a CA could sign a message as itself while presenting any payer's leaf as the end entity, and the
+  service took it as that payer's.
+- **Fixed:** 2026-11-15 — `x5t#S256` must be the thumbprint of the end-entity certificate, the
+  first of the chain; one naming any other certificate is refused with `UNTRUSTED_CHAIN`, as Go's
+  `internal/pki` does. Pinned by `X9-SIG-069` (`CaIssuedSignatureApiTest`) and the tamperer's
+  `x5t_names_the_ca` case in `X9-SIG-510`, `X9-LOC-304` and `X9-SIG-506` (black-box suite).
+- **Area:** `JwsQRCodeSignatureService.validateAndExtractCertificateByThumbprint` (infrastructure
+  layer), shared by payer notifications, payload requests and payee answers.
+
+### Steps to reproduce
+
+1. Take a CA in the truststore whose key usage allows `digitalSignature` (the test CA re-issued to
+   itself: `x9-test-ca-digital-signature.pem`).
+2. Sign a payment notification with that CA's key, with `x5c` = [a payer's leaf issued by it, the
+   CA] and `x5t#S256` = the CA's thumbprint.
+3. Send it.
+
+### Expected
+
+ANSI X9.150-2026 §10.3.1: `x5t#S256` is "the SHA-256 thumbprint of the end-entity certificate";
+§10.7 step 7 checks it against the end entity. The thumbprint names the CA, so the notification is
+refused, 401 `UNTRUSTED_CHAIN`.
+
+### Actual (before the fix)
+
+200: the notification was accepted and the QR Code moved to `PAYMENT_INITIATED`, as from the
+payer.
+
+### Root cause
+
+The thumbprint was matched against every certificate of the chain, and the first match became the
+certificate whose key the signature was checked with. Nothing tied it to the end entity, which is
+the one the chain validation and the revocation check are about.
+
+---
+
 ## BUG-005 — A `jku` or `x5u` that merely mentions this deployment's host is fetched over plain HTTP
 
 - **Reported:** 2026-11-15

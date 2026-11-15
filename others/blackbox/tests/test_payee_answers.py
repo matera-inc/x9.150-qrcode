@@ -268,8 +268,9 @@ def test_every_tampered_answer_is_named_by_its_fixed_code(api, peer, pki, events
 
     S3.2-AC2's reasons, named: each of the tamperer's defects, in a payee's answer, gets the
     service's fixed code. (A payer's tampered question gets the same code in its signed 401:
-    ``test_signatures``.)"""
-    tamperer = jws.Tamperer(peer.signer, pki["untrusted"])
+    ``test_signatures``.) A ``correlationId`` that is not a canonical UUID is ``BAD_HEADER``,
+    not a mismatch: the header is malformed before it is compared."""
+    tamperer = jws.Tamperer(peer.signer, pki["untrusted"], pki["ca"])
     peer.answer = lambda question: peer_module.Answer(200, tamperer.token(
         case, {"statusCode": 200}, correlation_id=question.correlation_id,
         crit=jws.CRIT + ["statusCode"], extra={"statusCode": 200}))
@@ -278,4 +279,27 @@ def test_every_tampered_answer_is_named_by_its_fixed_code(api, peer, pki, events
 
     assert_reported(response, signature="INVALID", problem=jws.Tamperer.CASES[case],
                     status_code=200, accepted=True)
+    assert_untouched(api, events, qr)
+
+
+@pytest.mark.parametrize("body", [b'{"statusCode":200.5}', b'{"statusCode":200.0}',
+                                  b'{"statusCode":2e2}', b'{"statusCode":4294967496}'])
+def test_a_signed_answer_whose_status_code_is_not_an_integer_is_invalid(api, peer, events, body):
+    """X9-SIG-527 — a signed answer whose body ``statusCode`` is a number but not an integer, or
+    an integer beyond 32 bits, is INVALID, ``STATUS_MISSING``, though the HTTP status is 200 and
+    the header's ``statusCode`` is 200.
+
+    Source: ANSI X9.150-2026 A.4.5 note (the body is ``{"statusCode": integer}``). Conformance.
+    Why: Java truncated any JSON number, so ``200.5`` (or ``2e2``, or ``4294967496``, which wraps
+      round to 200) was reported as a VERIFIED 200: a signed body the standard does not define,
+      taken as the payee's decision. Go's ``CheckAnswer`` refuses all four, and so does Java now.
+    """
+    peer.answer = lambda question: peer_module.Answer(200, peer.signer.sign(
+        body, correlation_id=question.correlation_id, crit=jws.CRIT + ["statusCode"],
+        extra={"statusCode": 200}))
+
+    response, qr = notify_through(api, peer)
+
+    assert_reported(response, signature="INVALID", problem="STATUS_MISSING", status_code=200,
+                    accepted=True)
     assert_untouched(api, events, qr)

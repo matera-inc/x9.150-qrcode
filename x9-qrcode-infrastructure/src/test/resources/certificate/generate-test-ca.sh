@@ -44,7 +44,7 @@ rm -f x9-test-ca.p12 x9-test-payer.p12 x9-test-payer-ec.p12 x9-test-payer-revoke
       x9-test-payer-crl-unreadable-ocsp-unreachable.p12 \
       x9-test-payer-crl-unreadable-ocsp-unreachable-payload.p12 \
       x9-test-untrusted-ca.p12 x9-test-untrusted-payer.p12 x9-test-truststore.jks \
-      test-ca.crl test-ca-revoked.crl ./*.cer ./*.csr ./*-chain.pem
+      test-ca.crl test-ca-revoked.crl x9-test-ca-digital-signature.pem ./*.cer ./*.csr ./*-chain.pem
 
 say() { printf '\n== %s\n' "$1"; }
 
@@ -165,6 +165,17 @@ SERIAL_HEX=$(keytool -printcert -file x9-test-payer-revoked.cer | awk -F': ' '/S
 SERIAL_DEC=$(echo "ibase=16; $(printf '%s' "$SERIAL_HEX" | tr 'a-f' 'A-F')" | bc)
 keytool -gencrl -alias x9-test-ca -keystore x9-test-ca.p12 -storepass "$STOREPASS" \
   -id "${SERIAL_DEC}:1" -validity "$DAYS_CRL" -file test-ca-revoked.crl
+
+# The Test Root CA re-issued to itself, same name and same key, with digitalSignature added to its
+# key usage. A CA allowed to sign: with it, a token signed by the CA's key, carrying a payer's leaf
+# first in x5c and naming the CA in x5t#S256, passes every other check. x5t#S256 must name the end
+# entity (ANSI X9.150-2026 §10.3.1, §10.7 step 7), so it is refused (BUG-006, X9-SIG-069). Issued
+# from the committed CA, it can be made again without regenerating anything else.
+say "9    The Test Root CA re-issued to itself with digitalSignature (BUG-006)"
+keytool -certreq -alias x9-test-ca -keystore x9-test-ca.p12 -storepass "$STOREPASS" -file x9-test-ca-self.csr
+keytool -gencert -alias x9-test-ca -keystore x9-test-ca.p12 -storepass "$STOREPASS" \
+  -ext bc:c=ca:true,pathlen:0 -ext ku:c=digitalSignature,keyCertSign,cRLSign \
+  -validity "$DAYS_CA" -rfc -infile x9-test-ca-self.csr -outfile x9-test-ca-digital-signature.pem
 
 # Keep only what the test loads: the two payer keystores, the truststore, and the two CRLs.
 rm -f ./*.csr ./*-chain.pem ./*.cer

@@ -6,10 +6,10 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**775 tests documented** — every JUnit test and every black-box case.
+**780 tests documented** — every JUnit test and every black-box case.
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
-(STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036 and ADR-0027's EMV rules), the
+(STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036 and ADR-0027's EMV and JWS verification rules), the
 tests that prove it and the acceptance criteria they cite, and the rules that have no test yet. A
 check in CI keeps it true (`docs/check/check_rule_coverage.py`).
 
@@ -675,6 +675,7 @@ status is `X9-MAP-002`.
 | `X9-SIG-066` | a payer whose CRL is not a CRL and whose OCSP responder is unreachable is accepted (soft-fail) | `CaIssuedSignatureApiTest.java` |
 | `X9-SIG-067` | the same case can fetch the payload | `CaIssuedSignatureApiTest.java` |
 | `X9-SIG-068` | an `x5u` on another host that only mentions the own host is not fetched over plain http: `CERTIFICATE_UNAVAILABLE` (BUG-005) | `CaIssuedSignatureApiTest.java` |
+| `X9-SIG-069` | an `x5t#S256` naming a CA of the chain, not the end entity, is refused `UNTRUSTED_CHAIN`, though that CA signed and may sign (BUG-006) | `CaIssuedSignatureApiTest.java` |
 | `X9-SIG-070` | signing emits every X9 header | `JwsQRCodeSignatureServiceTest.java` |
 | `X9-SIG-071` | a signature we produced validates | `JwsQRCodeSignatureServiceTest.java` |
 | `X9-SIG-072` | a signed response carries its status code | `JwsQRCodeSignatureServiceTest.java` |
@@ -700,6 +701,8 @@ status is `X9-MAP-002`.
 | `X9-SIG-125` | a SENT report after the discount edge is recorded and answered with a signed yes | `SignedNotificationAnswerApiTest.java` |
 | `X9-SIG-126` | with public keys only, a verifier links question and answer | `SignedNotificationAnswerApiTest.java` |
 | `X9-SIG-151` | the signed answer, a yes and a no alike, carries `typ: JOSE` | `SignedNotificationAnswerApiTest.java` |
+| `X9-SIG-152` | a `correlationId` that is not a canonical 8-4-4-4-12 UUID is refused `BAD_HEADER`; the canonical form is accepted in either case | `JwsQRCodeSignatureServiceTest.java` |
+| `X9-SIG-153` | a signed answer whose body `statusCode` is not an integer (`200.5`, `200.0`, `2e2`) or exceeds 32 bits is INVALID, `STATUS_MISSING` | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-130` | a signed yes with the correlationId sent is VERIFIED | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-131` | a signed no is VERIFIED and not accepted | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-132` | a signed yes under another correlationId is INVALID, and still an unsigned yes | `OutboundAnswerVerificationApiTest.java` |
@@ -749,6 +752,8 @@ status is `X9-MAP-002`.
 | `X9-SIG-523` | an unreadable question (not a JWS, or empty) is still answered signed, under a fresh correlationId | `test_signatures.py` |
 | `X9-SIG-524` | the same signed question sent twice is answered twice (today's behaviour, pinned) | `test_signatures.py` |
 | `X9-SIG-525` | an EC payer issued by a trusted CA, carrying x5c, is accepted | `CaIssuedSignatureApiTest.java` |
+| `X9-SIG-526` | a canonical `correlationId` written in capitals is accepted | `test_signatures.py` |
+| `X9-SIG-527` | a payee answer whose body `statusCode` is not an integer, or exceeds 32 bits, is INVALID, `STATUS_MISSING` | `test_payee_answers.py` |
 
 ## Time edges (the test clock)
 

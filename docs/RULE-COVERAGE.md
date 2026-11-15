@@ -423,6 +423,18 @@ and the black-box suite's.
 | `R-ADR0027-07` | Malformed EMV is refused, never tolerated: a bad, missing or non-hex CRC, a zero, non-numeric or overrunning length, a duplicate top-level tag, a truncated field or template. The decoder answers 400 naming `qrCode`, before any fetch; a payload request carrying it is refused as a content mismatch. | `X9-DEC-013`, `X9-DEC-014`, `X9-DEC-015`, `X9-DEC-016`, `X9-LOC-021` | — |
 | `R-ADR0027-08` | A configured host with a character outside printable ASCII, or a space, stops the service at startup. | `X9-LOC-485` | — |
 
+## ADR-0027: JWS verification
+
+Three rules of ANSI X9.150-2026 that Java broke and Go's verifier (Story 8.5) keeps, fixed in Java
+on 2026-11-15 so both builds give the same code; recorded in ADR-0027's verification steps. The Go
+build's tests are in `internal/jws` and `internal/pki`.
+
+| Rule | What it says | Tests | Proves |
+|---|---|---|---|
+| `R-ADR0027-09` | `x5t#S256` must be the thumbprint of the end-entity certificate, the first of the chain (§10.3.1, §10.7 step 7); one naming any other certificate of the chain is refused `UNTRUSTED_CHAIN`, as one naming none is. | `X9-SIG-069`, `X9-SIG-510`, `X9-LOC-304`, `X9-SIG-506` | — |
+| `R-ADR0027-10` | `correlationId` must be a UUID in its canonical form, 8-4-4-4-12 hexadecimal digits in either case (§10.7 step 3.1); any other text is refused `BAD_HEADER`. | `X9-SIG-152`, `X9-SIG-526`, `X9-SIG-510`, `X9-LOC-304`, `X9-SIG-506` | — |
+| `R-ADR0027-11` | A signed answer's body `statusCode` must be a JSON integer within 32 bits (A.4.5 note); a fraction, an exponent or a larger integer is `STATUS_MISSING`, never truncated. | `X9-SIG-153`, `X9-SIG-527` | — |
+
 ---
 
 <sub>Copyright © 2026 Matera Systems, Inc. Licensed under the Matera Source License v1.0 (source-available; not open source) — see LICENSE.md at the repository root. Creating a Derivative Work from this document — by AI/ML generation or by manual re-implementation based on it — is governed by that license (see the "Derivative Work" definition and Annex A).</sub>

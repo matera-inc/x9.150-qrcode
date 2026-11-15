@@ -95,7 +95,11 @@ class TestTamperedQuestions:
         nothing.
 
         S3.2-AC2 — wrong key, untrusted CA, expired iat + ttl, iat in the future, missing or
-        unknown crit, missing x5c, altered payload, alg none: each refused, nothing changes.
+        unknown crit, missing x5c, altered payload, alg none: each refused, nothing changes. And
+        two the standard settles (ANSI X9.150-2026 §10.3.1, §10.7 steps 3.1 and 7): an
+        ``x5t#S256`` naming the issuing CA, which signed, rather than the end entity
+        (``UNTRUSTED_CHAIN``, BUG-006), and a ``correlationId`` that is not a canonical UUID
+        (``BAD_HEADER``).
 
         Why: these are the signatures the service under test would never produce, which is why
     they could not be tested while the suite signed through the service.
@@ -127,6 +131,25 @@ class TestTamperedQuestions:
         qr = api.create_qr()
         status, body = api.send_notification(payer_a.sign(api_notification(qr)))
         assert status == 200, f"{status} {body}"
+
+    def test_a_canonical_correlation_id_in_capitals_is_accepted(self, api, payer_a):
+        """X9-SIG-526 — a ``correlationId`` in the canonical 8-4-4-4-12 form, written in capital
+        hexadecimal digits, is accepted.
+
+        Source: ANSI X9.150-2026 §10.7 step 3.1 ("a valid UUID format"). Conformance. ADR-0027,
+          verification step 3.
+        Why: The control of ``correlation_id_not_canonical`` in X9-SIG-510. Only the shape is
+          refused: RFC 9562 lets a UUID's hexadecimal digits be read in either case, so a payer
+          writing capitals is conformant, and both builds accept it.
+        """
+        qr = api.create_qr()
+        correlation_id = str(uuid.uuid4()).upper()
+
+        status, body = api.send_notification(
+            payer_a.sign(api_notification(qr), correlation_id=correlation_id))
+
+        assert status == 200, f"{status} {body}"
+        assert api.status_of(qr) == "PAYMENT_INITIATED"
 
     def test_a_revoked_payer_certificate_is_refused(self, api, pki, business_now):
         """X9-SIG-512 — a payer certificate revoked on the test CA's CRL is refused.
