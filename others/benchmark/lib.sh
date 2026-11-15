@@ -18,6 +18,9 @@ OVERLAY="${OVERLAY:-}"                      # "" = the plan §9.2 limits; "small
 JAVA_IMAGE="${JAVA_IMAGE:-x9-qrcode:git-$SHA}"
 GO_IMAGE="${GO_IMAGE:-x9-qrcode-go:git-$SHA}"
 LIQUIBASE_IMAGE="${LIQUIBASE_IMAGE:-x9-qrcode-liquibase:git-$SHA}"
+# Resolved once per campaign: footprint.sh, run later by collect.sh, must use the same images even
+# if HEAD moves while the campaign runs.
+export JAVA_IMAGE GO_IMAGE LIQUIBASE_IMAGE
 K6_IMAGE="grafana/k6:2.4.0"
 PUBLIC_IMAGES=("mongo:7.0.45" "postgres:16" "python:3.13.9-slim" "$K6_IMAGE")
 
