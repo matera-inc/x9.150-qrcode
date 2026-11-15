@@ -250,3 +250,23 @@ func TestRefusalMatchesItsKindOnly(t *testing.T) {
 		t.Error("Decision.Err does not return the refusal")
 	}
 }
+
+// S9.5: the store hands over every stored notification in arrival order; which one an event body
+// is built from is decided here (ADR-0035), not in SQL.
+func TestEventBodySourceIsTheLastStored(t *testing.T) {
+	if got := EventBodySource(nil); got != nil {
+		t.Fatalf("no notification stored: got %+v, want nil", got)
+	}
+	stored := []NotificationRecord{
+		{Phase: PhasePreCommit},
+		{Phase: PhasePostCommit, Notification: Notification{TransactionID: "tx-2"}},
+	}
+	got := EventBodySource(stored)
+	if got == nil || got.Phase != PhasePostCommit || got.Notification.TransactionID != "tx-2" {
+		t.Fatalf("got %+v, want the last stored notification", got)
+	}
+	got.Notification.TransactionID = "changed"
+	if stored[1].Notification.TransactionID != "tx-2" {
+		t.Fatal("EventBodySource aliases the stored slice")
+	}
+}
