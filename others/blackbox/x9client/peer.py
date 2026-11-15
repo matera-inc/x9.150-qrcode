@@ -15,6 +15,10 @@ payload location over https from whatever host the scanned EMV names, so a peer 
 service did not issue. The service must trust the issuing CA for TLS (the black-box deployment
 adds the test CA through ``SSL_CERT_DIR``).
 
+Either way, a right answer is signed under the correlationId of the request it answers
+(``Received.correlation_id``): the service refuses a payload, and reports an answer INVALID, under
+no correlationId or another one (ADR-0027, amendment of 2026-11-15).
+
 The service must be able to reach it: ``X9_SUITE_HOST`` (default ``127.0.0.1``) is this process's
 address as the SERVICE sees it, as for the CRL server in ``x9client.jws``.
 """
