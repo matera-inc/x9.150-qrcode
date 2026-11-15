@@ -72,6 +72,16 @@ QR Code by its UUIDv7 `id`, read **after** that insert, so `payment.sent` carrie
 reports (as Java assigns the notification before emitting, `QRCodeEntity.java:645-650`). Optional
 fields come from `notification_json`, so an absent tip stays absent.
 
+**In Go (Story 9.3)** the builder is `domain.BuildEvent(type, row, lastNotification, now, cause)`
+in `internal/domain`. `cause` carries the `reason` and, for an event a payer's notification
+produced, its receipt (`receivedInStatus` and `deviations`). The receipt is passed in, not read
+from the last stored notification, because the two can differ: the `payment.failed` of a refused
+retry takes its body from the last *stored* notification (the accepted first pre-commit, received
+in `ACTIVE`) but was received in `PAYMENT_INITIATED`, and an event the status-update API produces
+carries no receipt even when a notification is stored. Each trigger of the map is one function in
+the same package, and a table test there has a case for every key below and every cell of
+ADR-0036's matrix.
+
 **Same holder** means `payer.info` present on both and equal, and the same certificate subject;
 without `payer.info` the sender is never the holder (ADR-0036).
 
