@@ -22,6 +22,7 @@ import datetime
 
 import pytest
 
+import builds
 from test_transition_map import (CANCELLED_EVT, CLEARED, INITIATED, LAPSED_MS, OTHER,
                                  assert_events, assert_untouched, closed, held_by_holder, pre, snap)
 from x9client import emv, jws, samples
@@ -799,7 +800,8 @@ def test_a_closed_holder_of_the_same_creditor_gives_up_its_location(
 
 
 @pytest.mark.serial
-@pytest.mark.xfail(strict=True, reason=(
+# S9.1-AC5: strict on Java, which fails it by mistake; an ordinary test on Go, which follows ADR-0024.
+@pytest.mark.xfail(builds.under_test() == "java", strict=True, reason=(
     "S4.2-AC4 / ADR-0024: a holder past its validUntil is not live and gives its location up; "
     "Java's releaseLocation reads the status only, so an expired ACTIVE holder still in MongoDB "
     "(the TTL monitor has not deleted it yet) refuses the rebind with 400. BUG-004; see "

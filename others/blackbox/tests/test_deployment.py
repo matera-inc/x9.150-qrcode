@@ -3,7 +3,7 @@
 """The deployment is up (acceptance.py section 0, folded in by Story 3.4)."""
 
 
-def test_the_deployment_is_ready(api):
+def test_the_deployment_is_ready(deployment):
     """X9-LIFE-502 — the deployment under test reports health or readiness UP.
 
     S3.4-AC1, section 0 — health is UP, or at least readiness is.
@@ -13,10 +13,13 @@ def test_the_deployment_is_ready(api):
     registered with ``SPRING_CLOUD_KUBERNETES_ENABLED=false``; ``MANAGEMENT_HEALTH_KUBERNETES_
     ENABLED=false`` is the flag that removes it). What decides whether there is any point testing
     is the readiness group.
+
+    It asks only for health (the ``deployment`` fixture), not for the ``api`` fixture's QR Code and
+    trust probe, so a build with no payment-request endpoint yet can pass it (Story 9.1).
     """
-    health = api.get("/actuator/health")
+    health = deployment.get("/actuator/health")
     if health.status != 200:
-        readiness = api.get("/actuator/health/readiness")
+        readiness = deployment.get("/actuator/health/readiness")
         assert readiness.status == 200, f"neither health nor readiness is UP: {health} {readiness}"
         return
     assert health.body.get("status") == "UP", health.body

@@ -909,3 +909,6 @@ prove nothing about the service; they prove the suite can be trusted to.
 | `X9-SUITE-508` | without X9_DATABASE_URL the suite has no inspector and states why | `test_x9client.py` |
 | `X9-SUITE-509` | a database URL of an unknown scheme is a stated reason, not a crash | `test_x9client.py` |
 | `X9-SUITE-511` | a clock nobody serves is reported unavailable, with the message the fixture skips on | `test_x9client.py` |
+| `X9-SUITE-513` | the required-keys list reads test keys, node-id prefixes, `!` exclusions and comments, and refuses any other line by its number | `test_required_keys.py` |
+| `X9-SUITE-514` | a listed test that fails, errors, is skipped, is an expected failure or never ran fails the run; a build-marker skip does not; an unlisted test never does | `test_required_keys.py` |
+| `X9-SUITE-515` | a whole pytest run under `X9_REQUIRED_KEYS` exits on the listed tests alone, prints the counts of each outcome, and refuses an entry that matches no test | `test_required_keys.py` |
