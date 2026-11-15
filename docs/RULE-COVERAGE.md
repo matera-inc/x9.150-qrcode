@@ -77,8 +77,6 @@ that is here must still be marked `GAP`.
 
 | Rule | Why there is no test | Recommendation |
 |---|---|---|
-| `R-I16-04` | Decided by the owner on 2026-11-15. The Go build refuses it (`contract_test.go::TestBankRailsAreClosedOnCreateAndPatch`), but the Java build still drops the field, and the black-box and JUnit tests that pin the service's answer are being written alongside the Java change; their keys do not exist yet. | Put the new black-box key here (and the Go test beside it) once it lands, then remove this entry |
-| `R-I16-06` | Decided by the owner on 2026-11-15. The Java decoder's tolerant reading of these cases is being pinned by new black-box tests written alongside, whose keys do not exist yet; the Go decoder is Story 10.7 (S10.7-AC5). | Put those keys here once they land, then remove this entry |
 
 ## STATE-MACHINE.md
 
@@ -252,9 +250,9 @@ that is here must still be marked `GAP`.
 | `R-I16-01` | Generating (create and PATCH): a network this service does not interpret is refused, 400, by name; a network with an empty name is one of them. | `X9-RAIL-052`, `X9-RAIL-054`, `rules_test.go::TestCheckCreate` | — |
 | `R-I16-02` | Generating: a currency outside `supported-currencies.json` is refused, by name. | `X9-CUR-013`, `X9-CUR-062` | — |
 | `R-I16-03` | Generating: an unknown field in `solana` is refused, by name. | `X9-RAIL-044`, `contract_test.go::TestViolationsAreJavas` | — |
-| `R-I16-04` | Generating: an unknown field in `fednow`, `rtp` or `ach` is refused, by name, on create and on PATCH (owner, 2026-11-15). | GAP | — |
+| `R-I16-04` | Generating: an unknown field in `fednow`, `rtp` or `ach` is refused, by name, on create and on PATCH (owner, 2026-11-15). | `X9-RAIL-056`, `X9-RAIL-057`, `X9-RAIL-504`, `X9-RAIL-505` | — |
 | `R-I16-05` | Reading another bank's payload (the decoder): an unknown network is not refused; it is carried, and the rails this service knows are presented. | `X9-RAIL-060`, `X9-RAIL-061`, `X9-RAIL-062`, `X9-RAIL-063` | — |
-| `R-I16-06` | Reading another bank's payload: an unknown field inside a known rail, an unknown payment-method entry and a currency this deployment does not settle are not refused, and the known methods are presented. | GAP | — |
+| `R-I16-06` | Reading another bank's payload: an unknown field inside a known rail, an unknown payment-method entry and a currency this deployment does not settle are not refused, and the known methods are presented. | `X9-DEC-017`, `X9-DEC-018`, `X9-DEC-019`, `X9-DEC-020`, `X9-DEC-501`, `X9-DEC-502`, `X9-DEC-503`, `X9-DEC-504` | — |
 | `R-I16-07` | Reading never tolerates an integrity failure: malformed EMV, a bad signature, or content that does not match the issued QR Code is refused. | `X9-DEC-015`, `X9-DEC-016`, `X9-DEC-003`, `X9-LOC-304`, `X9-SIG-003` | — |
 
 ## ADRs 0004 to 0021
