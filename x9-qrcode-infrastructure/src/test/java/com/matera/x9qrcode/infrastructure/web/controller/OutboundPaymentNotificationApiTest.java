@@ -65,6 +65,9 @@ class OutboundPaymentNotificationApiTest extends AbstractIntegrationTest {
 
     /** Past the 15 s the payer is promised: 15 s plus a margin no scheduler jitter reaches. */
     private static final long BEYOND_THE_TIMEOUT_MS = 20_000;
+    /** The 502's detail (owner, 2026-11-15): no answer is not proof that nothing arrived. */
+    private static final String ANSWER_NOT_RECEIVED =
+            "The payee's answer was not received; the payee may have received the notification. Retrying is safe.";
 
     private static final AtomicInteger payeeTiming = new AtomicInteger(PROMPT);
 
@@ -311,6 +314,7 @@ class OutboundPaymentNotificationApiTest extends AbstractIntegrationTest {
 
         assertEquals(HttpStatus.BAD_GATEWAY.value(), response.statusCode(),
                 "a payee outage is not the caller's fault and not a refusal: " + response.asString());
+        assertEquals(ANSWER_NOT_RECEIVED, response.jsonPath().getString("detail"), response.asString());
         assertTrue(received.isEmpty());
     }
 
@@ -334,6 +338,8 @@ class OutboundPaymentNotificationApiTest extends AbstractIntegrationTest {
 
         assertEquals(HttpStatus.BAD_GATEWAY.value(), response.statusCode(),
                 "a late answer is no answer: " + response.asString());
+        assertEquals(ANSWER_NOT_RECEIVED, response.jsonPath().getString("detail"),
+                "the payee may have received it, so the detail must not say nothing was delivered");
         assertTrue(tookMs < BEYOND_THE_TIMEOUT_MS, "gave up at the timeout, not when the payee finished: " + tookMs);
     }
 

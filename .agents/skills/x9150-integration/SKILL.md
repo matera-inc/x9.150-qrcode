@@ -136,7 +136,7 @@ gap-free** — a notification that merely records details bumps it without emitt
 | `401` | the JWS did not verify | check your signing identity and `crit` headers |
 | `404` | no such QR Code | |
 | `409` | status transition not allowed from the current status | read the reported status; usually someone else is paying |
-| `502` | the payee was unreachable; **nothing was delivered** | retry later, from your own durable copy |
+| `502` | the payee's answer was not received; **the payee may have received the notification** | retrying is safe: retry later, from your own durable copy |
 
 Problem responses are RFC 9457 `application/problem+json` with `type`, `title`, `status`, `detail`,
 `instance` and, for validation failures, `violations[]`.

@@ -136,10 +136,12 @@ func InvalidSignature(signatureProblem string) *Problem {
 	return p
 }
 
-// NotificationUndeliverable is the 502 of a payee that could not be reached.
+// NotificationUndeliverable is the 502 of a payee whose whole answer was not received: it could
+// not be reached, closed the connection, or answered too late. The payee may have received the
+// notification, so the detail does not say that nothing was delivered.
 func NotificationUndeliverable() *Problem {
 	return newProblem(http.StatusBadGateway, "Notification Undeliverable", TypeNotificationUndeliverable,
-		"The payee could not be reached, so nothing was delivered. Retry.", nil)
+		"The payee's answer was not received; the payee may have received the notification. Retrying is safe.", nil)
 }
 
 // PayloadRefused relays a payee's refusal to release a payload, with the payee's own status.

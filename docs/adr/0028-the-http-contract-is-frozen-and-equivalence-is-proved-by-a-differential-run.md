@@ -78,7 +78,8 @@ lives on a separate listener and is never in `openapi.yaml`.
 **Where a house rule conflicts with the contract, the contract wins:**
 
 - amounts are JSON numbers (X9.150 §2.1);
-- 502 means payee unreachable (ADR-0015).
+- 502 means no answer was received from the payee (ADR-0015); the payee may still have received the
+  notification (note of 2026-11-15 below).
 
 ## Consequences
 
@@ -114,6 +115,22 @@ So the Java build gets **two** deliberate fixes before it is frozen: the ETag an
 Where Java is known to break X9.150 or an ADR (an **Open** entry in
 [`known-bugs.md`](../../known-bugs.md), or a black-box test marked as an expected failure on Java),
 that behaviour is excluded from the Java↔Go differential comparison, and Go follows the spec.
+
+### Note, 2026-11-15 (owner): one change to a frozen error text, the outbound 502
+
+Java's error texts are frozen by this ADR. One is changed, in both builds at once: the `detail` of
+the `notification-undeliverable` 502, answered when this service sends a payment notification to a
+payee and receives no whole answer.
+
+- **Was:** "The payee could not be reached, so nothing was delivered. Retry."
+- **Now:** "The payee's answer was not received; the payee may have received the notification.
+  Retrying is safe."
+
+**Why:** the old text was false whenever the payee had the notification and its answer was lost,
+came too late or was unreadable. A payer told "nothing was delivered" could act on a notification the
+payee had in fact received. Retrying stays safe because a payee must tolerate the same notification
+twice. The title, the `type` URI and the status are unchanged, so the differential run still sees the
+two builds agree.
 
 ### Known differences between the builds (owner, 2026-11-15)
 

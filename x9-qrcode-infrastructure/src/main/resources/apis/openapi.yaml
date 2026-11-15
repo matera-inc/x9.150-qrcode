@@ -362,8 +362,10 @@ paths:
           description: |-
             No answer came back from the payee: it could not be reached, it closed the connection
             without answering, or its whole answer (headers and body) did not arrive within 15
-            seconds. Treat it as undelivered and retry; a payee that answers too late may have
-            received the notification, so it must tolerate seeing it again.
+            seconds. The payee may still have received the notification, so this does not mean that
+            nothing was delivered. Retrying is safe: a payee must tolerate seeing the same
+            notification again. The problem's `detail` reads: "The payee's answer was not received;
+            the payee may have received the notification. Retrying is safe."
           content:
             application/problem+json:
               schema:
@@ -383,8 +385,9 @@ paths:
         settlement, so a payer's report leaves the QR Code `PAYMENT_INITIATED`; whatever system
         actually receives the funds marks it paid.
 
-        **Delivery is the caller's to retry.** If the payee is unreachable — their outage, not a
-        refusal — this answers `502` and nothing was delivered. Hold the report and send it later:
+        **Delivery is the caller's to retry.** If the payee's answer is not received — their outage,
+        not a refusal — this answers `502`; the payee may still have received the report, and
+        retrying is safe. Hold the report and send it later:
         the durable copy has to live with the caller, because an outbox on this side would be no help
         when the caller cannot reach this service either.
       operationId: sendPostPaymentNotification
@@ -413,8 +416,10 @@ paths:
           description: |-
             No answer came back from the payee: it could not be reached, it closed the connection
             without answering, or its whole answer (headers and body) did not arrive within 15
-            seconds. Treat it as undelivered and retry; a payee that answers too late may have
-            received the notification, so it must tolerate seeing it again.
+            seconds. The payee may still have received the notification, so this does not mean that
+            nothing was delivered. Retrying is safe: a payee must tolerate seeing the same
+            notification again. The problem's `detail` reads: "The payee's answer was not received;
+            the payee may have received the notification. Retrying is safe."
           content:
             application/problem+json:
               schema:

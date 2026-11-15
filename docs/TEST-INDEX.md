@@ -820,7 +820,7 @@ status is `X9-MAP-002`.
 | `X9-SIG-501` | the test payee holds the service's signed outbound question byte for byte, under the caller's correlationId | `test_payee_answers.py` |
 | `X9-SIG-502` | each of the payee's answers (cases 1-8, 11-16) is reported for what it is: signature, signatureProblem, statusCode, accepted | `test_payee_answers.py` |
 | `X9-SIG-503` | an answer signed by an untrusted or a revoked certificate is INVALID, UNTRUSTED_CHAIN | `test_payee_answers.py` |
-| `X9-SIG-504` | a payee that hangs up without answering is 502, and nothing changes here | `test_payee_answers.py` |
+| `X9-SIG-504` | a payee that hangs up without answering is 502, whose detail says the payee may have received it, and nothing changes here | `test_payee_answers.py` |
 | `X9-SIG-505` | a payee answering after the 15 s timeout is 502 | `test_payee_answers.py` |
 | `X9-SIG-506` | each tampered payee answer is reported INVALID with the service's fixed code | `test_payee_answers.py` |
 | `X9-SIG-507` | the JWK set is served, each key with its x5c chain | `test_public_metadata.py` |

@@ -7,7 +7,10 @@
 package com.matera.x9qrcode.app.exception;
 
 /**
- * The payee could not be reached at all — so nothing was delivered, and the caller should retry.
+ * The payee's whole answer was not received: it could not be reached, closed the connection without
+ * answering, or answered too late. The payee may still have received the notification, so this does
+ * not mean that nothing was delivered; retrying is safe, because a payee must tolerate seeing the same
+ * notification again.
  *
  * <p>Separate from a refusal on purpose. "The payee said no" and "we never got an answer" look alike
  * from a distance and call for opposite things: one is a decision to act on, the other is a delivery
