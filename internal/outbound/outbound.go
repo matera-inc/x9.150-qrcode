@@ -32,8 +32,10 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -60,6 +62,8 @@ const (
 	DefaultConnectTimeout = 5 * time.Second
 	// DefaultAnswerTimeout bounds the whole answer, headers and body, from the moment the
 	// notification is sent.
+	// The clock starts once the request has been sent, as in the Java build (#120), so the time
+	// spent connecting is not taken from the payee's.
 	DefaultAnswerTimeout = 15 * time.Second
 	// DefaultMaxAnswerBytes is the largest answer read. A signed {"statusCode": n}, or a refusal
 	// with its violations, is a few kilobytes; one past this is no answer this service can report.
@@ -103,6 +107,9 @@ type AnswerChecker interface {
 type Config struct {
 	ConnectTimeout time.Duration
 	AnswerTimeout  time.Duration
+	// DialContext, when set, opens the connections in place of a net.Dialer; the connect timeout
+	// still bounds it. Tests use it to make a connection slow.
+	DialContext    func(ctx context.Context, network, addr string) (net.Conn, error)
 	MaxAnswerBytes int64
 }
 
@@ -114,6 +121,7 @@ type Service struct {
 	logger    *slog.Logger
 	client    *http.Client
 	transport *http.Transport
+	connectIn time.Duration
 	answerIn  time.Duration
 	maxBytes  int64
 }
@@ -133,10 +141,18 @@ func New(k Keys, signer *jws.Signer, checker AnswerChecker, logger *slog.Logger,
 	if maxBytes <= 0 {
 		maxBytes = DefaultMaxAnswerBytes
 	}
+	dial := (&net.Dialer{Timeout: connect}).DialContext
+	if cfg.DialContext != nil {
+		dial = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			ctx, cancel := context.WithTimeout(ctx, connect)
+			defer cancel()
+			return cfg.DialContext(ctx, network, addr)
+		}
+	}
 	transport := &http.Transport{
 		// Java's HttpClient reads no proxy from the environment; neither does this.
 		Proxy:               nil,
-		DialContext:         (&net.Dialer{Timeout: connect}).DialContext,
+		DialContext:         dial,
 		TLSHandshakeTimeout: connect,
 		MaxIdleConns:        16,
 		IdleConnTimeout:     30 * time.Second,
@@ -153,8 +169,9 @@ func New(k Keys, signer *jws.Signer, checker AnswerChecker, logger *slog.Logger,
 			// A redirect is the payee's answer, reported as such, never followed (ADR-0015).
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
-		answerIn: answer,
-		maxBytes: maxBytes,
+		connectIn: connect,
+		answerIn:  answer,
+		maxBytes:  maxBytes,
 	}
 }
 
@@ -273,27 +290,54 @@ func checkPhase(p phase, note contract.NotificationData) error {
 // errTooLarge is an answer past MaxAnswerBytes.
 var errTooLarge = errors.New("the answer is larger than this service reads")
 
-// deliver posts token to endpoint and returns the payee's status and body. Any failure to get a
-// whole answer within the answer timeout is an error: the payee could not be reached, closed the
-// connection without answering, or answered too late.
+// errAnswerTimeout is a whole answer not received within the answer timeout.
+var errAnswerTimeout = errors.New("the payee's whole answer did not arrive in time")
+
+// deliver posts token to endpoint and returns the payee's status and body. As in the Java build,
+// the connection gets the connect timeout, and the whole answer, headers and body, gets the answer
+// timeout counted from when the request has been sent. Any failure to get a whole answer is an
+// error: the payee could not be reached, closed the connection without answering, or answered too
+// late.
 func (s *Service) deliver(ctx context.Context, endpoint *url.URL, token string) (int, string, error) {
-	// A deadline on the answer, not business time.
-	ctx, cancel := context.WithTimeout(ctx, s.answerIn)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), strings.NewReader(token))
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	// A backstop on everything before the answer clock starts: the dial and the TLS handshake have
+	// their own bounds, and this keeps a stalled write from holding the caller.
+	sending := time.AfterFunc(s.connectIn+s.answerIn, func() { cancel(errAnswerTimeout) })
+	defer sending.Stop()
+	var (
+		mu       sync.Mutex
+		answerBy *time.Timer
+	)
+	trace := &httptrace.ClientTrace{WroteRequest: func(httptrace.WroteRequestInfo) {
+		mu.Lock()
+		defer mu.Unlock()
+		if answerBy == nil {
+			answerBy = time.AfterFunc(s.answerIn, func() { cancel(errAnswerTimeout) })
+		}
+	}}
+	defer func() {
+		mu.Lock()
+		defer mu.Unlock()
+		if answerBy != nil {
+			answerBy.Stop()
+		}
+	}()
+	req, err := http.NewRequestWithContext(httptrace.WithClientTrace(ctx, trace), http.MethodPost, endpoint.String(),
+		strings.NewReader(token))
 	if err != nil {
 		return 0, "", err
 	}
 	req.Header.Set("Content-Type", ContentTypeJOSE)
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return 0, "", err
+		return 0, "", errors.Join(err, context.Cause(ctx))
 	}
 	defer func() { _ = resp.Body.Close() }()
 	var body bytes.Buffer
 	n, err := io.Copy(&body, io.LimitReader(resp.Body, s.maxBytes+1))
 	if err != nil {
-		return 0, "", err
+		return 0, "", errors.Join(err, context.Cause(ctx))
 	}
 	if n > s.maxBytes {
 		return 0, "", errTooLarge
