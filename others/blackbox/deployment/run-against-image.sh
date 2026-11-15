@@ -15,9 +15,9 @@
 #
 # A Go image (Story 9.1) runs on PostgreSQL instead: docker-compose.go.yml, two more local images
 # (x9-blackbox-bootstrap:<run> and x9-blackbox-liquibase:<run>, db/local), the changelog applied by
-# the Liquibase one-shot before the service starts, the truststore as PKCS#12, and the verdict of
-# go-required.txt: every test runs, and only the listed ones decide the exit code. The build is the
-# image's entrypoint (/x9-qrcode is the Go binary); X9_BUILD=java|go overrides it.
+# the Liquibase one-shot before the service starts, and the truststore as PKCS#12. Its verdict is the
+# whole suite, as for Java (Story 10.8). The build is the image's entrypoint (/x9-qrcode is the Go
+# binary); X9_BUILD=java|go overrides it.
 #
 # Every run is its own: the compose project is $X9_BLACKBOX_PROJECT if set, otherwise
 # x9-blackbox-<random suffix>, and the two images are tagged with that same name. Two runs at once

@@ -71,26 +71,22 @@ host, so it runs on its default `x9-150.example.com`, which the golden EMV set c
 suite reading the database as the read-only role. That `postgresql://` URL is what makes the suite
 take the run as the Go build.
 
-The Go build is being written, so most tests cannot pass on it yet. The run's verdict is
-**`deployment/go-required.txt`** (`required_keys.py`, enabled by `X9_REQUIRED_KEYS`): every test
-runs, a listed test that fails, errors, is an expected failure or is skipped (a `java_only` skip
-excepted) fails the run, and every other test is informative. The run ends with the count of each
-outcome on each side:
+Since Story 10.8 the Go run is judged as the Java run is: **the whole suite, under
+`X9_REQUIRE_ALL=1`**, and any failure fails it. The one exception on each side is decided in the
+test itself, never in a list beside it:
 
-```
-======================= required keys (go-required.txt) ========================
-4 entries, 0 exclusions, 18 tests required
-required:    18 passed
-informative: 81 passed, 962 error, 1 build-skipped (never fail this run)
-the listed tests pass
-```
+- a `java_only` test is skipped on Go, and a `go_only` one on Java, with its reason;
+- `X9-TIME-015` (retention, ADR-0029) is a strict expected failure on Go naming **Epic 12**: the
+  day the retention job lands, it passes, the strict mark turns the run red, and the mark comes out;
+- a behaviour where Go follows the standard or an ADR and Java does not is a `go_only` test, or a
+  strict expected failure on Java (`X9-LOC-421`, BUG-004), listed in ADR-0028's "Known differences
+  between the builds".
 
-An entry is a test key (`X9-LIFE-502`: every test whose docstring starts with it), or a node-id
-prefix starting with `tests/` (a file, or some cases of one test:
-`tests/test_contract.py::test_a_contract_constraint_is_refused[create:`); `!` before an entry
-excludes what it matches. An entry that matches no test fails the run, so a typo cannot require
-nothing. Each story of Epics 9 and 10 ends by adding its keys; Story 10.8 replaces the list with the
-whole suite. A service that never comes up fails the run too, since nothing informative would.
+The required-keys list that Epics 9 and 10 grew while the Go build was being written
+(`deployment/go-required.txt`) is gone. `required_keys.py` stays as a tool for a partial run: point
+`X9_REQUIRED_KEYS` at a list file of your own and only the tests it lists decide the exit code,
+every other one reported as informative (entries are test keys or `tests/` node-id prefixes, `!`
+excludes, an entry that matches nothing fails the run). No CI run sets it.
 
 Before any test, the `api` fixture creates a QR Code and has payer A send it one pre-commit: the
 **trust probe**, which turns a deployment that does not trust the test CA into one clear message
@@ -98,8 +94,8 @@ instead of a failure in every payer test. Both builds take payer notifications (
 Story 10.4), so the probe runs the same on each.
 
 The `blackbox-go` job, beside `blackbox`, builds the image with `make go-image` and runs exactly
-this on every pull request that touches the Go code, `db/` or `others/blackbox/`; on any other
-pull request it passes without running.
+this on every pull request that touches the Go code, `db/` or `others/blackbox/`, and fails it on
+any failure; on any other pull request it passes without running.
 
 ### The deployment under test
 
@@ -142,7 +138,7 @@ this truststore: it trusts keys anybody can download.
 | `X9_DATABASE_URL` | unset | Optional read-only database connection (`mongodb://…` for Java, `postgresql://…` for Go). Database checks skip, with the reason, when it is unset or the driver (`pymongo` / `psycopg`) is not installed. |
 | `X9_REQUIRE_ALL` | unset | `1` turns every "capability missing" skip into a failure. CI sets it. |
 | `X9_BUILD` | from `X9_DATABASE_URL`, else `java` | `java` or `go`: `go_only` tests skip on Java and `java_only` tests on Go, with the reason. Not a missing capability, so `X9_REQUIRE_ALL` does not fail them. A mark can also depend on it (`builds.under_test()`): `X9-LOC-421` is a strict expected failure on Java only. |
-| `X9_REQUIRED_KEYS` | unset | A list file (`deployment/go-required.txt`): only the tests it lists decide the exit code; every other one is informative. The Go run sets it. |
+| `X9_REQUIRED_KEYS` | unset | A list file of your own: only the tests it lists decide the exit code; every other one is informative. For a partial run while porting; no CI run sets it. |
 
 ## Layout
 
@@ -162,11 +158,11 @@ others/blackbox/
 ├── tests/             the scenarios
 ├── contract.py        a refusal case per maxLength/minLength/pattern/required/maximum/minimum, and the edge of each bound
 ├── contract-known-gaps.yaml   constraints the service does not enforce today, each with its reason
-├── deployment/        the compose files (Java, Go), the truststore as JKS and PKCS#12, go-required.txt
+├── deployment/        the compose files (Java, Go), the truststore as JKS and PKCS#12
 ├── golden/            JWS and EMV fixtures exported from Java, with their verdicts (Story 4.7)
 ├── conftest.py        fixtures: deployment, api, events, clock, db, pki, payer_a, payer_b, tamperer
 ├── builds.py          which build is under test (java or go), for marks decided at import
-├── required_keys.py   the required-keys list: only listed tests decide a run (X9_REQUIRED_KEYS)
+├── required_keys.py   an optional required-keys list for a partial run (X9_REQUIRED_KEYS)
 ├── run.py             `uv run` entry point (PEP 723)
 └── pytest.ini         markers: serial, java_only, go_only
 ```

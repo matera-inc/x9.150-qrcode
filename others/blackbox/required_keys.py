@@ -2,8 +2,9 @@
 # Licensed under the Matera Source License v1.0 (source-available; not open source). See LICENSE.md.
 """The tests a run requires, and every other one reported as informative (Story 9.1, S9.1-AC3).
 
-Inert unless ``X9_REQUIRED_KEYS`` names a list file. The Go run sets it to
-``deployment/go-required.txt``; the Java run never does, so for Java nothing here changes anything.
+Inert unless ``X9_REQUIRED_KEYS`` names a list file. No CI run sets it: since Story 10.8 both the
+Java and the Go runs are judged on the whole suite, and the Go run's ``go-required.txt`` is gone.
+It stays as a tool for a partial run, such as a build being ported one story at a time.
 
 When it is set, the run's exit code is decided by the listed tests alone:
 
