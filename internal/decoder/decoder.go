@@ -19,8 +19,10 @@
 //  3. the payee's answer: a 4xx is relayed as payload-refused with the payee's own status and its
 //     reasons, capped and reduced to plain strings (relay.go); a 5xx, or no whole answer, is a 502
 //     payload-unreachable carrying no address;
-//  4. a payload's JWS is verified by the deployment's one verifier (S10.2-AC1); one that does not
-//     verify is refused, and nothing of it is presented;
+//  4. a payload's JWS is verified by the deployment's one verifier (S10.2-AC1), and must carry in
+//     its header exactly the correlationId the request was sent under, the caller's or the one
+//     generated for it (ADR-0027, amendment of 2026-11-15); one that does not verify, or carries
+//     no correlationId or another one, is refused, and nothing of it is presented;
 //  5. the payload is read with tolerance (foreign.go, INTERPRETATION I-16): an unknown rail is
 //     carried intact, an unknown field is dropped, a currency this deployment does not settle is
 //     presented as written; it is never refused for what it adds.
@@ -147,14 +149,16 @@ func (s *Service) decode(w http.ResponseWriter, r *http.Request) error {
 		return httpapi.BusinessRule(fieldQRCode, fmt.Sprintf(msgMalformed, emv.Reason(err)))
 	}
 
+	// The payee's answer must echo the correlationId the request went out under, the caller's or a
+	// fresh one: under none, or under another, it is not an answer to this request (ADR-0027,
+	// amendment of 2026-11-15).
 	correlationID := req.CorrelationID.Value
-	expect := jws.Expect{CorrelationID: correlationID}
 	if !req.CorrelationID.IsSet() {
-		// The Java build checks the payload's correlationId only against one the caller gave.
-		correlationID, expect.CorrelationID = jws.NewCorrelationID(), uuid.Nil
+		correlationID = jws.NewCorrelationID()
 	} else if correlationID == uuid.Nil {
 		return httpapi.BusinessRule("correlationID", msgNilCorrelationID)
 	}
+	expect := jws.Expect{CorrelationID: correlationID}
 
 	// S10.7-AC2: this deployment's own host is read internally; any other over https.
 	target, refused := s.targets.resolve(qr.URL)
