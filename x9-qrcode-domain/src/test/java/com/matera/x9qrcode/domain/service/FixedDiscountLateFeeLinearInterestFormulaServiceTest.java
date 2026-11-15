@@ -7,6 +7,8 @@
 package com.matera.x9qrcode.domain.service;
 
 import com.matera.x9qrcode.domain.dto.FormulaResultDTO;
+import com.matera.x9qrcode.domain.exception.ValueObjectRuleException;
+import com.matera.x9qrcode.domain.vo.AmountVO;
 import com.matera.x9qrcode.domain.vo.AdjustmentParametersVO;
 import com.matera.x9qrcode.domain.vo.DiscountVO;
 import com.matera.x9qrcode.domain.vo.LateFeesVO;
@@ -22,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrowsExactly;
 
 /**
  * The formula at the instants where its answer changes.
@@ -49,7 +52,7 @@ class FixedDiscountLateFeeLinearInterestFormulaServiceTest {
     }
 
     private FormulaResultDTO at(OffsetDateTime when, AdjustmentParametersVO parameters) {
-        return formula.calculate(when, DUE_DATE, FACE, "USDC", parameters);
+        return formula.calculate(when, DUE_DATE, FACE, "USDC", parameters, null);
     }
 
     // ------------------------------------------------------------ the due date (Story 1.3)
@@ -195,6 +198,60 @@ class FixedDiscountLateFeeLinearInterestFormulaServiceTest {
         assertEquals(eligibilityEnds, result.cappedAt(eligibilityEnds.plusDays(1)).validUntil(),
             "a later cap leaves the edge alone");
         assertEquals(result.amount(), result.cappedAt(methodEnds).amount());
+    }
+
+    // ------------------------------- the fee stops at validUntil, and fits 18 digits (ADR-0005)
+
+    /**
+     * <b>X9-AMT-118</b> — the late fee stops growing at the QR Code's {@code validUntil}.
+     *
+     * <p><b>Source:</b> Ours. ADR-0005 (owner decision 2026-11-14): the QR Code cannot be paid after
+     * it, so a fee for a later instant is a fee nobody can owe.
+     *
+     * <p><b>Why:</b> A payer may ask for the payload at any future {@code dateForPayment}. Without the
+     * stop, a date years away grew the fee past what was checked at creation, and past 18 digits.
+     */
+    @Test
+    void theLateFeeStopsGrowingAtValidUntil() {
+        OffsetDateTime validUntil = DUE_DATE.plusDays(2).plusHours(1);
+
+        FormulaResultDTO yearsLater = formula.calculate(DUE_DATE.plusYears(40), DUE_DATE, FACE, "USDC",
+            parameters(null), validUntil);
+
+        assertEquals(FACE + 3 * PER_DAY, yearsLater.amount(), "the fee owed at validUntil, not 40 years on");
+        assertEquals(FACE + 3 * PER_DAY,
+            formula.calculate(validUntil, DUE_DATE, FACE, "USDC", parameters(null), validUntil).amount());
+        assertNull(formula.calculate(DUE_DATE.plusDays(1), DUE_DATE, FACE, "USDC", parameters(null), DUE_DATE),
+            "a QR Code that expires at its due date never owes a late fee");
+    }
+
+    /**
+     * <b>X9-AMT-119</b> — the formula never returns an amount past 18 digits, and never wraps: it
+     * refuses.
+     *
+     * <p><b>Source:</b> ANSI X9.150-2026 §13.5.1, §13.5.3.2 — maximum length 18. Defence in depth
+     * behind X9-AMT-114: a stored bill that slipped past the creation bound is refused at payload
+     * time rather than signed into a non-conformant payload.
+     *
+     * <p><b>Why:</b> {@code perDay × days} on a {@code long} wrapped silently, so a large enough fee
+     * came out negative and the payload asked for less than the bill.
+     */
+    @Test
+    void theFormulaRefusesAnAmountPastEighteenDigitsAndNeverWraps() {
+        long max = AmountVO.MAX_AMOUNT;
+        AdjustmentParametersVO huge = new AdjustmentParametersVO(null, new LateFeesVO(max, max, "late"));
+
+        assertThrowsExactly(ValueObjectRuleException.class,
+            () -> formula.calculate(DUE_DATE.plusYears(30), DUE_DATE, 1L, "USDC", huge, null),
+            "a fee that overflows a long is refused, not wrapped");
+
+        AdjustmentParametersVO fits = new AdjustmentParametersVO(null, new LateFeesVO(0L, 1L, "late"));
+        FormulaResultDTO exactly = formula.calculate(DUE_DATE.plusHours(1), DUE_DATE, max - 1, "USDC", fits, null);
+        assertEquals(max, exactly.amount(), "18 nines is still served");
+
+        assertThrowsExactly(ValueObjectRuleException.class,
+            () -> formula.calculate(DUE_DATE.plusDays(1).plusHours(1), DUE_DATE, max - 1, "USDC", fits, null),
+            "one more is refused");
     }
 
 }

@@ -52,7 +52,11 @@ The rest, checked against the §13.5 / §14.3 / §2.1 field tables:
   amount also `minimum`, as it is signed), and `AmountVO.requireAtMost18Digits` enforces it once, for
   every path, including signed notifications that bypass bean validation. Tests: `X9-AMT-110` to
   `X9-AMT-112` (`AmountVOTest`), `X9-AMT-120` to `X9-AMT-123` (`AmountEighteenDigitsApiTest`), and
-  the black-box `X9-AMT-421` and `X9-AMT-006`.
+  the black-box `X9-AMT-421` and `X9-AMT-006`. A late fee grows every day but stops at the QR
+  Code's `validUntil`, so a bill whose bill or payment-method amount plus the largest late fee
+  (`fixed + perDay × days late at validUntil`) would pass 18 digits is refused at creation and on
+  PATCH, and the formula refuses rather than emits such an amount (`X9-AMT-113` to `X9-AMT-119`,
+  `X9-AMT-124` to `X9-AMT-126`, black-box `X9-AMT-423`).
 
 ## Alternatives rejected
 

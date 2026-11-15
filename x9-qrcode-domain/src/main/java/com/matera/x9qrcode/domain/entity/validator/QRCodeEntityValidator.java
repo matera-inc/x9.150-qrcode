@@ -8,10 +8,14 @@ package com.matera.x9qrcode.domain.entity.validator;
 
 import com.matera.x9qrcode.domain.entity.QRCodeEntity;
 import com.matera.x9qrcode.domain.exception.BusinessRuleException;
+import com.matera.x9qrcode.domain.service.LateFeeBound;
 import com.matera.x9qrcode.domain.utils.DateTimeUtils;
+import com.matera.x9qrcode.domain.vo.AdjustmentVO;
+import com.matera.x9qrcode.domain.vo.AmountVO;
 import com.matera.x9qrcode.domain.vo.BillVO;
 import com.matera.x9qrcode.domain.vo.DiscountVO;
 import com.matera.x9qrcode.domain.vo.InvoiceVO;
+import com.matera.x9qrcode.domain.vo.LateFeesVO;
 import com.matera.x9qrcode.domain.vo.PaymentMethodVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationDataVO;
 import com.matera.x9qrcode.domain.vo.PaymentNotificationVO;
@@ -22,6 +26,7 @@ import com.matera.x9qrcode.domain.vo.enumerated.PaymentTimingEnum;
 
 import org.apache.commons.lang3.StringUtils;
 
+import java.math.BigInteger;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -128,6 +133,67 @@ public final class QRCodeEntityValidator {
                     "target date must be after the current date.");
             }
         });
+    }
+
+    /**
+     * The largest amount the bill can show must fit the 18 digits X9.150 allows (ADR-0005).
+     *
+     * <p>A late fee is {@code fixed + perDay × daysLate} and grows every day, but it stops at the QR
+     * Code's {@code validUntil}, so its largest value is known now. The bill amount and every
+     * payment-method amount are checked against that fee: each method both as {@code amount + fee}
+     * and as the payload serves it, the bill's adjustment pro-rated to the method's scale. Every
+     * method is bounded by the QR Code's {@code validUntil}, not its own: the payload filters methods
+     * by the payer's requested date but computes the fee at the later of that date and now, so a
+     * method can be served with a fee counted past its own {@code validUntil}.
+     *
+     * <p>Run at creation and on PATCH against the merged state; never on restore, so a QR Code
+     * stored before this rule stays readable (the formula still refuses to emit past 18 digits).
+     */
+    public void validateLateFeeBound() {
+        BillVO bill = this.entity.getBill();
+        AdjustmentVO adjustment = bill.amountDue().adjustment();
+        InvoiceVO invoice = bill.invoice();
+
+        if (isNull(adjustment) || isNull(invoice) || isNull(adjustment.parameters())) {
+            return;
+        }
+
+        LateFeesVO lateFees = adjustment.parameters().lateFees();
+        long days = LateFeeBound.daysLate(invoice.dueDate(), this.entity.getValidUntil());
+        BigInteger fee = LateFeeBound.largestFee(lateFees, invoice.dueDate(), this.entity.getValidUntil());
+
+        if (fee.signum() == 0) {
+            return;
+        }
+
+        String feeText = "the largest late fee this bill reaches before validUntil (fixed %d + perDay %d × %d days = %s)"
+            .formatted(lateFees.fixed(), lateFees.perDay(), days, fee);
+
+        long billAmount = bill.amountDue().currencyAmount().amount();
+        BigInteger billWithFee = BigInteger.valueOf(billAmount).add(fee);
+
+        if (!AmountVO.fitsEighteenDigits(billWithFee)) {
+            throw new BusinessRuleException("bill.amountDue.amount", exceeds(billAmount, feeText, billWithFee));
+        }
+
+        List<PaymentMethodVO> paymentMethods = this.entity.getPaymentMethods();
+
+        IntStream.range(0, paymentMethods.size()).forEach(index -> {
+            long amount = paymentMethods.get(index).amount().value();
+            BigInteger withFee = BigInteger.valueOf(amount).add(fee)
+                .max(LateFeeBound.prorated(amount, billAmount, billWithFee));
+
+            if (!AmountVO.fitsEighteenDigits(withFee)) {
+                throw new BusinessRuleException("paymentMethods[%d].amount".formatted(index),
+                    exceeds(amount, feeText, withFee));
+            }
+        });
+    }
+
+    private static String exceeds(long amount, String feeText, BigInteger largest) {
+        return ("%d with %s can reach %s, more than the 18 digits ANSI X9.150 allows (%d). "
+            + "Lower the amount or the late fee, or set an earlier validUntil.")
+            .formatted(amount, feeText, largest, AmountVO.MAX_AMOUNT);
     }
 
     public void validateInvoiceDueDate() {

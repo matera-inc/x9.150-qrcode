@@ -10,6 +10,8 @@ import com.matera.x9qrcode.domain.exception.ValueObjectRuleException;
 
 import lombok.EqualsAndHashCode;
 
+import java.math.BigInteger;
+
 import static java.util.Objects.isNull;
 
 public class AmountVO extends ValueObject<Long> {
@@ -20,6 +22,8 @@ public class AmountVO extends ValueObject<Long> {
      * a 64-bit integer holds. See ADR-0005.
      */
     public static final long MAX_AMOUNT = 999_999_999_999_999_999L;
+
+    private static final BigInteger MAX = BigInteger.valueOf(MAX_AMOUNT);
 
     static final String TOO_MANY_DIGITS = "monetary values should not exceed 18 digits (" + MAX_AMOUNT + ").";
 
@@ -47,6 +51,23 @@ public class AmountVO extends ValueObject<Long> {
         }
 
         return value;
+    }
+
+    /**
+     * The same bound on a value computed without overflow (a late fee, an amount with its fee),
+     * returned as a {@code long} only once it is known to fit 18 digits.
+     */
+    public static long requireAtMost18Digits(BigInteger value) {
+        if (value.abs().compareTo(MAX) > 0) {
+            throw new ValueObjectRuleException(TOO_MANY_DIGITS);
+        }
+
+        return value.longValueExact();
+    }
+
+    /** Whether a value computed without overflow fits 18 digits. */
+    public static boolean fitsEighteenDigits(BigInteger value) {
+        return value.abs().compareTo(MAX) <= 0;
     }
 
 }

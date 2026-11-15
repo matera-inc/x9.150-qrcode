@@ -700,7 +700,9 @@ that amount stops applying, so that the instant advertised and the instant accep
   and including E, and refused one millisecond after (the face amount is still accepted). Of
   several discounts, the largest eligible one is served and its `validUntil` is that discount's E.
 - **Late fee:** k days late, with k = ceil((t − `dueDate`) / 24 h), the fee is k × per-day + fixed,
-  and its `validUntil` is `dueDate + k × 24 h`. One millisecond later, one more day is owed.
+  and its `validUntil` is `dueDate + k × 24 h`. One millisecond later, one more day is owed. The
+  fee stops growing at the QR Code's `validUntil`, so its largest value is known at creation, and a
+  bill whose amount, or any payment method's, would pass 18 digits with it is refused (ADR-0005).
 - **Capped:** never later than the QR Code's `validUntil`, nor than the last of the payment methods
   served with it. Each method still carries its own `validUntil` beside its amount.
 

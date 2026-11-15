@@ -233,8 +233,18 @@ public class QRCodeEntity {
 
         qrCodeEntity.qrCodeEntityValidator.validateIfPaymentMethodsAreExpired();
         qrCodeEntity.qrCodeEntityValidator.validateCreationDates();
+        qrCodeEntity.requireLateFeeWithinEighteenDigits();
 
         return qrCodeEntity;
+    }
+
+    /**
+     * Refuses a bill whose late fee could push the bill or a payment-method amount past 18 digits
+     * before {@code validUntil} (ADR-0005). Checked at creation and, by the PATCH use case, against
+     * the merged state once every change is applied; never on restore.
+     */
+    public void requireLateFeeWithinEighteenDigits() {
+        this.qrCodeEntityValidator.validateLateFeeBound();
     }
 
     public static QRCodeEntity restore(UUID id,

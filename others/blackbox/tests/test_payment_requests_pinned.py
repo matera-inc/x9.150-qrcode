@@ -303,6 +303,59 @@ def test_a_19_digit_amount_beyond_int64_is_refused_as_unreadable(api, amount):
     assert_not_created(response)
 
 
+def late_fee_body(bill, method, fixed, valid_until=FAR_FUTURE):
+    """A bill due one day before ``valid_until``: its largest late fee is ``fixed + 100``."""
+    body = samples.payment_request(amount=bill, valid_until=valid_until)
+    body["bill"]["invoice"] = {"number": "INV-1", "date": "2030-01-10",
+                               "dueDate": "2030-12-30T23:59:59Z"}
+    body["bill"]["amountDue"]["adjustments"] = {
+        "formula": "FixedDiscountLateFeeLinearInterest",
+        "parameters": {"lateFees": {"fixed": fixed, "perDay": 100, "explanation": "Late fee"}}}
+    body["paymentMethods"][0]["amount"] = method
+    return body
+
+
+@pytest.mark.parametrize("case, field", [
+    ("bill", "bill.amountDue.amount"),
+    ("fee", "bill.amountDue.amount"),
+    ("method", "paymentMethods[0].amount"),
+    ("patch-valid-until", "bill.amountDue.amount"),
+])
+def test_a_late_fee_that_could_pass_18_digits_before_valid_until_is_refused(api, case, field):
+    """X9-AMT-423 — ADR-0005: the late fee stops growing at ``validUntil``, so the largest amount a
+    bill can show is known at creation. Bill and method of 18 nines − 1000 with a largest fee of
+    1000 (900 fixed + 100 for the one day between ``dueDate`` and ``validUntil``) are accepted;
+    one more unit of bill, fee or method, or a PATCH moving ``validUntil`` a day later, is refused
+    with 400 naming the field, nothing created and the revision unmoved.
+
+    Source: ANSI X9.150-2026 §13.5.1, §13.5.3.2, §14.3 — amount fields have a maximum length of 18.
+      Conformance; refusing at creation and PATCH is ours (ADR-0005, owner decision 2026-11-14).
+    Why: Each input fits 18 digits alone; only their sum on the last day does not. Without the
+      bound the payload would carry, on that day, an amount no conforming payer can hold.
+    """
+    top = EIGHTEEN_NINES - 1000
+    accepted = api.post(PR, body=late_fee_body(top, top, 900))
+    assert accepted.status == 201, accepted
+
+    if case == "patch-valid-until":
+        qr = accepted.body["id"]
+        before = snap(api, qr)
+        methods = [{k: pm[k] for k in ("currency", "validUntil", "amount", "networks")}
+                   for pm in api.qr(qr).body["paymentMethods"]]
+        refused = patch(api, qr, {"validUntil": "2031-01-01T23:59:59Z", "paymentMethods": methods})
+        assert_refused(refused, naming=field, status=400)
+        assert snap(api, qr) == before
+        return
+
+    bill, method, fixed = {"bill": (top + 1, top, 900), "fee": (top, top, 901),
+                           "method": (top, top + 1, 900)}[case]
+    refused = api.post(PR, body=late_fee_body(bill, method, fixed))
+
+    assert_refused(refused, naming=field, status=400)
+    assert "late fee" in str(refused.body), refused.body
+    assert_not_created(refused)
+
+
 def test_the_host_fits_emv_tag_26_and_its_limit_is_37_characters(api):
     """X9-LOC-425 — S4.2-AC1: the X9 template in tag 26 is ``0006org.x9`` + ``01LL`` + host +
     ``/pub/api/v1/loc/`` + a 32-character location, so the host may be 37 characters at most.

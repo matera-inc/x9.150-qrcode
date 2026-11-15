@@ -13,7 +13,9 @@ import com.matera.x9qrcode.app.dto.CurrencyEditableDTO;
 import com.matera.x9qrcode.app.dto.NetworksDTO;
 import com.matera.x9qrcode.app.dto.PaymentMethodDTO;
 import com.matera.x9qrcode.domain.dto.FormulaResultDTO;
+import com.matera.x9qrcode.domain.service.LateFeeBound;
 import com.matera.x9qrcode.domain.vo.AmountRangeVO;
+import com.matera.x9qrcode.domain.vo.AmountVO;
 import com.matera.x9qrcode.domain.vo.BankPaymentAddressVO;
 import com.matera.x9qrcode.domain.vo.CryptoWalletPaymentAddressVO;
 import com.matera.x9qrcode.domain.vo.EditableAmountVO;
@@ -23,8 +25,7 @@ import com.matera.x9qrcode.domain.vo.PaymentMethodVO;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
+import java.math.BigInteger;
 import java.util.List;
 
 import static java.util.Objects.isNull;
@@ -69,10 +70,9 @@ public class RetrieveQRCodePayloadPaymentMethodMapper {
             return methodAmount;
         }
 
-        return BigDecimal.valueOf(methodAmount)
-            .multiply(BigDecimal.valueOf(formulaResult.amount()))
-            .divide(BigDecimal.valueOf(originalBillAmount), 0, RoundingMode.HALF_UP)
-            .longValueExact();
+        // Refused past 18 digits rather than signed into a non-conformant payload (ADR-0005).
+        return AmountVO.requireAtMost18Digits(LateFeeBound.prorated(
+            methodAmount, originalBillAmount, BigInteger.valueOf(formulaResult.amount())));
     }
 
     private static CurrencyEditableDTO buildEditableAmount(EditableAmountVO output) {
