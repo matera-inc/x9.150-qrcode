@@ -35,6 +35,30 @@ func (c *checker) result() []string {
 	return c.violations
 }
 
+// closed refuses each member of unknown, found in the object at path, which the contract closes
+// (additionalProperties: false; what this service generates is closed at every level, INTERPRETATION
+// I-16). object is what the refusal calls it; v is the object, whose members the refusal lists in
+// the order the contract declares them. The words are the Java build's (ClosedRequestFields):
+//
+//	creditor.address.x: is not a field of address, whose fields are line1, line2, city, state, postalCode and country
+func (c *checker) closed(path, object string, unknown Members, v any) {
+	if len(unknown) == 0 {
+		return
+	}
+	fields := fieldsOf(v)
+	message := "is not a field of " + object + ", whose only field is " + fields[0]
+	if len(fields) > 1 {
+		message = "is not a field of " + object + ", whose fields are " +
+			strings.Join(fields[:len(fields)-1], ", ") + " and " + fields[len(fields)-1]
+	}
+	for _, name := range unknown.Names() {
+		if path != "" {
+			name = path + "." + name
+		}
+		c.add(name, message)
+	}
+}
+
 // Bean Validation's default messages.
 const (
 	msgNotNull = "must not be null"

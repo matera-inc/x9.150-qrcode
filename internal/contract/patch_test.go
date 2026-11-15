@@ -15,8 +15,7 @@ import (
 )
 
 // Story 9.7: a key a PATCH does not declare, at its top level or in a payment method, is kept
-// aside and never written back. Today it is dropped, as Java drops it (X9-PATCH-420); closing it
-// is ClosedPatchMembers, and what the closed check names is pinned here.
+// aside and never written back; the PATCH check refuses it by name (INTERPRETATION I-16).
 func TestAPatchKeepsUndeclaredMembersAside(t *testing.T) {
 	body := `{"creditor": {"name": "x"}, "status": "PAID", "paymentMethods": [{"currency": "USDC",
 		"validUntil": "2030-12-31T23:59:59Z", "amount": 1, "colour": "red",
@@ -31,11 +30,6 @@ func TestAPatchKeepsUndeclaredMembersAside(t *testing.T) {
 	if diff := cmp.Diff([]string{"colour"}, p.PaymentMethods.Items[0].Unknown.Names()); diff != "" {
 		t.Errorf("payment method (-want +got):\n%s", diff)
 	}
-	if !ClosedPatchMembers {
-		if v := p.Validate(); v != nil {
-			t.Errorf("dropped today, yet refused: %v", v)
-		}
-	}
 	out, err := json.Marshal(p)
 	if err != nil {
 		t.Fatal(err)
@@ -46,14 +40,12 @@ func TestAPatchKeepsUndeclaredMembersAside(t *testing.T) {
 		t.Errorf("written back:\n got %s\nwant %s", out, want)
 	}
 
-	c := &checker{}
-	checkUnknownPatchMembers(c, &p)
 	wantClosed := []string{
-		"creditor: is not a field of a PATCH, whose fields are locationId, validUntil, bill, unstructured, additionalInformation and paymentMethods",
-		"status: is not a field of a PATCH, whose fields are locationId, validUntil, bill, unstructured, additionalInformation and paymentMethods",
 		"paymentMethods[0].colour: is not a field of a payment method, whose fields are currency, validUntil, amount, editable and networks",
+		"creditor: is not a field of the payment request, whose fields are locationId, validUntil, bill, unstructured, additionalInformation and paymentMethods",
+		"status: is not a field of the payment request, whose fields are locationId, validUntil, bill, unstructured, additionalInformation and paymentMethods",
 	}
-	if diff := cmp.Diff(wantClosed, c.result()); diff != "" {
+	if diff := cmp.Diff(wantClosed, p.Validate()); diff != "" {
 		t.Errorf("closed (-want +got):\n%s", diff)
 	}
 

@@ -25,6 +25,10 @@ X9-EVT-058
 tests/test_qr_code.py
 !X9-DEC-016
 tests/test_create_refusals.py
+# What we generate is closed at every level (INTERPRETATION I-16): create and PATCH. The
+# outbound cases (X9-RAIL-509) join with the payer side.
+X9-RAIL-507
+X9-RAIL-508
 tests/test_contract.py::test_a_contract_constraint_is_refused[create:
 tests/test_contract.py::test_a_numeric_bound_itself_is_not_refused[create:
 tests/test_contract.py::test_the_unbroken_sample_is_accepted[create

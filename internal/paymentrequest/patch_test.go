@@ -308,23 +308,29 @@ func testARefusedPatchWritesNothing(t *testing.T, e *env) {
 	}
 }
 
-// S9.7-AC1, X9-PATCH-420, X9-PATCH-423: a member that is not one of the six tags is never applied
-// (dropped, ClosedPatchMembers being false); a bill restated as it is counts as a change.
+// S9.7-AC1, X9-PATCH-420, X9-PATCH-423: a member that is not one of the six tags is never applied:
+// a PATCH is closed (INTERPRETATION I-16), so it is refused by name and nothing moves; a bill
+// restated as it is counts as a change.
 func testOnlyTheSixTagsChange(t *testing.T, e *env) {
 	id := e.create(t, nil)
 	before := e.get(t, id).body
 	a := e.patch(t, id, patchOf(900, map[string]any{"creditor": map[string]any{"name": "Another Co"}, "status": "CANCELLED",
 		"revision": 7, "paymentNotification": map[string]any{"kind": "EXTERNAL"}}), "")
-	if a.status != http.StatusOK {
-		t.Fatalf("PATCH: %d %s", a.status, a.text)
+	if a.status != http.StatusBadRequest {
+		t.Fatalf("PATCH: %d %s, want 400", a.status, a.text)
+	}
+	for _, key := range []string{"creditor", "status", "revision", "paymentNotification"} {
+		if !strings.Contains(a.text, key+": is not a field of the payment request, whose fields are locationId, validUntil, bill, unstructured, additionalInformation and paymentMethods") {
+			t.Errorf("the refusal does not name %s: %s", key, a.text)
+		}
 	}
 	after := e.get(t, id).body
-	for _, key := range []string{"creditor", "paymentNotification", "createdAt", "bill"} {
+	for _, key := range []string{"creditor", "paymentNotification", "createdAt", "bill", "paymentMethods"} {
 		if !cmp.Equal(before[key], after[key]) {
 			t.Errorf("%s changed: %v -> %v", key, before[key], after[key])
 		}
 	}
-	if after["status"] != "ACTIVE" || after["revision"] != float64(1) {
+	if after["status"] != "ACTIVE" || after["revision"] != float64(0) {
 		t.Errorf("status %v, revision %v", after["status"], after["revision"])
 	}
 	if a := e.patch(t, id, patchOf(900, map[string]any{"creditor": map[string]any{"name": "Another Co"}}), ""); a.status != http.StatusBadRequest {
@@ -332,7 +338,7 @@ func testOnlyTheSixTagsChange(t *testing.T, e *env) {
 	}
 
 	restated := map[string]any{"description": "blackbox", "paymentTiming": "immediate", "amountDue": map[string]any{"amount": 1000}}
-	if a := e.patch(t, id, patchOf(900, map[string]any{"bill": restated}), ""); a.status != http.StatusOK || a.etag != `"2-ACTIVE"` {
+	if a := e.patch(t, id, patchOf(900, map[string]any{"bill": restated}), ""); a.status != http.StatusOK || a.etag != `"1-ACTIVE"` {
 		t.Fatalf("a restated bill: %d %s %s", a.status, a.etag, a.text)
 	}
 	if got := e.get(t, id).body; !cmp.Equal(got["bill"], before["bill"]) {

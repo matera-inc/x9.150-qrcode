@@ -9,7 +9,9 @@ import (
 	"bytes"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"reflect"
 	"slices"
+	"strings"
 )
 
 // The request schemas of openapi.yaml, one Go type each, members named as on the wire. Every
@@ -26,6 +28,12 @@ type CreateRequest struct {
 	AdditionalInformation List[KeyValuePair]          `json:"additionalInformation,omitzero"`
 	PaymentNotification   Object[PaymentNotification] `json:"paymentNotification,omitzero"`
 	PaymentMethods        List[PaymentMethod]         `json:"paymentMethods,omitzero"`
+	Unknown               Members                     `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (r *CreateRequest) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, r, &r.Unknown)
 }
 
 // Creditor is the creditor of a create.
@@ -36,6 +44,12 @@ type Creditor struct {
 	Address          Object[Address]          `json:"address,omitzero"`
 	UltimateCreditor Object[UltimateCreditor] `json:"ultimateCreditor,omitzero"`
 	MCC              String                   `json:"MCC,omitzero"`
+	Unknown          Members                  `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (cr *Creditor) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, cr, &cr.Unknown)
 }
 
 // UltimateCreditor is creditor.ultimateCreditor.
@@ -45,22 +59,40 @@ type UltimateCreditor struct {
 	Phone   String          `json:"phone,omitzero"`
 	Email   String          `json:"email,omitzero"`
 	Address Object[Address] `json:"address,omitzero"`
+	Unknown Members         `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (u *UltimateCreditor) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, u, &u.Unknown)
 }
 
 // Account is creditor.ultimateCreditor.account.
 type Account struct {
-	ID         String `json:"id,omitzero"`
-	SchemaName String `json:"schemaName,omitzero"`
+	ID         String  `json:"id,omitzero"`
+	SchemaName String  `json:"schemaName,omitzero"`
+	Unknown    Members `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (a *Account) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, a, &a.Unknown)
 }
 
 // Address is Address, and PatchAddress (the same members; line2, state and postalCode may be null).
 type Address struct {
-	Line1      String `json:"line1,omitzero"`
-	Line2      String `json:"line2,omitzero"`
-	City       String `json:"city,omitzero"`
-	State      String `json:"state,omitzero"`
-	PostalCode String `json:"postalCode,omitzero"`
-	Country    String `json:"country,omitzero"`
+	Line1      String  `json:"line1,omitzero"`
+	Line2      String  `json:"line2,omitzero"`
+	City       String  `json:"city,omitzero"`
+	State      String  `json:"state,omitzero"`
+	PostalCode String  `json:"postalCode,omitzero"`
+	Country    String  `json:"country,omitzero"`
+	Unknown    Members `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (a *Address) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, a, &a.Unknown)
 }
 
 // Bill is Bill (BillBase and amountDue) of a create.
@@ -71,13 +103,21 @@ type Bill struct {
 	Invoice       Object[Invoice]    `json:"invoice,omitzero"`
 	Tip           Object[Tip]        `json:"tip,omitzero"`
 	AmountDue     Object[AmountDue]  `json:"amountDue,omitzero"`
+	Unknown       Members            `json:"-"`
 }
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (b *Bill) UnmarshalJSONFrom(dec *jsontext.Decoder) error { return readClosed(dec, b, &b.Unknown) }
 
 // Order is bill.order, and PatchOrder.
 type Order struct {
-	Number String `json:"number,omitzero"`
-	Date   Date   `json:"date,omitzero"`
+	Number  String  `json:"number,omitzero"`
+	Date    Date    `json:"date,omitzero"`
+	Unknown Members `json:"-"`
 }
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (o *Order) UnmarshalJSONFrom(dec *jsontext.Decoder) error { return readClosed(dec, o, &o.Unknown) }
 
 // Invoice is bill.invoice, and PatchInvoice.
 type Invoice struct {
@@ -85,6 +125,12 @@ type Invoice struct {
 	Date     Date             `json:"date,omitzero"`
 	DueDate  Timestamp        `json:"dueDate,omitzero"`
 	Invoicee Object[Invoicee] `json:"invoicee,omitzero"`
+	Unknown  Members          `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (i *Invoice) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, i, &i.Unknown)
 }
 
 // Invoicee is Invoicee, and PatchInvoicee.
@@ -93,6 +139,12 @@ type Invoicee struct {
 	Phone   String          `json:"phone,omitzero"`
 	Email   String          `json:"email,omitzero"`
 	Address Object[Address] `json:"address,omitzero"`
+	Unknown Members         `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (i *Invoicee) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, i, &i.Unknown)
 }
 
 // Tip is bill.tip, and PatchTip (whose presets, when sent, hold at least one value).
@@ -100,12 +152,24 @@ type Tip struct {
 	Allowed Boolean          `json:"allowed,omitzero"`
 	Range   Object[TipRange] `json:"range,omitzero"`
 	Presets List[Integer]    `json:"presets,omitzero"`
+	Unknown Members          `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (tp *Tip) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, tp, &tp.Unknown)
 }
 
 // TipRange is TipRange.
 type TipRange struct {
-	Min Integer `json:"min,omitzero"`
-	Max Integer `json:"max,omitzero"`
+	Min     Integer `json:"min,omitzero"`
+	Max     Integer `json:"max,omitzero"`
+	Unknown Members `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (tr *TipRange) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, tr, &tr.Unknown)
 }
 
 // AmountDue is AmountDue of a create; PatchAmountDue has no currency.
@@ -113,18 +177,36 @@ type AmountDue struct {
 	Amount      Long               `json:"amount,omitzero"`
 	Currency    String             `json:"currency,omitzero"`
 	Adjustments Object[Adjustment] `json:"adjustments,omitzero"`
+	Unknown     Members            `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (a *AmountDue) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, a, &a.Unknown)
 }
 
 // Adjustment is Adjustment, and PatchAdjustment.
 type Adjustment struct {
 	Formula    Enum[FormulaValues]          `json:"formula,omitzero"`
 	Parameters Object[AdjustmentParameters] `json:"parameters,omitzero"`
+	Unknown    Members                      `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (a *Adjustment) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, a, &a.Unknown)
 }
 
 // AdjustmentParameters is adjustments.parameters, and PatchAdjustmentParameters.
 type AdjustmentParameters struct {
 	Discounts List[Discount]   `json:"discounts,omitzero"`
 	LateFees  Object[LateFees] `json:"lateFees,omitzero"`
+	Unknown   Members          `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (p *AdjustmentParameters) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, p, &p.Unknown)
 }
 
 // Discount is an item of parameters.discounts.
@@ -132,30 +214,54 @@ type Discount struct {
 	DaysBefore  Integer `json:"daysBefore,omitzero"`
 	Discount    Long    `json:"discount,omitzero"`
 	Explanation String  `json:"explanation,omitzero"`
+	Unknown     Members `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (d *Discount) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, d, &d.Unknown)
 }
 
 // LateFees is parameters.lateFees.
 type LateFees struct {
-	Fixed       Long   `json:"fixed,omitzero"`
-	PerDay      Long   `json:"perDay,omitzero"`
-	Explanation String `json:"explanation,omitzero"`
+	Fixed       Long    `json:"fixed,omitzero"`
+	PerDay      Long    `json:"perDay,omitzero"`
+	Explanation String  `json:"explanation,omitzero"`
+	Unknown     Members `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (l *LateFees) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, l, &l.Unknown)
 }
 
 // KeyValuePair is an item of additionalInformation.
 type KeyValuePair struct {
-	Key   String `json:"key,omitzero"`
-	Value String `json:"value,omitzero"`
+	Key     String  `json:"key,omitzero"`
+	Value   String  `json:"value,omitzero"`
+	Unknown Members `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (kv *KeyValuePair) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, kv, &kv.Unknown)
 }
 
 // PaymentNotification is the paymentNotification of a create.
 type PaymentNotification struct {
 	Kind     Enum[KindValues] `json:"kind,omitzero"`
 	Endpoint URI              `json:"endpoint,omitzero"`
+	Unknown  Members          `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (p *PaymentNotification) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, p, &p.Unknown)
 }
 
 // PaymentMethod is an item of paymentMethods, and PatchPaymentMethod (whose editable.range may be
-// absent). A key it does not declare is kept in Unknown, which is never written back: a create
-// ignores it, as Java does, and a PATCH refuses it only when ClosedPatchMembers says so.
+// absent). A key it does not declare is kept in Unknown, which is never written back, and refused
+// by the create and PATCH checks (I-16).
 type PaymentMethod struct {
 	Currency   String           `json:"currency,omitzero"`
 	ValidUntil Timestamp        `json:"validUntil,omitzero"`
@@ -165,35 +271,32 @@ type PaymentMethod struct {
 	Unknown    Members          `json:"-"`
 }
 
-// UnmarshalJSONFrom implements json.UnmarshalerFrom: the declared keys into their members, every
-// other key into Unknown.
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
 func (m *PaymentMethod) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	*m = PaymentMethod{}
-	if dec.PeekKind() == 'n' { // a null item reads as an empty method, as before Unknown was kept
-		_, err := dec.ReadToken()
-		return err
-	}
-	return readMembers(dec, &m.Unknown, map[string]any{
-		"currency": &m.Currency, "validUntil": &m.ValidUntil, "amount": &m.Amount,
-		"editable": &m.Editable, "networks": &m.Networks,
-	})
-}
-
-// MarshalJSONTo implements json.MarshalerTo: the declared members only.
-func (m PaymentMethod) MarshalJSONTo(enc *jsontext.Encoder) error {
-	type known PaymentMethod
-	return writeMembers(enc, known(m), nil)
+	return readClosed(dec, m, &m.Unknown)
 }
 
 // Editable is paymentMethods[].editable, and PatchEditable.
 type Editable struct {
-	Range Object[IntegerRange] `json:"range,omitzero"`
+	Range   Object[IntegerRange] `json:"range,omitzero"`
+	Unknown Members              `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (e *Editable) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, e, &e.Unknown)
 }
 
 // IntegerRange is IntegerRange.
 type IntegerRange struct {
-	Min Long `json:"min,omitzero"`
-	Max Long `json:"max,omitzero"`
+	Min     Long    `json:"min,omitzero"`
+	Max     Long    `json:"max,omitzero"`
+	Unknown Members `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (r *IntegerRange) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, r, &r.Unknown)
 }
 
 // Networks is NetworksSimple and PatchNetworksSimple: the four interpreted rails, and every other
@@ -271,15 +374,9 @@ func (s Solana) MarshalJSONTo(enc *jsontext.Encoder) error {
 	return writeMembers(enc, known(s), s.Unknown)
 }
 
-// ClosedPatchMembers decides what a PATCH does with a key that neither its top level nor one of its
-// payment methods declares (creditor, status, a misspelt member): false drops it, as the Java build
-// does today and the black-box suite pins (X9-PATCH-420); true refuses it by name. The rails inside
-// networks are closed either way (INTERPRETATION I-9, I-16).
-const ClosedPatchMembers = false
-
 // PatchRequest is PatchPaymentRequestReplacement, the body of PATCH /api/v1/payment-request/{id}.
 // Present tells which members the PATCH carried; Null which it cleared. A key it does not declare
-// is kept in Unknown (see ClosedPatchMembers).
+// is kept in Unknown and refused by name (I-16).
 type PatchRequest struct {
 	LocationID            String              `json:"locationId,omitzero"`
 	ValidUntil            Timestamp           `json:"validUntil,omitzero"`
@@ -290,21 +387,9 @@ type PatchRequest struct {
 	Unknown               Members             `json:"-"`
 }
 
-// UnmarshalJSONFrom implements json.UnmarshalerFrom: the six tags into their members, every other
-// key into Unknown.
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
 func (r *PatchRequest) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	*r = PatchRequest{}
-	return readMembers(dec, &r.Unknown, map[string]any{
-		"locationId": &r.LocationID, "validUntil": &r.ValidUntil, "bill": &r.Bill,
-		"unstructured": &r.Unstructured, "additionalInformation": &r.AdditionalInformation,
-		"paymentMethods": &r.PaymentMethods,
-	})
-}
-
-// MarshalJSONTo implements json.MarshalerTo: the declared members only.
-func (r PatchRequest) MarshalJSONTo(enc *jsontext.Encoder) error {
-	type known PatchRequest
-	return writeMembers(enc, known(r), nil)
+	return readClosed(dec, r, &r.Unknown)
 }
 
 // PatchBill is PatchBillUpdate: paymentTiming is required and has no default.
@@ -315,12 +400,24 @@ type PatchBill struct {
 	Invoice       Object[Invoice]        `json:"invoice,omitzero"`
 	Tip           Object[Tip]            `json:"tip,omitzero"`
 	AmountDue     Object[PatchAmountDue] `json:"amountDue,omitzero"`
+	Unknown       Members                `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (b *PatchBill) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, b, &b.Unknown)
 }
 
 // PatchAmountDue is PatchAmountDue: the amount and its adjustments, no currency.
 type PatchAmountDue struct {
 	Amount      Long               `json:"amount,omitzero"`
 	Adjustments Object[Adjustment] `json:"adjustments,omitzero"`
+	Unknown     Members            `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (a *PatchAmountDue) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, a, &a.Unknown)
 }
 
 // StatusUpdate is StatusUpdate, the body of PUT /api/v1/payment-request/{id}/status-update.
@@ -336,6 +433,12 @@ type OutboundNotification struct {
 	Endpoint      URI                      `json:"endpoint,omitzero"`
 	CorrelationID UUID                     `json:"correlationId,omitzero"`
 	Notification  Object[NotificationData] `json:"notification,omitzero"`
+	Unknown       Members                  `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (r *OutboundNotification) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, r, &r.Unknown)
 }
 
 // NotificationData is PaymentNotificationData: the notification a payer sends a payee.
@@ -344,28 +447,50 @@ type NotificationData struct {
 	Payer        Object[Payer]               `json:"payer,omitzero"`
 	ExpectedDate Timestamp                   `json:"expectedDate,omitzero"`
 	Blockchain   Object[Blockchain]          `json:"blockchain,omitzero"`
+	Unknown      Members                     `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (n *NotificationData) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, n, &n.Unknown)
 }
 
 // NotificationPayment is notification.payment.
 type NotificationPayment struct {
-	QRCodeID      String `json:"qrcodeId,omitzero"`
-	Amount        Long   `json:"amount,omitzero"`
-	TipAmount     Long   `json:"tipAmount,omitzero"`
-	Currency      String `json:"currency,omitzero"`
-	Network       String `json:"network,omitzero"`
-	TransactionID String `json:"transactionId,omitzero"`
+	QRCodeID      String  `json:"qrcodeId,omitzero"`
+	Amount        Long    `json:"amount,omitzero"`
+	TipAmount     Long    `json:"tipAmount,omitzero"`
+	Currency      String  `json:"currency,omitzero"`
+	Network       String  `json:"network,omitzero"`
+	TransactionID String  `json:"transactionId,omitzero"`
+	Unknown       Members `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (p *NotificationPayment) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, p, &p.Unknown)
 }
 
 // Payer is notification.payer.
 type Payer struct {
-	Info String `json:"info,omitzero"`
+	Info    String  `json:"info,omitzero"`
+	Unknown Members `json:"-"`
 }
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (p *Payer) UnmarshalJSONFrom(dec *jsontext.Decoder) error { return readClosed(dec, p, &p.Unknown) }
 
 // Blockchain is notification.blockchain.
 type Blockchain struct {
-	Action Enum[ActionValues] `json:"action,omitzero"`
-	From   String             `json:"from,omitzero"`
-	To     String             `json:"to,omitzero"`
+	Action  Enum[ActionValues] `json:"action,omitzero"`
+	From    String             `json:"from,omitzero"`
+	To      String             `json:"to,omitzero"`
+	Unknown Members            `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom (readClosed).
+func (b *Blockchain) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	return readClosed(dec, b, &b.Unknown)
 }
 
 // SignatureValidation is SignatureValidationRequest, the body of POST /api/v1/signature/validate.
@@ -399,6 +524,48 @@ func (m Members) Names() []string {
 		names = append(names, member.Name)
 	}
 	return names
+}
+
+// readClosed reads an object the contract closes (additionalProperties: false, INTERPRETATION
+// I-16) into the struct v points to: each key a member's json name declares into that member, any
+// other into unknown, which the create, PATCH and outbound checks refuse by name. Reading itself
+// never fails on an unknown key. A null reads as the zero struct, as the default reader reads it.
+func readClosed(dec *jsontext.Decoder, v any, unknown *Members) error {
+	rv := reflect.ValueOf(v).Elem()
+	rv.SetZero()
+	if dec.PeekKind() == 'n' {
+		_, err := dec.ReadToken()
+		return err
+	}
+	declared := make(map[string]any, rv.NumField())
+	for i, name := range memberNames(rv.Type()) {
+		if name != "" {
+			declared[name] = rv.Field(i).Addr().Interface()
+		}
+	}
+	return readMembers(dec, unknown, declared)
+}
+
+// memberNames is the json name of each field of t, in order; "" for a field that is not a member
+// (json:"-").
+func memberNames(t reflect.Type) []string {
+	names := make([]string, t.NumField())
+	for i := range t.NumField() {
+		f := t.Field(i)
+		name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+		if f.IsExported() && name != "-" {
+			if name == "" {
+				name = f.Name
+			}
+			names[i] = name
+		}
+	}
+	return names
+}
+
+// fieldsOf is the members of the struct v, in the order it declares them (the contract's order).
+func fieldsOf(v any) []string {
+	return slices.DeleteFunc(memberNames(reflect.TypeOf(v)), func(n string) bool { return n == "" })
 }
 
 // readMembers reads an object: a declared key into its member (a pointer in declared), any other

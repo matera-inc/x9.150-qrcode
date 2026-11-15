@@ -88,9 +88,13 @@ def full_payment_request(*, valid_until=FAR_FUTURE):
 
 def full_patch(created):
     """A PATCH body restating everything a patch may carry, for a QR Code made from
-    :func:`full_payment_request`."""
-    return {key: copy.deepcopy(created[key]) for key in
-            ("bill", "unstructured", "additionalInformation", "paymentMethods")}
+    :func:`full_payment_request`. ``bill.amountDue.currency`` is left out: a PATCH cannot change
+    it, its schema has no such field, and a PATCH is closed (INTERPRETATION I-16), so restating it
+    is refused."""
+    patch = {key: copy.deepcopy(created[key]) for key in
+             ("bill", "unstructured", "additionalInformation", "paymentMethods")}
+    patch["bill"]["amountDue"].pop("currency", None)
+    return patch
 
 
 def notification(qr_id, *, amount=BILL, tip=None, currency="USDC", network="Solana",

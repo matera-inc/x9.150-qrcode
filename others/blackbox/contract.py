@@ -5,12 +5,15 @@
 
 Reads ``openapi.yaml`` and generates ONE refusal case for every ``maxLength``, ``minLength``,
 ``pattern``, ``required``, ``maximum`` and ``minimum`` in the JSON request schemas of the operations
-below. A field added to the contract gets its refusal tests without anybody typing them.
+below, and one for every object they declare ``additionalProperties: false`` (what we generate is
+closed, INTERPRETATION I-16). A field added to the contract gets its refusal tests without anybody
+typing them.
 
 A case is a sample body that the service accepts (proved by a control case per operation) with
 exactly one field broken: one character too long, one too short, a value its pattern refuses, the
-field removed, or a number one past its bound (``maximum + 1``, ``minimum - 1``; the bound itself
-when ``exclusiveMaximum`` / ``exclusiveMinimum`` is true). ``tests/test_contract.py`` sends each one
+field removed, a number one past its bound (``maximum + 1``, ``minimum - 1``; the bound itself
+when ``exclusiveMaximum`` / ``exclusiveMinimum`` is true), or, in a closed object, a field the object
+does not declare (``zzUnknown``), which must be refused naming its path and the object's own fields. ``tests/test_contract.py`` sends each one
 and asserts 400, the field's path in the violations, and that nothing changed.
 
 Each numeric bound also gets an EDGE case (``edges()``): the bound itself (one inside it when the
@@ -36,7 +39,8 @@ OPENAPI = os.environ.get("X9_OPENAPI") or os.path.normpath(os.path.join(
     HERE, "..", "..", "x9-qrcode-infrastructure", "src", "main", "resources", "apis", "openapi.yaml"))
 KNOWN_GAPS = os.path.join(HERE, "contract-known-gaps.yaml")
 
-KINDS = ("maxLength", "minLength", "pattern", "required", "maximum", "minimum")
+KINDS = ("maxLength", "minLength", "pattern", "required", "maximum", "minimum", "closed")
+UNKNOWN = "zzUnknown"                     # the field a "closed" case adds
 EDGE_KINDS = ("maximum-accepted", "minimum-accepted")
 NUMERIC = ("integer", "number")
 
@@ -74,7 +78,8 @@ class Case:
         self.operation = operation
         self.path = path                       # ("creditor", "address", "city"), "[]" for items
         self.kind = kind
-        self.limit = limit                     # n for lengths, the regex for pattern, None
+        self.limit = limit                     # n for lengths, the regex for pattern, the
+        #                                        object's own fields for closed, None
         self.pattern = None                    # set for length cases on a patterned field
         self.min_length = None
         self.max_length = None
@@ -98,6 +103,12 @@ class Case:
         service should name (array indices filled in). Raises :class:`Unbuildable`."""
         body = copy.deepcopy(base)
         parent, key, named = _locate(body, self.path)
+
+        if self.kind == "closed":
+            if not isinstance(parent, dict):
+                raise Unbuildable(f"{self.field} has no object to add a field to")
+            parent[key] = True
+            return body, named
 
         if self.kind == "required":
             if key not in parent:
@@ -247,6 +258,9 @@ def _walk(spec, schema, path, operation, out, depth=0):
                 case.exclusive = exclusive
                 out.append(case)
 
+    if schema.get("additionalProperties") is False:
+        out.append(Case(operation, tuple(path) + (UNKNOWN,), "closed",
+                        list(schema.get("properties") or {})))
     for name in schema.get("required") or []:
         out.append(Case(operation, tuple(path) + (name,), "required", None))
     for name, child in (schema.get("properties") or {}).items():

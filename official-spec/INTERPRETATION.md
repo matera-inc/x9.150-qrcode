@@ -383,8 +383,10 @@ paymentMethods[]          ← one entry per currency
 
 A `paymentMethods` entry is fully specified by the standard, so an unexpected key **there** is a
 defect rather than an extension: a stray `creditor` beside `amount` means the sender is confused, and
-carrying it would legitimise the confusion. The contract declares those objects exhaustively and
-nothing else in the payload is open.
+carrying it would legitimise the confusion. So an unknown **field** — anywhere outside `networks` —
+is never carried: **when we generate**, it is refused, naming its path (I-16); **when we read**
+another bank's payload, it is dropped. Only an unknown **network** is ever carried, and only when we
+read.
 
 Inside `networks` it is the other way round. §14.5 fixes only where a network object hangs and defers
 its contents to "network documentation", so the inner JSON belongs to that network's owner. We may
@@ -411,15 +413,17 @@ to *break* a message that was never ours.
 
 **Where this is visible in the code:** `NetworksSimple`, `PatchNetworksSimple` and, on the payload
 side, `PayloadNetworks` are the only `additionalProperties: true` objects in the contract, and
-`openapi.yaml` says so at the point where it matters. The rails we interpret are closed **when we
-generate**: `FedNow`, `RTP`, `ACH` and `Solana` refuse an unknown field on create and PATCH. **When we
-read** another bank's payload, the payload-side schemas (`PayloadFedNow`, `PayloadRTP`, `PayloadACH`,
-`PayloadSolana`) are open, and an unknown field inside a known rail is ignored rather than refused
-(ADR-0012, amendment of 2026-11-15).
+`openapi.yaml` says so at the point where it matters. **When we generate**, every other object of a
+create, a PATCH and an outbound payment notification is `additionalProperties: false`, the rails
+included, and an unknown field in any of them is refused by its path (I-16). **When we read**
+another bank's payload, the payload-side schemas (`PaymentPayloadResponse` and its `Payload*`
+objects) declare nothing closed: an unknown network is carried, an unknown field is dropped
+(ADR-0012, amendments of 2026-11-15).
 
 > **Update, 2026-11-15 (owner).** The bank rails `fednow`, `rtp` and `ach` are now closed too, on
-> create and PATCH: an unknown field in them is refused by name, as in `solana`. Both halves of this
-> entry are one rule, written out in **I-16, strict to generate, tolerant to read**.
+> create and PATCH: an unknown field in them is refused by name, as in `solana`. Later the same day,
+> every level of what we generate was closed. Both halves of this entry are one rule, written out
+> in **I-16, strict to generate, tolerant to read**.
 
 ---
 
@@ -783,6 +787,15 @@ is the soul of X9.150 interoperability: thousands of banks and PSPs will each im
 a little differently and at a different pace, and a payment between two of them works only if
 neither side breaks on what the other added and both sides send only what they mean.
 
+**The rule in two sentences** (owner, 2026-11-15):
+
+1. **When we generate, every level is closed.** Our own create, PATCH and outbound payment
+   notification refuse an unknown network by name and an unknown field wherever it is — at the
+   top, in the creditor, in the bill and everything under it, in a payment method, in a rail —
+   naming its path. Both builds, the same words.
+2. **When we read another bank's payload, unknown rails are carried intact and unknown fields are
+   dropped.** Nothing in it is refused for being new to us; only integrity failures are.
+
 **What the standard leaves open.** §2.4 closes the list of networks and, in the same breath, lets a
 payload carry one that is not on it. §14.5 hands each network's inner fields to that network's
 owner. So a conformant payload can legitimately contain a rail, a field or a currency that a given
@@ -793,24 +806,36 @@ else's?** (owner, 2026-11-15).
 ### When we generate: strict, and every refusal names what it refuses
 
 On `POST /api/v1/payment-request` and `PATCH /api/v1/payment-request/{id}`, the QR Codes this
-deployment issues and signs, we refuse with a 400 that names the offending key:
+deployment issues and signs, and on `POST /api/v1/payment-notification/pre-payment` and
+`post-payment`, the notification this service signs and sends to a payee for a payer, we refuse with
+a 400 that names the offending key:
 
 | What | Example | Refused because |
 |---|---|---|
 | A network we do not interpret | `networks.tron`, `networks.zelle`, a network with an empty name | We could not validate a payment against it (I-2, I-9, ADR-0012) |
 | An unknown field inside a rail we interpret | `networks.fednow.x`, `networks.solana.walletAddress` | The rail's fields are fixed (by X9.150 for `fednow`, `rtp`, `ach`; by the Solana Foundation for `solana`), so an extra one is a mistake, not an extension |
+| An unknown field anywhere else, at any level | `reference` at the top, `creditor.address.county`, `bill.invoice.dueDte`, `paymentMethods[0].network`, `bill.amountDue.currency` on a PATCH, `notification.payment.memo` on a pre-payment | Every object of these bodies is declared exhaustively in `openapi.yaml` (`additionalProperties: false`); a field we do not know is a field we would otherwise drop without a word |
 | A currency this deployment does not settle | `EUR`, when `supported-currencies.json` lists `USD`, `USDC`, `FRNT` | We would be promising a payment we cannot receive (I-3, ADR-0012) |
 
-The answer reads, for example:
+The answer names the path and the fields the object does have, in the same words on both builds,
+beside the body's other violations:
 
 ```
 paymentMethods[0].networks.fednow.x: is not a field of fednow, whose fields are routingNumber, accountNumber and protectionType
+creditor.address.county: is not a field of address, whose fields are line1, line2, city, state, postalCode and country
+reference: is not a field of the payment request, whose fields are validUntil, creditor, bill, locationId, unstructured, additionalInformation, paymentNotification and paymentMethods
+paymentMethods[0].editable.x: is not a field of editable, whose only field is range
 ```
 
-**Closing `fednow`, `rtp` and `ach` is new** (owner, 2026-11-15). Until then only `solana` was
-closed, and an unknown field in a bank rail was silently dropped. Silently dropping is the worst of
-the three answers: the biller believes it published something it did not. The Go build refuses it
-now; the Java build still drops it until it is changed too, a difference listed in ADR-0028.
+The one object left open is `networks`: it has to *receive* an unknown network in order to refuse
+it by name (I-9). Closing it would make the reader drop the key in silence.
+
+**Closing every level is new** (owner, 2026-11-15). Until then only the rails were closed (first
+`solana`, then the bank rails the same morning), and an unknown field anywhere else was silently
+dropped with a 201 or a 200. Silently dropping is the worst of the three answers: the biller
+believes it published something it did not. One case surprises people: a PATCH that restates
+`bill.amountDue.currency` (the PATCH's `amountDue` has no `currency`, because a PATCH cannot change
+it) is now refused instead of having the currency quietly ignored.
 
 Why strict here: a QR Code is a promise to every payer who scans it. What we put in it must be
 something we understand and can honour, and the biller is still at a keyboard and can fix a mistake.
@@ -822,17 +847,25 @@ When this service reads a QR Code or a payload that **another** bank or PSP gene
 decoder, `POST /api/v1/qrcode-emv-decoder`, and the payer-side flows that fetch and present a
 payee's payload), anything unknown is **parsed past, never a reason to refuse**:
 
-- an unknown **payment method** entry or **rail** (`networks.tron`) is not interpreted;
-- an unknown **field** inside a rail we know (`networks.fednow.x`) is not interpreted;
+- an unknown **rail** (`networks.tron`) is not interpreted, and is **carried intact**, byte for
+  byte, to whoever asked us to decode the payload;
+- an unknown **field**, anywhere — inside a rail we know (`networks.fednow.x`), on a payment method,
+  in the creditor, in the bill, at the top — is **dropped**: it is not refused, not interpreted,
+  and not in the decoder's answer;
 - an unknown **currency** (`EUR` on a deployment that settles only dollars) is not a reason to
   refuse: whether we could *issue* in that currency says nothing about whether somebody else may;
 - the payment methods and rails we **do** know are presented, interpreted, exactly as if the unknown
   parts were not there.
 
-"Not interpreted" is I-9's word: an unknown network in someone else's payload is still **carried**,
-byte for byte, to whoever asked us to decode it, because that software may understand the rail and
-pay it. Tolerant reading is about never *refusing* a payload for what it adds; it does not license
-rewriting the payload.
+For example, decoding another bank's payload that offers `{"fednow": {...}, "pix": {"chave": "..."}}`
+in a method that also says `"priority": "high"`, under a creditor with `"county": "LA"`: the answer
+is 200, `pix` is there exactly as sent, and neither `priority` nor `county` is.
+
+Why the two differ: an unknown network is the only thing a payer may need in order to pay (their
+software may understand the rail), and it is opaque by the standard's own design (§14.5), so it is
+carried. An unknown field elsewhere sits in an object the standard declares exhaustively; there is
+nothing a payer could do with it, so it is dropped (I-9). Tolerant reading is about never
+*refusing* a payload for what it adds; it does not license inventing a shape for what it adds.
 
 Why tolerant here: the payload is not ours. The bank that wrote it may be a release ahead of us, or
 may serve a rail we will never support. Refusing its whole payload because one part is new to us
@@ -854,12 +887,18 @@ These are still refused, on both builds:
 An unknown field is somebody else's progress. A broken signature is somebody else's attack, or
 their bug, and in either case not a payment anyone should make.
 
-**Where this is visible in the code.** In the Go build, `internal/contract` reads `fednow`, `rtp`,
-`ach` and `solana` keeping any unknown key aside (`Unknown`), and only the create and PATCH checks
-refuse it; reading never fails on one. The decoder of Story 10.7 is not built yet, and it must read
-somebody else's payload with a reader that never refuses an unknown member, as described above. In
-the Java build the decoder already reads tolerantly (an unknown network is carried, X9-RAIL-060 to
--064); closing the rails on create and PATCH there is separate work.
+**Where this is visible in the code.** `openapi.yaml` declares every object of a create, a PATCH
+and an outbound notification `additionalProperties: false` (except `networks`), and the payload side
+(`PaymentPayloadResponse`, the `Payload*` schemas, `PaymentNotificationData`) declares none. In the
+Java build, `ClosedRequestFields` notes every unknown field of those request types while the body is
+read and `ClosedRequestFieldsValidator` adds each to the 400 beside the other violations; the
+payload-side types are other classes and are never checked (X9-RAIL-058, -059, -065; tolerant
+reading X9-DEC-017 to -021). In the Go build, `internal/contract` reads every request object keeping
+an unknown key aside (`Unknown`) and the create, PATCH and outbound checks refuse it; reading never
+fails on one, and a payment notification read on its own is not refused. The Go decoder of Story
+10.7 is not built yet, and must read somebody else's payload as described above. The black-box
+suite pins the words on both builds (X9-RAIL-507 to -509) and generates a case for every closed
+object of the contract (`contract.py`, kind `closed`).
 
 ## Reporting
 
