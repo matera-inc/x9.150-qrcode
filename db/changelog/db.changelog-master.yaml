@@ -58,3 +58,6 @@ databaseChangeLog:
   - include:
       file: changes/0004-event-id-is-not-an-order.yaml
       relativeToChangelogFile: true
+  - include:
+      file: changes/0005-not-offered-deviations.yaml
+      relativeToChangelogFile: true

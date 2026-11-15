@@ -641,6 +641,34 @@ func TestAPostCommitNotOfferedIsRecordedAndRefused(t *testing.T) {
 	}
 }
 
+// ADR-0036, amended 2026-11-15: a pre-commit's rail or currency not offered is the acceptance
+// gate's, as in the Java build, so it comes after the status: another payer's hold is a 409 first,
+// and a holder's retry naming one is a refused retry that releases the QR Code. Nothing is stored.
+func TestAPreCommitNotOfferedIsTheGatesAfterTheStatus(t *testing.T) {
+	f := serve(t, 0)
+	id := f.qr(solanaQR("", "", notifyDefault))
+	r, cid := f.notify(note(id))
+	f.signed(r, http.StatusOK, cid)
+	stored := len(f.store.stored)
+
+	r, cid = f.notify(note(id, payment("currency", "EUR"), top("payer", map[string]any{"info": "someone-else@example.com"})))
+	if body := f.signed(r, http.StatusConflict, cid); body["currentStatus"] != "PAYMENT_INITIATED" {
+		t.Errorf("another payer naming a currency not offered: %v, want the 409 first", body)
+	}
+
+	r, cid = f.notify(note(id, payment("currency", "EUR")))
+	answer := f.signed(r, http.StatusBadRequest, cid)
+	if v := violations(answer); !strings.Contains(v, "paymentNotification.data.payment.currency: This QR Code does not offer the EUR currency.") {
+		t.Errorf("violations %s", v)
+	}
+	if got := f.store.row(id).Status; got != domain.StatusActive {
+		t.Errorf("the holder's refused retry leaves %s, want ACTIVE (released)", got)
+	}
+	if len(f.store.stored) != stored {
+		t.Errorf("a refused pre-commit stored a notification")
+	}
+}
+
 // S10.4-AC3: the network and the currency are matched whatever their case.
 func TestNetworkAndCurrencyAnyCase(t *testing.T) {
 	f := serve(t, 0)

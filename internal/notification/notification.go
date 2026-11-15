@@ -308,10 +308,11 @@ func (s *Service) decide(ctx context.Context, v *jws.Verified, a *Accepted, toke
 // ADR-0035's map and ADR-0036's matrix. A refusal by name changes nothing; the gate's refusal is
 // the domain's to apply, since a holder's refused retry releases the QR Code.
 //
-// A rail or a currency the QR Code does not offer is refused by name before the money moves (a
-// pre-commit or a NOT_SENT): a 400 naming it, nothing recorded, each rail on its own. A post-commit
-// naming one goes on to domain.Notify, which records it and refuses it (ADR-0036, amended
-// 2026-11-15).
+// A rail or a currency the QR Code does not offer, each rail on its own (ADR-0036, amended
+// 2026-11-15, as the Java build does it), is a 400 naming it: a NOT_SENT naming one is refused
+// here, before its status is read, since nothing moved; a pre-commit's is the acceptance gate's
+// (Gate), once the status admits it, so another payer's hold is still a 409 first; a post-commit
+// naming one goes on to domain.Notify, which records it and refuses it.
 func Decide(row domain.Row, a *Accepted, last *domain.NotificationRecord, now time.Time, s domain.Settings) (domain.Decision, error) {
 	req, err := paymentrequest.StoredRequest(row.RequestJSON)
 	if err != nil {
@@ -326,7 +327,7 @@ func Decide(row domain.Row, a *Accepted, last *domain.NotificationRecord, now ti
 		return refuse(r), nil
 	}
 	phase := a.Notification.Phase()
-	if phase != domain.PhasePostCommit {
+	if phase == domain.PhaseRelease {
 		notOffered, err := domain.NotOffered(row, a.Notification)
 		if err != nil {
 			return domain.Decision{}, err
