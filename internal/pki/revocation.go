@@ -34,9 +34,9 @@ import (
 // those options, this does:
 //
 //   - The CRL is tried first. Each answer is one of: no objection, REVOKED, UNDETERMINED (no
-//     usable CRL: none named, unreachable, an HTTP error, too large, a bad signature, out of
-//     date) or FAILED (a CRL that cannot be parsed, an unknown critical extension on the entry
-//     that lists the certificate).
+//     usable CRL: none named, unreachable, an HTTP error, too large, not a CRL at all, a bad
+//     signature, out of date) or FAILED (an unknown critical extension on the entry that lists
+//     the certificate).
 //   - REVOKED refuses at once. Otherwise, with NO_FALLBACK, UNDETERMINED passes (soft-fail) and
 //     FAILED refuses. Without it, OCSP is asked:
 //   - OCSP's answers: good, REVOKED, UNDETERMINED (unreachable, an HTTP error, an answer that
@@ -50,7 +50,9 @@ import (
 // certificate is refused, and a certificate naming neither source is refused, because "no
 // responder named" is FAILED, which SOFT_FAIL does not forgive.
 //
-// Where this differs from the JDK, on purpose: a CRL is cached until its NextUpdate rather than
+// Where this differs from the JDK, on purpose: a body that is not a CRL soft-fails like an
+// unreachable CRL ("a named source that can't be read soft-fails", owner, 2026-11-15; the JDK
+// refuses it), a CRL is cached until its NextUpdate rather than
 // for 30 seconds (ADR-0027), OCSP is always a POST (the JDK uses GET for short requests; RFC 6960
 // requires responders to accept both), and an indirect CRL (one issued by another CA) is never
 // used.
@@ -210,9 +212,8 @@ func (c *revocationChecker) softFail(ctx context.Context, leaf *x509.Certificate
 // its issuer.
 func (c *revocationChecker) checkCRLs(ctx context.Context, leaf, issuer *x509.Certificate, now time.Time) *revocationError {
 	var (
-		approved  *crl
-		firstErr  *revocationError
-		retrieved bool
+		approved *crl
+		firstErr *revocationError
 	)
 	for _, uri := range leaf.CRLDistributionPoints {
 		crl, err := c.crl(ctx, uri, leaf, issuer, now)
@@ -222,16 +223,14 @@ func (c *revocationChecker) checkCRLs(ctx context.Context, leaf, issuer *x509.Ce
 			}
 			continue
 		}
-		retrieved = true
 		if crl != nil {
 			approved = crl
 			break
 		}
 	}
 	if approved == nil {
-		// The JDK raises a fetch error only when no CRL at all was obtained; an unreadable CRL is
-		// then FAILED, an unreachable one UNDETERMINED.
-		if !retrieved && firstErr != nil {
+		// Unreachable, unreadable or unusable: no CRL, which SOFT_FAIL forgives.
+		if firstErr != nil {
 			return firstErr
 		}
 		return revocationErr(undetermined, nil, "no usable CRL at the certificate's distribution points")
@@ -284,7 +283,9 @@ func (c *revocationChecker) crl(ctx context.Context, uri string, leaf, issuer *x
 	}
 	list, err := parseCRL(body)
 	if err != nil {
-		return nil, revocationErr(failed, err, "the CRL at %s cannot be read", uri)
+		// A named source that cannot be read soft-fails, as one that cannot be reached does (owner,
+		// 2026-11-15). The JDK refuses here (a CRLException); this is a deliberate difference.
+		return nil, revocationErr(undetermined, err, "the CRL at %s cannot be read", uri)
 	}
 	if err := approveCRL(list, leaf, issuer, now); err != nil {
 		c.log.WarnContext(ctx, "a CRL was ignored", slog.String("url", uri), slog.String("reason", err.Error()))
