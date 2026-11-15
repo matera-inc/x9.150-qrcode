@@ -1,0 +1,33 @@
+# Copyright © 2026 Matera Systems, Inc.
+# Licensed under the Matera Source License v1.0 (source-available; not open source). See LICENSE.md.
+# Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
+# based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
+#
+# 0003 — whether a transaction hash is registered for the current reservation (ADR-0036, Story 9.5).
+# Applied changesets are never edited; changes go in a new numbered file.
+#
+# A reservation stopped by a hash and a reservation taken with x9.reservation.ttl-seconds = 0 both
+# carry the "no lapse" sentinel in reserved_until, yet they behave differently: after a hash, a
+# payer's pre-commit retry is refused and the holder's NOT_SENT changes nothing. reserved_until
+# cannot tell them apart, so the fact is its own column.
+
+databaseChangeLog:
+- changeSet:
+    id: 0003-01-qr-code-hash-registered
+    author: x9-qrcode
+    comment: qr_code.hash_registered, false on every existing row.
+    changes:
+    - addColumn:
+        schemaName: ${x9.schema}
+        tableName: qr_code
+        columns:
+        - column:
+            name: hash_registered
+            type: BOOLEAN
+            remarks: 'True once a post-commit (a notification carrying a transactionId) was registered for the
+              current reservation (ADR-0036): the reservation no longer lapses, whatever reserved_until says, and
+              no payer message changes the status any more; only the status-update API ends it. False when no
+              hash is registered, and set back to false whenever the QR Code leaves PAYMENT_INITIATED.'
+            defaultValueBoolean: false
+            constraints:
+              nullable: false

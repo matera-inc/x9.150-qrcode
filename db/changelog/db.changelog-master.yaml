@@ -3,7 +3,7 @@
 # Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
 # based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
 #
-# The X9.150 schema (ADR-0023, ADR-0024, ADR-0025, ADR-0026, ADR-0032, ADR-0037).
+# The X9.150 schema (ADR-0023, ADR-0024, ADR-0025, ADR-0026, ADR-0032, ADR-0036, ADR-0037).
 #
 # Everything lives in ONE schema, named by the `x9.schema` property (default `x9_qrcode`).
 # The schema itself is not created here: it belongs to the bank's DBA (ADR-0032), who creates it
@@ -51,4 +51,7 @@ databaseChangeLog:
       relativeToChangelogFile: true
   - include:
       file: changes/0002-roles-and-grants.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: changes/0003-hash-registered.yaml
       relativeToChangelogFile: true
