@@ -224,6 +224,17 @@ func (v requestView) firstMethod() *methodView {
 	return &v.PaymentMethods[0]
 }
 
+// offersCurrency reports whether a payment method is in currency, matched whatever its case: the
+// notified currency is a third-party payer's spelling.
+func (v requestView) offersCurrency(currency string) bool {
+	for _, m := range v.PaymentMethods {
+		if m.Currency != nil && strings.EqualFold(*m.Currency, currency) {
+			return true
+		}
+	}
+	return false
+}
+
 // offers reports whether a payment method publishes network, matched whatever its case, as Java's
 // PaymentNetworksVO.supports does: the network's key is present and not null.
 func (v requestView) offers(network string) bool {

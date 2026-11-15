@@ -7,6 +7,7 @@ package domain
 
 import (
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -235,6 +236,10 @@ func TestPhaseComesFromTheEvidence(t *testing.T) {
 }
 
 func TestDeviationsColumn(t *testing.T) {
+	all := []Deviation{DeviationReceivedInWrongStatus, DeviationActionContradictsHash, DeviationNotOfferedRail, DeviationNotOfferedCurrency}
+	if got, err := ParseDeviations(FormatDeviations(all)); err != nil || !slices.Equal(got, all) {
+		t.Errorf("ParseDeviations(FormatDeviations(all)) = %v, %v", got, err)
+	}
 	both := []Deviation{DeviationReceivedInWrongStatus, DeviationActionContradictsHash}
 	if got := FormatDeviations(both); got != "RECEIVED_IN_WRONG_STATUS,ACTION_CONTRADICTS_HASH" {
 		t.Errorf("FormatDeviations = %q", got)
@@ -291,6 +296,10 @@ func TestEventBodySource(t *testing.T) {
 	contradicting := NotificationRecord{Phase: PhaseRelease, Notification: Notification{Action: ActionNotSent},
 		Receipt: Receipt{ReceivedIn: StatusPaymentInitiated, Deviations: []Deviation{DeviationActionContradictsHash}}}
 	blank := NotificationRecord{Phase: PhasePreCommit, Notification: Notification{TransactionID: "  "}}
+	// A post-commit on a rail the QR Code does not offer: stored as evidence, refused (ADR-0036,
+	// amended 2026-11-15).
+	notOffered := NotificationRecord{Phase: PhasePostCommit, Notification: Notification{TransactionID: "tx-9"},
+		Receipt: Receipt{ReceivedIn: StatusActive, Deviations: []Deviation{DeviationReceivedInWrongStatus, DeviationNotOfferedRail}}}
 
 	for _, tt := range []struct {
 		name   string
@@ -305,6 +314,9 @@ func TestEventBodySource(t *testing.T) {
 			[]NotificationRecord{pre, post("tx-2"), contradicting}, new(post("tx-2"))},
 		{"two hashes: the latest", []NotificationRecord{post("tx-1"), pre, post("tx-2"), contradicting}, new(post("tx-2"))},
 		{"a blank transactionId is none", []NotificationRecord{post("tx-1"), blank}, new(post("tx-1"))},
+		{"a refused post-commit not offered is never the source", []NotificationRecord{pre, post("tx-1"), notOffered}, new(post("tx-1"))},
+		{"nor the last stored", []NotificationRecord{pre, notOffered}, &pre},
+		{"only a refused one stored: none", []NotificationRecord{notOffered}, nil},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			got := EventBodySource(tt.stored)

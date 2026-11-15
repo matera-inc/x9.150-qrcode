@@ -30,7 +30,8 @@ const tipTolerance = 1
 //  1. the QR Code's validUntil, inclusive;
 //  2. the payment method whose currency is the notification's (matched whatever the case), whose
 //     network object for the notified rail is published and, on a chain, whose destination address
-//     is blockchain.to: one lookup that covers the currency, the rail and the address together;
+//     is blockchain.to: one lookup that covers the currency, the rail and the address together (a
+//     rail or a currency that no method offers at all was refused by name before, in Decide);
 //  3. that method's validUntil, inclusive;
 //  4. the tip: only on a bill that offers one, inside its range in percent of what is paid to the
 //     merchant, give or take one minor unit;
@@ -74,17 +75,6 @@ func refusal(field, message string) *domain.Refusal {
 func matchMethod(methods []billing.PaymentMethod, data *contract.NotificationData) (*billing.PaymentMethod, *domain.Refusal) {
 	pay := data.Payment.Value
 	currency, network := pay.Currency.Value, pay.Network.Value
-	offered := false
-	for _, m := range methods {
-		if strings.EqualFold(m.Currency, currency) {
-			offered = true
-			break
-		}
-	}
-	if !offered {
-		return nil, refusal("paymentNotification.data.payment.currency",
-			fmt.Sprintf("This QR Code does not offer the %s currency.", currency))
-	}
 	bank := bankRail(network)
 	to := ""
 	if data.Blockchain.IsSet() && data.Blockchain.Value.To.IsSet() {

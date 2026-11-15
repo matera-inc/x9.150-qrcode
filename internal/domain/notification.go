@@ -108,7 +108,7 @@ func (n Notification) Sender() Holder {
 // to the ADR first, never invented at a call site.
 type Deviation string
 
-// The two deviations.
+// The four deviations.
 const (
 	// DeviationReceivedInWrongStatus: a post-commit reached a QR Code that was not
 	// PAYMENT_INITIATED held by this payer.
@@ -116,7 +116,21 @@ const (
 	// DeviationActionContradictsHash: blockchain.action is PAYMENT_INITIATED or NOT_SENT, yet the
 	// money has moved.
 	DeviationActionContradictsHash Deviation = "ACTION_CONTRADICTS_HASH"
+	// DeviationNotOfferedRail: a post-commit named a rail ($.payment.network) that no payment
+	// method of the QR Code offers, each rail on its own (ADR-0036, amended 2026-11-15). Recorded
+	// and refused: the QR Code does not change, and the payer is answered with a 400.
+	DeviationNotOfferedRail Deviation = "NOT_OFFERED_RAIL"
+	// DeviationNotOfferedCurrency: a post-commit named a currency ($.payment.currency) that no
+	// payment method of the QR Code offers. Treated as DeviationNotOfferedRail is; both appear
+	// when both are true.
+	DeviationNotOfferedCurrency Deviation = "NOT_OFFERED_CURRENCY"
 )
+
+// NotOffered reports whether d makes the notification an error the payer is told about: recorded,
+// but answered with a 400.
+func (d Deviation) NotOffered() bool {
+	return d == DeviationNotOfferedRail || d == DeviationNotOfferedCurrency
+}
 
 // ErrUnknownDeviation is returned for a code outside ADR-0036's closed list.
 var ErrUnknownDeviation = errors.New("unknown deviation")
@@ -141,7 +155,8 @@ func ParseDeviations(column string) ([]Deviation, error) {
 	out := make([]Deviation, 0, len(parts))
 	for _, p := range parts {
 		switch d := Deviation(p); d {
-		case DeviationReceivedInWrongStatus, DeviationActionContradictsHash:
+		case DeviationReceivedInWrongStatus, DeviationActionContradictsHash,
+			DeviationNotOfferedRail, DeviationNotOfferedCurrency:
 			out = append(out, d)
 		default:
 			return nil, fmt.Errorf("%w: %q", ErrUnknownDeviation, p)
@@ -155,6 +170,12 @@ func ParseDeviations(column string) ([]Deviation, error) {
 type Receipt struct {
 	ReceivedIn Status
 	Deviations []Deviation
+}
+
+// NotOffered reports whether the notification named a rail or a currency the QR Code does not
+// offer: stored as evidence, refused to the payer, and never the source of an event body.
+func (r Receipt) NotOffered() bool {
+	return slices.ContainsFunc(r.Deviations, Deviation.NotOffered)
 }
 
 // NotificationRecord is an accepted notification as qr_code_notification stores it. Which stored
@@ -175,17 +196,24 @@ type NotificationRecord struct {
 //  2. else the last one stored;
 //  3. else nil, and BuildEvent uses the first payment method.
 //
+// A post-commit on a rail or in a currency the QR Code does not offer is stored as evidence but
+// was refused: it is never a source, as the Java build keeps it out of the QR Code's notification
+// of record (ADR-0036, amended 2026-11-15).
+//
 // The store reads them all and leaves the choice here, so that a change to the rule changes this
 // function and nothing in SQL. The result is a copy.
 func EventBodySource(stored []NotificationRecord) *NotificationRecord {
-	if len(stored) == 0 {
-		return nil
-	}
+	var last *NotificationRecord
 	for _, record := range slices.Backward(stored) {
+		if record.Receipt.NotOffered() {
+			continue
+		}
 		if record.Notification.HasTransactionID() {
 			return &record
 		}
+		if last == nil {
+			last = &record
+		}
 	}
-	last := stored[len(stored)-1]
-	return &last
+	return last
 }

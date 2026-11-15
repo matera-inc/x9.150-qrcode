@@ -289,13 +289,15 @@ func (s *Service) decide(ctx context.Context, v *jws.Verified, a *Accepted, toke
 		}
 		return s.failed(ctx, err)
 	}
-	if r := res.Decision.Refusal; r != nil {
-		return refusalProblem(r)
-	}
 	if n := res.Decision.Notification; n != nil && len(n.Receipt.Deviations) > 0 {
-		s.logger.WarnContext(ctx, "x9-qrcode payment notification accepted from a payer that broke the protocol",
+		// A post-commit on a rail or in a currency the QR Code does not offer is recorded too, and
+		// then refused: the warning names it either way.
+		s.logger.WarnContext(ctx, "x9-qrcode payment notification recorded from a payer that broke the protocol",
 			"qrCodeId", httpapi.FormatID(a.QRCodeID), "payerInfo", payerInfo(a), "signerSubject", v.Signer,
 			"receivedInStatus", n.Receipt.ReceivedIn, "deviations", domain.FormatDeviations(n.Receipt.Deviations))
+	}
+	if r := res.Decision.Refusal; r != nil {
+		return refusalProblem(r)
 	}
 	return nil
 }
@@ -305,18 +307,36 @@ func (s *Service) decide(ctx context.Context, v *jws.Verified, a *Accepted, toke
 // refusals by name, then for a pre-commit the acceptance gate, then domain.Notify, which applies
 // ADR-0035's map and ADR-0036's matrix. A refusal by name changes nothing; the gate's refusal is
 // the domain's to apply, since a holder's refused retry releases the QR Code.
+//
+// A rail or a currency the QR Code does not offer is refused by name before the money moves (a
+// pre-commit or a NOT_SENT): a 400 naming it, nothing recorded, each rail on its own. A post-commit
+// naming one goes on to domain.Notify, which records it and refuses it (ADR-0036, amended
+// 2026-11-15).
 func Decide(row domain.Row, a *Accepted, last *domain.NotificationRecord, now time.Time, s domain.Settings) (domain.Decision, error) {
 	req, err := paymentrequest.StoredRequest(row.RequestJSON)
 	if err != nil {
 		return domain.Decision{}, err
 	}
-	rules := paymentrequest.BillingRequest(&req)
-	if r := RefuseByName(req, rules.PaymentMethods, &a.Data, now); r != nil {
+	refuse := func(r *domain.Refusal) domain.Decision {
 		// The refusal is the answer, carried in the decision, not a failure of the transition.
-		return domain.Decision{Row: row, Status: domain.EffectiveStatus(row, now), Refusal: r}, nil //nolint:nilerr // see above
+		return domain.Decision{Row: row, Status: domain.EffectiveStatus(row, now), Refusal: r}
+	}
+	rules := paymentrequest.BillingRequest(&req)
+	if r := RefuseByName(req, &a.Data, now); r != nil {
+		return refuse(r), nil
+	}
+	phase := a.Notification.Phase()
+	if phase != domain.PhasePostCommit {
+		notOffered, err := domain.NotOffered(row, a.Notification)
+		if err != nil {
+			return domain.Decision{}, err
+		}
+		if len(notOffered) > 0 {
+			return refuse(domain.NotOfferedRefusal(a.Notification, notOffered)), nil
+		}
 	}
 	var gate *domain.Refusal
-	if a.Notification.Phase() == domain.PhasePreCommit {
+	if phase == domain.PhasePreCommit {
 		if gate, err = Gate(row, rules, &a.Data, now); err != nil {
 			return domain.Decision{}, err
 		}
