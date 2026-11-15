@@ -88,18 +88,61 @@ properties.
     business-rule-violation, `Payload JWS signature is invalid.`, the words already used for a
     payload whose signature does not verify, and nothing of it is presented. Before this, the
     payload's id was compared only when the caller supplied a `correlationID`; when the service
-    generated one, any id passed;
+    generated one, any id passed. (Its words were changed later the same day: see below.)
   - **the outbound payment notification's answer** (`POST /api/v1/payment-notification/
     pre-payment` and `post-payment`): already compared every time, with a generated id as with the
     caller's. It is reported, not refused, as Story 2.3 has it: `signature: INVALID` with
     `signatureProblem` `CORRELATION_ID_MISMATCH` (another id) or `BAD_HEADER` (none), and the
-    payee's status and body passed through for the payer to judge.
+    payee's status and body passed through for the payer to judge. (Changed later the same day:
+    see below.)
 
   No other place reads a signed answer from another party: the payload request, the inbound payment
   notification and `POST /api/v1/signature/validate` verify what someone sent *us*, and are not
   answers. A missing `correlationId` was already refused everywhere by step 3 (`crit` must name it,
   and the header must carry it), so the new rule is the comparison. Pinned by `R-ADR0027-12` in
   [RULE-COVERAGE](../RULE-COVERAGE.md).
+- **2026-11-15 (owner), later the same day: what a bad correlationId means on each path.** It
+  amends the one above for the decoder's words and for the outbound notification, which until now
+  only reported it. **A bad correlationId** is a signed answer whose header carries no
+  `correlationId`, or another one than the request went out under. It is decided from the
+  verifier's code first, so the two builds draw the line in the same place: `CORRELATION_ID_MISMATCH`,
+  or `BAD_HEADER` with no `correlationId` or another one in the header (Java's `CorrelationEcho`,
+  Go's `jws.NotEchoed`). An answer refused for its signature, its chain, its time window or its
+  `statusCode` is not one, whatever it carries (the verifier checks those first), and neither is a
+  `BAD_HEADER` for another parameter while the header carries ours. An answer that is not a JWS at
+  all (`ABSENT_BODY`, `NOT_JWS`) is not a *signed* answer, and is reported as before. Both builds,
+  same words, same statuses:
+  1. **The decoder** (`POST /api/v1/qrcode-emv-decoder`), the payload fetched from the QR Code's
+     URL: refused, **400 business-rule-violation, `QR Code is invalid (bad correlationId)`**. In
+     the owner's words, "try again, but not remediable by the user": another try may succeed,
+     nothing in the caller's input can fix it. A payload that fails any other check keeps
+     `Payload JWS signature is invalid.`
+  2. **The outbound notification before the money moves** (pre-commit: no `transactionId` on the
+     wire, which is how the payee reads the phase, ADR-0004): refused, **502
+     notification-undeliverable** (ADR-0028 freezes the list of types), with the detail **`failed
+     to pay - payee is not responding (bad correlationId)`**, after one delivery. Every other
+     problem with a pre-commit answer is still reported in the 200.
+  3. **The outbound notification after the money moved** (post-commit: a `transactionId`): sent
+     **once more**, the same signed body under a **new** correlationId. The retry is a new
+     exchange: under the first id, an answer replayed from the first exchange would pass for an
+     answer to the second, and the first id has already been answered wrongly. A good answer to the
+     retry is reported as any answer is (200, its `signature`). If it is bad again, or never comes,
+     nothing operational starts; the attempt is **recorded** and the retry's answer reported as
+     today's contract reports an untrusted answer (200, `signature: INVALID`, the problem code), or
+     the usual 502 when the retry got no answer. In the owner's words: "money was sent already, so
+     we can try one more time and, in case it fails again, we just log the tentative on the log for
+     the QR Code, letting the payer bank know about it. We don't start any operational work on
+     this, but the payer may want to do an investigation so, by logging the failed correlationId,
+     we're empowering it."
+
+     **Where the record lives.** The payer side holds no state for a QR Code another bank issued:
+     no document, no row, no event. "The QR Code's log" is therefore one structured line at
+     **WARN**, the same on both builds, under the message `x9-qrcode post-commit notification: the
+     payee's answer did not carry our correlationId, twice`, with `qrcodeId`, `transactionId`,
+     `correlationIdsSent` (both), `correlationIdsAnswered` (what each answer's header carried, as
+     written and clipped to 64 characters, `missing`, or `no answer`), `problems` and `at` (the
+     business clock). Never the endpoint, never a key. The caller's result has no field for the
+     attempts; one is proposed in the PR rather than added silently.
 - **Fuzzing and corpus:** header parsing and `crit` handling are fuzzed, and a **golden corpus**
   produced by the Java build must give identical accept/reject results, **and the same
   `signatureProblem` code** (`others/blackbox/golden/`, Story 4.7). That includes two codes that

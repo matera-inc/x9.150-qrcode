@@ -39,7 +39,8 @@ Internalise these before designing anything.
    authenticate *callers*. Put it behind a gateway, mTLS or a network policy. Treat
    "the management endpoints are reachable" as your configuration problem, not a bug.
 4. **It does not retry your notifications.** If a payee is unreachable you get `502` and *nothing was
-   delivered*. The durable copy has to live with you, because an outbox on X9.150's side would be no
+   delivered*. The one exception: a post-payment whose answer carries the wrong `correlationId` is
+   sent once more, under a new one (see the payer sequence). The durable copy has to live with you, because an outbox on X9.150's side would be no
    help when you cannot reach X9.150 either.
 
 ## Payee sequence
@@ -67,17 +68,23 @@ normal outcome to handle, not an error to log and ignore.
 ```
 POST /api/v1/qrcode-emv-decoder   { "qrCode": "<scanned EMV>" }
    → X9.150 fetches the payee's payload over HTTPS and verifies their signature for you,
-     and that it answers OUR request: its correlationId must be the one we sent, or it is refused
+     and that it answers OUR request: its correlationId must be the one we sent, or it is refused,
+     400 "QR Code is invalid (bad correlationId)" (decoding again may work; your input cannot fix it)
    → read paymentNotification (where to notify) and paymentMethods[] (what you may pay)
 
 POST /api/v1/payment-notification/pre-payment      ← announce; NO transactionId
    → 200 { accepted: true } means the QR Code is reserved. Pay EXACTLY what you announced.
    → 200 { accepted: false } is a REFUSAL, not an error. Do not pay.
    → 502 means undelivered. Retry.
+   → 502 "failed to pay - payee is not responding (bad correlationId)": the payee answered, but
+     not under our correlationId. Do not pay.
 
    ↓  now actually move the money on your rail
 
 POST /api/v1/payment-notification/post-payment     ← report; transactionId REQUIRED
+   → an answer under the wrong correlationId (or none) is sent ONCE more, under a new one;
+     a second bad answer comes back as 200 signature: INVALID and is logged at WARN on X9.150's
+     side (QR Code, transactionId, both correlationIds) for your investigation. Nothing else starts.
 ```
 
 **The phase is inferred from `transactionId`, because X9.150 has no phase marker** — the committee
@@ -138,6 +145,7 @@ gap-free** — a notification that merely records details bumps it without emitt
 | `404` | no such QR Code | |
 | `409` | status transition not allowed from the current status | read the reported status; usually someone else is paying |
 | `502` | the payee's answer was not received; **the payee may have received the notification** | retrying is safe: retry later, from your own durable copy |
+| `502` | `detail` "failed to pay - payee is not responding (bad correlationId)": a pre-payment's answer under another `correlationId`, or none | do not pay; a new pre-payment may be tried |
 
 Problem responses are RFC 9457 `application/problem+json` with `type`, `title`, `status`, `detail`,
 `instance` and, for validation failures, `violations[]`.

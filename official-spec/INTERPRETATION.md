@@ -673,6 +673,19 @@ fixed code from a closed list (`ABSENT_BODY`, `NOT_JWS`, `ALG_NONE`, `ENCRYPTED`
 `signatureDetail` says the same in words. It reports and never refuses: a 200 that is not verified
 is an unsigned yes, and what that is worth is the payer's call.
 
+**Except for a bad correlationId** (owner, 2026-11-15, ADR-0027): a JWS answer whose header carries
+another `correlationId` than the one sent, or none, is not an answer to our question, and is not
+merely reported. Before the money moves (no `transactionId`, which is how the payee reads the phase)
+it is refused: a `502` notification-undeliverable whose detail reads `failed to pay - payee is not
+responding (bad correlationId)`. After the money moved (a `transactionId`) the same notification is
+sent once more, under a new `correlationId`; a good answer to that is reported as any answer is, and
+a second bad one, or none, is reported as above (`INVALID`, `CORRELATION_ID_MISMATCH` or
+`BAD_HEADER`) and recorded in a WARN log line (the QR Code, the `transactionId`, both
+`correlationId`s sent, what came back, when) for the payer bank to investigate. Nothing operational
+starts. The verifier's code decides first: an answer whose signature, chain, time window or status
+fails is reported as before, whatever `correlationId` it carries. The same rule makes the decoder
+refuse such a payload in its own words, `QR Code is invalid (bad correlationId)`.
+
 **Time.** The standard defines `iat` and `ttl` but no clock skew. We refuse a JWS whose `iat + ttl`
 has passed (`EXPIRED`), and also one whose `iat` is ahead of our clock by more than an allowed skew
 (`FUTURE_IAT`; `x9.public-endpoints.jws-clock-skew-seconds`, 60 s by default). The second rule is
@@ -929,7 +942,8 @@ These are still refused, on both builds:
 - **a payload that is not an answer to our request**: its JWS header must carry exactly the
   `correlationId` our payload request went out under — the caller's `correlationID`, or the one we
   generated when the caller gave none. Another one, or none, is refused (owner, 2026-11-15:
-  "No correlationId, I can't trust the other side"; ADR-0027);
+  "No correlationId, I can't trust the other side"; ADR-0027), in its own words, `QR Code is
+  invalid (bad correlationId)`: another try may succeed, and nothing the caller sends can fix it;
 - **a content mismatch**: a payload request whose signed content is not the QR Code that was
   issued.
 

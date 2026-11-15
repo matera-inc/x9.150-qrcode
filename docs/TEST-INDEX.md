@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**887 tests documented** — every JUnit test and every black-box case.
+**897 tests documented** — every JUnit test and every black-box case.
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
 (STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036 and ADR-0027's EMV and JWS verification rules), the
@@ -538,16 +538,18 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-DEC-020` | an unknown field on a payment method, on the creditor or at the top of the payload is ignored | `ForeignPayloadReadWithToleranceApiTest.java` |
 | `X9-DEC-021` | tolerance stops at integrity: the same foreign payload with a broken signature is refused | `ForeignPayloadReadWithToleranceApiTest.java` |
 | `X9-DEC-022` | without a caller's correlationID, the payload request goes out under a generated one, and a payload echoing it decodes | `DecoderPayloadEchoesOurCorrelationIdApiTest.java` |
-| `X9-DEC-023` | a payload under another correlationId than the request's is refused, the caller's or the generated one | `DecoderPayloadEchoesOurCorrelationIdApiTest.java` |
-| `X9-DEC-024` | a payload whose header carries no correlationId is refused, whether or not the caller gave one | `DecoderPayloadEchoesOurCorrelationIdApiTest.java` |
+| `X9-DEC-023` | a payload under another correlationId than the request's is refused, `QR Code is invalid (bad correlationId)`, the caller's or the generated one | `DecoderPayloadEchoesOurCorrelationIdApiTest.java` |
+| `X9-DEC-024` | a payload whose header carries no correlationId is refused, `QR Code is invalid (bad correlationId)`, whether or not the caller gave one | `DecoderPayloadEchoesOurCorrelationIdApiTest.java` |
 | `X9-DEC-025` | the payload is verified against the correlationId the request was sent under, never against none | `DecoveEmvUseCaseTest.java` |
+| `X9-DEC-026` | a payload altered after signing, under another correlationId, is a bad signature, not a bad correlationId | `DecoderPayloadEchoesOurCorrelationIdApiTest.java` |
 | `X9-DEC-501` | another bank's payload, served over https and signed by its own key, with unknown rails, an unknown currency and unknown fields decodes (black box) | `test_tolerant_reading.py` |
 | `X9-DEC-502` | an unknown currency and an unknown rail reach the payer as the other bank wrote them | `test_tolerant_reading.py` |
 | `X9-DEC-503` | an unknown field inside a known rail of another bank's payload is ignored | `test_tolerant_reading.py` |
 | `X9-DEC-504` | an unknown field on a method, on the creditor or at the top of another bank's payload is ignored | `test_tolerant_reading.py` |
 | `X9-DEC-505` | another bank's payload signed by an untrusted CA, or altered after signing, is refused and nothing of it presented | `test_tolerant_reading.py` |
-| `X9-DEC-506` | another bank's payload under another correlationId than the request's is refused, with or without a caller's id (black box) | `test_tolerant_reading.py` |
-| `X9-DEC-507` | another bank's payload with no correlationId in its header is refused, with or without a caller's id (black box) | `test_tolerant_reading.py` |
+| `X9-DEC-506` | another bank's payload under another correlationId than the request's is refused, `QR Code is invalid (bad correlationId)`, with or without a caller's id (black box) | `test_tolerant_reading.py` |
+| `X9-DEC-507` | another bank's payload with no correlationId in its header is refused, `QR Code is invalid (bad correlationId)`, with or without a caller's id (black box) | `test_tolerant_reading.py` |
+| `X9-DEC-508` | another bank's payload altered after signing, under another correlationId, is refused as a bad signature, not as a bad correlationId (black box) | `test_tolerant_reading.py` |
 
 ## Editing a payment request
 
@@ -803,9 +805,14 @@ status is `X9-MAP-002`.
 | `X9-SIG-151` | the signed answer, a yes and a no alike, carries `typ: JOSE` | `SignedNotificationAnswerApiTest.java` |
 | `X9-SIG-152` | a `correlationId` that is not a canonical 8-4-4-4-12 UUID is refused `BAD_HEADER`; the canonical form is accepted in either case | `JwsQRCodeSignatureServiceTest.java` |
 | `X9-SIG-153` | a signed answer whose body `statusCode` is not an integer (`200.5`, `200.0`, `2e2`) or exceeds 32 bits is INVALID, `STATUS_MISSING` | `OutboundAnswerVerificationApiTest.java` |
+| `X9-SIG-154` | before the money moves, an answer under another correlationId or none is refused, notification-undeliverable, `failed to pay - payee is not responding (bad correlationId)`, after one delivery | `SendPaymentNotificationUseCaseTest.java` |
+| `X9-SIG-155` | after the money moved, an answer under another correlationId is followed by one more delivery under a new correlationId; a good answer to it is reported | `SendPaymentNotificationUseCaseTest.java` |
+| `X9-SIG-156` | after the money moved, a second bad answer is reported as it is and recorded at WARN (QR Code, transactionId, both ids, when); no answer to the retry is recorded too | `SendPaymentNotificationUseCaseTest.java` |
+| `X9-SIG-157` | an answer that fails another check is reported as before, before or after the money moves | `SendPaymentNotificationUseCaseTest.java` |
+| `X9-SIG-158` | a bad correlationId is `CORRELATION_ID_MISMATCH`, or `BAD_HEADER` without ours; the verifier's code decides first | `CorrelationEchoTest.java` |
 | `X9-SIG-130` | a signed yes with the correlationId sent is VERIFIED | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-131` | a signed no is VERIFIED and not accepted | `OutboundAnswerVerificationApiTest.java` |
-| `X9-SIG-132` | a signed yes under another correlationId is INVALID, and still an unsigned yes | `OutboundAnswerVerificationApiTest.java` |
+| `X9-SIG-132` | a signed yes to a pre-commit notification, under another correlationId, is refused: 502, `failed to pay - payee is not responding (bad correlationId)` | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-133` | a signed answer whose payload was altered is INVALID | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-134` | an HTTP status that differs from the signed one is INVALID | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-135` | an unsecured JOSE object (`alg: none`) is INVALID | `OutboundAnswerVerificationApiTest.java` |
@@ -815,7 +822,7 @@ status is `X9-MAP-002`.
 | `X9-SIG-140` | an answer whose iat is in the future beyond the skew is INVALID, `FUTURE_IAT`; within it, VERIFIED | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-141` | an answer whose `iat + ttl` has passed is INVALID, `EXPIRED` | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-142` | a signed body without an integer `statusCode` is INVALID, `STATUS_MISSING` | `OutboundAnswerVerificationApiTest.java` |
-| `X9-SIG-143` | a signed answer with an unknown `crit` or no `correlationId` header is INVALID, `BAD_HEADER` | `OutboundAnswerVerificationApiTest.java` |
+| `X9-SIG-143` | a signed answer with an unknown `crit` is INVALID, `BAD_HEADER`; one with no `correlationId` header, to a pre-commit notification, is refused, 502 | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-144` | the shared verifier refuses an iat ahead of its clock beyond the skew, and accepts one within it | `JwsQRCodeSignatureServiceTest.java` |
 | `X9-SIG-145` | a question whose iat is in the future beyond the skew is refused, signed; within it, accepted | `SignedNotificationAnswerApiTest.java` |
 | `X9-SIG-146` | an empty body, refused before the controller, is answered with a signed 400 | `NotificationAnswerSignedEverywhereApiTest.java` |
@@ -828,11 +835,11 @@ status is `X9-MAP-002`.
 | `X9-SIG-303` | a pre-payment carrying a transactionId is refused before sending | `test_payers.py` |
 | `X9-SIG-304` | a post-payment SENT needs a transactionId; NOT_SENT without one is delivered | `test_payers.py` |
 | `X9-SIG-501` | the test payee holds the service's signed outbound question byte for byte, under the caller's correlationId | `test_payee_answers.py` |
-| `X9-SIG-502` | each of the payee's answers (cases 1-8, 11-16) is reported for what it is: signature, signatureProblem, statusCode, accepted | `test_payee_answers.py` |
+| `X9-SIG-502` | each of the payee's answers (cases 1, 5-8, 11-16) is reported for what it is: signature, signatureProblem, statusCode, accepted | `test_payee_answers.py` |
 | `X9-SIG-503` | an answer signed by an untrusted or a revoked certificate is INVALID, UNTRUSTED_CHAIN | `test_payee_answers.py` |
 | `X9-SIG-504` | a payee that hangs up without answering is 502, whose detail says the payee may have received it, and nothing changes here | `test_payee_answers.py` |
 | `X9-SIG-505` | a payee answering after the 15 s timeout is 502 | `test_payee_answers.py` |
-| `X9-SIG-506` | each tampered payee answer is reported INVALID with the service's fixed code | `test_payee_answers.py` |
+| `X9-SIG-506` | each tampered payee answer is reported INVALID with the service's fixed code; a non-canonical correlationId, not the one sent, is refused 502 before the money moves | `test_payee_answers.py` |
 | `X9-SIG-507` | the JWK set is served, each key with its x5c chain | `test_public_metadata.py` |
 | `X9-SIG-508` | a test payer's token carries the X9.150 profile: ms iat/ttl, correlationId, crit, x5c, x5t#S256 | `test_signatures.py` |
 | `X9-SIG-509` | both test-CA payers, RSA and EC, are accepted on their own keys | `test_signatures.py` |
@@ -855,6 +862,9 @@ status is `X9-MAP-002`.
 | `X9-SIG-526` | a canonical `correlationId` written in capitals is accepted | `test_signatures.py` |
 | `X9-SIG-527` | a payee answer whose body `statusCode` is not an integer, or exceeds 32 bits, is INVALID, `STATUS_MISSING` | `test_payee_answers.py` |
 | `X9-SIG-528` | a typed query parameter that does not parse is 400 with `violations` an array naming it | `test_create_refusals.py` |
+| `X9-SIG-529` | a pre-commit answer under another correlationId, or none, or replayed (Story 3.5 cases 2-4) is refused: 502, `failed to pay - payee is not responding (bad correlationId)`, one delivery (black box) | `test_payee_answers.py` |
+| `X9-SIG-530` | a post-commit answer under another correlationId, or none, is followed by one more notification under a new correlationId, and its good answer is reported VERIFIED (black box) | `test_payee_answers.py` |
+| `X9-SIG-531` | a post-commit answer under the wrong correlationId twice: exactly two notifications, the second answer reported INVALID, nothing else changed (black box) | `test_payee_answers.py` |
 
 ## Time edges (the test clock)
 
