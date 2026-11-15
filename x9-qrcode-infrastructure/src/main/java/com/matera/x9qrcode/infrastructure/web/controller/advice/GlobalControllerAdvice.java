@@ -105,17 +105,17 @@ public class GlobalControllerAdvice {
         return problemDetail;
     }
 
+    /**
+     * A path or query parameter that does not convert to its declared type ({@code ?limit=x}).
+     *
+     * <p>{@code violations} is a one-element array, as {@code BaseError} declares it everywhere. This
+     * handler once set it to the bare sentence, the only refusal in the service to do so.
+     */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ProblemDetail handleMethodArgumentTypeMismatchException(MethodArgumentTypeMismatchException ex) {
         logExceptionStacktrace(ex);
 
-        ProblemDetail problemDetail = ProblemDetail.forStatus(METHOD_ARGUMENT_NOT_VALID.status());
-        problemDetail.setTitle(METHOD_ARGUMENT_NOT_VALID.title());
-        problemDetail.setType(METHOD_ARGUMENT_NOT_VALID.uriType());
-        problemDetail.setDetail(METHOD_ARGUMENT_NOT_VALID.description());
-        problemDetail.setProperty(VIOLATIONS_PROPERTY, INVALID_PROPERTY_VIOLATION.formatted(ex.getPropertyName()));
-
-        return problemDetail;
+        return createArgumentNotValidProblemDetail(INVALID_PROPERTY_VIOLATION.formatted(ex.getPropertyName()));
     }
 
     @ExceptionHandler(InvalidSignatureException.class)

@@ -10,7 +10,11 @@ import com.matera.x9qrcode.infrastructure.AbstractIntegrationTest;
 
 import io.restassured.module.mockmvc.response.MockMvcResponse;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.http.HttpStatus;
+
+import java.util.List;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -90,6 +94,32 @@ class ProblemDetailShapeApiTest extends AbstractIntegrationTest {
         assertNotNull(response.jsonPath().getString("detail"));
         assertEquals(HttpStatus.BAD_REQUEST.value(), response.jsonPath().getInt("status"));
         assertTrue(response.jsonPath().getString("instance").contains(CREATE));
+    }
+
+    /**
+     * <b>X9-SIG-023</b> — a query parameter of the wrong type answers {@code violations} as an array.
+     *
+     * <p><b>Source:</b> Ours. {@code BaseError} in openapi.yaml declares {@code violations} as an array of
+     * strings, and every other refusal here sends one.
+     *
+     * <p><b>Why:</b> This one refusal sent a bare string, {@code "limit has invalid value."}. A client
+     * that iterates the array, as the contract tells it to, iterated the characters of the sentence or
+     * failed to parse the body at all, on a 400 it was supposed to be able to read.
+     */
+    @ParameterizedTest(name = "{0}")
+    @CsvSource({
+        "/pub/api/v1/events?limit=x, limit has invalid value.",
+        "/pub/api/v1/events?wait=x, wait has invalid value.",
+        "/api/v1/payment-request/0123456789ABCDEF0123456789ABCDEF?revision=x, revision has invalid value."
+    })
+    void aQueryParameterOfTheWrongTypeAnswersViolationsAsAnArray(String path, String violation) {
+        MockMvcResponse response = given().when().get(path);
+
+        assertEquals(HttpStatus.BAD_REQUEST.value(), response.statusCode(), response.asString());
+        Object violations = response.jsonPath().get("violations");
+        assertTrue(violations instanceof List<?>,
+                "`violations` must be an array, as BaseError declares: " + response.asString());
+        assertEquals(List.of(violation), violations, response.asString());
     }
 
 }

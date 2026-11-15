@@ -55,3 +55,61 @@ def test_payment_methods_as_a_bare_object_is_refused(api):
     assert "paymentMethods" in response.text or \
         response.problem.get("type", "").endswith("/malformed-json"), response.body
     assert "id" not in response.body
+
+
+UNKNOWN_SOLANA_X = ("paymentMethods[0].networks.solana.x: "
+                    "is not a field of solana, whose fields are recipient and memo")
+
+
+def test_an_unknown_field_in_solana_is_refused_at_create_naming_it(api):
+    """X9-RAIL-502 — an unknown field inside ``solana`` is refused at create: 400 naming its path,
+    no id.
+
+    Source: Ours. INTERPRETATION I-9 and the contract: ``Solana`` is ``additionalProperties: false``,
+      because a rail interpreted on a published embedding reports a field it does not know. R-I9-03.
+    Why: The Java build once answered 201 and dropped the field, so a mistyped ``memo`` became a
+      printed QR Code without the memo the biller meant to match payments with, and nobody was told.
+    """
+    response = api.create_qr_detailed(networks={"solana": {"recipient": samples.RECIPIENT, "x": 1}})
+
+    assert response.status == 400, response
+    assert response.violations == [UNKNOWN_SOLANA_X], response.body
+    assert "id" not in response.body
+
+
+def test_an_unknown_field_in_solana_is_refused_on_patch_and_nothing_moves(api):
+    """X9-RAIL-503 — an unknown field inside ``solana`` is refused on PATCH, naming its path, and the
+    ETag does not move.
+
+    Source: Ours. INTERPRETATION I-9, R-I9-03: a PATCH replaces the same closed ``Solana`` object.
+    Why: A refusal at create that a PATCH lets through is no refusal; the same field would be dropped
+      one request later.
+    """
+    qr = api.create_qr()
+    current = api.qr(qr)
+    method = samples.payment_method(networks={"solana": {"recipient": samples.RECIPIENT, "x": 1}})
+
+    response = api.patch(f"/api/v1/payment-request/{qr}", body={"paymentMethods": [method]},
+                         if_match=current.etag)
+
+    assert response.status == 400, response
+    assert response.violations == [UNKNOWN_SOLANA_X], response.body
+    assert api.qr(qr).etag == current.etag, "a refused patch does not move the ETag"
+
+
+def test_a_query_parameter_of_the_wrong_type_answers_violations_as_an_array(api):
+    """X9-SIG-528 — a typed query parameter that does not parse (``?limit=x``, ``?revision=x``) is
+    400 with ``violations`` an array naming it.
+
+    Source: Ours. ``BaseError`` in openapi.yaml declares ``violations`` an array of strings.
+    Why: The Java build answered this one refusal with a bare string, so a client that iterates the
+      array, as the contract tells it to, read the sentence one character at a time.
+    """
+    qr = api.create_qr()
+    for path, violation in (("/pub/api/v1/events?limit=x", "limit has invalid value."),
+                            (f"/api/v1/payment-request/{qr}?revision=x", "revision has invalid value.")):
+        response = api.get(path)
+
+        assert response.status == 400, (path, response)
+        assert isinstance(response.body.get("violations"), list), (path, response.body)
+        assert response.body["violations"] == [violation], (path, response.body)

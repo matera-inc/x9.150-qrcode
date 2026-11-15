@@ -14,6 +14,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpStatus;
 
+import java.util.List;
+
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -214,6 +216,82 @@ class SolanaPaymentMethodApiTest extends AbstractIntegrationTest {
     void aMemoBeyondOneHundredCharactersIsRefused() {
         createExpectingRejection("""
             { "recipient": "%s", "memo": "%s" }""".formatted(RECIPIENT, "x".repeat(101)));
+    }
+
+    // ------------------------------------------------------------- an interpreted rail is closed
+
+    private static final String UNKNOWN_X =
+        "paymentMethods[0].networks.solana.x: is not a field of solana, whose fields are recipient and memo";
+
+    /**
+     * <b>X9-RAIL-048</b> — an unknown field inside {@code solana} is refused at create, naming it.
+     *
+     * <p><b>Source:</b> Ours. INTERPRETATION I-9 and the contract: {@code Solana} is
+     * {@code additionalProperties: false}, because a rail interpreted on a published embedding reports a
+     * field it does not know instead of carrying it. Rule {@code R-I9-03}.
+     *
+     * <p><b>Why:</b> This build used to answer 201 and drop the field without a word, so a biller who
+     * mistyped {@code memo} as {@code memmo} printed a QR Code without the memo they meant to match
+     * payments with, and was never told.
+     */
+    @Test
+    void anUnknownFieldInSolanaIsRefusedOnCreateNamingIt() {
+        String response = createExpectingRejection("""
+            { "recipient": "%s", "x": 1 }""".formatted(RECIPIENT));
+
+        assertEquals(List.of(UNKNOWN_X), JsonPath.from(response).getList("violations"), response);
+    }
+
+    /**
+     * <b>X9-RAIL-049</b> — an unknown field inside {@code solana} is refused on PATCH, naming it, and
+     * nothing changes.
+     *
+     * <p><b>Source:</b> Ours. INTERPRETATION I-9, rule {@code R-I9-03}: a PATCH replaces the same
+     * {@code Solana} object, so it is closed there too.
+     *
+     * <p><b>Why:</b> A refusal on create that a PATCH lets through is no refusal: the same mistyped field
+     * would be dropped one request later.
+     */
+    @Test
+    void anUnknownFieldInSolanaIsRefusedOnPatchNamingIt() {
+        String id = given().contentType("application/json")
+                .body(qrCodeBody("{ \"recipient\": \"%s\" }".formatted(RECIPIENT), "USDC"))
+                .when().post(CREATE)
+                .then().statusCode(HttpStatus.CREATED.value())
+                .extract().path("id");
+
+        String response = given().contentType("application/json").body("""
+            { "paymentMethods": [
+                { "currency": "USDC", "validUntil": "2030-12-31T23:59:59Z", "amount": %d,
+                  "networks": { "solana": { "recipient": "%s", "memo": "m", "x": 1 } } } ] }
+            """.formatted(AMOUNT, RECIPIENT))
+                .when().patch(CREATE + "/" + id)
+                .then().statusCode(HttpStatus.BAD_REQUEST.value())
+                .extract().asString();
+
+        assertEquals(List.of(UNKNOWN_X), JsonPath.from(response).getList("violations"), response);
+        JsonPath after = given().when().get(CREATE + "/" + id).then().extract().jsonPath();
+        assertEquals(0, after.getInt("revision"), "a refused PATCH must change nothing: " + after.prettify());
+        assertNull(after.get("paymentMethods[0].networks.solana.memo"), after.prettify());
+    }
+
+    /**
+     * <b>X9-RAIL-055</b> — an unknown field is named beside the other violations of the same request.
+     *
+     * <p><b>Source:</b> Mechanism. The unknown field is reported as one more field violation, so a caller
+     * who sent the guessed {@code walletAddress} learns both that {@code recipient} is missing and why.
+     *
+     * <p><b>Why:</b> Reporting only one of the two would send the caller round twice to fix one mistake.
+     */
+    @Test
+    void anUnknownFieldIsNamedBesideTheOtherViolations() {
+        String response = createExpectingRejection("""
+            { "walletAddress": "%s" }""".formatted(RECIPIENT));
+
+        List<String> violations = JsonPath.from(response).getList("violations");
+        assertTrue(violations.contains("paymentMethods[0].networks.solana.walletAddress: "
+            + "is not a field of solana, whose fields are recipient and memo"), response);
+        assertTrue(violations.contains("paymentMethods[0].networks.solana.recipient: must not be null"), response);
     }
 
 }

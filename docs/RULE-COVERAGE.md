@@ -189,7 +189,7 @@ that is here must still be marked `GAP`.
 | `R-I8-02` | The Solana `memo` is optional, limited in length, and carried exactly as supplied. | `X9-RAIL-041`, `X9-RAIL-042`, `X9-RAIL-047` | — |
 | `R-I9-01` | As issuer, an unknown network is refused by name, on create and on PATCH. | `X9-RAIL-052`, `X9-RAIL-054` | — |
 | `R-I9-02` | As payer-side transport, an unknown network in someone else's payload is carried intact, whatever its shape. | `X9-RAIL-060`, `X9-RAIL-062`, `X9-RAIL-063`, `X9-RAIL-064`, `X9-RAIL-017` | — |
-| `R-I9-03` | An interpreted rail is closed: an unknown field in `solana` is refused. | `X9-RAIL-044` | — |
+| `R-I9-03` | An interpreted rail is closed: an unknown field in `solana` is refused, by its path, on create and on PATCH. | `X9-RAIL-044`, `X9-RAIL-048`, `X9-RAIL-049`, `X9-RAIL-055`, `X9-RAIL-502`, `X9-RAIL-503` | — |
 | `R-I10-01` | `payment.amount` is the total, tip included; `amount − tipAmount` is what is judged against the bill. | `X9-TIP-001`, `X9-TIP-002`, `X9-TIP-101`, `X9-TIP-102` | — |
 | `R-I10-02` | A tip on a bill that does not allow tips is refused. | `X9-TIP-005`, `X9-TIP-103` | — |
 | `R-I10-03` | A tip outside the published range is refused. | `X9-TIP-007`, `X9-TIP-008`, `X9-TIP-009`, `X9-TIP-104` | — |
