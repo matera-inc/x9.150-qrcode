@@ -23,7 +23,6 @@ X9-EVT-058
 
 # Story 9.6: a biller creates and reads a QR Code.
 tests/test_qr_code.py
-!X9-DEC-016
 tests/test_create_refusals.py
 # What we generate is closed at every level (INTERPRETATION I-16): create and PATCH. The
 # outbound cases (X9-RAIL-509) are Story 10.6's, below.
@@ -211,10 +210,9 @@ X9-TIP-106
 # Story 10.5: pre-commit and post-commit under the transition map (ADR-0035, ADR-0036), every hash
 # registered; a post-commit naming a rail or currency the QR Code does not offer is recorded and
 # refused (ADR-0036, amended 2026-11-15). X9-TIME-013 is java_only and X9-TIME-015 (retention) is
-# Epic 12's; TestDecoderRefusals reads /api/v1/qrcode-emv-decoder, Story 10.7's.
+# Epic 12's.
 tests/test_transition_map.py
 tests/test_payment_notification.py
-!tests/test_payment_notification.py::TestDecoderRefusals::
 tests/test_two_phase.py
 tests/test_settlement.py
 tests/test_tip_offers.py
@@ -253,8 +251,7 @@ X9-CUR-520
 X9-CUR-521
 # The notification cases of X9-LOC-306, -307 and -311, which Story 10.3 excluded.
 tests/test_payers.py::TestPayload::
-# Whatever else passes on Go once Story 10.5 is in: every other file of the suite, but the EMV
-# decoder's cases (/api/v1/qrcode-emv-decoder), which are Story 10.7's.
+# Whatever else passes on Go once Story 10.5 is in: every other file of the suite.
 tests/test_status_update_and_events.py
 tests/test_signatures.py
 tests/test_payers.py
@@ -267,4 +264,13 @@ tests/test_deployment.py
 tests/test_public_metadata.py
 tests/test_golden.py
 tests/test_contract.py
-!tests/test_contract.py::test_a_contract_constraint_is_refused[emv-decoder:
+
+# Story 10.7: the EMV decoder (/api/v1/qrcode-emv-decoder) reads a scanned QR Code and fetches its
+# payload: malformed EMV refused before any fetch, the payee's refusal relayed, and another bank's
+# payload read with tolerance (INTERPRETATION I-16). The keys of S10.7-AC4 are named, though the
+# files above already hold them.
+tests/test_tolerant_reading.py
+X9-DEC-016
+X9-DEC-006
+X9-DEC-007
+tests/test_contract.py::test_a_contract_constraint_is_refused[emv-decoder:
