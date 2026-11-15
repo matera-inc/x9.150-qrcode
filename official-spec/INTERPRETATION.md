@@ -705,6 +705,11 @@ that amount stops applying, so that the instant advertised and the instant accep
   bill whose amount, or any payment method's, would pass 18 digits with it is refused (ADR-0005).
 - **Capped:** never later than the QR Code's `validUntil`, nor than the last of the payment methods
   served with it. Each method still carries its own `validUntil` beside its amount.
+- **One instant:** the payload is priced at the later of the payer's `dateForPayment` (a calendar
+  date, read as that day's UTC midnight) and now, and the payment methods it shows are chosen at
+  that same instant, so a method shown is always valid at the instant its amount and fee are
+  computed. Before this, the methods were chosen at `dateForPayment` itself: asked for today, the
+  payload went on offering, until midnight, a method that had expired that morning.
 
 Before this, the value was rounded to `23:59:59` UTC of the day. A discount ending at E was
 advertised until up to ~21 h later, and a pre-commit made inside that gap was refused while its

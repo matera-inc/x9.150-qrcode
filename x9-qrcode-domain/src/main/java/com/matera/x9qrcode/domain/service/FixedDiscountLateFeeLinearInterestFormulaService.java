@@ -87,14 +87,14 @@ public class FixedDiscountLateFeeLinearInterestFormulaService implements Formula
         ).orElse(null);
     }
 
+    /**
+     * The instant given, exactly. This used to replace a date already in the past by a fresh read
+     * of the clock, so the caller and the formula each had their own "now": the payload chose its
+     * payment methods at one instant and priced them at another (INTERPRETATION I-14). Callers now
+     * pass the instant they judge everything else at.
+     */
     private OffsetDateTime getCurrentDate(OffsetDateTime dateForPayment) {
-        OffsetDateTime nowUTC = DateTimeUtils.nowUTC();
-
-        if (nonNull(dateForPayment) && !dateForPayment.isBefore(nowUTC)) {
-            return dateForPayment;
-        }
-
-        return nowUTC;
+        return nonNull(dateForPayment) ? dateForPayment : DateTimeUtils.nowUTC();
     }
 
 }

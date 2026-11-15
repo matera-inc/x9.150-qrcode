@@ -247,6 +247,7 @@ that is here must still be marked `GAP`.
 | `R-I14-02` | Of several discounts the largest eligible one is served, until its own edge. | `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java::ofSeveralDiscountsTheLargestEligibleIsServedUntilItsOwnEdge` | `S2.6-AC3` |
 | `R-I14-03` | A late fee rises every 24 hours from `dueDate`, and its `validUntil` is the next boundary. | `X9-TIME-005`, `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java::aLateFeeAppliesAtItsBoundaryAndRisesOneMillisecondAfter` | `S2.6-AC1`, `S2.6-AC2`, `S4.5-AC1` |
 | `R-I14-04` | An adjusted amount's `validUntil` is never later than the QR Code's. | `X9-TIME-005`, `FixedDiscountLateFeeLinearInterestFormulaServiceTest.java::theAdvertisedValidUntilIsCappedByAnEarlierEnd` | `S2.6-AC1`, `S2.6-AC2`, `S4.5-AC1` |
+| `R-I14-05` | The payload is priced at one instant, the later of `dateForPayment` and now, and shows only the payment methods valid at that instant; a past `dateForPayment` never brings back an expired method. | `X9-TIME-017`, `X9-TIME-020`, `X9-TIME-021` | — |
 
 ## ADRs 0004 to 0021
 

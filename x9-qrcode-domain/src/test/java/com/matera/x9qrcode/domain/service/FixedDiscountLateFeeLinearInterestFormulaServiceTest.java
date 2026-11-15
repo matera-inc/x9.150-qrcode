@@ -29,9 +29,8 @@ import static org.junit.jupiter.api.Assertions.assertThrowsExactly;
 /**
  * The formula at the instants where its answer changes.
  *
- * <p>Every instant here is fixed and years in the future. The formula reads the wall clock only to
- * replace a payment date that is already in the past, so a future date is used exactly as given and
- * no clock has to be moved.
+ * <p>Every instant here is fixed and years in the future. The formula prices at the instant it is
+ * given, exactly, and reads the clock only when given none, so no clock has to be moved.
  */
 class FixedDiscountLateFeeLinearInterestFormulaServiceTest {
 

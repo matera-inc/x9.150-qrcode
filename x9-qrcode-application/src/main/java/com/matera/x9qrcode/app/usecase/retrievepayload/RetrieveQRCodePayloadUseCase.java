@@ -81,6 +81,12 @@ public class RetrieveQRCodePayloadUseCase extends UseCase<RetrieveQRCodePayloadI
             throw new BusinessRuleException(EXPIRED_PAYLOAD_ERROR_MESSAGE.formatted(locationId.valueAsString()));
         }
 
+        // One instant for everything the payload judges: the payer's date, or now if that date has
+        // already begun or passed. dateForPayment is a calendar date read as its UTC midnight, so
+        // today's date is earlier than now; choosing the methods at that midnight while pricing them
+        // at now offered, all day, a method that expired that morning (INTERPRETATION I-14).
+        OffsetDateTime pricedAt = pricingInstant(input.getZonedDateForPayment());
+
         FormulaResultDTO formulaResult = null;
 
         BillVO bill = qrCodeEntity.getBill();
@@ -90,7 +96,7 @@ public class RetrieveQRCodePayloadUseCase extends UseCase<RetrieveQRCodePayloadI
                 formulaFactory.createFormula(bill.amountDue().adjustment().formula());
 
             formulaResult = formulaService.calculate(
-                input.getZonedDateForPayment(),
+                pricedAt,
                 bill.invoice().dueDate(),
                 bill.amountDue().currencyAmount().amount(),
                 bill.amountDue().currencyAmount().currency(),
@@ -100,7 +106,7 @@ public class RetrieveQRCodePayloadUseCase extends UseCase<RetrieveQRCodePayloadI
         }
 
         List<PaymentMethodVO> validPaymentMethods =
-            getValidPaymentMethods(qrCodeEntity, input.getZonedDateForPayment());
+            getValidPaymentMethods(qrCodeEntity, pricedAt);
 
         if (nonNull(formulaResult)) {
             formulaResult = formulaResult.cappedAt(adjustmentCap(qrCodeEntity, validPaymentMethods));
@@ -194,9 +200,20 @@ public class RetrieveQRCodePayloadUseCase extends UseCase<RetrieveQRCodePayloadI
         return isNull(cap) || lastMethodEnds.isBefore(cap) ? lastMethodEnds : cap;
     }
 
-    private List<PaymentMethodVO> getValidPaymentMethods(QRCodeEntity qrCodeEntity, OffsetDateTime dateForPayment) {
+    /** The later of the payer's requested instant and now: a payload is never priced in the past. */
+    private static OffsetDateTime pricingInstant(OffsetDateTime dateForPayment) {
+        OffsetDateTime now = DateTimeUtils.nowUTC();
+
+        return dateForPayment.isAfter(now) ? dateForPayment : now;
+    }
+
+    /**
+     * The methods still valid at {@code pricedAt}, the instant the adjustment is computed at, so a
+     * method shown is always valid at the instant its amount is priced.
+     */
+    private List<PaymentMethodVO> getValidPaymentMethods(QRCodeEntity qrCodeEntity, OffsetDateTime pricedAt) {
         List<PaymentMethodVO> paymentMethods =
-            qrCodeEntity.getPaymentMethods().stream().filter(pm -> !dateForPayment.isAfter(pm.validUntil())).collect(Collectors.toList());
+            qrCodeEntity.getPaymentMethods().stream().filter(pm -> !pricedAt.isAfter(pm.validUntil())).collect(Collectors.toList());
 
         if (paymentMethods.isEmpty()) {
             return null;

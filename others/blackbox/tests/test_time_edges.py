@@ -421,6 +421,43 @@ def test_t7_a_payment_method_that_expires_first_is_withdrawn_alone(api, clock, p
     assert api.notify(qr["id"], payer_info=HOLDER).status == 200, "USDC is still accepted"
 
 
+def test_a_past_date_for_payment_does_not_bring_back_an_expired_method(
+        api, clock, payee_certificate):
+    """X9-TIME-017 — one instant: the payload chooses its payment methods at the instant it prices
+    them, the later of ``dateForPayment`` and now. With the clock 1 ms past a method's
+    ``validUntil`` and ``dateForPayment`` set to that day (its UTC midnight, earlier), the expired
+    method is absent and the other is priced one day late.
+
+    Source: Ours. INTERPRETATION I-14 ("one instant"); owner decision 2026-11-14.
+    Why: the methods used to be chosen at ``dateForPayment``'s midnight while the fee was computed
+      at now, so for the rest of the day a method that had expired was offered, with a fee counted
+      past its own ``validUntil``.
+    """
+    due = whole_seconds_from_now(datetime.timedelta(minutes=30))
+    method_until = whole_seconds_from_now(datetime.timedelta(hours=1))
+    code_until = method_until + datetime.timedelta(hours=1)
+    body = samples.payment_request(valid_until=iso(code_until))
+    body["bill"]["invoice"] = {"number": "INV-TIME-17", "date": real_now().strftime("%Y-%m-%d"),
+                               "dueDate": iso(due)}
+    body["bill"]["amountDue"]["adjustments"] = {
+        "formula": "FixedDiscountLateFeeLinearInterest",
+        "parameters": {"lateFees": {"fixed": FIXED_FEE, "perDay": PER_DAY,
+                                    "explanation": "Late fee"}}}
+    body["paymentMethods"].append(samples.payment_method(
+        currency="USD", valid_until=iso(method_until), networks={"fednow": samples.FEDNOW}))
+    response = api.post("/api/v1/payment-request", body=body)
+    assert response.status == 201, f"fixture QR Code could not be created: {response}"
+    qr = response.body
+
+    clock.move_to(method_until + MS)
+    amount, _, claims = quote(api, qr, payee_certificate, clock,
+                              date_for_payment=method_until.date())
+
+    assert [m["currency"] for m in claims["paymentMethods"]] == ["USDC"], \
+        f"the USD method expired 1 ms ago; its day's midnight must not bring it back: {claims}"
+    assert amount == BILL + FIXED_FEE + PER_DAY, f"priced at the same instant, one day late: {amount}"
+
+
 # ------------------------------------------------------------------ T8, T9: the reservation
 
 def test_t8_after_a_lapse_another_payer_takes_over_and_the_first_payers_late_report_is_kept(
