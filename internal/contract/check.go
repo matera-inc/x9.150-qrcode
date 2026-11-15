@@ -16,6 +16,7 @@ package contract
 
 import (
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf16"
@@ -42,7 +43,14 @@ func (c *checker) result() []string {
 //
 //	creditor.address.x: is not a field of address, whose fields are line1, line2, city, state, postalCode and country
 func (c *checker) closed(path, object string, unknown Members, v any) {
-	if len(unknown) == 0 {
+	c.closedBut(path, object, unknown, v, nil)
+}
+
+// closedBut is closed, but a member named in readOnly is left to the PATCH handler, which compares
+// it with the stored value (ReadOnly, ChangedReadOnly).
+func (c *checker) closedBut(path, object string, unknown Members, v any, readOnly []string) {
+	names := slices.DeleteFunc(unknown.Names(), func(n string) bool { return slices.Contains(readOnly, n) })
+	if len(names) == 0 {
 		return
 	}
 	fields := fieldsOf(v)
@@ -51,7 +59,7 @@ func (c *checker) closed(path, object string, unknown Members, v any) {
 		message = "is not a field of " + object + ", whose fields are " +
 			strings.Join(fields[:len(fields)-1], ", ") + " and " + fields[len(fields)-1]
 	}
-	for _, name := range unknown.Names() {
+	for _, name := range names {
 		if path != "" {
 			name = path + "." + name
 		}

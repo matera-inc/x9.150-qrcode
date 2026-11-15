@@ -114,6 +114,22 @@ func (s *Service) decidePatch(ctx context.Context, rd *store.Reader, now time.Ti
 	if err != nil {
 		return store.Change{}, err
 	}
+	// What a GET carries but a PATCH cannot change is accepted when it equals the stored value and
+	// refused by name when it does not (INTERPRETATION I-16, owner 2026-11-15, option B), compared
+	// with the GET answer at now, before anything else, as the Java build does.
+	if readOnly := req.ReadOnly(); len(readOnly) > 0 {
+		answer, err := s.view(before, now)
+		if err != nil {
+			return store.Change{}, err
+		}
+		changed, err := contract.ChangedReadOnly(answer, readOnly)
+		if err != nil {
+			return store.Change{}, err
+		}
+		if changed != nil {
+			return store.Change{}, httpapi.Validation(changed...)
+		}
+	}
 	d := domain.Patch(before.Row, ifMatch, now)
 	if !d.Write { // refused: the refusal is the answer, in the decision, and nothing is written
 		return store.Change{Before: &before, Decision: d}, nil

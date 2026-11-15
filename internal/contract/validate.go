@@ -287,14 +287,14 @@ func (r *PatchRequest) Validate() []string {
 			a := b.AmountDue.Value
 			checkAmount(c, "bill.amountDue.amount", a.Amount)
 			checkAdjustment(c, "bill.amountDue.adjustments", a.Adjustments)
-			c.closed("bill.amountDue", "amountDue", a.Unknown, a)
+			c.closedBut("bill.amountDue", "amountDue", a.Unknown, a, patchReadOnlyAmountDue)
 		}
 		c.closed("bill", "bill", b.Unknown, b)
 	}
 	c.str("unstructured", r.Unstructured, rulePrintable)
 	checkKeyValues(c, "additionalInformation", r.AdditionalInformation)
 	checkPaymentMethods(c, r.PaymentMethods, true)
-	c.closed("", "the payment request", r.Unknown, *r)
+	c.closedBut("", "the payment request", r.Unknown, *r, patchReadOnlyTop)
 	return c.result()
 }
 

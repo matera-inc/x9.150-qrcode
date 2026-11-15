@@ -29,12 +29,18 @@ import com.matera.x9qrcode.infrastructure.web.controller.mapper.response.CreateQ
 import com.matera.x9qrcode.infrastructure.web.controller.mapper.response.PatchQRCodeResponseMapper;
 import com.matera.x9qrcode.infrastructure.web.controller.mapper.response.RetrieveQRCodeResponseMapper;
 import com.matera.x9qrcode.infrastructure.web.controller.mapper.response.UpdateQRCodeStatusResponseMapper;
+import com.matera.x9qrcode.infrastructure.web.controller.validation.ReadOnlyFieldsChangedException;
+import com.matera.x9qrcode.infrastructure.web.controller.validation.ReadOnlyPatchFields;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequiredArgsConstructor
@@ -44,6 +50,7 @@ public class PaymentRequestsController implements PaymentRequestApi {
     private final UpdateQRCodeStatusUseCase updateQRCodeStatusUseCase;
     private final PatchQRCodeUseCase patchQRCodeUseCase;
     private final RetrieveQRCodeUseCase retrieveQRCodeUseCase;
+    private final ObjectMapper objectMapper;
 
     @Override
     @Transactional
@@ -73,6 +80,15 @@ public class PaymentRequestsController implements PaymentRequestApi {
     public ResponseEntity<PaymentRequestResponseDTO> patchPaymentRequest(String id,
                                                                          PatchPaymentRequestReplacementDTO patchPaymentRequestReplacementDTO,
                                                                          String ifMatch) {
+        // What a GET carries but a PATCH cannot change is accepted when it equals the stored value,
+        // and refused by name when it does not (INTERPRETATION I-16, owner 2026-11-15, option B).
+        // Compared with the GET answer rendered now, in this transaction, before anything else.
+        List<String> changed = ReadOnlyPatchFields.changed(() -> objectMapper.valueToTree(
+            RetrieveQRCodeResponseMapper.map(retrieveQRCodeUseCase.execute(new RetrieveQRCodeInput(id, null)))));
+        if (!changed.isEmpty()) {
+            throw new ReadOnlyFieldsChangedException(changed);
+        }
+
         PatchQRCodeOutput patchQRCodeOutput =
             patchQRCodeUseCase.execute(PatchQRCodeRequestMapper.map(id, patchPaymentRequestReplacementDTO, ifMatch));
 

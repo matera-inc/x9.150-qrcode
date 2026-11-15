@@ -138,9 +138,9 @@ def test_an_unknown_field_at_any_level_of_a_patch_is_refused_and_nothing_moves(a
     QR Code does not move: same ETag, same revision.
 
     Source: Ours. INTERPRETATION I-16: a PATCH restates the request, closed as a create is.
-    Why: A refusal at create that a PATCH lets through is no refusal. Note that
-      ``bill.amountDue.currency`` is not a field of a PATCH (it cannot change), so restating it is
-      now refused too, where it used to be dropped.
+    Why: A refusal at create that a PATCH lets through is no refusal. (What a GET carries but a
+      PATCH cannot change, such as ``bill.amountDue.currency``, is not unknown: it is compared with
+      the stored value, X9-PATCH-510 and -511.)
     """
     request = samples.full_payment_request()
     created = api.post("/api/v1/payment-request", body=request)
@@ -179,3 +179,69 @@ def test_an_unknown_field_at_any_level_of_an_outbound_notification_is_refused(ap
 
     assert response.status == 400, response
     assert response.violations == [_expected(pointer, name, fields)], response.body
+
+
+def _full_qr(api):
+    created = api.post("/api/v1/payment-request", body=samples.full_payment_request())
+    assert created.status == 201, created
+    return created.body["id"]
+
+
+def test_a_patch_of_the_whole_get_answer_with_one_change_is_applied(api):
+    """X9-PATCH-510 — a PATCH whose body is the whole GET answer, with one patchable change: 200,
+    the change applied, and every read-only member it carried (id, status, revision, creditor,
+    createdAt, bill.amountDue.currency, …) accepted and ignored.
+
+    Source: Ours. INTERPRETATION I-16 (owner, 2026-11-15, option B): a member a GET carries but a
+      PATCH cannot change is accepted when it equals the stored value, compared as GET renders it;
+      ``sentAt``, the instant of the GET answer itself, is never compared.
+    Why: The natural client reads, edits and writes back. Refusing what it copied from our own
+      answer would make every such client strip fields it never meant to touch.
+    """
+    qr = _full_qr(api)
+    current = api.qr(qr)
+    body = json.loads(json.dumps(current.body))
+    body["unstructured"] = "edited from a GET copy"
+
+    response = api.patch(f"/api/v1/payment-request/{qr}", body=body, if_match=current.etag)
+
+    assert response.status == 200, response
+    after = api.qr(qr).body
+    assert after["unstructured"] == "edited from a GET copy"
+    assert after["revision"] == current.body["revision"] + 1
+    for key in ("creditor", "status", "createdAt"):
+        assert after[key] == current.body[key], key
+    assert after["bill"]["amountDue"]["currency"] == current.body["bill"]["amountDue"]["currency"]
+
+
+@pytest.mark.parametrize("path, value, said", [
+    ("status", "CANCELLED", "status: cannot be changed by a PATCH (stored ACTIVE)"),
+    ("bill.amountDue.currency", "USDC", "bill.amountDue.currency: cannot be changed by a PATCH (stored USD)"),
+    ("creditor.name", "Another Co", "creditor: cannot be changed by a PATCH"),
+], ids=["status", "currency", "creditor"])
+def test_a_patch_of_the_get_answer_changing_a_read_only_member_is_refused(api, path, value, said):
+    """X9-PATCH-511 — the whole GET answer with one read-only member changed (and one patchable
+    change beside it): 400 naming the member and its stored value, and nothing moves.
+
+    Source: Ours. INTERPRETATION I-16 (owner, 2026-11-15, option B): a member a GET carries but a
+      PATCH cannot change is refused by name when it differs from the stored value.
+    Why: Silently ignoring it would tell the caller the status, the currency or the creditor had
+      changed when it had not.
+    """
+    qr = _full_qr(api)
+    current = api.qr(qr)
+    body = json.loads(json.dumps(current.body))
+    body["unstructured"] = "edited from a GET copy"
+    *parents, last = path.split(".")
+    node = body
+    for step in parents:
+        node = node[step]
+    node[last] = value
+
+    response = api.patch(f"/api/v1/payment-request/{qr}", body=body, if_match=current.etag)
+
+    assert response.status == 400, response
+    assert response.violations == [said], response.body
+    after = api.qr(qr)
+    assert after.etag == current.etag, "a refused PATCH moved the ETag"
+    assert after.body["unstructured"] == current.body["unstructured"]

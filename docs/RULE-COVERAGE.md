@@ -256,6 +256,7 @@ that is here must still be marked `GAP`.
 | `R-I16-07` | Reading never tolerates an integrity failure: malformed EMV, a bad signature, or content that does not match the issued QR Code is refused. | `X9-DEC-015`, `X9-DEC-016`, `X9-DEC-003`, `X9-LOC-304`, `X9-SIG-003` | — |
 | `R-I16-08` | Generating: an unknown field at any level of a create or a PATCH (top level, creditor, address, bill and everything under it, payment method, editable, rail) is refused, 400, naming its path and the object's own fields, in the same words on both builds; only `networks` stays open (owner, 2026-11-15). | `X9-RAIL-058`, `X9-RAIL-059`, `X9-RAIL-067`, `X9-RAIL-068`, `X9-RAIL-507`, `X9-RAIL-508`, `X9-LIFE-505`, `closed_test.go::TestAnUnknownFieldIsRefusedAtEveryLevel` | — |
 | `R-I16-09` | Generating: an unknown field at any level of an outbound payment notification (`pre-payment`, `post-payment`) is refused before anything is sent; a payment notification read from another bank is not (owner, 2026-11-15). | `X9-RAIL-065`, `X9-RAIL-509`, `closed_test.go::TestANotificationReadOnItsOwnIsNotClosed` | — |
+| `R-I16-10` | A PATCH may carry what a GET answer carries but a PATCH cannot change: accepted and ignored when it equals the stored value as GET renders it (`sentAt` never compared), refused by name when it differs, nothing moving (owner, 2026-11-15, option B). | `X9-PATCH-042`, `X9-PATCH-043`, `X9-PATCH-420`, `X9-PATCH-421`, `X9-PATCH-510`, `X9-PATCH-511`, `patch_test.go::TestReadOnlyMembersAreComparedWithTheGetAnswer` | — |
 
 ## ADRs 0004 to 0021
 

@@ -29,6 +29,9 @@ tests/test_create_refusals.py
 # outbound cases (X9-RAIL-509) join with the payer side.
 X9-RAIL-507
 X9-RAIL-508
+# A PATCH may carry what a GET carries, compared with the stored value (option B).
+X9-PATCH-510
+X9-PATCH-511
 tests/test_contract.py::test_a_contract_constraint_is_refused[create:
 tests/test_contract.py::test_a_numeric_bound_itself_is_not_refused[create:
 tests/test_contract.py::test_the_unbroken_sample_is_accepted[create

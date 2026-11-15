@@ -87,9 +87,11 @@ one phrase reads as something it never meant.
     `PayloadPaymentMethodEditable`, `PayloadIntegerRange`), and a payee reading another bank's
     payment notification reads `PaymentNotificationData`, which stays open; the outbound request
     has its own closed copy, `OutboundPaymentNotificationData`.
-  - **One visible consequence:** a PATCH that restates `bill.amountDue.currency` (a field a PATCH
-    does not have, because it cannot change the currency) used to be accepted with the currency
-    dropped; it is now refused, naming `bill.amountDue.currency`.
+  - **What a GET carries but a PATCH cannot change** (`id`, `status`, `revision`, `creditor`,
+    `bill.amountDue.currency`, …) is not unknown (owner, 2026-11-15, option B): accepted and
+    ignored when it equals the stored value, so a body copied from GET keeps working, and refused
+    by name when it differs: `bill.amountDue.currency: cannot be changed by a PATCH (stored USD)`.
+    See INTERPRETATION I-16.
 
 ## Decision
 

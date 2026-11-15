@@ -814,7 +814,7 @@ a 400 that names the offending key:
 |---|---|---|
 | A network we do not interpret | `networks.tron`, `networks.zelle`, a network with an empty name | We could not validate a payment against it (I-2, I-9, ADR-0012) |
 | An unknown field inside a rail we interpret | `networks.fednow.x`, `networks.solana.walletAddress` | The rail's fields are fixed (by X9.150 for `fednow`, `rtp`, `ach`; by the Solana Foundation for `solana`), so an extra one is a mistake, not an extension |
-| An unknown field anywhere else, at any level | `reference` at the top, `creditor.address.county`, `bill.invoice.dueDte`, `paymentMethods[0].network`, `bill.amountDue.currency` on a PATCH, `notification.payment.memo` on a pre-payment | Every object of these bodies is declared exhaustively in `openapi.yaml` (`additionalProperties: false`); a field we do not know is a field we would otherwise drop without a word |
+| An unknown field anywhere else, at any level | `reference` at the top, `creditor.address.county`, `bill.invoice.dueDte`, `paymentMethods[0].network`, `notification.payment.memo` on a pre-payment | Every object of these bodies is declared exhaustively in `openapi.yaml` (`additionalProperties: false`); a field we do not know is a field we would otherwise drop without a word |
 | A currency this deployment does not settle | `EUR`, when `supported-currencies.json` lists `USD`, `USDC`, `FRNT` | We would be promising a payment we cannot receive (I-3, ADR-0012) |
 
 The answer names the path and the fields the object does have, in the same words on both builds,
@@ -833,9 +833,31 @@ it by name (I-9). Closing it would make the reader drop the key in silence.
 **Closing every level is new** (owner, 2026-11-15). Until then only the rails were closed (first
 `solana`, then the bank rails the same morning), and an unknown field anywhere else was silently
 dropped with a 201 or a 200. Silently dropping is the worst of the three answers: the biller
-believes it published something it did not. One case surprises people: a PATCH that restates
-`bill.amountDue.currency` (the PATCH's `amountDue` has no `currency`, because a PATCH cannot change
-it) is now refused instead of having the currency quietly ignored.
+believes it published something it did not.
+
+**A PATCH may carry what a GET answer carries** (owner, 2026-11-15, option B). A member that
+exists on a payment request but that a PATCH cannot change — at the top level `id`, `qrCode`,
+`qrCodeB64`, `location`, `creditor`, `paymentNotification`, `revision`, `createdAt`, `revisedAt`,
+`sentAt`, `status`, `paymentDetails`, `emv`, and `bill.amountDue.currency` — is not an unknown field:
+
+- **equal to the stored value: accepted and ignored**, so a body copied from GET, edited and sent
+  back keeps working;
+- **different: refused by name**, nothing moves:
+
+```
+bill.amountDue.currency: cannot be changed by a PATCH (stored USD)
+status: cannot be changed by a PATCH (stored ACTIVE)
+revisedAt: cannot be changed by a PATCH (none stored)
+creditor: cannot be changed by a PATCH
+```
+
+"Stored" is the value as the GET answer renders it at the same instant, compared as JSON: a number
+by its value (`2` and `2.0` alike), a string exactly as GET writes it (ids as 32 upper-case hex,
+timestamps in GET's own format, so `2030-01-10T12:00:00Z` and `2030-01-10T12:00:00.000Z` differ),
+an absent member and a null alike, an object member by member (the stored value is named for a
+scalar, not for an object). `sentAt` is never compared: GET writes the instant of its own answer
+there, so no copy of it could ever match. The comparison runs before If-Match and the status checks.
+A create has no stored value, so a create stays fully closed.
 
 Why strict here: a QR Code is a promise to every payer who scans it. What we put in it must be
 something we understand and can honour, and the biller is still at a keyboard and can fix a mistake.

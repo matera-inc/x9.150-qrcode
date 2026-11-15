@@ -390,17 +390,17 @@ NOT_PATCHABLE = {"creditor": OTHER_CREDITOR, "status": "CANCELLED", "id": "0" * 
                  "paymentNotification": {"kind": "EXTERNAL"}}
 
 
-PATCH_FIELDS = ("is not a field of the payment request, whose fields are locationId, validUntil, "
-                "bill, unstructured, additionalInformation and paymentMethods")
+CANNOT = "cannot be changed by a PATCH"
 
 
 def test_fields_that_are_not_patchable_are_never_applied(api, events):
     """X9-PATCH-420 — S4.2-AC2: creditor, status, id, revision, createdAt, qrCode and
-    paymentNotification sent beside a real change: 400 naming each of them, and nothing applies,
-    the real change included.
+    paymentNotification sent beside a real change, each different from what is stored: 400 naming
+    each of them, and nothing applies, the real change included.
 
     Source: Ours. ADR-0024 "six top-level tags can change"; INTERPRETATION I-16 (owner,
-      2026-11-15): a PATCH is closed, so any other top-level key is refused by name. Until then
+      2026-11-15, option B): a member a GET carries but a PATCH cannot change is refused by name
+      when it differs from the stored value (accepted when it equals it, X9-PATCH-510). Until then
       Jackson ignored them and the real change applied.
     Why: A PATCH that could set ``status`` would be a cancel with no ``payment.cancelled``; one that
       could set ``creditor`` would re-point a printed code at another merchant. Dropping them in
@@ -414,8 +414,12 @@ def test_fields_that_are_not_patchable_are_never_applied(api, events):
     response = patch(api, qr, {**body, **NOT_PATCHABLE}, if_match=etag)
 
     assert response.status == 400, response
-    for key in NOT_PATCHABLE:
-        assert f"{key}: {PATCH_FIELDS}" in response.violations, (key, response.body)
+    said = {v.split(":", 1)[0]: v for v in response.violations}
+    assert set(said) == set(NOT_PATCHABLE), response.body
+    assert said["status"] == f"status: {CANNOT} (stored ACTIVE)", said
+    assert said["revision"] == f"revision: {CANNOT} (stored {before['revision']})", said
+    assert said["creditor"] == f"creditor: {CANNOT}", said
+    assert said["id"] == f"id: {CANNOT} (stored {qr})", said
     assert_untouched(before, snap(api, qr))
     assert api.qr(qr).body["paymentMethods"][0]["amount"] == BILL, "nothing applied"
     assert_events(events, qr, [])
@@ -425,8 +429,8 @@ def test_a_patch_changing_only_fields_that_are_not_patchable_is_a_refused_no_op(
     """X9-PATCH-421 — S4.2-AC2: the same methods plus a new creditor: 400 naming ``creditor``,
     and nothing moves, ETag included.
 
-    Source: Ours. ADR-0024 "a PATCH that changes nothing is refused"; INTERPRETATION I-16: a PATCH
-      is closed, so ``creditor`` is refused by name before anything else is decided.
+    Source: Ours. ADR-0024 "a PATCH that changes nothing is refused"; INTERPRETATION I-16 (option
+      B): a creditor different from the stored one is refused by name before anything else.
     Why: Answering 200 would tell the caller the creditor changed.
     """
     qr = api.create_qr()
@@ -436,7 +440,7 @@ def test_a_patch_changing_only_fields_that_are_not_patchable_is_a_refused_no_op(
     response = patch(api, qr, {**body, "creditor": OTHER_CREDITOR}, if_match=etag)
 
     assert response.status == 400, response
-    assert response.violations == [f"creditor: {PATCH_FIELDS}"], response.body
+    assert response.violations == [f"creditor: {CANNOT}"], response.body
     assert_untouched(before, snap(api, qr))
 
 
@@ -472,7 +476,7 @@ def test_restating_the_bill_unchanged_counts_as_a_change(api):
     current = api.qr(qr).body
     body, etag = restated(api, qr)
     body["bill"] = {"description": current["bill"]["description"], "paymentTiming": "immediate",
-                    "amountDue": samples.patch_amount_due(current["bill"]["amountDue"])}
+                    "amountDue": current["bill"]["amountDue"]}
 
     response = patch(api, qr, body, if_match=etag)
 

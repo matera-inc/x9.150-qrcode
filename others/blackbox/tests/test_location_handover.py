@@ -9,7 +9,7 @@ its location can be reused.
 """
 import pytest
 
-from x9client import jws, samples
+from x9client import jws
 
 
 def _location(api, qr):
@@ -21,7 +21,7 @@ def _hand_over(api, taker, location):
     body = {"locationId": location,
             "bill": {"description": "blackbox",
                      "paymentTiming": current.body["bill"].get("paymentTiming", "immediate"),
-                     "amountDue": samples.patch_amount_due(current.body["bill"]["amountDue"])},
+                     "amountDue": current.body["bill"]["amountDue"]},
             "paymentMethods": [{k: pm[k] for k in ("currency", "validUntil", "amount", "networks")}
                                for pm in current.body["paymentMethods"]]}
     return api.patch(f"/api/v1/payment-request/{taker}", body=body, if_match=current.etag)
