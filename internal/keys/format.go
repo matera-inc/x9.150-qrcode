@@ -179,8 +179,7 @@ func readPEMKeystore(data []byte) (crypto.PrivateKey, []*x509.Certificate, error
 	case 1:
 		return keys[0], certs, nil
 	default:
-		return nil, nil, fmt.Errorf("%s: holds %s private keys, but it can hold only the signing key",
-			privateKeystoreName, strconv.Itoa(len(keys)))
+		return nil, nil, fmt.Errorf("%s: holds %s private keys; %s", privateKeystoreName, strconv.Itoa(len(keys)), oneKeyPerFile)
 	}
 }
 
@@ -214,6 +213,11 @@ func readPEMTruststore(data []byte) ([]*x509.Certificate, error) {
 		certs = append(certs, c)
 	}
 }
+
+// oneKeyPerFile is said whenever a keystore holds several private keys.
+const oneKeyPerFile = "the Go build requires exactly one private key per keystore file, and cannot select one by " +
+	"name: certificate.private-keystore.enforced-alias (X9_CERTIFICATE_PRIVATEKEYSTORE_ENFORCEDALIAS) is not checked; " +
+	"keep only the signing key in the file"
 
 var (
 	errEncryptedPEM = fmt.Errorf("%w: an encrypted PEM key cannot be read (the standard library has no PKCS#8 "+
