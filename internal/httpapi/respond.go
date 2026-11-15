@@ -53,15 +53,20 @@ func SetETag(w http.ResponseWriter, tag string) {
 // WriteProblem writes p as application/problem+json. instance is the request's path, as Spring
 // fills it.
 func WriteProblem(w http.ResponseWriter, r *http.Request, p *Problem) {
-	body := problemBody(p, r.URL.Path)
+	body := problemBody(p, r.URL.Path, false)
 	w.Header().Set("Content-Type", ContentTypeProblem)
 	w.WriteHeader(p.Status)
 	_, _ = w.Write(body)
 }
 
+// AnswerBody is p as the signed body of a refused payment notification (INTERPRETATION I-12):
+// statusCode first, then the problem's members as WriteProblem writes them, without instance, which
+// the Java build signs before Spring would fill it.
+func AnswerBody(p *Problem) []byte { return problemBody(p, "", true) }
+
 // problemBody encodes p with its members in the Java build's order: type, title, status, detail,
-// instance, then the extension members.
-func problemBody(p *Problem, instance string) []byte {
+// instance, then the extension members; statusCode first when the body is a signed answer's.
+func problemBody(p *Problem, instance string, statusCode bool) []byte {
 	var buf bytes.Buffer
 	enc := jsontext.NewEncoder(&buf)
 	put := func(tokens ...jsontext.Token) {
@@ -70,6 +75,9 @@ func problemBody(p *Problem, instance string) []byte {
 		}
 	}
 	put(jsontext.BeginObject)
+	if statusCode {
+		put(jsontext.String("statusCode"), jsontext.Int(int64(p.Status)))
+	}
 	if p.Type != "" {
 		put(jsontext.String("type"), jsontext.String(p.Type))
 	}

@@ -143,12 +143,12 @@ func TestEveryProblemTypeIsJavas(t *testing.T) {
 		{NotificationUndeliverable(), `{"type":"https://x9.matera.com/api/notification-undeliverable","title":"Notification Undeliverable","status":502,"detail":"The payee could not be reached, so nothing was delivered. Retry."}`},
 		{Unavailable(), `{"type":"https://x9.matera.com/api/internal-error","title":"Service Unavailable","status":503,"detail":"The database did not answer in time, so nothing was written. Retry."}`},
 	} {
-		if diff := cmp.Diff(tc.want, string(problemBody(tc.p, ""))); diff != "" {
+		if diff := cmp.Diff(tc.want, string(problemBody(tc.p, "", false))); diff != "" {
 			t.Errorf("%s (-want +got):\n%s", tc.p.Type, diff)
 		}
 	}
 	extra := &Problem{Type: TypeValidation, Status: 400, Extra: map[string]any{"statusCode": 400}}
-	if got := string(problemBody(extra, "/x")); got != `{"type":"https://x9.matera.com/api/validation-error","status":400,"instance":"/x","statusCode":400}` {
+	if got := string(problemBody(extra, "/x", false)); got != `{"type":"https://x9.matera.com/api/validation-error","status":400,"instance":"/x","statusCode":400}` {
 		t.Errorf("extra members: %s", got)
 	}
 }
@@ -401,5 +401,17 @@ func TestHeadersAbove30KBAreRefusedAsJavaRefusesThem(t *testing.T) {
 	}
 	if status, _ := send(200 << 10); status != 400 {
 		t.Errorf("200 KB: %d, want 400", status)
+	}
+}
+
+// A signed answer to a payment notification is the problem with statusCode first and no instance,
+// the members in the order WriteProblem writes them (INTERPRETATION I-12, Story 10.4).
+func TestAnswerBody(t *testing.T) {
+	got := string(AnswerBody(StatusConflict("PAYMENT_INITIATED", "held")))
+	want := `{"statusCode":409,"type":"https://x9.matera.com/api/status-conflict","title":"Status Conflict","status":409,` +
+		`"detail":"The QR Code is not in a status that allows this transition.","currentStatus":"PAYMENT_INITIATED",` +
+		`"violations":["held"]}`
+	if got != want {
+		t.Errorf("\n got %s\nwant %s", got, want)
 	}
 }
