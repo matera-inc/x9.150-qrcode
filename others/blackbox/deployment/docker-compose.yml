@@ -1,5 +1,6 @@
 # The black-box suite against one build of the service (Story 3.6). Run it with
-# run-against-image.sh, which builds the two local images this file names; CI and
+# run-against-image.sh, which builds the two local images this file names (tagged per run, through
+# X9_UNDER_TEST_IMAGE and X9_RUNNER_IMAGE) and gives every run its own project name; CI and
 # `make blackbox-image` both do.
 #
 #   mongo       MongoDB 7.0.45 as a single-node replica set (transactions need one)
@@ -10,6 +11,7 @@
 #               which never leaves the service's loopback
 #
 # NON-PRODUCTION. The truststore trusts keys anybody can download.
+# The script always passes its own -p; this name is only the default for a hand-run compose.
 name: x9-blackbox
 
 services:
@@ -29,7 +31,7 @@ services:
       - /data/configdb
 
   x9-qrcode:
-    image: x9-qrcode-under-test:local
+    image: "${X9_UNDER_TEST_IMAGE:-x9-qrcode-under-test:local}"
     depends_on:
       mongo:
         condition: service_healthy
@@ -43,7 +45,7 @@ services:
       X9_CERTIFICATE_TRUSTSTORE_ALIAS: "x9-test-ca"
 
   blackbox:
-    image: x9-blackbox-runner:local
+    image: "${X9_RUNNER_IMAGE:-x9-blackbox-runner:local}"
     network_mode: "service:x9-qrcode"
     depends_on:
       - x9-qrcode
