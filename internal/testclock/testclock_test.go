@@ -132,8 +132,8 @@ func TestBundledCertificatesPassTheGuard(t *testing.T) {
 	}
 }
 
-// S8.6-AC2: every fingerprint the Java build accepts is accepted here too, so a deployment that
-// starts on Java starts on Go.
+// S8.6-AC2: every fingerprint the Java build accepts is accepted here too, and nothing else, so a
+// deployment starts on Java exactly when it starts on Go.
 func TestJavaFingerprintsAreBundled(t *testing.T) {
 	path := filepath.Join(repoRoot,
 		"x9-qrcode-infrastructure/src/main/java/com/matera/x9qrcode/infrastructure/testclock/TestClockCertificateGuard.java")
@@ -145,9 +145,17 @@ func TestJavaFingerprintsAreBundled(t *testing.T) {
 	if len(found) < 7 {
 		t.Fatalf("found only %d fingerprints in %s", len(found), path)
 	}
+	java := make(map[string]bool, len(found))
 	for _, m := range found {
+		java[m[1]] = true
 		if !IsBundled(m[1]) {
 			t.Errorf("Java accepts %s, Go does not", m[1])
+		}
+	}
+	// The two lists are identical: Go accepts nothing Java refuses either.
+	for fp, what := range bundledFingerprints {
+		if !java[fp] {
+			t.Errorf("Go accepts %s (%s), Java does not", fp, what)
 		}
 	}
 }

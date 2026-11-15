@@ -45,7 +45,26 @@ public final class TestClockCertificateGuard {
         // src/test/resources/certificate/x9-test-untrusted-ca.p12 — a second root, outside the test truststore
         "e95c47df5b6489ebfd1507e8b569369d92771a07d905a1865c0e653966fc676d",
         // src/test/resources/certificate/x9-test-untrusted-payer.p12 — leaf of the untrusted root
-        "c9e0987d26423d15eb173ea9f40e06f64a6b8434a70c781fea774603d839ea85"
+        "c9e0987d26423d15eb173ea9f40e06f64a6b8434a70c781fea774603d839ea85",
+        // src/test/resources/certificate/x9-test-payer-no-revocation.p12 — leaf of the test CA naming no CRL or OCSP (BUG-003)
+        "f38f6315e0b4292e4b18ef7ab41275d67376c231102cf2f90a9c93f2c0b255f3",
+        // src/test/resources/certificate/x9-test-payer-crl-unreachable.p12 — leaf with an unreachable CRL (BUG-003)
+        "8f8313bb8f5e244ea5da488d494bfa36c526fc1026d7c587da8dad11858382c9",
+        // src/test/resources/certificate/x9-test-payer-ocsp-unreachable.p12 — leaf with an unreachable OCSP responder (BUG-003)
+        "c8a9cbc56445d06186396fe4f06487a125dc40b1dc626168c1edd4f320be1afd",
+        // src/test/resources/certificate/x9-test-payer-both-unreachable.p12 — leaf with both unreachable (BUG-003)
+        "a08335e6d2da20d12050cc50bec23bd866aec5e961ec37890bb4ed7bf4bcfce1",
+        // src/test/resources/certificate/x9-test-payer-crl-unreadable.p12 — leaf whose CRL is not a CRL
+        "932511c2e41a398f833082dc382397214c56190821a07d727c6f18e54f2c1987",
+        // src/test/resources/certificate/x9-test-payer-crl-unreadable-payload.p12 — the same, for the payload endpoint
+        "33f87ee4a486580f29b3206e26485c23416944a9efa1c5290a6398674383a8a6",
+        // src/test/resources/certificate/x9-test-payer-crl-unreadable-ocsp-unreachable.p12 — that CRL, plus an unreachable OCSP responder
+        "2367e5f868d04bfc6c95c8e7ed47b894add82c20d1e11bf88c49ae3aa6e7c9ab",
+        // src/test/resources/certificate/x9-test-payer-crl-unreadable-ocsp-unreachable-payload.p12 — the same, for the payload endpoint
+        "62c5a14884abcf0c7af25e335b669b62966ecac688bc01951a7f4c89adc469cd",
+        // src/test/resources/certificate/x9-test-ca-digital-signature.pem — the test CA re-issued to itself with
+        // digitalSignature; its key is x9-test-ca.p12's, so it is as public as the others
+        "8a93437dd246941e1cf6ad761808b87188fb69d52bd4caecc649e2b34bdc73cf"
     );
 
     /**
