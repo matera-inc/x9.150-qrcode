@@ -10,3 +10,6 @@
 #
 # Each story of Epics 9 and 10 ends by adding its keys here; Story 10.8 replaces this list with the
 # whole suite. Empty until then.
+
+# Story 9.2: the deployment is ready.
+X9-LIFE-502
