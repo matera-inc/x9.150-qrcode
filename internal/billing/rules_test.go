@@ -38,6 +38,11 @@ func TestCheckCreate(t *testing.T) {
 		{"a rail in another case", func(r *Request) {
 			r.PaymentMethods[0].Networks = Networks{Other: []string{"FedNow"}}
 		}, "paymentMethods.networks: Unsupported network(s): FedNow. This service supports fednow, rtp, ach and solana.", BusinessRule},
+		// A network with no name is not one this service interprets: refused like any other (the
+		// name it gives is empty, as Java's would be). FuzzRequestReader sent one.
+		{"a network with an empty name", func(r *Request) {
+			r.PaymentMethods[0].Networks = Networks{Solana: &SolanaAddress{Recipient: recipient}, Other: []string{""}}
+		}, "paymentMethods.networks: Unsupported network(s): . This service supports fednow, rtp, ach and solana.", BusinessRule},
 		{"a network is refused before any value is read", func(r *Request) {
 			r.Bill.AmountDue.Amount = -1
 			r.PaymentMethods[0].Networks.Other = []string{"tron"}

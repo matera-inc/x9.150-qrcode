@@ -203,16 +203,34 @@ func (n Networks) MarshalJSONTo(enc *jsontext.Encoder) error {
 	return writeMembers(enc, known(n), n.Other)
 }
 
-// BankAddress is FedNow, RTP and ACH.
+// BankAddress is FedNow, RTP and ACH, whose fields X9.150 itself fixes. Like Solana it is closed
+// on the QR Codes this service generates (owner, 2026-11-15; INTERPRETATION I-16): a key other
+// than the three is kept in Unknown and refused by the create and PATCH checks. Reading never
+// fails on one, so a reader of somebody else's payload may use this type and ignore Unknown.
 type BankAddress struct {
 	RoutingNumber  String                 `json:"routingNumber,omitzero"`
 	AccountNumber  String                 `json:"accountNumber,omitzero"`
 	ProtectionType Enum[ProtectionValues] `json:"protectionType,omitzero"`
+	Unknown        Members                `json:"-"`
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom.
+func (b *BankAddress) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	*b = BankAddress{}
+	return readMembers(dec, &b.Unknown, map[string]any{
+		"routingNumber": &b.RoutingNumber, "accountNumber": &b.AccountNumber, "protectionType": &b.ProtectionType,
+	})
+}
+
+// MarshalJSONTo implements json.MarshalerTo.
+func (b BankAddress) MarshalJSONTo(enc *jsontext.Encoder) error {
+	type known BankAddress
+	return writeMembers(enc, known(b), b.Unknown)
 }
 
 // Solana is the Solana Foundation's published embedding (official-spec/SOLANA-FIELDS.md). It is
 // closed (`additionalProperties: false`, I-9): a key other than recipient and memo is kept in
-// Unknown and refused by Validate.
+// Unknown and refused by the create and PATCH checks (I-16), never by reading.
 type Solana struct {
 	Recipient String  `json:"recipient,omitzero"`
 	Memo      String  `json:"memo,omitzero"`
@@ -361,11 +379,93 @@ func readMembers(dec *jsontext.Decoder, other *Members, declared map[string]any)
 		if err != nil {
 			return err
 		}
+		kept, err := lastWins(value)
+		if err != nil {
+			return err
+		}
 		*other = slices.DeleteFunc(*other, func(m Member) bool { return m.Name == name })
-		*other = append(*other, Member{Name: name, Value: slices.Clone(value)})
+		*other = append(*other, Member{Name: name, Value: kept})
 	}
 	_, err := dec.ReadToken()
 	return err
+}
+
+// lastWins is value with every repeated object key, at any depth, kept once with its last value:
+// the rule the rest of the reader applies, as Jackson does. An undeclared member is otherwise
+// carried as sent (I-9), but a repeated key inside it could not be written back, because every
+// object written here has unique names.
+func lastWins(value jsontext.Value) (jsontext.Value, error) {
+	kind := value.Kind()
+	if kind != '{' && kind != '[' {
+		return slices.Clone(value), nil
+	}
+	dec := jsontext.NewDecoder(bytes.NewReader(value), jsontext.AllowDuplicateNames(true))
+	if _, err := dec.ReadToken(); err != nil {
+		return nil, err
+	}
+	var (
+		members Members
+		items   []jsontext.Value
+	)
+	for dec.PeekKind() != '}' && dec.PeekKind() != ']' {
+		name := ""
+		if kind == '{' {
+			tok, err := dec.ReadToken()
+			if err != nil {
+				return nil, err
+			}
+			name = tok.String()
+		}
+		raw, err := dec.ReadValue()
+		if err != nil {
+			return nil, err
+		}
+		kept, err := lastWins(raw)
+		if err != nil {
+			return nil, err
+		}
+		if kind == '[' {
+			items = append(items, kept)
+			continue
+		}
+		members = slices.DeleteFunc(members, func(m Member) bool { return m.Name == name })
+		members = append(members, Member{Name: name, Value: kept})
+	}
+	if _, err := dec.ReadToken(); err != nil {
+		return nil, err
+	}
+
+	var buf bytes.Buffer
+	enc := jsontext.NewEncoder(&buf)
+	if kind == '[' {
+		if err := enc.WriteToken(jsontext.BeginArray); err != nil {
+			return nil, err
+		}
+		for _, item := range items {
+			if err := enc.WriteValue(item); err != nil {
+				return nil, err
+			}
+		}
+		if err := enc.WriteToken(jsontext.EndArray); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := enc.WriteToken(jsontext.BeginObject); err != nil {
+			return nil, err
+		}
+		for _, m := range members {
+			if err := enc.WriteToken(jsontext.String(m.Name)); err != nil {
+				return nil, err
+			}
+			if err := enc.WriteValue(m.Value); err != nil {
+				return nil, err
+			}
+		}
+		if err := enc.WriteToken(jsontext.EndObject); err != nil {
+			return nil, err
+		}
+	}
+	return jsontext.Value(bytes.TrimSuffix(buf.Bytes(), []byte("\n"))), nil
 }
 
 // writeMembers writes known's members, then other's, as one object.
