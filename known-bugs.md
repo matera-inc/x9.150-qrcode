@@ -18,8 +18,8 @@ fixed ones stay under **Fixed**, for the record.
 - **Area:** `QRCodeEntity.releaseLocation` (domain)
 - **Go build:** fixed. A create (Story 9.6) releases an expired `ACTIVE` holder of the same
   creditor (`domain.HolderIsLive` checks `valid_until`); `internal/paymentrequest`'s
-  `AnExpiredActiveHolderGivesUpItsLocation` test proves it against PostgreSQL. `X9-LOC-421` joins
-  `go-required.txt` with the event stream (Story 10.1), which the test also reads.
+  `AnExpiredActiveHolderGivesUpItsLocation` test proves it against PostgreSQL. `X9-LOC-421` passes
+  on Go, where the whole suite is required (Story 10.8).
 
 ### Steps to reproduce
 

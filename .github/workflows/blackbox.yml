@@ -11,9 +11,10 @@ name: Black-box
 #
 # The `blackbox-go` job (Story 9.1) runs the same suite against the Go image on PostgreSQL 16, with
 # db/changelog applied by Liquibase, on every pull request that touches the Go code, db/ or
-# others/blackbox/. Every test runs; the job fails when a test listed in
-# others/blackbox/deployment/go-required.txt does not pass, and reports every other test as
-# informative. On any other pull request it checks out, finds nothing to run, and passes.
+# others/blackbox/. Since Story 10.8 its verdict is the whole suite, as for Java: any failure fails
+# the job (java_only tests skip with their reason; X9-TIME-015 is a strict expected failure on Go
+# until Epic 12's retention lands). On any other pull request it checks out, finds nothing to run,
+# and passes.
 
 on:
   pull_request:
@@ -79,7 +80,7 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         run: make go-image GO_IMAGE=x9-qrcode:go
 
-      - name: Run the black-box suite against it (PostgreSQL 16, Liquibase, go-required.txt)
+      - name: Run the whole black-box suite against it (PostgreSQL 16, Liquibase)
         if: steps.changes.outputs.run == 'true'
         env:
           X9_IMAGE: x9-qrcode:go

@@ -870,7 +870,7 @@ judged within the 2 s before it; "1 ms after" is exact.
 | `X9-TIME-012` | T11, both builds: an hour past `validUntil` on the test clock, the payload is refused as expired and GET still works | `test_time_edges.py` |
 | `X9-TIME-013` | T11, Java only: MongoDB's TTL monitor deletes an expired QR Code on the real clock (waits real time) | `test_time_edges.py` |
 | `X9-TIME-014` | T11, Go only: an expired QR Code is kept and its location is releasable | `test_time_edges.py` |
-| `X9-TIME-015` | T12, Go only: retention purges events, then QR Codes, by the test clock, and nothing younger | `test_time_edges.py` |
+| `X9-TIME-015` | T12, Go only: retention purges events, then QR Codes, by the test clock, and nothing younger (a strict expected failure on Go until Epic 12 builds retention) | `test_time_edges.py` |
 | `X9-TIME-016` | S4.5-AC2: with the payee's clock ahead of the payer's, the payee's clock decides `validUntil` | `test_time_edges.py` |
 | `X9-TIME-017` | one instant: 1 ms past a method's `validUntil`, with `dateForPayment` that day, the expired method is absent and the other is priced one day late | `test_time_edges.py` |
 | `X9-TIME-020` | a past `dateForPayment` does not bring back an expired payment method; the methods shown are chosen at the instant the fee is computed | `PayloadPricingInstantApiTest.java` |

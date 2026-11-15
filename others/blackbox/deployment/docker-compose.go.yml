@@ -13,7 +13,7 @@
 #   blackbox    the suite, in x9-qrcode's network namespace, reading the database as the read-only
 #               role; that postgresql:// URL is what makes the suite take this run as the Go build
 #
-# The run's verdict is go-required.txt (S9.1-AC3): every test runs, only the listed ones decide.
+# The run's verdict is the whole suite (S10.8-AC1), as for the Java build: any failure fails it.
 #
 # NON-PRODUCTION. The truststore trusts keys anybody can download; the database trusts everyone.
 name: x9-blackbox-go
@@ -87,8 +87,6 @@ services:
       X9_CLOCK_URL: "http://127.0.0.1:8099"
       X9_SUITE_HOST: "127.0.0.1"
       X9_DATABASE_URL: "postgresql://x9_qrcode_readonly@postgres:5432/postgres"
-      X9_REQUIRED_KEYS: "/suite/others/blackbox/deployment/go-required.txt"
-      # A capability the run cannot use (clock, database, payee) is a failure here, not a skip;
-      # for an unlisted test that failure is informative.
+      # A capability the run cannot use (clock, database, payee) is a failure here, not a skip.
       X9_REQUIRE_ALL: "1"
       X9_WAIT_SECONDS: "${X9_WAIT_SECONDS:-120}"

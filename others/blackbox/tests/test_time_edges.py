@@ -36,6 +36,7 @@ import time
 
 import pytest
 
+import builds
 from x9client import jws, samples
 from x9client.checks import assert_refused
 from x9client.samples import BILL, TX_HASH
@@ -667,7 +668,11 @@ def _duration_ms(name, default_days):
 
 
 @pytest.mark.go_only(reason="go_only: retention is the Go build's one background job (ADR-0029); "
-                            "it first runs in Epics 11-12")
+                            "the Java build has MongoDB's TTL index instead (X9-TIME-013)")
+# S10.8-AC1: strict, so the Go run turns red the day retention lands and this mark has to come out.
+@pytest.mark.xfail(builds.under_test() == "go", strict=True, reason=(
+    "Epic 12 (retention without surprises): the Go build has no retention job yet (ADR-0029); "
+    "strict, so it turns red the day retention lands"))
 def test_t12_retention_purges_events_then_qr_codes_by_the_test_clock(api, clock, events):
     """X9-TIME-015 — T12: past the events' retention, an old QR Code's events are purged and the
     code is kept; past the QR Codes' retention, the code goes too; nothing younger is touched;
