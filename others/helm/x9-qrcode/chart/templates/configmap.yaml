@@ -1,3 +1,5 @@
+{{- /* The Java build's Spring configuration; the Go build reads its environment instead. */ -}}
+{{- if ne (include "x9-qrcode.runtime" .) "go" -}}
 {{ $applicationConfig := toYaml .Values.applicationExtra -}}
 apiVersion: v1
 kind: ConfigMap
@@ -29,3 +31,5 @@ data:
   x9.certificate.truststore.location: {{ required "The '.Values.application.x9.certificate.truststore.location' is required! See documentation for more details!" (dig "x9" "certificate" "truststore" "location" nil .Values.application) | quote }}
   # 0 means no window: a reservation never expires on its own (ADR-0036).
   x9.reservation.ttl-seconds: {{ dig "x9" "reservation" "ttl-seconds" 90 .Values.application | quote }}
+
+{{- end }}

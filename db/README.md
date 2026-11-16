@@ -171,7 +171,10 @@ docker compose -f db/docker-compose.yml down -v                # throw it away
 ```
 
 The changelog is copied into the Liquibase image, not mounted, so rebuild (`--build`) after editing
-it. The full CI check runs the same way on a laptop, on any image:
+it. To run the service on it as well, use `docker-compose.go.yml` at the repository root
+(`make go-up`): the same three steps, then the Go build as the application role. On Kubernetes, the
+Helm chart's `values-go.yaml` runs the same Liquibase as an init container, against your database
+([others/helm/x9-qrcode/README.md](../others/helm/x9-qrcode/README.md#the-go-build-values-goyaml)). The full CI check runs the same way on a laptop, on any image:
 
 ```bash
 db/ci/apply-and-check.sh postgres:16 db-out

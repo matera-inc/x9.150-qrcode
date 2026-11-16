@@ -1,3 +1,5 @@
+{{- /* The Java build's Deployment; the Go build's is deployment-go.yaml. */ -}}
+{{- if ne (include "x9-qrcode.runtime" .) "go" -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -111,3 +113,4 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+{{- end }}

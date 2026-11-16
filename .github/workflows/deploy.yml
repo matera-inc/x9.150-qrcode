@@ -1,0 +1,147 @@
+name: Deploy
+
+# The ways to run the Go build, checked on a clean runner (Epic 14). Nothing is pushed anywhere.
+#
+#   compose go        (Story 14.2, S14.2-AC2) docker-compose.go.yml up: PostgreSQL 16, the bootstrap,
+#                     Liquibase 4.33.0, then the Go service; health UP and one create answering 201;
+#                     then down. others/scripts/compose-go-smoke.sh, the same on a laptop.
+#   helm              (Story 14.3, S14.3-AC2) helm lint and helm template for the Java values (the
+#                     default) and the Go values; the Go rendering holds no SPRING_*, MONGO* or
+#                     JASYPT_* variable, and the chart refuses what the Go build cannot run.
+#                     others/scripts/helm-check.sh.
+#   helm go on kind   (Story 14.3) the Go rendering installed on a throwaway kind cluster with a
+#                     PostgreSQL in it: Liquibase as an init container, then the service; health UP
+#                     and one create. others/scripts/helm-go-kind.sh.
+#
+# Job-level path filters, as in pairings.yml, so every check always reports: on a pull request that
+# touches nothing a job depends on, it checks out, finds nothing to run, and passes.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  HELM_VERSION: v4.3.1
+
+jobs:
+  compose-go:
+    name: compose go
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Does this change touch the Go build, its database or its Compose file?
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          changed="$(git diff --name-only "$BASE_SHA"...HEAD 2>/dev/null || git ls-files)"
+          printf '%s\n' "$changed"
+          if printf '%s\n' "$changed" | grep -Eq \
+              '(\.go$|^go\.(mod|sum)$|^cmd/|^internal/|^Dockerfile$|^\.dockerignore$|^Makefile$|^db/|^docker-compose\.go\.yml$|^playground/requests/|^others/scripts/compose-go-smoke\.sh$|^\.github/workflows/deploy\.yml$)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing docker-compose.go.yml depends on changed."
+          fi
+
+      - name: Bring docker-compose.go.yml up; health and one create; down
+        if: steps.changes.outputs.run == 'true'
+        run: others/scripts/compose-go-smoke.sh
+
+  helm:
+    name: helm
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Does this change touch the chart or the changelog it carries?
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          changed="$(git diff --name-only "$BASE_SHA"...HEAD 2>/dev/null || git ls-files)"
+          printf '%s\n' "$changed"
+          if printf '%s\n' "$changed" | grep -Eq \
+              '(^others/helm/|^db/changelog/|^others/scripts/helm-check\.sh$|^\.github/workflows/deploy\.yml$)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing the chart depends on changed."
+          fi
+
+      - name: Set up Helm
+        if: steps.changes.outputs.run == 'true'
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Lint and template both value sets; the Go rendering refuses Java variables
+        if: steps.changes.outputs.run == 'true'
+        run: others/scripts/helm-check.sh go-ci-out/helm
+
+      - name: Keep the renderings
+        if: always() && steps.changes.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-renderings
+          path: go-ci-out/helm/
+          if-no-files-found: ignore
+
+  helm-go-kind:
+    name: helm go on kind
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Does this change touch the chart, the Go build or its database?
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          changed="$(git diff --name-only "$BASE_SHA"...HEAD 2>/dev/null || git ls-files)"
+          printf '%s\n' "$changed"
+          if printf '%s\n' "$changed" | grep -Eq \
+              '(^others/helm/|^db/changelog/|\.go$|^go\.(mod|sum)$|^cmd/|^internal/|^Dockerfile$|^\.dockerignore$|^others/scripts/helm-go-kind\.sh$|^\.github/workflows/deploy\.yml$)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing the Go chart rendering depends on changed."
+          fi
+
+      - name: Build the Go image (make go-image)
+        if: steps.changes.outputs.run == 'true'
+        run: make go-image GO_IMAGE=x9-qrcode:go
+
+      - name: Set up Helm
+        if: steps.changes.outputs.run == 'true'
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Create a kind cluster
+        if: steps.changes.outputs.run == 'true'
+        uses: helm/kind-action@v1
+
+      - name: Load the image into it
+        if: steps.changes.outputs.run == 'true'
+        run: kind load docker-image x9-qrcode:go --name chart-testing
+
+      - name: Install values-go.yaml; Liquibase, health UP, one create
+        if: steps.changes.outputs.run == 'true'
+        run: others/scripts/helm-go-kind.sh x9-qrcode:go

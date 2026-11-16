@@ -11,9 +11,11 @@ spec:
       targetPort: {{ .Values.deploy.ports.containerPort }}
       protocol: TCP
       name: http-svc
+    {{- if ne (include "x9-qrcode.runtime" .) "go" }}
     - port: {{ .Values.deploy.ports.managementPort | default .Values.deploy.ports.metricsPort }}
       targetPort: {{ .Values.deploy.ports.managementPort | default .Values.deploy.ports.metricsPort }}
       protocol: TCP
       name: mngt-svc
+    {{- end }}
   selector:
     {{- include "x9-qrcode.selectorLabels" . | nindent 4 }}

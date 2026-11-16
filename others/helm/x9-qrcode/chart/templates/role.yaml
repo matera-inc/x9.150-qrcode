@@ -1,3 +1,5 @@
+{{- /* Spring Cloud Kubernetes (Java) reads its ConfigMap and Secret; the Go build never calls the API. */ -}}
+{{- if ne (include "x9-qrcode.runtime" .) "go" -}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -21,3 +23,4 @@ rules:
   - apiGroups: [ "" ]
     resources: [ "pods" ]
     verbs: [ "get" ]
+{{- end }}

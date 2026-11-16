@@ -25,7 +25,8 @@ Business context:
 Technical context:
 - Java 25 + Spring Boot 3.5 Stack.
 - Designed for Kubernetes 1.30 (or higher) deployment using Helm.
-- Requires MongoDB 8 (or higher)
+- Requires MongoDB 8 (or higher) for the Java build (the default); the Go build (`values-go.yaml`)
+  requires PostgreSQL 16 (or higher) instead.
 - Use secrets for security-related artifacts and production-like environments.
 
 
@@ -172,6 +173,41 @@ The chart exposes explicit startup, readiness, and liveness probes to support st
 {{ pick $values "application" | toYaml | replace "    " "  " }}
 {{ pick $values "applicationExtra" | toYaml | replace "    " "  " }}
 {{ pick $values "secrets" | toYaml | replace "    " "  " }}
+```
+
+## The Go build (`values-go.yaml`)
+
+The chart deploys the Java build by default until the cutover. With `-f values-go.yaml`
+(`runtime: go`) it deploys the Go build on PostgreSQL instead:
+
+```bash
+helm upgrade --install x9-qrcode <repo-name>/{{ .Name }} \
+  --namespace <namespace> \
+  --values values-go.yaml --values my-values.yaml
+```
+
+- One instance, `strategy: Recreate`, no HPA: the chart refuses `replicaCount` other than 1 and
+  `autoscaling.enabled: true` (ADR-0031).
+- Liquibase 4.33.0 runs as an init container, as the schema owner, before the service starts. An
+  init container rather than a hook Job: with `Recreate` the schema moves only after the old pod
+  has stopped, so an old binary never serves on a newer schema. `go.liquibase.enabled: false` when
+  your DBA applies the changelog by hand.
+- Only the Go build's environment variables: a `SPRING_*`, `MONGO*` or `JASYPT_*` name is refused
+  when the chart renders. `GOMEMLIMIT` is `go.memLimitPercent` (80) percent of the memory limit.
+- Probes on `/actuator/health/liveness` and `/actuator/health/readiness` on the API port.
+- Passwords come from the Secret you name in `go.existingSecret`, never from a value: the database
+  password is mounted as a file (`DATABASE_PASSWORD_FILE`).
+- The database is yours: the chart ships no PostgreSQL. Create the owner role and the schema
+  first, as `db/README.md` in the repository says.
+
+```yaml
+{{ .Files.Get "values-go.yaml" }}
+```
+
+The `go` section of `values.yaml`, with every default:
+
+```yaml
+{{ pick $values "go" | toYaml | replace "    " "  " }}
 ```
 
 ## Security and X9 Standard Notes

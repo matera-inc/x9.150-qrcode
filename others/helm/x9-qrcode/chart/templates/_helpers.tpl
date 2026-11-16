@@ -36,7 +36,9 @@ Common labels
 */}}
 {{- define "x9-qrcode.labels" -}}
 helm.sh/chart: {{ include "x9-qrcode.chart" . }}
+{{- if ne (include "x9-qrcode.runtime" .) "go" }}
 spring-boot-actuator: "true"
+{{- end }}
 {{ include "x9-qrcode.selectorLabels" . }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- if .Chart.AppVersion }}
