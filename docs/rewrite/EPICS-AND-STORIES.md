@@ -355,7 +355,8 @@ None. The service has no UI.
 | FR24 | Epic 9 | create, GET, PATCH with audit, status-update, ETag and `If-Match`, location rebind, on PostgreSQL |
 | FR25 | Epic 10 | event stream, published keys and signature endpoints, payload, notifications under ADR-0036, payer-side endpoints, decoder; the whole black-box suite green on Go |
 | FR26 | Epic 11 | the differential run and interop |
-| FR27–FR32 | Epics 12–17 | stubs for plan phases 8–12 |
+| FR27 | Epic 12 | retention and housekeeping |
+| FR28–FR32 | Epics 13–17 | stubs for plan phases 9–12 |
 
 ## Epic List
 
@@ -365,8 +366,8 @@ alongside 3–4.
 **Track B: Go/PostgreSQL foundations.** Epics 6–7 follow each other, and the track runs in parallel
 with track A.
 
-**Stubs.** Epics 12–17. Epic 8 was detailed on 2026-11-14, once Epic 4 was green; Epics 9 and 10
-on 2026-11-15, once Epic 8 was built; Epic 11 on 2026-11-16, once Epic 10 was done.
+**Stubs.** Epics 13–17. Epic 8 was detailed on 2026-11-14, once Epic 4 was green; Epics 9 and 10
+on 2026-11-15, once Epic 8 was built; Epic 11 on 2026-11-16, once Epic 10 was done; Epic 12 the same day, once Epic 11 was done.
 
 ### Epic 1: The docs tell the truth
 
@@ -452,11 +453,17 @@ all four pairings.
 
 **FRs covered:** FR26
 
-### Epics 12–17: stubs (detailed later)
+### Epic 12: Retention without surprises: housekeeping
+
+One background job deletes old events, then old QR Codes, on the business clock, in paced batches,
+never changing a status; an operator can see what it did and size it.
+
+**FRs covered:** FR27
+
+### Epics 13–17: stubs (detailed later)
 
 | Epic | Phase | Scope |
 |---|---|---|
-| 12 | 8 | Retention without surprises: housekeeping (FR27) |
 | 13 | 9 | Operators can migrate data and configuration (FR28) |
 | 14 | 10 | The lighter image ships (FR29) |
 | 15 | 10b | `BENCHMARK.md` published (FR30) |
@@ -2726,13 +2733,81 @@ rows 7, 15, 22 and the "no proxy" part of 17; rows 10, 13, 16 and 21 partly)
 test), keyed and listed in `docs/TEST-INDEX.md`, and its entry in `TOLERATED-DIFFERENCES.md` names
 the key.
 
-## Epics 12–17: stubs
+## Epic 12: Retention without surprises: housekeeping
+
+The Go build keeps every QR Code and event forever today. This epic adds the one background job
+ADR-0029 allows: it deletes old events, then old QR Codes, on the business clock, in small paced
+batches, and never changes a status. An operator can see what it did and tune it. Done means
+`X9-TIME-015` passes on Go, the last test the suite still expects to fail there.
+
+**Implements:** FR27; ADR-0029 (time is applied on read; retention is the only job), ADR-0033 (the
+test clock), ADR-0032 (the bank's own database), ADR-0023 (one changelog); plan §8 (phase 8).
+
+Order: 12.1, then 12.2.
+
+### Story 12.1: Old events, then old QR Codes, are purged on the business clock
+
+As an **operator**,
+I want old events and old QR Codes deleted automatically,
+So that the database does not grow without bound.
+
+**Implements:** ADR-0029 ("Retention is one goroutine with one `time.Timer`")
+
+**Acceptance Criteria:**
+
+**S12.1-AC1.** **Given** the configuration
+**Then** `events.retention` (default `P30D`) and `qrcode.retention` (default `P400D`) are read, with
+their environment variables, and the service refuses to start when `qrcode.retention` is shorter
+than `events.retention`, naming both. The interval between runs is configurable (default one hour)
+so a test deployment can run it often.
+
+**S12.1-AC2.** **Given** a run
+**Then** it first deletes `payment_event` rows older than `events.retention`, then `qr_code` rows
+whose `valid_until` **and** `revised_at` are both older than `qrcode.retention`, in any status,
+together with their `qr_code_audit_log` and `qr_code_notification` rows. Cutoffs come from the
+business clock (ADR-0033), computed once per run.
+
+**S12.1-AC3.** **Given** many rows to delete
+**Then** each purge works in batches of a few hundred rows, one transaction per batch, with a pause
+between batches, so a payment never waits behind it; the queries use indexes added by a new
+changeset (applied changesets are never edited).
+
+**S12.1-AC4.** **Given** the job
+**Then** it is one goroutine with one `time.Timer`, reset after each run; it never changes a status;
+it stops cleanly on shutdown (no leaked goroutine); a run that fails is logged and retried at the
+next tick, never crashing the service.
+
+**S12.1-AC5.** **Given** the black-box suite on Go
+**Then** `X9-TIME-015` passes and its strict expected failure on Go is removed; Go database tests
+cover the cutoffs, the "both dates" rule, the child rows, and that nothing younger is touched.
+
+### Story 12.2: An operator can see what retention did, and size it
+
+As an **operator** or a bank's **DBA**,
+I want to know what the job deleted and what retention costs in storage,
+So that I can tune it without guessing.
+
+**Implements:** ADR-0029 (Consequences: "Operators who want less shorten `qrcode.retention`"),
+ADR-0032
+
+**Acceptance Criteria:**
+
+**S12.2-AC1.** **Given** a run
+**Then** one INFO log line reports the cutoffs, rows deleted per table and the duration; Prometheus
+metrics count deleted rows per table and run failures.
+
+**S12.2-AC2.** **Given** the docs
+**Then** `RUNNING.md`, `db/README.md` and the configuration example explain the two retentions,
+their defaults, the start-up rule, the interval, and what an operator gives up by shortening them
+(an expired QR Code is readable until `qrcode.retention`; a consumer must read events within
+`events.retention`), with the storage measured in `BENCHMARK.md` as a sizing guide.
+
+## Epics 13–17: stubs
 
 Detailed in a later run of this workflow.
 
 | Epic | Phase | Scope |
 |---|---|---|
-| 12 | 8 | Retention without surprises: housekeeping (FR27) |
 | 13 | 9 | Operators can migrate data and configuration, reservation holders included; the legacy `SPRING_*`, `MONGO*` and `JASYPT_*` variables are housekept out of the Helm chart, the compose files and the docs, since the Go service refuses them (owner, 2026-11-14) (FR28) |
 | 14 | 10 | The lighter image ships (FR29) |
 | 15 | 10b | `BENCHMARK.md` published (FR30) |
