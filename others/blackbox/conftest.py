@@ -17,6 +17,8 @@ Environment:
   suite that could not run is a red job, never a green one.
 - ``X9_SUITE_HOST``: how the SERVICE reaches this process, for the CRL it serves (default
   ``127.0.0.1``). ``X9_SUITE_CRL_PORT`` fixes its port (default: any free one).
+- ``X9_RECORD_DIR``: record every exchange of every test there, one JSON-lines file per test,
+  for the differential run (``x9client.recording``, ``differential.py``). Off when unset.
 - ``X9_TEST_CA_DIR``: where the bundled test CA lives (default: the repository's
   ``x9-qrcode-infrastructure/src/test/resources/certificate``).
 
@@ -36,7 +38,7 @@ from x9client import jws
 from x9client.api import X9Api
 from x9client.events import EventReader
 
-pytest_plugins = ["required_keys"]
+pytest_plugins = ["required_keys", "recorder"]
 
 REQUIRE_ALL = os.environ.get("X9_REQUIRE_ALL", "") not in ("", "0", "false")
 

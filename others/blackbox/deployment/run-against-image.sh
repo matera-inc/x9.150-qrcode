@@ -16,7 +16,10 @@
 # A Go image (Story 9.1) runs on PostgreSQL instead: docker-compose.go.yml, two more local images
 # (x9-blackbox-bootstrap:<run> and x9-blackbox-liquibase:<run>, db/local), the changelog applied by
 # the Liquibase one-shot before the service starts, and the truststore as PKCS#12. Its verdict is the
-# whole suite, as for Java (Story 10.8). The build is the image's entrypoint (/x9-qrcode is the Go
+# whole suite, as for Java (Story 10.8).
+#
+# With X9_RECORD_DIR set, the suite records every exchange (others/blackbox/x9client/recording.py)
+# and the recording is copied there when it ends, for others/blackbox/differential.py (Story 11.1). The build is the image's entrypoint (/x9-qrcode is the Go
 # binary); X9_BUILD=java|go overrides it.
 #
 # Every run is its own: the compose project is $X9_BLACKBOX_PROJECT if set, otherwise
@@ -106,12 +109,28 @@ if [ "$BUILD" = go ]; then
     UP_FLAGS=(--no-deps)
 fi
 
+# Recording for the differential run (Story 11.1): the suite writes inside its container, and the
+# files are copied out to $X9_RECORD_DIR once it has finished.
+if [ -n "${X9_RECORD_DIR:-}" ]; then
+    mkdir -p "$X9_RECORD_DIR"
+    export X9_RECORD_IN_CONTAINER=/recording
+fi
+
 echo "== running the suite"
 set +e
 "${COMPOSE[@]}" up --no-color ${UP_FLAGS[@]+"${UP_FLAGS[@]}"} --exit-code-from blackbox --abort-on-container-exit \
     "${SERVICES[@]}" 2>&1 | grep --line-buffered -E '^blackbox' | sed 's/^blackbox[^|]*| //'
 status="${PIPESTATUS[0]}"
 set -e
+
+if [ -n "${X9_RECORD_DIR:-}" ]; then
+    runner="$("${COMPOSE[@]}" ps -a -q blackbox)"
+    if [ -n "$runner" ] && docker cp "$runner:/recording/." "$X9_RECORD_DIR/" >/dev/null 2>&1; then
+        echo "== recording copied to $X9_RECORD_DIR ($(ls "$X9_RECORD_DIR" | wc -l | tr -d ' ') files)"
+    else
+        echo "== no recording to copy (did the suite run?)"
+    fi
+fi
 
 if [ "$status" -ne 0 ]; then
     echo "== the suite failed (exit $status); the service's last log lines:"

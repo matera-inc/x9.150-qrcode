@@ -89,4 +89,7 @@ services:
       X9_DATABASE_URL: "postgresql://x9_qrcode_readonly@postgres:5432/postgres"
       # A capability the run cannot use (clock, database, payee) is a failure here, not a skip.
       X9_REQUIRE_ALL: "1"
+      # Recording for the differential run (Story 11.1): set by run-against-image.sh when the
+      # caller sets X9_RECORD_DIR; empty means off.
+      X9_RECORD_DIR: "${X9_RECORD_IN_CONTAINER:-}"
       X9_WAIT_SECONDS: "${X9_WAIT_SECONDS:-120}"
