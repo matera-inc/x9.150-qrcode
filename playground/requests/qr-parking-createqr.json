@@ -30,7 +30,7 @@
       "validUntil": "2030-12-31T23:59:59Z",
       "amount": 600,
       "networks": {
-        "FedNow": {
+        "fednow": {
           "routingNumber": "071000013",
           "accountNumber": "4402219980",
           "protectionType": "tokenized"

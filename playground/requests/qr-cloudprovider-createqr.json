@@ -1,5 +1,5 @@
 {
-  "validUntil": "2026-08-30T23:59:59Z",
+  "validUntil": "2030-08-30T23:59:59Z",
   "creditor": {
     "name": "Nimbus Cloud Services",
     "phone": "+14155550100",
@@ -19,7 +19,7 @@
     "invoice": {
       "number": "NCS-2026-08-00042",
       "date": "2026-07-20",
-      "dueDate": "2026-08-30T23:59:59Z"
+      "dueDate": "2030-08-30T23:59:59Z"
     },
     "amountDue": {
       "amount": 5000,
@@ -49,20 +49,20 @@
   "paymentMethods": [
     {
       "currency": "USD",
-      "validUntil": "2026-08-30T23:59:59Z",
+      "validUntil": "2030-08-30T23:59:59Z",
       "amount": 5000,
       "networks": {
-        "FedNow": {
+        "fednow": {
           "routingNumber": "121000248",
           "accountNumber": "4455667788",
           "protectionType": "tokenized"
         },
-        "RTP": {
+        "rtp": {
           "routingNumber": "121000248",
           "accountNumber": "4455667788",
           "protectionType": "tokenized"
         },
-        "ACH": {
+        "ach": {
           "routingNumber": "121000248",
           "accountNumber": "4455667788",
           "protectionType": "tokenized"

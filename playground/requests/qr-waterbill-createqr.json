@@ -52,17 +52,17 @@
       "validUntil": "2030-12-31T23:59:59Z",
       "amount": 8730,
       "networks": {
-        "FedNow": {
+        "fednow": {
           "routingNumber": "125000024",
           "accountNumber": "8830012245",
           "protectionType": "tokenized"
         },
-        "RTP": {
+        "rtp": {
           "routingNumber": "125000024",
           "accountNumber": "8830012245",
           "protectionType": "tokenized"
         },
-        "ACH": {
+        "ach": {
           "routingNumber": "125000024",
           "accountNumber": "8830012245",
           "protectionType": "tokenized"
