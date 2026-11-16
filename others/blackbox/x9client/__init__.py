@@ -7,6 +7,8 @@
 - ``clock``: the movable test clock (ADR-0033): ``move_to``, ``now``, ``reset``.
 - ``events``: a cursor reader of the event stream, deduplicating by ``eventId``.
 - ``db``: optional read-only inspectors (MongoDB for Java, PostgreSQL for Go).
+- ``recording``: with ``X9_RECORD_DIR``, every exchange written down per test, for the
+  differential run (``differential.py``).
 - ``samples`` and ``checks``: request bodies to start from, and the refused-for-the-right-reason
   assertion.
 

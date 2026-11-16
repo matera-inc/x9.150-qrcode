@@ -97,6 +97,42 @@ The `blackbox-go` job, beside `blackbox`, builds the image with `make go-image` 
 this on every pull request that touches the Go code, `db/` or `others/blackbox/`, and fails it on
 any failure; on any other pull request it passes without running.
 
+### Differential run: what Java answered against what Go answered (Story 11.1)
+
+ADR-0028 proves the two builds equivalent by a diff, not a claim: the same suite against each, the
+answers recorded, normalised and compared.
+
+```bash
+X9_IMAGE=x9-qrcode:java X9_RECORD_DIR=/tmp/rec/java ./others/blackbox/deployment/run-against-image.sh
+X9_IMAGE=x9-qrcode:go   X9_RECORD_DIR=/tmp/rec/go   ./others/blackbox/deployment/run-against-image.sh
+python3 others/blackbox/differential.py /tmp/rec/java /tmp/rec/go --json /tmp/rec/differences.json
+```
+
+**Recording** (`x9client/recording.py`, wired by `recorder.py`) is off unless `X9_RECORD_DIR` is
+set; then the suite's HTTP client appends every exchange, in order, to one JSON-lines file per test
+node id: the method, the path with server-minted ids masked (and `rawPath` unmasked), the request
+headers that change an answer (`If-Match`, `Content-Type`, `Accept`), the request body, and the
+answer's status, `ETag`, `Content-Type`, `Location` and body as received. What a session-scoped
+fixture asks (the trust probe, the JWK set, the event reader's start) goes to a file of its own,
+`<session>::<fixture>`, so which test happens to build it first never shifts anyone's exchanges.
+`_tests.<worker>.jsonl` lists each test's outcome and build markers. A private key never reaches the
+client; one in a body would be replaced before writing. `run-against-image.sh` copies the recording
+out of the suite's container when the run ends.
+
+**The diff** (`differential.py`, standard library only) pairs the two recordings by test and, inside
+a test, by position, aligned on the request so that an exchange only one build made is reported by
+its index and the rest still pair. Before comparing it normalises both sides: JSON compared as
+values (whitespace and key order ignored); server-minted ids, `correlationId`s, event ids, cursors,
+times and dates masked (keeping whether an offset is `Z` or numeric); a JWS compared as its decoded
+header minus `iat`, `correlationId` and `x5c`, and its decoded payload, with its signature masked;
+an EMV string's location id and CRC masked, inside `qrCodeB64` too; an event-stream page reduced to
+the events of the test's own QR Codes, and a run of polls counted once, its last. Then status,
+`ETag`, `Content-Type`, `Location` and the body must match. It prints counts by kind, the most
+recurring differences and every difference, and `--json` writes them with the test node id, the
+exchange index, the field and both values. A test only one build recorded is named with why
+(`go_only`, `java_only`, skipped). It exits 1 on any difference; the tolerated list and the CI job
+are Story 11.2. Its own tests are `tests/test_differential.py` (`X9-SUITE-516` to `524`).
+
 ### The deployment under test
 
 The suite never asks the service to sign for it (no call to `/api/v1/signature/generate`). Its
@@ -138,6 +174,7 @@ this truststore: it trusts keys anybody can download.
 | `X9_DATABASE_URL` | unset | Optional read-only database connection (`mongodb://…` for Java, `postgresql://…` for Go). Database checks skip, with the reason, when it is unset or the driver (`pymongo` / `psycopg`) is not installed. |
 | `X9_REQUIRE_ALL` | unset | `1` turns every "capability missing" skip into a failure. CI sets it. |
 | `X9_BUILD` | from `X9_DATABASE_URL`, else `java` | `java` or `go`: `go_only` tests skip on Java and `java_only` tests on Go, with the reason. Not a missing capability, so `X9_REQUIRE_ALL` does not fail them. A mark can also depend on it (`builds.under_test()`): `X9-LOC-421` is a strict expected failure on Java only. |
+| `X9_RECORD_DIR` | unset | Record every exchange of every test there, for the differential run (see "Differential run" above). `run-against-image.sh` copies the recording out of its container to this path. |
 | `X9_REQUIRED_KEYS` | unset | A list file of your own: only the tests it lists decide the exit code; every other one is informative. For a partial run while porting; no CI run sets it. |
 
 ## Layout
@@ -153,6 +190,7 @@ others/blackbox/
 │   ├── peer.py        a test payee that answers this service's outbound notifications right and wrong
 │   ├── ocsp.py        an OCSP responder for the test CA, and payers with any mix of revocation sources
 │   ├── db/            optional read-only inspectors: mongo.py (Java), postgres.py (Go)
+│   ├── recording.py   with X9_RECORD_DIR, every exchange written down per test (differential run)
 │   ├── samples.py     request bodies a scenario starts from
 │   └── checks.py      assert_refused: refused, and for the right reason
 ├── tests/             the scenarios
@@ -163,6 +201,8 @@ others/blackbox/
 ├── conftest.py        fixtures: deployment, api, events, clock, db, pki, payer_a, payer_b, tamperer
 ├── builds.py          which build is under test (java or go), for marks decided at import
 ├── required_keys.py   an optional required-keys list for a partial run (X9_REQUIRED_KEYS)
+├── recorder.py        tells the recorder which test (or shared fixture) is running
+├── differential.py    the diff of two recordings, Java against Go (Story 11.1)
 ├── run.py             `uv run` entry point (PEP 723)
 └── pytest.ini         markers: serial, java_only, go_only
 ```

@@ -11,6 +11,8 @@ import json
 import urllib.error
 import urllib.request
 
+from x9client import recording
+
 APPLICATION_JSON = "application/json"
 APPLICATION_JOSE = "application/jose"
 PROBLEM_JSON = "application/problem+json"
@@ -101,7 +103,9 @@ class Api:
         except urllib.error.HTTPError as e:
             text, status, response_headers = e.read().decode(errors="replace"), e.code, dict(e.headers)
         except Exception as e:                                    # noqa: BLE001 - transport failure
+            recording.record(method, url, hdrs, data, 0, {}, str(e))
             return Response(0, str(e), {}, str(e))
+        recording.record(method, url, hdrs, data, status, response_headers, text)
 
         try:
             parsed = json.loads(text)
