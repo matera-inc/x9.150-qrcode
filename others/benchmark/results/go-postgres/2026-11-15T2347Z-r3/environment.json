@@ -1,0 +1,23 @@
+{
+ "kubernetes": "v1.35.0+k3s1",
+ "nodes": [
+  {
+   "architecture": "arm64",
+   "kernelVersion": "6.8.0-117-generic",
+   "osImage": "Ubuntu 24.04.4 LTS",
+   "containerRuntime": "docker://29.5.2",
+   "kubelet": "v1.35.0+k3s1",
+   "cpu": "8",
+   "memory": "12219876Ki"
+  }
+ ],
+ "host": {
+  "cpu": "Apple M4",
+  "logicalCpus": 10,
+  "memoryBytes": 17179869184,
+  "os": "Darwin arm64"
+ },
+ "virtualisation": "Linux VM (Colima, Apple Virtualization.framework) on macOS, k3s on Docker, 8 vCPU / 12 GiB",
+ "limits": "plan 9.2: app 2 vCPU / 2 GiB, database 2 vCPU / 2 GiB, k6 2 vCPU",
+ "k6": "grafana/k6:2.4.0"
+}

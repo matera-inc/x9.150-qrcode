@@ -1,0 +1,72 @@
+[
+ {
+  "pod": "postgres",
+  "container": "database",
+  "image": "postgres:16",
+  "imageID": "docker-pullable://postgres@sha256:dd2bf3ce2dc83a81674cf7f217fcfd8a5009a4b325dda5b843bfee82a06cff6f",
+  "resources": {
+   "limits": {
+    "cpu": "2",
+    "memory": "2Gi"
+   },
+   "requests": {
+    "cpu": "2",
+    "memory": "2Gi"
+   }
+  },
+  "env": {}
+ },
+ {
+  "pod": "x9-db-init",
+  "container": "wait-for-postgres",
+  "image": "postgres:16",
+  "imageID": "docker-pullable://postgres@sha256:dd2bf3ce2dc83a81674cf7f217fcfd8a5009a4b325dda5b843bfee82a06cff6f",
+  "resources": {},
+  "env": {}
+ },
+ {
+  "pod": "x9-db-init",
+  "container": "liquibase",
+  "image": "x9-qrcode-liquibase:git-66d113c",
+  "imageID": "docker-pullable://x9-qrcode-liquibase@sha256:3ade841778ce2e39c567216d9e0919eba5c1dbe8be38f05c750403584d2edeb5",
+  "resources": {},
+  "env": {}
+ },
+ {
+  "pod": "x9-qrcode",
+  "container": "crl",
+  "image": "python:3.13.9-slim",
+  "imageID": "docker-pullable://python@sha256:326df678c20c78d465db501563f3492d17c42a4afe33a1f2bf5406a1d56b0e86",
+  "resources": {
+   "limits": {
+    "cpu": "100m",
+    "memory": "64Mi"
+   },
+   "requests": {
+    "cpu": "50m",
+    "memory": "64Mi"
+   }
+  },
+  "env": {}
+ },
+ {
+  "pod": "x9-qrcode",
+  "container": "app",
+  "image": "x9-qrcode-go:git-66d113c",
+  "imageID": "docker-pullable://x9-qrcode-go@sha256:5a572104d8ddaf50d84d3bae5c298943cedb730e13db87fc3f92f7d3da321ab5",
+  "resources": {
+   "limits": {
+    "cpu": "2",
+    "memory": "2Gi"
+   },
+   "requests": {
+    "cpu": "2",
+    "memory": "2Gi"
+   }
+  },
+  "env": {
+   "X9_TESTING_CLOCKCONTROL": "false",
+   "GOMEMLIMIT": "1638MiB"
+  }
+ }
+]

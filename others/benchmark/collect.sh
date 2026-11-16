@@ -145,8 +145,15 @@ PY
 done
 
 # Logs may carry addresses the harness never asked for: redact them in text, then refuse anything left.
-find "$RESULTS" -name '*.log' -newer "$BENCH/build/payers.json" -exec \
-  sed -i.bak -E 's/(^|[^0-9.])([0-9]{1,3}\.){3}[0-9]{1,3}([^0-9.]|$)/\1<address>\3/g' {} \; -exec rm -f {}.bak \;
+# Only this campaign's runs, and a file another run removes mid-scan is not a failure: the
+# scrub_check below is what refuses an address left anywhere.
+for build in $(printf '%s\n' "${builds[@]}" | sort -u); do
+  for dir in "$RESULTS/$build/$CAMPAIGN"-r*; do
+    find "$dir" -name '*.log' -exec \
+      sed -i.bak -E 's/(^|[^0-9.])([0-9]{1,3}\.){3}[0-9]{1,3}([^0-9.]|$)/\1<address>\3/g' {} \; -exec rm -f {}.bak \; ||
+      log "warning: redacting the logs under ${dir#$ROOT/} reported an error; scrub_check decides"
+  done
+done
 for build in $(printf '%s\n' "${builds[@]}" | sort -u); do
   for dir in "$RESULTS/$build/$CAMPAIGN"-r*; do scrub_check "$dir"; done
 done

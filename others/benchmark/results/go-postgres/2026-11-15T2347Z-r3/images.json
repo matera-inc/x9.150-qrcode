@@ -1,0 +1,27 @@
+{
+ "build": "go-postgres",
+ "campaign": "2026-11-15T2347Z",
+ "run": 3,
+ "sequence": "J G J G J G",
+ "position": 6,
+ "app": {
+  "image": "x9-qrcode-go:git-66d113c",
+  "id": "sha256:5a572104d8ddaf50d84d3bae5c298943cedb730e13db87fc3f92f7d3da321ab5",
+  "revision": "66d113c9702096aba9b5d5abd8b118968853d3c0",
+  "version": "git-66d113c",
+  "platform": "linux/arm64",
+  "sizeBytes": 5516893
+ },
+ "liquibase": {
+  "image": "x9-qrcode-liquibase:git-66d113c",
+  "id": "sha256:3ade841778ce2e39c567216d9e0919eba5c1dbe8be38f05c750403584d2edeb5",
+  "revision": "66d113c9702096aba9b5d5abd8b118968853d3c0",
+  "version": "git-66d113c",
+  "platform": "linux/arm64",
+  "sizeBytes": 453336518
+ },
+ "harnessRevision": "743f16087bb7cd3f8f12759a1196667b5a1492e7",
+ "profile": "readme",
+ "stages": "",
+ "overlay": "none"
+}

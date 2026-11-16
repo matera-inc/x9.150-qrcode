@@ -1,0 +1,22 @@
+{
+ "scenario": "S7",
+ "build": "go-postgres",
+ "image": {
+  "image": "x9-qrcode-go:git-66d113c",
+  "id": "sha256:5a572104d8ddaf50d84d3bae5c298943cedb730e13db87fc3f92f7d3da321ab5",
+  "revision": "66d113c9702096aba9b5d5abd8b118968853d3c0",
+  "version": "git-66d113c",
+  "platform": "linux/arm64",
+  "sizeBytes": 5516893
+ },
+ "sizeBytes": 5516893,
+ "compressedSizeBytes": 5497991,
+ "coldStartToHealthUpMs": 163,
+ "restingMemoryBytes": 4215275,
+ "idleSeconds": 300,
+ "limits": {
+  "cpus": "2",
+  "memory": "2g"
+ },
+ "method": "docker run to the first 200 UP from /actuator/health, polled every 50 ms, database already up; resting memory from docker stats (usage minus inactive file cache) after the idle period, no request in between"
+}
