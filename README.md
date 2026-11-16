@@ -3,6 +3,10 @@ X9 QRCode Backend
 
 This application is a backend implementation of the **ANSI X9.150-2026 Payment QR Code Standard** — it generates and manages merchant-presented payment QR codes across the US bank rails the standard defines — **FedNow, RTP and ACH**, settling in USD — and **Solana**, on the Solana Foundation's published embedding, settling in the dollar stablecoins `USDC` and `FRNT`. Every reading we make of an ambiguous passage in the standard, and every deliberate departure from a literal one, is recorded in [official-spec/INTERPRETATION.md](official-spec/INTERPRETATION.md).
 
+> **History.** The service was first written in Java on MongoDB, and has been rewritten in Go on
+> PostgreSQL. [HISTORY.md](HISTORY.md) says why; [BENCHMARK.md](BENCHMARK.md) has the measured
+> comparison of the two builds.
+
 ## What this software does, and what it does not
 
 **It never touches money.** Read that first, because almost every question about this repository
@@ -27,11 +31,13 @@ funds and integrates with this service, never the other way round:
 
 - **The payment system creates the QR Code** through the create API, and owns it from then on.
 
-- **This service only records events.** Each status change writes an event in the same transaction:
-  a MongoDB collection today, the `payment_event` table in the Go build, where that table is the
-  outbox ([ADR-0037](docs/adr/0037-the-event-table-is-the-outbox-read-by-cdc-or-plain-sql.md)).
-- **The payment system reads them** through the HTTP event API, or in the Go build straight from the
-  table, by change data capture (Debezium, for example) or by plain SQL.
+- **This service only records events.** Each status change inserts an event into the
+  `payment_event` table in the same transaction. That table is the outbox
+  ([ADR-0037](docs/adr/0037-the-event-table-is-the-outbox-read-by-cdc-or-plain-sql.md)). The Java
+  build keeps its events in a MongoDB collection instead.
+- **The payment system reads them** through the HTTP event API, or straight from the table, by
+  change data capture (Debezium, for example) or by plain SQL
+  ([docs/EVENTS-TABLE.md](docs/EVENTS-TABLE.md)).
 - **The payment system closes the QR Code** through the status-update API: `PAID` once it has
   matched the money, or `CANCELLED` when it no longer wants the QR Code paid. Only the payment system
   closes a QR Code; nothing a payer says does.
@@ -70,11 +76,32 @@ own accounting with it. **Paying the waiter is not this software's business.**
 
 The X9.150 standard itself is copyrighted by ASC X9 and is **not** distributed with this repository. To obtain it, purchase it from the [ANSI Web Store](https://webstore.ansi.org/standards/ascx9/ansix91502026). See [`official-spec/README.md`](official-spec/README.md) for details.
 
-The code is written in **Java 25** on **Spring Boot 3.5.x** and follows the Clean / Hexagonal Architecture pattern.
+## Stack
 
-It runs as a container via Docker Compose, directly on the JVM, or on Kubernetes via the included Helm chart — see [RUNNING.md](RUNNING.md).
+| Layer | Choice |
+|---|---|
+| Language | **Go 1.27** (the toolchain `go.mod` pins, `go1.27.4`); one static, cgo-free binary |
+| HTTP | the standard library's `net/http` |
+| Database | **PostgreSQL 16** or newer, in one schema, through `pgx/v5` with hand-written SQL; no ORM |
+| Schema | a **Liquibase** changelog ([`db/changelog/`](db/changelog/)), run as a one-shot **before** the binary starts, never inside it; see [db/README.md](db/README.md) |
+| Signatures | JWS (RFC 7515) with the X9 Financial PKI; see [JWS Signature implementation](#jws-signature-implementation) |
+| Configuration | one YAML file plus environment variables ([`cmd/x9-qrcode/config.example.yaml`](cmd/x9-qrcode/config.example.yaml)) |
+| Image | a multi-stage [`Dockerfile`](Dockerfile): the binary on a distroless base, non-root, amd64 and arm64 |
 
-The application needs a MongoDB database to store the QR codes and their associated data.
+The service checks at start that it is connected to the schema it expects, with the changelog it
+was built for, and refuses to start otherwise.
+
+> **Not done yet.** The rewrite is not finished, and this note says what is missing.
+>
+> - **The prebuilt image on Docker Hub ([`materainc/x9-qrcode`](https://hub.docker.com/r/materainc/x9-qrcode)) is
+>   still the Java build.** It moves to Go at the cutover. Docker Hub is updated last, after many
+>   tests. To run the Go build today, build it from this repository.
+> - **The Java build is still in this repository** (`x9-qrcode-*` modules, Maven, MongoDB). It will
+>   be frozen, unchanged, for history, under `legacy/java/`. See [The Java build](#the-java-build).
+> - **Still to come:** a converter that migrates existing MongoDB data and Java configuration to the
+>   Go build, and retention (the housekeeping of old rows).
+>
+> [HISTORY.md](HISTORY.md#whats-next) lists the remaining steps.
 
 The REST APIs are documented in the OpenAPI (Swagger) contract:
 
@@ -95,138 +122,114 @@ Found a vulnerability? Report it **privately** — see [SECURITY.md](SECURITY.md
 
 # Project Structure
 
-Maven multi-module project following Clean / Hexagonal architecture:
+One Go module at the repository root. Each binary has its own directory under `cmd/`, and each
+concern its own package under `internal/`:
 
 ```
-x9-qrcode/
-├── x9-qrcode-build-init/      # Build bootstrap: installs vendored libs (others/libs), OpenAPI codegen
-├── x9-qrcode-domain/          # Entities, Value Objects, domain services — pure Java, NO Spring
-├── x9-qrcode-application/     # Use cases, DTOs, port interfaces, mappers — depends only on domain
-├── x9-qrcode-infrastructure/  # Spring Boot app: REST controllers, MongoDB, JWS, configuration
-├── secrets/                   # Local secrets & real keystores — GIT-IGNORED (only samples committed)
-├── official-spec/             # ANSI X9.150-2026 reference notes (the copyrighted standard — PDF & Markdown — is git-ignored)
-└── others/                    # helm/ (K8s charts) · benchmark/ (k6 harness) · scripts/ (cert gen, CI) · libs/ (vendored jars) · doc/
+x9.150-qrcode/
+├── cmd/x9-qrcode/           # main.go: wiring, configuration, start and shutdown; config.example.yaml
+├── internal/<domain>/       # one package per concern, e.g.:
+│   ├── paymentrequest/      #   a biller's API: create, read, PATCH, status update
+│   ├── notification/        #   a payer's payment notification, on the payee's side
+│   ├── outbound/            #   a payer's notification sent to another payee
+│   ├── eventstream/         #   GET /pub/api/v1/events, read from the outbox
+│   ├── domain/              #   every lifecycle transition (ADR-0035's map)
+│   ├── store/               #   QR Codes, notifications and events in PostgreSQL
+│   ├── jws/ pki/ keys/ emv/ #   signing, certificate checks, keystores, EMV by hand
+│   └── config/ database/ health/ clock/ httpapi/ …
+├── db/                      # the PostgreSQL schema: changelog/ (Liquibase), local compose, CI check
+├── Dockerfile               # the Go image (multi-stage, distroless, non-root)
+├── secrets/                 # local secrets & real keystores — GIT-IGNORED (only samples committed)
+├── official-spec/           # ANSI X9.150-2026 reference notes (the copyrighted standard — PDF & Markdown — is git-ignored)
+├── others/                  # blackbox/ (the black-box suite) · benchmark/ (k6 harness) · helm/ · scripts/ · demo/ · doc/
+└── x9-qrcode-*/             # the Java build, until it moves to legacy/java/ (see "The Java build" below)
 ```
 
-Inside each Java module:
-
-| Path | Contents |
-|------|----------|
-| `src/main/java` | Production code (package `com.matera.x9qrcode`) |
-| `src/main/resources` | `application*.yml`, the OpenAPI spec (`apis/openapi.yaml`), the self-signed sample keystore, DB changelog |
-| `src/test/java` | **Unit tests** (domain/application, pure Java) and **integration tests** (`@IntegrationTest`, `@DatabaseTest` with Testcontainers) |
-| `src/test/resources` | Test config (`application-test.yml`), and request/response **fixtures** & payloads used by the API-flow tests |
+A package holds its handler, its rules and its SQL together. There is no DTO or mapper layer: one
+structure goes from the wire to the database
+([ADR-0024](docs/adr/0024-a-qr-code-is-one-row-and-every-patch-is-audit-logged.md)). Tests sit
+next to the code (`*_test.go`); the database tests start PostgreSQL with Docker.
 
 # Running the Application
 
-The app requires a **MongoDB with a replica set** (needed for multi-document transactions). It
-ships with a self-signed sample keystore so it runs out of the box; provide real X9-issued keys
-via the git-ignored `secrets/` folder to sign with your own certificates (see [`secrets/README.md`](secrets/README.md)).
+The service needs **PostgreSQL** with the schema applied by Liquibase **before** it starts. It ships
+with a demo signing key and truststore, so it runs out of the box. The demo key is NON-PRODUCTION:
+its private key is public. Provide your own X9-issued keys, as PEM or PKCS#12 files, through the `certificate` keys of
+[`config.example.yaml`](cmd/x9-qrcode/config.example.yaml) or their environment variables.
 
-> **First time here?** See **[RUNNING.md](RUNNING.md)** for a step-by-step first-run guide
-> (prerequisites, host-JVM vs Docker, building the image, and a `make help` of shortcuts).
+> **First time here?** See **[RUNNING.md](RUNNING.md)** for the details: configuration, health,
+> shutdown, the test clock and the image.
 
-There are three ways to run it:
+You need Go (the version `go.mod` pins; with the default `GOTOOLCHAIN=auto`, `go` fetches it) and
+Docker.
 
-1. **Standalone (JVM)** — build and run the Spring Boot app directly:
+1. **Start a throwaway PostgreSQL 16 and apply the schema.** [`db/docker-compose.yml`](db/docker-compose.yml)
+   starts PostgreSQL on `127.0.0.1:55432`, creates the owner role and schema, then runs Liquibase
+   once. It trusts every local connection: local use only.
    ```bash
-   mvn clean install
-   mvn -pl x9-qrcode-infrastructure spring-boot:run
+   docker compose -f db/docker-compose.yml up -d --build
    ```
 
-2. **Docker Compose** — self-contained (app + a single-node MongoDB replica set):
+2. **Run the service** as the application role:
    ```bash
-   docker compose up -d                               # bundled sample keystore
-   docker compose -f docker-compose.prod.yml up -d    # your own secrets (mounts secrets/)
+   DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=postgres DATABASE_USER=x9_qrcode_app \
+   DATABASE_PASSWORD=unused DATABASE_SSLMODE=disable go run ./cmd/x9-qrcode
+   #   → API on http://localhost:8080
+   make smoke                                          # health + public JWKS
+   ```
+   The service refuses to start if it finds the Java build's configuration, including any
+   `SPRING_*`, `MONGO*` or `JASYPT_*` variable in the environment. Unset them first.
+
+3. **Throw the database away** when you are done:
+   ```bash
+   docker compose -f db/docker-compose.yml down -v
    ```
 
-3. **Kubernetes** — via the Helm chart under `others/helm/x9-qrcode/`. Keep `replicaCount: 1`
-   (see [High Availability](HIGH-AVAILABILITY.md) for the single-active-instance posture).
-
-## See a whole payment happen
-
-To watch an actual payment rather than a single booted service, run two instances against each
-other — one issues a QR Code, the other scans it, announces the payment, pays, and reports it:
+The `make` targets for the Go build:
 
 ```bash
-docker compose up -d mongo mongo-setup     # a replica set for both instances
-mvn -q package -DskipTests
-./others/demo/two-instance-payment-cycle.sh
+make go-build            # static binary in bin/x9-qrcode, version and commit stamped
+make go-test             # the Go tests, as CI runs them (the database tests need Docker)
+make go-image            # image x9-qrcode:go for this machine's architecture (never pushed)
+make go-image-smoke      # the image: non-root, health UP against PostgreSQL, exit 0 on SIGTERM
+make go-image-multiarch  # amd64 + arm64 with docker buildx (no push)
+make blackbox-image X9_IMAGE=x9-qrcode:go   # the whole black-box suite against the Go image
 ```
 
-No Docker for the apps, no proxy and no network: Spring terminates TLS from a throwaway
-certificate the script generates. See [`others/demo/README.md`](others/demo/README.md) — which also
-explains why **two deployments cannot transact over plain HTTP**, and how to satisfy that with
-Spring's own TLS, an nginx in front, or a tunnel.
+`make blackbox-image` runs everything in containers: PostgreSQL 16, the schema bootstrap, Liquibase,
+the Go image and the suite
+([`others/blackbox/deployment/docker-compose.go.yml`](others/blackbox/deployment/docker-compose.go.yml)).
 
-## Pull the prebuilt image (Docker Hub)
-
-A multi-architecture image (**linux/amd64 + linux/arm64**) is published on Docker Hub at
-[`materainc/x9-qrcode`](https://hub.docker.com/r/materainc/x9-qrcode):
-
-```bash
-docker pull materainc/x9-qrcode:latest          # newest build — auto-selects your architecture
-docker pull materainc/x9-qrcode:git-<short-sha> # a specific commit (immutable), e.g. git-3ddaee1
-```
-
-Tags: `latest` (multi-arch, floating), `git-<short-sha>` (immutable, pinned to a source commit), and
-the per-arch `latest-arm64` / `latest-amd64`.
-
-Each image records the exact source commit it was built from, via standard OCI labels — so you can
-always tell which version you're running (and that anything committed after it is *not* in the image):
-
-```bash
-docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' materainc/x9-qrcode:latest
-# -> the full git SHA on https://github.com/matera-inc/x9.150-qrcode
-```
-
-The image is the application only; it still needs a **MongoDB replica set**. The quickest way to run
-it with a bundled Mongo is Docker Compose (above); to run the pulled image against your own database,
-point it there with the `SPRING_DATA_MONGODB_*` environment variables — see [RUNNING.md](RUNNING.md).
-
-## MongoDB dependency
-
-MongoDB Community is free to run in Docker. The compose files use the official **`mongo`** image
-started as a **single-node replica set** (`mongod --replSet`) — the minimum required for the
-transactions this app uses. `docker-compose*.yml` set that up for you (`rs.initiate` on a 1-node
-set), so nothing further is needed for local testing.
-
-> **The MongoDB tag is pinned to `mongo:7.0.45`, and not simply out of caution.**
-> MongoDB **8.x refuses to start on Linux kernels 6.19 and newer** — a deliberate startup check
-> rather than a crash: its bundled tcmalloc violates the kernel's rseq ABI, so it exits instead of
-> risking corruption ([SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912)). 7.0 links a
-> different allocator, has no rseq references and no upper kernel bound, so one tag serves old and
-> new hosts. That kernel is not exotic — on Ubuntu 24.04 it arrives through the HWE track, which
-> rolls forward on its own.
->
-> The cost is stated plainly: MongoDB 7.0 is supported until **2027-08-31**, against 2029-10-31 for
-> 8.0. For a deployment whose job is to start on a stranger's machine that is the right trade today,
-> since an 8.x that will not boot has no support value either. Revisit once upstream fixes the
-> allocator.
->
-> **If you already have MongoDB 8.x data on disk, do not simply change the tag.** MongoDB does not
-> support an in-place major *downgrade* once a server has raised the data directory's feature
-> compatibility version, so a 7.0 server started against it can refuse to come up — and the service
-> is then down. The supported route is `mongodump` → wipe → restore, and it has to be done **while
-> 8.x still starts**. Check `featureCompatibilityVersion` before you change anything.
->
-> Running your own MongoDB (the Helm chart expects an external one) puts the same kernel
-> requirement on you.
+On Kubernetes, keep one active instance (see [High Availability](HIGH-AVAILABILITY.md) for the
+single-active-instance posture). The Helm chart under `others/helm/x9-qrcode/` still deploys the
+Java build; it moves to Go with the cutover.
 
 # Configuration
 
-To configure the application, use the Helm chart values files (`values-minimal.yaml` for quick start and `values.yaml` for full configuration).
+The Go build reads **one YAML file plus environment variables**, which take precedence
+([ADR-0031](docs/adr/0031-same-image-lighter-and-3-0-is-a-configuration-migration.md)).
+[`cmd/x9-qrcode/config.example.yaml`](cmd/x9-qrcode/config.example.yaml) lists every key and the
+variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`. Where a setting
+exists in both builds, its environment variable has the same name in both.
 
-- [Values minimal / template](others/helm/x9-qrcode/chart/values-minimal.yaml)
-- [Values full](others/helm/x9-qrcode/chart/values.yaml)
+- Everything is checked at start. A missing, invalid or unknown key stops the service, naming the
+  key and its variable.
+- Nothing security-relevant has a default: the database host, user, credential and TLS mode must be
+  given.
+- The Java build's configuration (Spring YAML, Jasypt `ENC(…)`, `SPRING_*` or MongoDB variables) is
+  refused at start, not half-read. The converter that translates it is still to come (see
+  [Stack](#stack)).
 
-For more details about Helm installing and upgrading, please refer to the README file in the Helm chart folder.
+[RUNNING.md](RUNNING.md#the-go-build) explains each group of settings, and
+[db/README.md](db/README.md) what the service asks of the database.
 
-- [Helm deploy](others/helm/x9-qrcode/README.md)
+The Helm chart still deploys the Java build, and is configured with its values files
+([`values-minimal.yaml`](others/helm/x9-qrcode/chart/values-minimal.yaml) for a quick start,
+[`values.yaml`](others/helm/x9-qrcode/chart/values.yaml) for everything); see the
+[Helm deploy](others/helm/x9-qrcode/README.md) guide.
 
-For high availability (MongoDB replica sets and application failover) and how it relates to the license terms, see:
-
-- [High Availability](HIGH-AVAILABILITY.md)
+For high availability and how it relates to the license terms, see
+[High Availability](HIGH-AVAILABILITY.md).
 
 This service exposes an open, unauthenticated API. Access control is intentionally out of scope — protect it at your edge (API gateway, mTLS, or network policy).
 
@@ -238,12 +241,18 @@ We have a PostMan collection to facilitate the testing of the APIs.
 
 Architecture, standard-alignment, and integration design notes:
 
-- [Running & Testing](RUNNING.md) — first-run guide: prerequisites, host-JVM vs Docker, building the image, smoke test
+- [History](HISTORY.md) — why the service moved from Java on MongoDB to Go on PostgreSQL, how the change was kept safe, and what is next
+- [Benchmark](BENCHMARK.md) — the measured comparison of the two builds, every number as measured
+- [Running & Testing](RUNNING.md) — first-run guide: the Go build, configuration, health, the test clock; the Java build and its MongoDB
+- [The database, for a DBA](db/README.md) — the PostgreSQL schema, its roles, and what the service asks of your database
+- [The event table](docs/EVENTS-TABLE.md) — reading `payment_event` by change data capture or plain SQL
+- [Architecture decisions](docs/adr/README.md) — every ADR, including the rewrite's (0022 onwards)
+- [Plan: Go + PostgreSQL rewrite](PLAN-GO-POSTGRES-REWRITE.md) — the rewrite's evaluation, phases and benchmark method
 - [Endpoints & Local Scan Testing](ENDPOINTS.md) — public/management endpoints, the single-origin URL model, and Cloudflare-tunnel setup for phone-scan testing
 - [Two-Instance Payment Cycle](others/demo/README.md) — a whole payment played between two deployments, why HTTPS is mandatory between them, and three ways to provide it
 - [Integrating with X9.150](.agents/skills/x9150-integration/SKILL.md) — for developers building software that *uses* this service: call sequences for both roles, the event stream, and what X9.150 deliberately will not do for you
 - [QR Code State Machine](STATE-MACHINE.md) — lifecycle states and transitions
-- [High Availability](HIGH-AVAILABILITY.md) — MongoDB replica sets, application failover, and license limits
+- [High Availability](HIGH-AVAILABILITY.md) — application failover and license limits; MongoDB replica sets for the Java build
 - [Plan: Non-USD-Pegged Currencies](PLAN-NON-USD-PEGGED-CURRENCIES.md) — request-time FX and per-currency `validUntil` *(proposed)*
 
 > Documents marked *proposed* describe designs that are not yet implemented.
@@ -255,6 +264,7 @@ the same k6 scenarios (S1 create, S2 the full payment cycle, S7 footprint) again
 Kubernetes, with fixed resource limits, and records every result. The single-script load test that
 used to live under `others/scripts/k6/` was retired: today's API refused every request it sent.
 
+The results, Java on MongoDB against Go on PostgreSQL, are in [BENCHMARK.md](BENCHMARK.md).
 Summaries and a SHA-256 checksum of every raw k6 output are committed; the compressed raw outputs
 are published on a GitHub release, one per benchmark campaign. The harness README says how to run a
 campaign, publish it and verify a download.
@@ -512,39 +522,36 @@ What a **deployment** will accept is narrower, because it is decided by the rail
 
 ### Implementation
 
-Our implementation uses the Nimbus Jose JWT library, which provides a comprehensive set of tools for signing and verifying JWS content according to listed RFCs.
-
-      <dependency>
-          <groupId>com.nimbusds</groupId>
-          <artifactId>nimbus-jose-jwt</artifactId>
-          <version>10.7</version>
-      </dependency>
-
-The interface below centralize all functionalities related to signature generation and validation:
-
-    com.matera.x9qrcode.app.service.QRCodeSignatureService
+The Go build parses a JWS with [go-jose](https://github.com/go-jose/go-jose) and runs its own
+verification sequence on top: the `crit` header fields, the millisecond `iat` and `ttl`, the
+`x5t#S256` thumbprint, and the certificate path with CRL and OCSP revocation checks
+([ADR-0027](docs/adr/0027-crypto-in-go-x9150-jws-profile-pkix-with-crl-and-emv-by-hand.md)). The
+code is in `internal/jws` (signing and verification), `internal/pki` (trust and revocation) and
+`internal/keys` (the keystore and truststore, reloaded from disk). The Java build uses the Nimbus
+JOSE + JWT library, behind `com.matera.x9qrcode.app.service.QRCodeSignatureService`. Tokens from
+either build verify on the other; a golden set exported from Java proves it.
 
 ### Configurations
-This section describes configurations that can be used to change how the signature is generated and validated in the context of X9 QRCodes.
 
-The following configurations can be used to change how the signature is generated and validated:
+These settings change how signatures are generated and validated. Each is a key of the
+`certificate` block of [`config.example.yaml`](cmd/x9-qrcode/config.example.yaml) (`x9.certificate.*`
+in the Java build), with the same environment variable in both builds:
 
-* **`x9.certificate.issuer-name`**: The expected issuer name of the X.509 certificate used for signing. Default: `X9`
-* **`x9.certificate.certificate-supported-type`**: The kind of certificates support on system. Default: `X.509`
-* **`x9.certificate.endpointType`**: The public certificate endpoint type. Default: `JWK_SET`.
-* **`x9.certificate.jwk-algorithm`**: The algorithm used in the JWK for signing. Supported values are `RS256`, `PS512`, `ES256`, `ES384`, and `EdDSA`. Default: `PS512`.
+* **`issuer-name`** (`X9_CERTIFICATE_ISSUERNAME`): a counterpart's chain must end at a trust anchor whose issuer contains this, ignoring case. Default: `X9`. Empty skips the check.
+* **`endpoint-type`** (`X9_CERTIFICATE_ENDPOINTTYPE`): how a signed JWS points at the certificate. Default: `JWK_SET`.
+* **`jwk-algorithm`** (`X9_CERTIFICATE_JWKALGORITHM`): the signing algorithm. `RS256`, `RS384`, `RS512`, `PS256`, `PS384` or `PS512` for an RSA key; `ES256`, `ES384` or `ES512`, each on its own curve, for an EC key. Default: `PS512`. An algorithm the key cannot sign with stops the service at start.
 
-The **endpointType** configuration defines how the public certificate is exposed on JWS generated. The options are:
-* **`NONE`**: Expose certificates using x5c field on JWS
-* **`PEM`**: Expose certificates using x5u field with public URL on JWS
-* **`JWK_SET`**: Expose certificates using jku field with public JWK Set URL on JWS
+The **endpoint type** defines how the public certificate is exposed on a generated JWS. The options are:
+* **`NONE`**: the certificate chain itself, in the `x5c` field
+* **`PEM`**: the `x5u` field, the public URL of the chain in PEM (`/pub/.well-known/certificate/x9-key.pem`)
+* **`JWK_SET`**: the `jku` field, the public JWK Set URL (`/pub/.well-known/jwks`)
 
-To configure the private key and truststore, you can use the following environment variables:
-* `KEYSTORE_PATH`: The path to the keystore file containing the private key within completed certificate chain.
-* `KEYSTORE_PASSWORD`: The password for the keystore.
-* `PRIVATE_KEY_PASSWORD`: The password for the private key within the keystore.
-* `TRUSTSTORE_PATH`: The path to the truststore file containing trusted certificates. **Notice:** should contain X9 Root CA and X9 intermediate CAs.
-* `TRUSTSTORE_PASSWORD`: The password for the truststore.``
+The private key and the truststore are files, configured with these variables:
+* `X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION`: the file holding the private key and its complete certificate chain. The Go build reads PEM or PKCS#12; a JKS file is refused. Empty: the bundled demo key (NON-PRODUCTION).
+* `X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD`: the password of a PKCS#12 keystore.
+* `X9_CERTIFICATE_PRIVATEKEYSTORE_PRIVATEKEYPASSWORD`: the password of the private key, when it differs from the keystore's (Java only; a PKCS#12 file has one password).
+* `X9_CERTIFICATE_TRUSTSTORE_LOCATION`: the truststore. **Notice:** it should contain the X9 Root CA and the X9 intermediate CAs.
+* `X9_CERTIFICATE_TRUSTSTORE_PASSWORD`: the password of the truststore.
 
 ### Signature Tools and Features
 
@@ -593,6 +600,109 @@ This includes conformance to X9.150’s requirements for:
 
 In addition, protection of QR Code Content and associated payloads using this Standard **SHALL** provide integrity and authenticity properties aligned with those defined in ANSI X9.148 Quick Response (QR) Code – Protection Using Cryptographic Solutions.
 
+# The Java build
+
+The service was first built in Java 25 on Spring Boot 3.5.x, with MongoDB, following the Clean /
+Hexagonal Architecture pattern. That build is still in this repository, and the image on Docker Hub
+is still built from it, until the cutover ([HISTORY.md](HISTORY.md)). It will then be frozen,
+unchanged, under `legacy/java/`. Everything about X9.150, JWS, rails, currencies and configuration
+in this README applies to both builds.
+
+## Java project structure
+
+Maven multi-module project following Clean / Hexagonal architecture:
+
+```
+x9-qrcode/
+├── x9-qrcode-build-init/      # Build bootstrap: installs vendored libs (others/libs), OpenAPI codegen
+├── x9-qrcode-domain/          # Entities, Value Objects, domain services — pure Java, NO Spring
+├── x9-qrcode-application/     # Use cases, DTOs, port interfaces, mappers — depends only on domain
+├── x9-qrcode-infrastructure/  # Spring Boot app: REST controllers, MongoDB, JWS, configuration
+├── secrets/                   # Local secrets & real keystores — GIT-IGNORED (only samples committed)
+├── official-spec/             # ANSI X9.150-2026 reference notes (the copyrighted standard — PDF & Markdown — is git-ignored)
+└── others/                    # helm/ (K8s charts) · benchmark/ (k6 harness) · scripts/ (cert gen, CI) · libs/ (vendored jars) · doc/
+```
+
+Inside each Java module:
+
+| Path | Contents |
+|------|----------|
+| `src/main/java` | Production code (package `com.matera.x9qrcode`) |
+| `src/main/resources` | `application*.yml`, the OpenAPI spec (`apis/openapi.yaml`), the self-signed sample keystore, DB changelog |
+| `src/test/java` | **Unit tests** (domain/application, pure Java) and **integration tests** (`@IntegrationTest`, `@DatabaseTest` with Testcontainers) |
+| `src/test/resources` | Test config (`application-test.yml`), and request/response **fixtures** & payloads used by the API-flow tests |
+
+## Running the Java build
+
+The app requires a **MongoDB with a replica set** (needed for multi-document transactions). It
+ships with a self-signed sample keystore so it runs out of the box; provide real X9-issued keys
+via the git-ignored `secrets/` folder to sign with your own certificates (see [`secrets/README.md`](secrets/README.md)).
+
+> **First time here?** See **[RUNNING.md](RUNNING.md)** for a step-by-step first-run guide
+> (prerequisites, host-JVM vs Docker, building the image, and a `make help` of shortcuts).
+
+There are three ways to run it:
+
+1. **Standalone (JVM)** — build and run the Spring Boot app directly:
+   ```bash
+   mvn clean install
+   mvn -pl x9-qrcode-infrastructure spring-boot:run
+   ```
+
+2. **Docker Compose** — self-contained (app + a single-node MongoDB replica set):
+   ```bash
+   docker compose up -d                               # bundled sample keystore
+   docker compose -f docker-compose.prod.yml up -d    # your own secrets (mounts secrets/)
+   ```
+
+3. **Kubernetes** — via the Helm chart under `others/helm/x9-qrcode/`. Keep `replicaCount: 1`
+   (see [High Availability](HIGH-AVAILABILITY.md) for the single-active-instance posture).
+
+The Java build needs MongoDB **as a replica set**, pinned to `mongo:7.0.45`. Why it is pinned, and
+what to check before changing the tag, is in
+[RUNNING.md, "Java build (legacy): MongoDB"](RUNNING.md#java-build-legacy-mongodb).
+
+### See a whole payment happen
+
+To watch an actual payment rather than a single booted service, run two instances against each
+other — one issues a QR Code, the other scans it, announces the payment, pays, and reports it:
+
+```bash
+docker compose up -d mongo mongo-setup     # a replica set for both instances
+mvn -q package -DskipTests
+./others/demo/two-instance-payment-cycle.sh
+```
+
+No Docker for the apps, no proxy and no network: Spring terminates TLS from a throwaway
+certificate the script generates. See [`others/demo/README.md`](others/demo/README.md) — which also
+explains why **two deployments cannot transact over plain HTTP**, and how to satisfy that with
+Spring's own TLS, an nginx in front, or a tunnel.
+
+### Pull the prebuilt image (Docker Hub)
+
+A multi-architecture image (**linux/amd64 + linux/arm64**) is published on Docker Hub at
+[`materainc/x9-qrcode`](https://hub.docker.com/r/materainc/x9-qrcode). Until the cutover it is the
+Java build:
+
+```bash
+docker pull materainc/x9-qrcode:latest          # newest build — auto-selects your architecture
+docker pull materainc/x9-qrcode:git-<short-sha> # a specific commit (immutable), e.g. git-3ddaee1
+```
+
+Tags: `latest` (multi-arch, floating), `git-<short-sha>` (immutable, pinned to a source commit), and
+the per-arch `latest-arm64` / `latest-amd64`.
+
+Each image records the exact source commit it was built from, via standard OCI labels — so you can
+always tell which version you're running (and that anything committed after it is *not* in the image):
+
+```bash
+docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' materainc/x9-qrcode:latest
+# -> the full git SHA on https://github.com/matera-inc/x9.150-qrcode
+```
+
+The image is the application only; it still needs a **MongoDB replica set**. The quickest way to run
+it with a bundled Mongo is Docker Compose (above); to run the pulled image against your own database,
+point it there with the `SPRING_DATA_MONGODB_*` environment variables — see [RUNNING.md](RUNNING.md).
 
 ---
 
