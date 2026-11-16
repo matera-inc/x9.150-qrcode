@@ -75,6 +75,9 @@ func serve(a http.Handler, method, target, contentType, body string) *httptest.R
 	return w
 }
 
+// X9-SIG-535 (ADR-0028, a known difference between the builds): every 500, a panic included, is the
+// internal-error problem with no detail of its cause (TOLERATED-DIFFERENCES.md, entry 5).
+//
 // S9.2-AC4: a refusal is application/problem+json with the Java build's members, word for word as
 // the Java build wrote them.
 func TestProblemsAreJavas(t *testing.T) {
@@ -187,6 +190,9 @@ func TestUnroutedRequestsAreAnsweredAsSpringAnswersThem(t *testing.T) {
 	}
 }
 
+// X9-SIG-536 (ADR-0028, a known difference between the builds): a JSON body over 1 MiB is a 400
+// malformed-json (TOLERATED-DIFFERENCES.md, entry 6).
+//
 // S9.2-AC2: the body is read as Spring reads it.
 func TestBodiesAreReadAsSpringReadsThem(t *testing.T) {
 	a, _ := testAPI(t)

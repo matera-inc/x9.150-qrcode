@@ -19,7 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * The payer's side of the two-phase flow.
@@ -66,14 +66,24 @@ public class OutboundPaymentNotificationController implements PaymentNotificatio
 
         SendPaymentNotificationOutput output = sendPaymentNotificationUseCase.execute(input);
 
-        return new OutboundPaymentNotificationResultDTO()
+        OutboundPaymentNotificationResultDTO result = new OutboundPaymentNotificationResultDTO()
             .statusCode(output.statusCode())
             .accepted(output.accepted())
-            .body(output.body())
-            .signature(OutboundPaymentNotificationResultDTO.SignatureEnum.fromValue(output.signature().name()))
-            .signatureProblem(isNull(output.signatureProblem()) ? null
-                : OutboundPaymentNotificationResultDTO.SignatureProblemEnum.fromValue(output.signatureProblem().name()))
-            .signatureDetail(output.signatureDetail());
+            .signature(OutboundPaymentNotificationResultDTO.SignatureEnum.fromValue(output.signature().name()));
+        // The three nullable members are set only when they hold something: a generated nullable
+        // member set to null is written as null, and ADR-0028's NON_NULL says a value is omitted
+        // when it is null, as every other answer of this service and the Go build write it.
+        if (nonNull(output.body())) {
+            result.body(output.body());
+        }
+        if (nonNull(output.signatureProblem())) {
+            result.signatureProblem(
+                OutboundPaymentNotificationResultDTO.SignatureProblemEnum.fromValue(output.signatureProblem().name()));
+        }
+        if (nonNull(output.signatureDetail())) {
+            result.signatureDetail(output.signatureDetail());
+        }
+        return result;
     }
 
 }

@@ -284,6 +284,9 @@ func TestTheNotificationIsSignedAndPostedAsJOSE(t *testing.T) {
 	}
 }
 
+// X9-HOLD-505 (ADR-0028, a known difference between the builds): a blank transactionId is left off
+// the wire (TOLERATED-DIFFERENCES.md, entry 14).
+//
 // S10.6-AC1: the notification's optional members are written when sent, and only then; a blank
 // transactionId is no reference and is not written.
 func TestTheWireNotificationCarriesWhatWasSent(t *testing.T) {

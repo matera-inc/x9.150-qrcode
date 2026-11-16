@@ -347,6 +347,9 @@ func TestMalformedEMVIsRefusedBeforeAnyFetch(t *testing.T) {
 	}
 }
 
+// X9-DEC-515 (ADR-0028, a known difference between the builds): the nil UUID as correlationID is a
+// 400, nothing fetched (TOLERATED-DIFFERENCES.md, entry 20).
+//
 // The request's own contract: qrCode is required; a body that is not JSON is malformed-json.
 func TestTheRequestContractIsChecked(t *testing.T) {
 	f := serve(t)
@@ -502,6 +505,9 @@ func TestRelayedReasonsAreCappedAndPlain(t *testing.T) {
 	}
 }
 
+// X9-DEC-512 (ADR-0028, a known difference between the builds): a payee that does not answer within
+// the bounds is a 502 payload-unreachable (TOLERATED-DIFFERENCES.md, entry 17).
+//
 // S10.7-AC3: no answer, or a 5xx, is a 502 payload-unreachable that carries no address.
 func TestNoAnswerIsUnreachable(t *testing.T) {
 	for _, tc := range []struct {
@@ -677,6 +683,9 @@ func TestAForeignPayloadIsPresented(t *testing.T) {
 	}
 }
 
+// X9-DEC-513 (ADR-0028, a known difference between the builds): a verified payload that is not a
+// JSON object is a 400 business-rule, not a 500 (TOLERATED-DIFFERENCES.md, entry 18).
+//
 // A payload that verified and is not a JSON object has nothing to present.
 func TestAPayloadThatIsNotAnObjectIsRefused(t *testing.T) {
 	f := serve(t)

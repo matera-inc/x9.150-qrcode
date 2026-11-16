@@ -15,6 +15,14 @@ name: Black-box
 # the job (java_only tests skip with their reason; X9-TIME-015 is a strict expected failure on Go
 # until Epic 12's retention lands). On any other pull request it checks out, finds nothing to run,
 # and passes.
+#
+# The `differential` job (Story 11.2, ADR-0028) diffs what the two builds answered: both jobs above
+# record every exchange (X9_RECORD_DIR) and upload the recording as an artifact, and `differential`
+# downloads both and runs others/blackbox/differential.py with others/blackbox/TOLERATED-DIFFERENCES.md.
+# It fails on any difference no tolerated entry matches, on a test only one build recorded that no
+# entry names, and on an entry that matched nothing (stale). When `blackbox-go` found nothing to run,
+# there is no Go recording: `differential` says so and passes without diffing, so the check always
+# reports. It runs even when a suite failed, since the diff of a failing run is part of its story.
 
 on:
   pull_request:
@@ -48,12 +56,24 @@ jobs:
       - name: Run the black-box suite against it
         env:
           X9_IMAGE: x9-qrcode:ci
+          X9_RECORD_DIR: ${{ runner.temp }}/recording-java
         run: ./others/blackbox/deployment/run-against-image.sh
+
+      - name: Keep the recording for the differential run
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: recording-java
+          path: ${{ runner.temp }}/recording-java
+          if-no-files-found: warn
+          retention-days: 7
 
   blackbox-go:
     name: blackbox-go
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      ran: ${{ steps.changes.outputs.run }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,4 +104,72 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         env:
           X9_IMAGE: x9-qrcode:go
+          X9_RECORD_DIR: ${{ runner.temp }}/recording-go
         run: ./others/blackbox/deployment/run-against-image.sh
+
+      - name: Keep the recording for the differential run
+        if: ${{ !cancelled() && steps.changes.outputs.run == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: recording-go
+          path: ${{ runner.temp }}/recording-go
+          if-no-files-found: warn
+          retention-days: 7
+
+  differential:
+    name: differential
+    needs: [blackbox, blackbox-go]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Was there a Go run to compare?
+        id: go
+        env:
+          RAN: ${{ needs.blackbox-go.outputs.ran }}
+        run: |
+          if [ "$RAN" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "blackbox-go found nothing to run on this pull request, so there is no Go recording:"
+            echo "the differential run is not needed and passes without diffing."
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.go.outputs.run == 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.go.outputs.run == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Download both recordings
+        if: steps.go.outputs.run == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: recording-*
+          path: ${{ runner.temp }}/recordings
+
+      - name: Diff Java against Go, against the tolerated list
+        if: steps.go.outputs.run == 'true'
+        env:
+          RECORDINGS: ${{ runner.temp }}/recordings
+        run: |
+          for build in java go; do
+            if [ ! -f "$RECORDINGS/recording-$build/_tests.main.jsonl" ]; then
+              echo "No $build recording: its suite did not run to the end, so there is nothing to diff."
+              exit 1
+            fi
+          done
+          python others/blackbox/differential.py "$RECORDINGS/recording-java" "$RECORDINGS/recording-go" \
+            --json "$RECORDINGS/differences.json" --top 40
+
+      - name: Keep the report
+        if: ${{ !cancelled() && steps.go.outputs.run == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: differences
+          path: ${{ runner.temp }}/recordings/differences.json
+          if-no-files-found: ignore
+          retention-days: 14

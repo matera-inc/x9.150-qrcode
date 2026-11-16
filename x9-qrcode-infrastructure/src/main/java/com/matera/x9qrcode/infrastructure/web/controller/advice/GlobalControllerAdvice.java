@@ -7,6 +7,7 @@
 package com.matera.x9qrcode.infrastructure.web.controller.advice;
 
 import com.matera.x9qrcode.app.exception.EntityNotFoundException;
+import com.matera.x9qrcode.infrastructure.web.controller.validation.MissingRequiredFieldsException;
 import com.matera.x9qrcode.infrastructure.web.controller.validation.ReadOnlyFieldsChangedException;
 import com.matera.x9qrcode.app.exception.InvalidSignatureException;
 import com.matera.x9qrcode.app.exception.NotificationUndeliverableException;
@@ -81,6 +82,13 @@ public class GlobalControllerAdvice {
 
     @ExceptionHandler(ReadOnlyFieldsChangedException.class)
     public ProblemDetail handleReadOnlyFieldsChanged(ReadOnlyFieldsChangedException ex) {
+        logExceptionStacktrace(ex);
+
+        return createArgumentNotValidProblemDetail(ex.violations());
+    }
+
+    @ExceptionHandler(MissingRequiredFieldsException.class)
+    public ProblemDetail handleMissingRequiredFields(MissingRequiredFieldsException ex) {
         logExceptionStacktrace(ex);
 
         return createArgumentNotValidProblemDetail(ex.violations());

@@ -444,4 +444,29 @@ class SignedNotificationAnswerApiTest extends AbstractIntegrationTest {
         JWSObject yes = assertSignedAnswer(post(drifting.jws()), HttpStatus.OK.value());
         assertEquals(drifting.correlationId(), correlationIdOf(yes));
     }
+
+    // ------------------------------------------------------------ a signed message that is not a notification
+
+    /**
+     * <b>X9-SIG-159</b> — a verified JWS whose payload has no {@code payment} (a payload request,
+     * a payload response) is a signed 400 {@code validation-error} naming {@code payment}, not a 500.
+     *
+     * <p><b>Source:</b> Ours. ADR-0028 (the Go build answers it so); S11.2-AC3, found by the first
+     * differential run (the golden payload-request and payload-response tokens posted here).
+     *
+     * <p><b>Why:</b> A 500 says the fault is ours. A payer who signed the wrong kind of message, by
+     * mistake, should hear which member is missing, in the same words every other validation uses.
+     */
+    @Test
+    void aSignedMessageWithoutPaymentIsAValidationErrorNamingIt() throws Exception {
+        Question question = sign("{\"qrCodeContent\": \"MDAwMjAx\", \"dateForPayment\": \"2030-01-10\"}");
+
+        JWSObject answer = assertSignedAnswer(post(question.jws()), HttpStatus.BAD_REQUEST.value());
+        JsonNode body = bodyOf(answer);
+
+        assertEquals(question.correlationId(), correlationIdOf(answer), "the question verified, so it is echoed");
+        assertEquals("https://x9.matera.com/api/validation-error", body.path("type").asText(), body.toString());
+        assertEquals("One or more fields failed validation.", body.path("detail").asText(), body.toString());
+        assertEquals("[\"payment: must not be null\"]", body.path("violations").toString(), body.toString());
+    }
 }

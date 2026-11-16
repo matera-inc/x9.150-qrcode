@@ -97,7 +97,7 @@ The `blackbox-go` job, beside `blackbox`, builds the image with `make go-image` 
 this on every pull request that touches the Go code, `db/` or `others/blackbox/`, and fails it on
 any failure; on any other pull request it passes without running.
 
-### Differential run: what Java answered against what Go answered (Story 11.1)
+### Differential run: what Java answered against what Go answered (Stories 11.1, 11.2)
 
 ADR-0028 proves the two builds equivalent by a diff, not a claim: the same suite against each, the
 answers recorded, normalised and compared.
@@ -121,7 +121,12 @@ out of the suite's container when the run ends.
 
 **The diff** (`differential.py`, standard library only) pairs the two recordings by test and, inside
 a test, by position, aligned on the request so that an exchange only one build made is reported by
-its index and the rest still pair. Before comparing it normalises both sides: JSON compared as
+its index and the rest still pair. Before comparing it normalises both sides. Normalising removes
+only what changes from one run of the *same* build to the next, never a difference between the
+builds; one rule is a decision rather than noise, and is written here so that nobody mistakes it
+for one: **`violations` are compared as a set**, because the Java build's order of violations
+changes from run to run (Bean Validation reports them from a hash set), so no order can be promised
+to a client today. The rules: JSON compared as
 values (whitespace and key order ignored); server-minted ids, `correlationId`s, event ids, cursors,
 times and dates masked (keeping whether an offset is `Z` or numeric); a JWS compared as its decoded
 header minus `iat`, `correlationId`, `x5c` and the certificate thumbprint, and its decoded payload,
@@ -133,8 +138,80 @@ across QR Codes it is timing), and a run of polls counted once, its last. Then s
 `ETag`, `Content-Type`, `Location` and the body must match. It prints counts by kind, the most
 recurring differences and every difference, and `--json` writes them with the test node id, the
 exchange index, the field and both values. A test only one build recorded is named with why
-(`go_only`, `java_only`, skipped). It exits 1 on any difference; the tolerated list and the CI job
-are Story 11.2. Its own tests are `tests/test_differential.py` (`X9-SUITE-516` to `524`).
+(`go_only`, `java_only`, skipped). Its own tests are `tests/test_differential.py` (`X9-SUITE-516`
+to `529`).
+
+**The tolerated list** ([TOLERATED-DIFFERENCES.md](TOLERATED-DIFFERENCES.md), Story 11.2) is every
+difference ADR-0028 accepts: per entry, the two answers, the reason, the test keys that show it,
+and one fenced `json` block, the matcher the diff applies. The diff reads it by default
+(`--tolerated FILE` for another, `--no-tolerated` for none) and **exits 1** on a difference no entry
+matches, on a test only one build recorded that no entry names, and on an entry selector that
+matched nothing in the run (**stale**: the difference has gone away, so the entry must go too, or
+its matcher was mistyped). It exits 2 on a list it cannot read, naming the entry. An entry marked
+`"status": "pending"` is a difference the owner has not ruled on: it is tolerated, so that the run
+is not red on it, and every report prints it under **PENDING, NEEDS THE OWNER** until it is decided.
+
+In CI the `blackbox` and `blackbox-go` jobs record, upload their recordings as the artifacts
+`recording-java` and `recording-go`, and the `differential` job diffs them and uploads
+`differences.json`. When `blackbox-go` found nothing to run (a pull request that touches neither the
+Go code, `db/` nor the suite), there is no Go recording, and `differential` says so and passes.
+
+#### Reading a failing differential run
+
+The text report, in order: the counts by kind; the tests only one build recorded (each with
+`[entry N]` once tolerated); **Tolerated differences**, one line per entry with how many rows it
+matched (`STALE: differences[0] matched nothing` names a dead selector); the pending entries, in
+capitals; the line **Not tolerated: …**; then the recurring differences no entry tolerates, and every
+one of them, as `test #javaIndex/goIndex kind request field: java … | go …`. The JSON report
+(`--json`, the `differences` artifact in CI) has the same rows, each with `tolerated` set to the
+entry number or `null`, and `tolerated.entries` with each selector's count.
+
+For each untolerated row, look at the two values first, then at the exchange itself in the
+recordings (`<recording>/<test file name>.jsonl`, the line with that `index`):
+
+1. **One build is wrong** (it breaks X9.150, an ADR or the contract): fix it, in Go; in Java only
+   when the fix is small (ADR-0028 froze it). Then the row disappears.
+2. **The difference is per run** (an id, a time, an order nobody promises) and the normaliser
+   missed it: teach the normaliser (`normalise`, `MASKED_MEMBERS`, `UNORDERED_MEMBERS`) with a test in
+   `test_differential.py`, and say so in the rules above.
+3. **The difference is intended:** add an entry, below. Never widen an entry's matcher to swallow a
+   row it was not written for.
+
+A stale entry means the difference is gone: remove the entry (or its selector), unless it is a
+per-run difference, which `"mayNotOccur": true` on the selector says.
+
+#### Adding an entry
+
+Append to TOLERATED-DIFFERENCES.md, numbered after the last one (numbers are never reused):
+
+````markdown
+## 28. What differs, in a few words
+
+**Java:** what Java answers. **Go:** what Go answers.
+
+**Reason:** why Go is right, or why the owner accepts it, naming the standard, ADR or story.
+
+**Keys:** `X9-AREA-NNN`
+
+```json
+{"entry": 28, "differences": [
+  {"test": "::test_the_test_name(\\[|$)", "request": "GET /api/v1/payment-request/<id>",
+   "field": "body\\.some\\.member", "java": "<absent>", "go": null}
+]}
+```
+````
+
+- **Keys** must be tests that exist (`docs/check/check_rule_coverage.py` checks every key the file
+  names). A Go test is keyed by the first words of its doc comment (`// X9-SIG-534 (...): ...`).
+- A selector names its `test` (a regular expression searched in the pytest node id) and as little
+  else as it needs, as narrowly as it can: `request` and `field` are regular expressions the whole
+  value must match; `java` and `go` are the normalised values exactly (`"<absent>"` for a member one
+  side does not have); `javaPattern`/`goPattern` match a value as text; `present: true` requires
+  both sides to have a value; `kind` is `status`, `body`, `header:ETag` and so on.
+- `oneBuild` selectors name a `go_only` or `java_only` test (`test`, `recordedBy`, `why`).
+- An entry no black-box exchange can show is proved by a Go test instead: `"proof": "go-test"`, and
+  its key names that test. `"proof": "normalised"` is for what the normaliser removes (whitespace).
+- `"status": "pending"` for a difference the owner has not ruled on yet; take it off when they do.
 
 ### The deployment under test
 
@@ -205,7 +282,8 @@ others/blackbox/
 ├── builds.py          which build is under test (java or go), for marks decided at import
 ├── required_keys.py   an optional required-keys list for a partial run (X9_REQUIRED_KEYS)
 ├── recorder.py        tells the recorder which test (or shared fixture) is running
-├── differential.py    the diff of two recordings, Java against Go (Story 11.1)
+├── differential.py    the diff of two recordings, Java against Go (Story 11.1), against the list
+├── TOLERATED-DIFFERENCES.md   every difference ADR-0028 accepts, with its matcher (Story 11.2)
 ├── run.py             `uv run` entry point (PEP 723)
 └── pytest.ini         markers: serial, java_only, go_only
 ```

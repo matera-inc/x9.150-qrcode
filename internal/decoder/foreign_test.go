@@ -94,6 +94,10 @@ const foreignPresented = `{
   ]
 }`
 
+// X9-DEC-514 (ADR-0028, a known difference between the builds): a member of the wrong JSON type is
+// dropped and an unreadable date-time presented as written, not a 500 (TOLERATED-DIFFERENCES.md,
+// entry 19).
+//
 // S10.7-AC5: read with tolerance, member by member (see foreign.go).
 func TestReadForeign(t *testing.T) {
 	for _, tc := range []struct{ name, in, want string }{

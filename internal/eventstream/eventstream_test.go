@@ -208,6 +208,9 @@ func TestParameters(t *testing.T) {
 	}
 }
 
+// X9-EVT-505 (ADR-0028, a known difference between the builds): a cursor that is neither empty, a
+// decimal seq nor a ULID is a 400 naming after (TOLERATED-DIFFERENCES.md, entry 4).
+//
 // S10.1-AC1: the forms of after.
 func TestAfter(t *testing.T) {
 	const ulid = "01JC9Z8Y7X6W5V4T3S2R1Q0P9N"

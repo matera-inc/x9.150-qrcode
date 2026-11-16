@@ -478,6 +478,23 @@ what a bad one means on each path (owner, later the same day).
 | `R-ADR0027-12` | Every signed answer from another party must carry in its header exactly the `correlationId` of the request this service sent, the caller's or the one generated for it (owner, 2026-11-15). The decoder refuses a payload under another id or none; the outbound notification does not take such an answer as the payee's (what each does: `R-ADR0027-13`). | `X9-DEC-022`, `X9-DEC-023`, `X9-DEC-024`, `X9-DEC-025`, `X9-DEC-506`, `X9-DEC-507`, `X9-SIG-132`, `X9-SIG-143`, `X9-SIG-529`, `decoder_test.go::TestAPayloadThatDoesNotVerifyIsRefused`, `outbound_test.go::TestTheAnswerIsReported` | — |
 | `R-ADR0027-13` | A bad correlationId is `CORRELATION_ID_MISMATCH`, or `BAD_HEADER` with none or another in the header; the verifier's code decides first. The decoder refuses it, 400, `QR Code is invalid (bad correlationId)`. Before the money moves (no `transactionId`) the outbound notification refuses it, 502 notification-undeliverable, `failed to pay - payee is not responding (bad correlationId)`, after one delivery. After it moved, the notification is sent once more under a new correlationId; a good answer is reported, a second bad one (or none) is reported as it is and recorded in a WARN line with the QR Code, the `transactionId`, both correlationIds sent and answered, and when (owner, 2026-11-15). | `X9-DEC-023`, `X9-DEC-024`, `X9-DEC-026`, `X9-DEC-506`, `X9-DEC-507`, `X9-DEC-508`, `X9-SIG-132`, `X9-SIG-143`, `X9-SIG-154`, `X9-SIG-155`, `X9-SIG-156`, `X9-SIG-157`, `X9-SIG-158`, `X9-SIG-506`, `X9-SIG-529`, `X9-SIG-530`, `X9-SIG-531`, `echo_test.go::TestNotEchoed`, `decoder_test.go::TestAPayloadThatDoesNotVerifyIsRefused`, `correlation_test.go::TestABadCorrelationIDBeforeTheMoneyMovesIs502`, `correlation_test.go::TestABadCorrelationIDAfterTheMoneyMovedIsSentOnceMore`, `correlation_test.go::TestABadCorrelationIDTwiceAfterTheMoneyMovedIsRecorded` | — |
 
+## ADR-0028: the differential run
+
+The two builds are proved equivalent by diffing what each answered to the same black-box suite
+(Stories 11.1 and 11.2). The tolerated differences themselves are in
+[`others/blackbox/TOLERATED-DIFFERENCES.md`](../others/blackbox/TOLERATED-DIFFERENCES.md), each with
+the keys of the tests that show it; the rules here are the run's own, and the NON_NULL rule the first
+run found both builds breaking.
+
+| Rule | What it says | Tests | Proves |
+|---|---|---|---|
+| `R-ADR0028-01` | The normalised answers of the two builds (status, `ETag`, `Content-Type`, `Location`, body) must match; a difference no tolerated entry matches fails the build, and so does a test only one build recorded that no entry names. | `X9-SUITE-522`, `X9-SUITE-523`, `X9-SUITE-526` | `S11.2-AC2` |
+| `R-ADR0028-02` | A tolerated entry, or one of its selectors, that matched nothing in a run is stale and fails the build, unless its difference depends on the run (`mayNotOccur`) or no recording can show it (proved by a Go test, or removed by the normaliser). | `X9-SUITE-527` | `S11.2-AC2` |
+| `R-ADR0028-03` | Every tolerated difference has a number, its reason, at least one test key that exists, and one machine-readable matcher; the list takes over every row of ADR-0028's former table; a list that cannot be applied as written stops the run. | `X9-SUITE-525`, `X9-SUITE-529` | `S11.2-AC1` |
+| `R-ADR0028-04` | A difference the owner has not ruled on is entered as `pending`: tolerated, so that the run is not red, and reported loudly by every run until it is decided. | `X9-SUITE-528` | `S11.2-AC2` |
+| `R-ADR0028-05` | NON_NULL: a value is omitted only when it is null, in both builds: `paymentNotification.data` on GET, and the payer-side pre-payment and post-payment answers (`signatureProblem`, `signatureDetail`, `body`). | `X9-HOLD-506`, `X9-SIG-130`, `X9-SIG-136`, `httpapi_test.go::TestAnswersOmitOnlyNull` | `S11.2-AC3` |
+| `R-ADR0028-06` | A verified JWS that is not a payment notification (no `payment`), posted where one is expected, is the caller's 400 `validation-error` naming `payment`, never a 500, in both builds. | `X9-SIG-159` | `S11.2-AC3` |
+
 ---
 
 <sub>Copyright © 2026 Matera Systems, Inc. Licensed under the Matera Source License v1.0 (source-available; not open source) — see LICENSE.md at the repository root. Creating a Derivative Work from this document — by AI/ML generation or by manual re-implementation based on it — is governed by that license (see the "Derivative Work" definition and Annex A).</sub>
