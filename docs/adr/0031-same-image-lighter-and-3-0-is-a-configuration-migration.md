@@ -47,7 +47,7 @@ converter.)*
 | Surface | Kept as |
 |---|---|
 | Image | `materainc/x9-qrcode`, multi-arch amd64 + arm64 |
-| Ports | `8080` API; the management port as today |
+| Ports | `8080` API. *(Amended 2026-11-16: the separate management port is dropped; health, prometheus and info are served on `8080`, as [CONFIGURATION-FROM-JAVA.md](../CONFIGURATION-FROM-JAVA.md) and [UPGRADING-TO-3.md](../../UPGRADING-TO-3.md) say.)* |
 | Contract | [0028](0028-the-http-contract-is-frozen-and-equivalence-is-proved-by-a-differential-run.md) |
 | Health | `/actuator/health`, `/actuator/health/liveness`, `/actuator/health/readiness`, same JSON shape |
 | Metrics | `/actuator/prometheus`. The plan inventories every metric Java exports; each is kept under its name or listed as dropped. *(Done, Story 14.1: [METRICS.md](../METRICS.md).)* |
