@@ -354,7 +354,8 @@ None. The service has no UI.
 | FR23 | Epic 8 | EMV, keys, PKI and revocation, JWS signing and verification, the test clock in Go |
 | FR24 | Epic 9 | create, GET, PATCH with audit, status-update, ETag and `If-Match`, location rebind, on PostgreSQL |
 | FR25 | Epic 10 | event stream, published keys and signature endpoints, payload, notifications under ADR-0036, payer-side endpoints, decoder; the whole black-box suite green on Go |
-| FR26–FR32 | Epics 11–17 | stubs for plan phases 7–12 |
+| FR26 | Epic 11 | the differential run and interop |
+| FR27–FR32 | Epics 12–17 | stubs for plan phases 8–12 |
 
 ## Epic List
 
@@ -364,8 +365,8 @@ alongside 3–4.
 **Track B: Go/PostgreSQL foundations.** Epics 6–7 follow each other, and the track runs in parallel
 with track A.
 
-**Stubs.** Epics 11–17. Epic 8 was detailed on 2026-11-14, once Epic 4 was green; Epics 9 and 10
-on 2026-11-15, once Epic 8 was built.
+**Stubs.** Epics 12–17. Epic 8 was detailed on 2026-11-14, once Epic 4 was green; Epics 9 and 10
+on 2026-11-15, once Epic 8 was built; Epic 11 on 2026-11-16, once Epic 10 was done.
 
 ### Epic 1: The docs tell the truth
 
@@ -443,11 +444,18 @@ against the Go image, except the `java_only` tests and retention (Epic 12).
 
 **FRs covered:** FR25
 
-### Epics 11–17: stubs (detailed later)
+### Epic 11: Proven equivalent to Java: the differential run and interop
+
+The same inputs go to both builds and their normalised answers are diffed; every difference is on
+`TOLERATED-DIFFERENCES.md` with its reason or it fails the build. The two builds pay each other in
+all four pairings.
+
+**FRs covered:** FR26
+
+### Epics 12–17: stubs (detailed later)
 
 | Epic | Phase | Scope |
 |---|---|---|
-| 11 | 7 | Proven equivalent to Java: differential run and interop (FR26) |
 | 12 | 8 | Retention without surprises: housekeeping (FR27) |
 | 13 | 9 | Operators can migrate data and configuration (FR28) |
 | 14 | 10 | The lighter image ships (FR29) |
@@ -2611,15 +2619,119 @@ the "cursor ahead of log" answer, an expired QR Code kept)
 **Then** each is listed, with its test key, in the pull request for Epic 11's
 `TOLERATED-DIFFERENCES.md`; no rule-coverage row loses its test.
 
-## Epics 11–17: stubs
+## Epic 11: Proven equivalent to Java: the differential run and interop
 
-Detailed in a later run of this workflow. Epic 11 proves equivalent what Epics 9 and 10 port,
-the Epic 2 behaviour included (signed answers and their verification, pre-commit on every rail, the
-holder retry and takeover event, exact `validUntil`).
+Both builds already pass the whole black-box suite on their own (Story 10.8). This epic proves
+they answer **alike**: the same inputs to Java and to Go, their normalised answers diffed, and every
+difference either on a written list with its reason or a failure. It also proves the two builds pay
+each other: a payer's PSP on one build, the payee on the other, in all four pairings.
+
+**Implements:** FR26; ADR-0028 (equivalence is a differential run; the known differences),
+ADR-0030 (the suite defines done), ADR-0034; plan §7 (phase 7).
+
+Precedence stays X9.150 > this repository's ADRs > Java. A difference where Go follows the standard
+and Java does not is tolerated, listed, and keeps its strict expected failure on Java; it is never
+"fixed" by copying Java.
+
+Order: 11.1, then 11.2; 11.3 and 11.4 alongside them.
+
+### Story 11.1: The suite records what each build answered, and a diff compares them
+
+As the **owner**,
+I want every request the suite sends and every answer it gets recorded, per build, and compared,
+So that "Go answers as Java does" is a diff, not a claim.
+
+**Implements:** ADR-0028 ("normalised responses are diffed")
+
+**Acceptance Criteria:**
+
+**S11.1-AC1.** **Given** `X9_RECORD_DIR` set
+**Then** the suite's HTTP client writes, for every test, each exchange in order: method, path
+(ids masked), the request body, and the answer's status, `ETag`, `Content-Type`, `Location` and body.
+Nothing changes when it is unset.
+
+**S11.1-AC2.** **Given** two recordings, one per build
+**Then** a diff tool pairs exchanges by test node id and position and compares them after
+normalising: JSON re-serialised (whitespace and key order ignored); server-minted ids,
+`correlationId`s, times, JWS signatures and certificates masked; a signed body compared on its
+decoded header (minus per-run values such as `iat`) and its decoded payload. Status, `ETag`,
+`Content-Type`, `Location` and the normalised body must match.
+
+**S11.1-AC3.** **Given** a test whose exchanges differ in number (a `go_only` or `java_only` test, a
+retry)
+**Then** the diff reports it by name and does not misalign the rest.
+
+**S11.1-AC4.** **Given** the diff tool
+**Then** its own unit tests prove each masking rule, and that a real difference (a changed status, a
+changed violation text, a member added or dropped) is caught.
+
+### Story 11.2: Every tolerated difference is written down, and anything else fails the build
+
+As an **integrator**,
+I want every place the builds answer differently listed with its reason,
+So that I know exactly what changes when I move to Go.
+
+**Implements:** ADR-0028 (`TOLERATED-DIFFERENCES.md`; "a difference not on that list fails the build")
+
+**Acceptance Criteria:**
+
+**S11.2-AC1.** **Given** `others/blackbox/TOLERATED-DIFFERENCES.md`
+**Then** it takes over ADR-0028's "Known differences between the builds" (every row), BUG-004, the
+cursor ahead of the log and the expired QR Code kept; each entry has a number, the reason, the test
+keys that show it, and a machine-readable matcher the diff applies (which tests, which exchange,
+which field). ADR-0028's table points to it.
+
+**S11.2-AC2.** **Given** a CI job `differential`
+**Then** it runs the suite against both images with recording on (reusing the `blackbox` and
+`blackbox-go` runs' recordings where possible), runs the diff, and fails on any difference that no
+tolerated entry matches, and on any tolerated entry that matched nothing (stale).
+
+**S11.2-AC3.** **Given** the first full diff
+**Then** every untolerated difference it finds is either fixed (in Go; or in Java, when Java is
+clearly wrong and the fix is small) or added to the list with a reason the owner accepts; none is
+left failing.
+
+### Story 11.3: The two builds pay each other, in all four pairings
+
+As a **bank** running one build while its counterpart runs the other,
+I want a payment to complete between them,
+So that the migration can happen one bank at a time.
+
+**Implements:** plan §7 ("`two-instance-payment-cycle.sh` in all four Java/Go pairings")
+
+**Acceptance Criteria:**
+
+**S11.3-AC1.** **Given** `others/demo/two-instance-payment-cycle.sh`
+**Then** it takes an image (and so a build) per instance, and runs the whole cycle (create, decode,
+payload fetch, pre-commit, post-commit, status `PAID`, events) for Java→Java, Java→Go, Go→Java and
+Go→Go, with every signed answer verified by the other side.
+
+**S11.3-AC2.** **Given** CI
+**Then** a job runs the four pairings on pull requests touching the Go code, `db/`, the demo or the
+suite, and fails if any pairing does not complete.
+
+### Story 11.4: The known differences each have a Go test
+
+As the **owner**,
+I want every Go-only behaviour on the list proven by a test,
+So that a regression in one is caught.
+
+**Implements:** ADR-0028; Story 10.8's audit
+
+**Acceptance Criteria:**
+
+**S11.4-AC1.** **Given** the known differences with no Go test or a partial one (Story 10.8's audit:
+rows 7, 15, 22 and the "no proxy" part of 17; rows 10, 13, 16 and 21 partly)
+**Then** each gets a Go test (black-box where the suite can drive it, otherwise a handler or unit
+test), keyed and listed in `docs/TEST-INDEX.md`, and its entry in `TOLERATED-DIFFERENCES.md` names
+the key.
+
+## Epics 12–17: stubs
+
+Detailed in a later run of this workflow.
 
 | Epic | Phase | Scope |
 |---|---|---|
-| 11 | 7 | Proven equivalent to Java: differential run and interop (FR26) |
 | 12 | 8 | Retention without surprises: housekeeping (FR27) |
 | 13 | 9 | Operators can migrate data and configuration, reservation holders included; the legacy `SPRING_*`, `MONGO*` and `JASYPT_*` variables are housekept out of the Helm chart, the compose files and the docs, since the Go service refuses them (owner, 2026-11-14) (FR28) |
 | 14 | 10 | The lighter image ships (FR29) |
