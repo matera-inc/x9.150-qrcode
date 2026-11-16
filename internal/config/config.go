@@ -50,6 +50,9 @@ type Config struct {
 	Testing         Testing         `yaml:"testing"`
 	Certificate     Certificate     `yaml:"certificate"`
 	Keystore        Keystore        `yaml:"keystore"`
+	Events          Events          `yaml:"events"`
+	QRCode          QRCode          `yaml:"qrcode"`
+	Retention       Retention       `yaml:"retention"`
 }
 
 // DefaultPublicHost is the public host when neither the file nor the environment sets one: the
@@ -228,6 +231,102 @@ type KeystoreReload struct {
 	Frequency int `yaml:"frequency"`
 }
 
+// Events is how long the event log keeps an event (ADR-0029): payment_event rows older than
+// Retention, by the business clock, are deleted by the retention job. A consumer must read its
+// events within it.
+type Events struct {
+	Retention Duration `yaml:"retention"`
+}
+
+// QRCode is how long a QR Code is kept (ADR-0029): a qr_code row whose valid_until and revised_at
+// are both older than Retention is deleted, in any status, with its audit-log and notification
+// rows. An expired QR Code stays readable until then. It must not be shorter than
+// events.retention.
+type QRCode struct {
+	Retention Duration `yaml:"retention"`
+}
+
+// Retention is the retention job's timer (ADR-0029): how long it waits, in real time, between the
+// end of one run and the start of the next. A test deployment shortens it so that a moved test
+// clock is acted on quickly.
+type Retention struct {
+	Interval Duration `yaml:"interval"`
+}
+
+// Duration is an ISO-8601 duration of days, hours, minutes and seconds (P30D, PT1H, P1DT12H,
+// PT90S), as the Java build writes its durations. Years, months and weeks are refused: their
+// length is not fixed.
+type Duration time.Duration
+
+// isoDuration is the subset of ISO-8601 that Duration reads.
+var isoDuration = regexp.MustCompile(`^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$`)
+
+// maxDurationDays bounds a Duration to about a century, as the test clock's offset is bounded, so
+// that no cutoff arithmetic overflows.
+const maxDurationDays = 36_525
+
+// ParseDuration reads an ISO-8601 duration such as P30D or PT1H, case-insensitively.
+func ParseDuration(s string) (Duration, error) {
+	text := strings.ToUpper(strings.TrimSpace(s))
+	m := isoDuration.FindStringSubmatch(text)
+	if m == nil || text == "P" || strings.HasSuffix(text, "T") {
+		return 0, fmt.Errorf("%q is not an ISO-8601 duration of days, hours, minutes and seconds, such as P30D or PT1H", s)
+	}
+	var total time.Duration
+	for i, unit := range []time.Duration{24 * time.Hour, time.Hour, time.Minute, time.Second} {
+		if m[i+1] == "" {
+			continue
+		}
+		n, err := strconv.ParseInt(m[i+1], 10, 64)
+		if err != nil || n > maxDurationDays*int64(24*time.Hour/unit) {
+			return 0, fmt.Errorf("%q is longer than %d days", s, maxDurationDays)
+		}
+		total += time.Duration(n) * unit
+	}
+	if total > maxDurationDays*24*time.Hour {
+		return 0, fmt.Errorf("%q is longer than %d days", s, maxDurationDays)
+	}
+	return Duration(total), nil
+}
+
+// String writes d as ISO-8601: P30D, PT1H, P1DT12H, PT0S.
+func (d Duration) String() string {
+	left := time.Duration(d)
+	days := left / (24 * time.Hour)
+	left -= days * 24 * time.Hour
+	var b strings.Builder
+	b.WriteString("P")
+	if days > 0 {
+		b.WriteString(strconv.FormatInt(int64(days), 10) + "D")
+	}
+	if left > 0 || days == 0 {
+		b.WriteString("T")
+		for _, u := range []struct {
+			unit time.Duration
+			name string
+		}{{time.Hour, "H"}, {time.Minute, "M"}, {time.Second, "S"}} {
+			if n := left / u.unit; n > 0 {
+				b.WriteString(strconv.FormatInt(int64(n), 10) + u.name)
+				left -= n * u.unit
+			}
+		}
+		if days == 0 && time.Duration(d) < time.Second {
+			b.WriteString("0S")
+		}
+	}
+	return b.String()
+}
+
+// UnmarshalYAML reads an ISO-8601 duration from the configuration file.
+func (d *Duration) UnmarshalYAML(n *yaml.Node) error {
+	v, err := ParseDuration(n.Value)
+	if err != nil {
+		return err
+	}
+	*d = v
+	return nil
+}
+
 // defaults are the values a key takes when neither the file nor the environment sets it. Nothing
 // security-relevant is here: no database host, credential, TLS mode or certificate. The public
 // host defaults to the Java build's placeholder, DefaultPublicHost.
@@ -241,6 +340,9 @@ func defaults() Config {
 		Testing:         Testing{ClockListen: "127.0.0.1:8099"},
 		Certificate:     Certificate{EndpointType: "JWK_SET", JWKAlgorithm: "PS512", IssuerName: "X9"},
 		Keystore:        Keystore{Reload: KeystoreReload{Frequency: 30000}},
+		Events:          Events{Retention: Duration(30 * 24 * time.Hour)},
+		QRCode:          QRCode{Retention: Duration(400 * 24 * time.Hour)},
+		Retention:       Retention{Interval: Duration(time.Hour)},
 	}
 }
 
@@ -289,6 +391,9 @@ var envVars = []envVar{
 	{"X9_CERTIFICATE_TRUSTSTORE_PASSWORD", "certificate.truststore.password", setString(func(c *Config) *string { return &c.Certificate.Truststore.Password })},
 	{"X9_CERTIFICATE_TRUSTSTORE_ALIAS", "certificate.truststore.alias", setString(func(c *Config) *string { return &c.Certificate.Truststore.Alias })},
 	{"KEYSTORE_RELOAD_FREQUENCY", "keystore.reload.frequency", setInt(func(c *Config) *int { return &c.Keystore.Reload.Frequency })},
+	{"X9_EVENTS_RETENTION", "events.retention", setDuration(func(c *Config) *Duration { return &c.Events.Retention })},
+	{"X9_QRCODE_RETENTION", "qrcode.retention", setDuration(func(c *Config) *Duration { return &c.QRCode.Retention })},
+	{"X9_RETENTION_INTERVAL", "retention.interval", setDuration(func(c *Config) *Duration { return &c.Retention.Interval })},
 }
 
 // unsupportedKeystoreVars are the Java build's HSM and provider settings, each with the value it
@@ -338,6 +443,17 @@ func setBool(field func(*Config) *bool) func(*Config, string) error {
 			return fmt.Errorf("%q is not true or false", v)
 		}
 		*field(c) = b
+		return nil
+	}
+}
+
+func setDuration(field func(*Config) *Duration) func(*Config, string) error {
+	return func(c *Config, v string) error {
+		d, err := ParseDuration(v)
+		if err != nil {
+			return err
+		}
+		*field(c) = d
 		return nil
 	}
 }
@@ -625,6 +741,32 @@ func (c Config) validate() []error {
 	}
 	if c.Testing.ClockControl {
 		errs = append(errs, c.Testing.validate(c.Server.Port)...)
+	}
+	errs = append(errs, c.validateRetention()...)
+	return errs
+}
+
+// validateRetention refuses a retention or an interval of zero, and a QR Code retention shorter
+// than the events' (ADR-0029): an event may describe a QR Code already purged, but a shorter QR
+// Code retention would make that the rule rather than the exception.
+func (c Config) validateRetention() []error {
+	var errs []error
+	for _, d := range []struct {
+		key   string
+		value Duration
+	}{
+		{"events.retention", c.Events.Retention},
+		{"qrcode.retention", c.QRCode.Retention},
+		{"retention.interval", c.Retention.Interval},
+	} {
+		if time.Duration(d.value) < time.Second {
+			errs = append(errs, problem(d.key, "must be at least one second, got %s", d.value))
+		}
+	}
+	if c.QRCode.Retention < c.Events.Retention {
+		errs = append(errs, problem("qrcode.retention", "%s is shorter than events.retention (%s) %s: a QR Code must be kept "+
+			"at least as long as its events (ADR-0029); lengthen qrcode.retention or shorten events.retention",
+			c.QRCode.Retention, envName("events.retention"), c.Events.Retention))
 	}
 	return errs
 }

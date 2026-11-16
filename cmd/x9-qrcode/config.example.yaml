@@ -55,6 +55,26 @@ log:
 reservation:
   ttl-seconds: 90                # X9_RESERVATION_TTL_SECONDS. 0 = no window; negative is invalid.
 
+# Retention (ADR-0029), the service's one background job. Durations are ISO-8601 days, hours, minutes
+# and seconds (P30D, PT1H, P1DT12H); years and months are refused. Each run deletes, on the business
+# clock and in small batches, first the events older than events.retention, then the QR Codes whose
+# validUntil and last revision are both older than qrcode.retention, in any status, with their audit
+# log and stored notifications. Nothing else is ever deleted, and no status is ever changed.
+# Start-up is refused if qrcode.retention is shorter than events.retention, naming both.
+# Sizing (BENCHMARK.md, "Database"): about 15 KB of PostgreSQL per payment: the QR Code row ~1.4 KB
+# and its signed notifications ~12.6 KB, both kept for qrcode.retention, and the events and indexes
+# the remaining ~1.3 KB. 10,000 payments a day kept P400D is therefore about 60 GB.
+events:
+  retention: P30D                # X9_EVENTS_RETENTION. An event older than this is deleted: a consumer of
+                                 # GET /pub/api/v1/events or of the table must read it before then.
+qrcode:
+  retention: P400D               # X9_QRCODE_RETENTION. An expired QR Code stays readable (with its expiry
+                                 # reason) until then, and a payee can still mark it paid; afterwards it
+                                 # is a 404. Shorten it to use less storage.
+retention:
+  interval: PT1H                 # X9_RETENTION_INTERVAL. Real time between the end of one run and the
+                                 # start of the next. A run that fails is logged and retried then.
+
 # The currencies this deployment accepts, and which may appear together (INTERPRETATION I-3): the Java
 # build's x9.currency.* keys and files. Empty: the files bundled with the service (USD, USDC and FRNT,
 # all in one dollar peg group). A path replaces one; each is strict JSON, read at start.

@@ -37,7 +37,9 @@ import (
 	"github.com/matera-inc/x9.150-qrcode/internal/httplog"
 	"github.com/matera-inc/x9.150-qrcode/internal/jws"
 	"github.com/matera-inc/x9.150-qrcode/internal/keys"
+	"github.com/matera-inc/x9.150-qrcode/internal/metrics"
 	"github.com/matera-inc/x9.150-qrcode/internal/outbound"
+	"github.com/matera-inc/x9.150-qrcode/internal/retention"
 
 	"github.com/matera-inc/x9.150-qrcode/internal/notification"
 	"github.com/matera-inc/x9.150-qrcode/internal/paymentrequest"
@@ -175,6 +177,9 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	// route takes, and request headers past 30 KB, as the Java build does (S9.2-AC1, S9.2-AC8).
 	api := httpapi.New(logger, businessClock.Now)
 	probes.Register(api.Mux())
+	// GET /actuator/prometheus: the retention job's counters (S12.2-AC1).
+	registry := &metrics.Registry{}
+	registry.Register(api.Mux())
 	st := store.New(pools.Write, pools.Read, businessClock)
 	events := eventstream.New(st)
 	events.Register(api)
@@ -212,6 +217,15 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	checked := make(chan error, 1)
 	go func() { checked <- awaitSchema(runCtx, logger, pools, cfg.Database.Schema) }()
 
+	// ── 4a. Retention (ADR-0029): one goroutine, one timer, started once the schema check passes and
+	// stopped before the pools close. Its cutoffs are the business clock's.
+	purge := retention.New(pools.Write, businessClock, retention.Config{
+		Events:   time.Duration(cfg.Events.Retention),
+		QRCodes:  time.Duration(cfg.QRCode.Retention),
+		Interval: time.Duration(cfg.Retention.Interval),
+	}, registry, logger)
+	var purging chan struct{} // closed when the job has stopped; nil until it starts
+
 	// ── 5. Run until SIGTERM, a refused schema, or a server failure ──────────────────────────
 	var runErr error
 	for running := true; running; {
@@ -225,6 +239,11 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 			} else if err == nil {
 				probes.SetReady(true)
 				logger.Info("x9-qrcode ready", "schema", cfg.Database.Schema, "changeset", database.ExpectedChangeset)
+				purging = make(chan struct{})
+				go func() {
+					defer close(purging)
+					purge.Run(runCtx)
+				}()
 			}
 		case <-ctx.Done():
 			running = false
@@ -235,6 +254,9 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 		if err := <-checked; err != nil {
 			logger.Debug("x9-qrcode schema check cut short by the shutdown", "err", err)
 		}
+	}
+	if purging != nil {
+		<-purging // runCtx is cancelled: the retention job stops before the pools close
 	}
 
 	// ── 6. Shut down (ADR-0031) ──────────────────────────────────────────────────────────────

@@ -65,6 +65,17 @@ func TestRunRefusesAnIncompleteConfiguration(t *testing.T) {
 	}
 }
 
+// S12.1-AC1: a QR Code retention shorter than the events' stops the service at start, naming both.
+func TestRunRefusesAQRCodeRetentionShorterThanTheEvents(t *testing.T) {
+	err := run(t.Context(), nil, []string{
+		"DATABASE_HOST=db", "DATABASE_NAME=bank", "DATABASE_USER=app", "DATABASE_PASSWORD=pw", "DATABASE_SSLMODE=disable",
+		"X9_EVENTS_RETENTION=P30D", "X9_QRCODE_RETENTION=P7D",
+	}, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "qrcode.retention (X9_QRCODE_RETENTION): P7D is shorter than events.retention (X9_EVENTS_RETENTION) P30D") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 // S7.1-AC2: Spring-style configuration is refused, naming the converter.
 func TestRunRefusesSpringConfiguration(t *testing.T) {
 	err := run(t.Context(), nil, []string{"SPRING_CONFIG_LOCATION=/config/application.yml"}, io.Discard)
@@ -257,6 +268,35 @@ func TestRunAgainstPostgres(t *testing.T) {
 		cancel()
 		if err := <-done; err != nil {
 			t.Fatalf("run returned %v", err)
+		}
+	})
+
+	// S12.1-AC4, S12.2-AC1: once ready, retention runs at once as the application role (its DELETE
+	// grants included), logs one line and counts it at /actuator/prometheus; on shutdown it stops
+	// before the pools close.
+	t.Run("runs retention and stops it", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		var out syncBuffer
+		done := make(chan error, 1)
+		port := freePort(ctx, t)
+		go func() { done <- run(ctx, nil, append(dbEnv(db, port), "X9_RETENTION_INTERVAL=PT1S"), &out) }()
+		waitForLog(t, &out, "x9-qrcode retention run")
+		code, body := probe(ctx, t, port, "/actuator/prometheus")
+		if code != http.StatusOK || !strings.Contains(body, `x9_retention_deleted_rows_total{table="qr_code"} 0`) ||
+			!strings.Contains(body, "x9_retention_runs_failed_total 0") {
+			t.Fatalf("/actuator/prometheus: %d\n%s", code, body)
+		}
+		cancel()
+		if err := <-done; err != nil {
+			t.Fatalf("run returned %v", err)
+		}
+		log := out.String()
+		stopped, closed := strings.Index(log, `"msg":"x9-qrcode retention stopped"`), strings.Index(log, `"msg":"x9-qrcode stopped"`)
+		if stopped < 0 || closed < stopped {
+			t.Fatalf("retention did not stop before the service:\n%s", log)
+		}
+		if strings.Contains(log, "retention run failed") {
+			t.Fatalf("a retention run failed:\n%s", log)
 		}
 	})
 
