@@ -158,6 +158,9 @@ func TestPatchAgainstPostgres(t *testing.T) {
 	}
 }
 
+// X9-PATCH-522 (ADR-0028, a known difference between the builds): an accepted PATCH answers with
+// the new ETag (TOLERATED-DIFFERENCES.md, entry 9).
+//
 // S9.7-AC1, S9.7-AC3, X9-MAP-002: an accepted PATCH answers 200 with the create's four members
 // and the new ETag; the row holds the merged request at revision n + 1 and revised_at now, with an
 // audit row (id, n, now, the changed tags, their previous values) and no event.

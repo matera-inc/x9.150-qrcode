@@ -265,6 +265,9 @@ func TestJWKSetOfAnECKey(t *testing.T) {
 	}
 }
 
+// X9-SIG-537 (ADR-0028, a known difference between the builds): a certificate name other than
+// x9-key.pem is a 404 (TOLERATED-DIFFERENCES.md, entry 11).
+//
 // S10.2-AC3: the certificate is served in PEM under the name x5u gives it, byte for byte as the
 // Java build serves it; any other name is a 404.
 func TestCertificateIsServedUnderItsName(t *testing.T) {
@@ -386,6 +389,9 @@ func TestGenerateSignsANumberAsSent(t *testing.T) {
 	}
 }
 
+// X9-SIG-538 (ADR-0028, a known difference between the builds): signature/generate refuses the nil
+// UUID as a Correlation-Id (TOLERATED-DIFFERENCES.md, entry 12).
+//
 // S10.2-AC4: the headers are read, and refused, as Spring reads them; the checks run in Spring's
 // order (media type, Correlation-Id, TTL-Seconds, body, then the ttl's value).
 func TestGenerateRefusalsAreJavas(t *testing.T) {

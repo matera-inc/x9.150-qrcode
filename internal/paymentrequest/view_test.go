@@ -216,3 +216,34 @@ func TestAnswers(t *testing.T) {
 		t.Fatal(p)
 	}
 }
+
+// X9-HOLD-506 (ADR-0028, NON_NULL; S11.2-AC3, found by the first differential run): a member the
+// payer sent as null is not shown as null in paymentNotification.data. Java omits it; the object
+// holding it stays, empty, as Java writes it (payer.info null gives "payer":{}).
+func TestViewLeavesOutTheNotificationsNullMembers(t *testing.T) {
+	id := uuid.MustParse("01a1dc2a-6a37-d73d-6313-076e9bfe04f5")
+	q := store.QRCode{
+		ID: id, LocationID: id, ValidUntil: time.Date(2030, 12, 31, 23, 59, 59, 0, time.UTC),
+		Status: domain.StatusPaymentInitiated, ReservedUntil: domain.NoLapse,
+		RequestJSON: json.RawMessage(`{"paymentNotification":{"kind":"DEFAULT"},` +
+			`"paymentMethods":[{"currency":"USDC","amount":1000,"networks":{"solana":{"recipient":"R"}}}]}`),
+	}
+	notification := []byte(`{"payment":{"amount":1000,"tipAmount":null,"currency":"USDC","network":"solana",` +
+		`"transactionId":null},"payer":{"info":null},"blockchain":{"action":"PAYMENT_INITIATED","from":"F","to":"R"}}`)
+	s := &Service{host: "pay.example"}
+	got, err := s.view(q, notification, q.ValidUntil.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		PaymentNotification json.RawMessage `json:"paymentNotification"`
+	}
+	if err := json.Unmarshal(got, &body); err != nil {
+		t.Fatal(err)
+	}
+	const want = `{"kind":"DEFAULT","data":{"payment":{"amount":1000,"currency":"USDC","network":"solana"},` +
+		`"payer":{},"blockchain":{"action":"PAYMENT_INITIATED","from":"F","to":"R"}}}`
+	if diff := cmp.Diff(want, string(body.PaymentNotification)); diff != "" {
+		t.Fatalf("paymentNotification (-want +got):\n%s", diff)
+	}
+}

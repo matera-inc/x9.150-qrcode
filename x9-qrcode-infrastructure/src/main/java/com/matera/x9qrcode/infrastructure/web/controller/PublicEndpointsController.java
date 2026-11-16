@@ -27,6 +27,7 @@ import com.matera.x9qrcode.infrastructure.web.controller.advice.NotificationAnsw
 import com.matera.x9qrcode.infrastructure.generated.dto.PaymentPayloadResponseDTO;
 import com.matera.x9qrcode.infrastructure.web.controller.mapper.request.PaymentNotificationRequestMapper;
 import com.matera.x9qrcode.infrastructure.web.controller.mapper.response.RetrieveQRCodePayloadResponseMapper;
+import com.matera.x9qrcode.infrastructure.web.controller.validation.MissingRequiredFieldsException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jose.JWSObject;
@@ -39,6 +40,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -106,6 +108,11 @@ public class PublicEndpointsController implements PublicEndpointsApi {
             answerCorrelationId = verified.correlationId();
 
             PaymentNotificationDataDTO notificationData = parseVerifiedPayload(body);
+            if (isNull(notificationData.getPayment())) {
+                // A verified message of another kind (a payload request, a payload response) is the
+                // caller's mistake, named as a bound body would name it, not a 500 (ADR-0028).
+                throw new MissingRequiredFieldsException(List.of("payment"));
+            }
 
             // The signer's subject travels with the payload: only the party that announced a payment
             // may re-announce or release it, and `payer.info` alone cannot establish who that is.

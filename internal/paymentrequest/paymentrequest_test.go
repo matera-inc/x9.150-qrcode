@@ -185,6 +185,9 @@ func TestAgainstPostgres(t *testing.T) {
 
 var upperHex32 = regexp.MustCompile(`^[0-9A-F]{32}$`)
 
+// X9-PATCH-521 (ADR-0028, a known difference between the builds): the create answers with an ETag,
+// `"0-ACTIVE"` (TOLERATED-DIFFERENCES.md, entry 9).
+//
 // S9.6-AC1, S9.6-AC3, X9-MAP-001: 201 with Java's four members and an ETag; the location is the
 // QR Code's own id; qrCode is internal/emv's string for it and qrCodeB64 that string in Base64;
 // no event.

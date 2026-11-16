@@ -6,9 +6,10 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**905 tests documented** — every JUnit test and every black-box case, and the Go tests that prove
-a known difference between the builds no black-box case can drive (ADR-0028; their key is in the
-test's comment, and the "Where" cell names the `_test.go` file).
+**933 tests documented** — every JUnit test and every black-box case, and the Go tests that prove
+a difference between the builds no black-box case can drive, or a fix the differential run found
+(ADR-0028, [TOLERATED-DIFFERENCES.md](../others/blackbox/TOLERATED-DIFFERENCES.md); their key starts
+the test's doc comment, and the "Where" cell names the `_test.go` file).
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
 (STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036 and ADR-0027's EMV and JWS verification rules), the
@@ -172,6 +173,7 @@ single most important thing this index exists for.
 | `X9-EVT-502` | every event has its own eventId | `test_two_phase.py` |
 | `X9-EVT-503` | payment.sent carries the transaction hash the payer reported | `test_two_phase.py` |
 | `X9-EVT-504` | reading on from the cursor returns none of the events already read | `test_two_phase.py` |
+| `X9-EVT-505` | Go only: an `after=` that is neither empty, a decimal seq nor a ULID is a 400 naming `after` (TOLERATED-DIFFERENCES.md, entry 4) | `eventstream_test.go` |
 
 ## Lifecycle, status and delivery
 
@@ -401,6 +403,8 @@ Only the party that announced a payment may re-announce it, report it, or give i
 | `X9-HOLD-502` | a second payer, on its own key, is refused with 409 while the QR Code is reserved | `test_two_phase.py` |
 | `X9-HOLD-503` | a post-commit is accepted and does not mark the QR Code PAID | `test_two_phase.py` |
 | `X9-HOLD-504` | the holder's `NOT_SENT`, accepted once a hash is registered, is what GET shows as `paymentNotification.data` (a strict expected failure on Java, ADR-0028 difference 16) | `test_payers.py` |
+| `X9-HOLD-505` | Go only: a blank `transactionId` on an outbound notification is left off the wire (TOLERATED-DIFFERENCES.md, entry 14) | `outbound_test.go` |
+| `X9-HOLD-506` | Go: a member the payer sent as null is left out of `paymentNotification.data` on GET, as Java's NON_NULL writes it (found by the first differential run) | `view_test.go` |
 
 ## The transition map (ADR-0035)
 
@@ -557,6 +561,10 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-DEC-509` | Go only: a payload URL with a non-numeric port is 400 `validation-error`, `Invalid URI syntax: …`, and nothing is fetched (ADR-0028 difference 21, black box) | `test_tolerant_reading.py` |
 | `X9-DEC-510` | Go only: a 302 or 307 from the payload host is not followed; its body is refused as an invalid signature (ADR-0028 difference 22, black box) | `test_tolerant_reading.py` |
 | `X9-DEC-511` | Go only: the outbound client, the decoder's fetch and the notification's delivery, reads no proxy from the environment (ADR-0028 difference 17) | `client_test.go` |
+| `X9-DEC-512` | Go only: a payee that does not answer within the decoder's bounds is a 502 `payload-unreachable` that carries no address (TOLERATED-DIFFERENCES.md, entry 17) | `decoder_test.go` |
+| `X9-DEC-513` | Go only: a verified payload that is not a JSON object is a 400 business-rule, not a 500 (TOLERATED-DIFFERENCES.md, entry 18) | `decoder_test.go` |
+| `X9-DEC-514` | Go only: a payload member of the wrong JSON type is dropped and an unreadable date-time presented as written (TOLERATED-DIFFERENCES.md, entry 19) | `foreign_test.go` |
+| `X9-DEC-515` | Go only: the nil UUID as `correlationID` is a 400, and nothing is fetched (TOLERATED-DIFFERENCES.md, entry 20) | `decoder_test.go` |
 
 ## Editing a payment request
 
@@ -621,6 +629,8 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-PATCH-518` | `bill: null` and `editable: {}` are refused by name; `editable: null` removes `editable` | `test_patch_merged_rules.py` |
 | `X9-PATCH-519` | a PATCH whose tip is not allowed and carries a range or presets is refused in the create's words, nothing moves | `test_patch_merged_rules.py` |
 | `X9-PATCH-520` | `allowed: false` alone, or with `presets: null`, turns a stored tip offer off, its range and presets with it | `test_patch_merged_rules.py` |
+| `X9-PATCH-521` | Go: the create answers 201 with Java's four members and `ETag: "0-ACTIVE"` (TOLERATED-DIFFERENCES.md, entry 9) | `paymentrequest_test.go` |
+| `X9-PATCH-522` | Go: an accepted PATCH answers 200 with the new `ETag` and writes its audit row (TOLERATED-DIFFERENCES.md, entry 9) | `patch_test.go` |
 
 ## Payment requests pinned: create, PATCH, ETag, rebind (Story 4.2)
 
@@ -817,13 +827,14 @@ status is `X9-MAP-002`.
 | `X9-SIG-156` | after the money moved, a second bad answer is reported as it is and recorded at WARN (QR Code, transactionId, both ids, when); no answer to the retry is recorded too | `SendPaymentNotificationUseCaseTest.java` |
 | `X9-SIG-157` | an answer that fails another check is reported as before, before or after the money moves | `SendPaymentNotificationUseCaseTest.java` |
 | `X9-SIG-158` | a bad correlationId is `CORRELATION_ID_MISMATCH`, or `BAD_HEADER` without ours; the verifier's code decides first | `CorrelationEchoTest.java` |
-| `X9-SIG-130` | a signed yes with the correlationId sent is VERIFIED | `OutboundAnswerVerificationApiTest.java` |
+| `X9-SIG-159` | a verified JWS whose payload has no `payment` (a payload request or response) is a signed 400 `validation-error` naming `payment`, not a 500 | `SignedNotificationAnswerApiTest.java` |
+| `X9-SIG-130` | a signed yes with the correlationId sent is VERIFIED, with no signatureProblem or signatureDetail member | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-131` | a signed no is VERIFIED and not accepted | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-132` | a signed yes to a pre-commit notification, under another correlationId, is refused: 502, `failed to pay - payee is not responding (bad correlationId)` | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-133` | a signed answer whose payload was altered is INVALID | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-134` | an HTTP status that differs from the signed one is INVALID | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-135` | an unsecured JOSE object (`alg: none`) is INVALID | `OutboundAnswerVerificationApiTest.java` |
-| `X9-SIG-136` | an empty 200 is ABSENT and reported as an unsigned yes | `OutboundAnswerVerificationApiTest.java` |
+| `X9-SIG-136` | an empty 200 is ABSENT and reported as an unsigned yes, with no body member | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-137` | unsigned JSON and plain text are ABSENT | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-138` | a plain JSON refusal is ABSENT, not accepted, body passed through | `OutboundAnswerVerificationApiTest.java` |
 | `X9-SIG-140` | an answer whose iat is in the future beyond the skew is INVALID, `FUTURE_IAT`; within it, VERIFIED | `OutboundAnswerVerificationApiTest.java` |
@@ -875,6 +886,10 @@ status is `X9-MAP-002`.
 | `X9-SIG-532` | Go only: a create body with a lone surrogate escape (`"\ud800"`) or a date written as an array (`[2030,1,10]`) is 400 `malformed-json`; the well-formed control (`"A"`, `"2030-01-10"`) is created (ADR-0028 difference 7, black box) | `test_create_refusals.py` |
 | `X9-SIG-533` | Go only: a payee answer over 1 MiB is 502, as if it had not answered, and nothing changes (ADR-0028 difference 15, black box) | `test_payee_answers.py` |
 | `X9-SIG-534` | Go only: `signature/generate` signs a number as it was sent (`1e2`, `-2.50E+3`), and the token verifies (ADR-0028 difference 13) | `signature_test.go` |
+| `X9-SIG-535` | Go only: every 500, a panic included, is the `internal-error` problem with no detail of its cause (TOLERATED-DIFFERENCES.md, entry 5) | `httpapi_test.go` |
+| `X9-SIG-536` | Go only: a JSON body over 1 MiB is a 400 `malformed-json` (TOLERATED-DIFFERENCES.md, entry 6) | `httpapi_test.go` |
+| `X9-SIG-537` | Go only: a certificate name other than `x9-key.pem` is a 404 (TOLERATED-DIFFERENCES.md, entry 11) | `signature_test.go` |
+| `X9-SIG-538` | Go only: `signature/generate` refuses the nil UUID as a `Correlation-Id` (TOLERATED-DIFFERENCES.md, entry 12) | `signature_test.go` |
 
 ## Time edges (the test clock)
 
@@ -1043,3 +1058,8 @@ prove nothing about the service; they prove the suite can be trusted to.
 | `X9-SUITE-522` | the differential run catches a changed status, violation text, ETag, Content-Type or Location, and a member added, dropped or retyped | `test_differential.py` |
 | `X9-SUITE-523` | the differential run names a test or an exchange only one build has, keeps the rest aligned, counts a run of polls once and reads only the test's own events, in order per QR Code | `test_differential.py` |
 | `X9-SUITE-524` | the differential run's command line prints the report, writes the JSON one, and exits 1 on any difference | `test_differential.py` |
+| `X9-SUITE-525` | the tolerated list is read entry by entry, and one that cannot be applied as written is refused naming the entry | `test_differential.py` |
+| `X9-SUITE-526` | a difference a tolerated entry matches passes, and any other still fails the run, as does an unnamed one-build test | `test_differential.py` |
+| `X9-SUITE-527` | a tolerated selector that matched nothing is stale and fails the run, unless it may not occur or the entry is proved by a Go test | `test_differential.py` |
+| `X9-SUITE-528` | a pending entry is tolerated and reported loudly; the command line exits 0, 1 or 2 | `test_differential.py` |
+| `X9-SUITE-529` | the repository's TOLERATED-DIFFERENCES.md takes over every row of ADR-0028, each naming a test key | `test_differential.py` |

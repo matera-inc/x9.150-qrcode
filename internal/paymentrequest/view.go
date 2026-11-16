@@ -197,11 +197,8 @@ func notificationData(stored []byte) (jsontext.Value, error) {
 	if data.Payment.IsSet() {
 		data.Payment.Value.QRCodeID = contract.String{}
 	}
-	raw, err := httpapi.Marshal(data)
-	if err != nil {
-		return nil, err
-	}
-	return jsontext.Value(raw), nil
+	// A member the payer sent as null is left out, as Jackson's NON_NULL writes it (ADR-0028).
+	return withoutNulls(data)
 }
 
 // members writes every member of the object obj; data, when given, as the last member of

@@ -45,7 +45,6 @@ import java.util.function.UnaryOperator;
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -183,7 +182,8 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
     // -------------------------------------------------------------------------------- VERIFIED
 
     /**
-     * <b>X9-SIG-130</b> — a signed yes with the correlationId sent is VERIFIED.
+     * <b>X9-SIG-130</b> — a signed yes with the correlationId sent is VERIFIED, with no
+     * signatureProblem or signatureDetail member.
      *
      * <p><b>Source:</b> ANSI X9.150-2026 A.4.5 note, §10.3.2, §10.7. S2.3-AC6; Story 3.5 case 1.
      *
@@ -197,8 +197,11 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
         MockMvcResponse response = notifyPayee();
 
         assertReported(response, 200, true, "VERIFIED");
-        assertNull(response.jsonPath().getString("signatureProblem"));
-        assertNull(response.jsonPath().getString("signatureDetail"));
+        // Absent, not null: NON_NULL, as every other answer of this service (ADR-0028; S11.2-AC3,
+        // the first differential run found Java writing null here where the Go build omits it).
+        Map<String, Object> members = response.jsonPath().getMap("$");
+        assertFalse(members.containsKey("signatureProblem"), response.asString());
+        assertFalse(members.containsKey("signatureDetail"), response.asString());
         assertTrue(response.jsonPath().getString("body").contains("."), "the signed answer is passed back");
     }
 
@@ -306,7 +309,7 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
     // ----------------------------------------------------------------------------------- ABSENT
 
     /**
-     * <b>X9-SIG-136</b> — an empty 200 is ABSENT and reported as an unsigned yes.
+     * <b>X9-SIG-136</b> — an empty 200 is ABSENT and reported as an unsigned yes, with no body member.
      *
      * <p><b>Source:</b> Ours. S2.3-AC6; Story 3.5 case 5.
      *
@@ -321,6 +324,9 @@ class OutboundAnswerVerificationApiTest extends AbstractIntegrationTest {
 
         assertReported(response, 200, true, "ABSENT");
         assertProblem(response, "ABSENT_BODY");
+        // No body came back, so there is no body member at all, not "body": null (ADR-0028's
+        // NON_NULL; S11.2-AC3).
+        assertFalse(response.jsonPath().getMap("$").containsKey("body"), response.asString());
     }
 
     /**

@@ -7,6 +7,7 @@ drowns the real differences in per-run noise. So each masking rule is proved on 
 each kind of real difference it must still catch.
 """
 import base64
+import glob
 import http.server
 import json
 import os
@@ -370,12 +371,12 @@ def test_the_command_line_writes_a_json_report_and_exits_on_what_it_found(tmp_pa
     S11.1-AC2."""
     agree_java = write_recording(tmp_path / "aj", [exchange(T, 0, body={"a": 1})])
     agree_go = write_recording(tmp_path / "ag", [exchange(T, 0, body={"a": 1})])
-    assert differential.main([agree_java, agree_go]) == 0
+    assert differential.main([agree_java, agree_go, "--no-tolerated"]) == 0
 
     java = write_recording(tmp_path / "j", [exchange(T, 0, status=200)])
     go = write_recording(tmp_path / "g", [exchange(T, 0, status=500)])
     report = tmp_path / "differences.json"
-    assert differential.main([java, go, "--json", str(report)]) == 1
+    assert differential.main([java, go, "--json", str(report), "--no-tolerated"]) == 1
 
     printed = capsys.readouterr().out
     assert "By kind:" in printed and "status" in printed and T in printed
@@ -384,3 +385,165 @@ def test_the_command_line_writes_a_json_report_and_exits_on_what_it_found(tmp_pa
     assert written["differences"][0] | {} == {
         "kind": "status", "test": T, "javaIndex": 0, "goIndex": 0,
         "request": "GET /api/v1/payment-request/x", "field": "status", "java": 200, "go": 500}
+
+
+# ------------------------------------------------------------------------------------- tolerated list
+
+def tolerated(tmp_path, *entries):
+    """A tolerated list of ``(number, title, keys, matcher)`` entries, written as the real one is."""
+    text = "# Tolerated\n\nPreamble text.\n"
+    for number, title, keys, matcher in entries:
+        text += (f"\n## {number}. {title}\n\n**Reason:** because.\n\n**Keys:** "
+                 + ", ".join(f"`{k}`" for k in keys)
+                 + f"\n\n```json\n{json.dumps(dict(matcher, entry=number))}\n```\n")
+    path = tmp_path / "TOLERATED-DIFFERENCES.md"
+    path.write_text(text)
+    return str(path)
+
+
+ETAG = {"differences": [{"test": ".", "kind": "header:ETag", "request": "POST /api/v1/payment-request",
+                         "java": None, "goPattern": '"0-ACTIVE"'}]}
+
+
+def test_the_tolerated_list_is_read_and_a_malformed_one_is_refused_by_entry(tmp_path):
+    """X9-SUITE-525 — the tolerated list is read entry by entry (number, title, keys, status,
+    selectors, proof), and one that cannot be applied as written is refused, naming the entry: no
+    key, no matcher or two, a matcher that is not JSON, a wrong entry number, a selector without its
+    test, an unknown member, a regex that does not compile, or both selectors and a proof.
+
+    S11.2-AC1."""
+    path = tolerated(tmp_path, (9, "ETag", ["X9-PATCH-521"], ETAG),
+                     (13, "Numbers", ["X9-SIG-534"], {"proof": "go-test"}),
+                     (27, "Cursor", ["X9-EVT-056"], {"status": "pending", "differences": [{"test": "x"}]}))
+    entries = differential.read_tolerated(path)
+    assert [(e["entry"], e["title"], e["keys"], e["status"], e["proof"]) for e in entries] == [
+        (9, "ETag", ["X9-PATCH-521"], "tolerated", None),
+        (13, "Numbers", ["X9-SIG-534"], "tolerated", "go-test"),
+        (27, "Cursor", ["X9-EVT-056"], "pending", None)]
+
+    good = "## 1. A\n\n**Keys:** `X9-SUITE-518`\n\n```json\n{BODY}\n```\n"
+    for body, complaint in (
+            ('{"entry": 1, "proof": "go-test"}\n```\n```json\n{"entry": 1, "proof": "go-test"}',
+             "exactly one"),
+            ('{"entry": 1, proof}', "not JSON"),
+            ('{"entry": 2, "proof": "go-test"}', "says entry 2"),
+            ('{"entry": 1, "differences": [{"field": "x"}]}', "names its test"),
+            ('{"entry": 1, "differences": [{"test": "x", "feild": "y"}]}', "unknown selector"),
+            ('{"entry": 1, "matchers": []}', "unknown member"),
+            ('{"entry": 1, "differences": [{"test": "("}]}', "not a regex"),
+            ('{"entry": 1, "proof": "go-test", "oneBuild": [{"test": "x"}]}', "not both"),
+            ('{"entry": 1}', "not both and not neither"),
+            ('{"entry": 1, "status": "maybe", "proof": "go-test"}', "status")):
+        bad = tmp_path / "bad.md"
+        bad.write_text(good.replace("{BODY}", body))
+        with pytest.raises(differential.ToleratedListError, match=complaint):
+            differential.read_tolerated(str(bad))
+    keyless = tmp_path / "keyless.md"
+    keyless.write_text('## 1. A\n\n```json\n{"entry": 1, "proof": "go-test"}\n```\n')
+    with pytest.raises(differential.ToleratedListError, match="names no test key"):
+        differential.read_tolerated(str(keyless))
+
+
+def test_a_tolerated_difference_passes_and_any_other_still_fails(tmp_path):
+    """X9-SUITE-526 — a difference an entry's selector matches (by test, request, field, kind, the
+    exact values, a pattern, or both sides present) is tolerated and named by its entry; one no
+    selector matches still fails the run, and so does a test recorded by one build only that no
+    oneBuild selector names.
+
+    S11.2-AC2: "fails on any difference that no tolerated entry matches"."""
+    path = tolerated(
+        tmp_path, (9, "ETag", ["X9-PATCH-521"], ETAG),
+        (24, "Wording", ["X9-SIG-501"], {"differences": [
+            {"test": "test_y$", "field": r"body\.signatureDetail", "present": True}]}),
+        (2, "Kept", ["X9-TIME-014"], {"oneBuild": [{"test": "test_go_only$", "recordedBy": "go",
+                                                    "why": "go_only"}]}))
+    created = {"Content-Type": "application/json"}
+    java = [exchange(T, 0, "POST", "/api/v1/payment-request", 201, {"a": 1}, created),
+            exchange(T, 1, body={"signatureDetail": "JWS signature verification failed."}),
+            exchange(T, 2, body={"signatureDetail": None})]
+    go = [exchange(T, 0, "POST", "/api/v1/payment-request", 201, {"a": 1},
+                   dict(created, ETag='"0-ACTIVE"')),
+          exchange(T, 1, body={"signatureDetail": "the signature does not verify"}),
+          exchange(T, 2, body={})]
+    lone = "tests/test_x.py::test_go_only"
+    lone_tests = [{"test": lone, "outcome": "skipped", "markers": ["go_only"]}]
+    result = diff(tmp_path, java, go + [exchange(lone, 0)], java_tests=lone_tests)
+    differential.apply_tolerated(result, differential.read_tolerated(path))
+
+    assert [(r["javaIndex"], r["field"], r["tolerated"]) for r in result["differences"]] == [
+        (0, "header:ETag", 9), (1, "body.signatureDetail", 24), (2, "body.signatureDetail", None)], \
+        "the wording is tolerated; a null against an absent member is not: present is required"
+    assert result["onlyOneBuild"][0]["tolerated"] == 2
+    assert result["tolerated"]["untoleratedDifferences"] == 1
+    assert differential.failed(result)
+
+    go[2] = exchange(T, 2, body={"signatureDetail": None})
+    result = diff(tmp_path / "again", java, go + [exchange(lone, 0)], java_tests=lone_tests)
+    differential.apply_tolerated(result, differential.read_tolerated(path))
+    assert not differential.failed(result), result["tolerated"]
+
+    result = diff(tmp_path / "lone", java, go + [exchange("tests/test_x.py::test_other", 0)])
+    differential.apply_tolerated(result, differential.read_tolerated(path))
+    assert result["tolerated"]["untoleratedOneBuild"] == 1 and differential.failed(result)
+
+
+def test_an_entry_that_matched_nothing_is_stale_and_fails(tmp_path):
+    """X9-SUITE-527 — a selector that matched nothing in the run is stale and fails it, so a
+    difference that has gone away leaves the list; a selector marked mayNotOccur (which racer wins
+    is per run) and an entry proved by a Go test or by the normaliser are never stale.
+
+    S11.2-AC2: "and on any tolerated entry that matched nothing (stale)"."""
+    path = tolerated(
+        tmp_path, (9, "ETag", ["X9-PATCH-521"], ETAG),
+        (26, "Racer", ["X9-HOLD-406"], {"differences": [
+            {"test": "racer", "field": "body.payerInfo", "mayNotOccur": True}]}),
+        (13, "Numbers", ["X9-SIG-534"], {"proof": "go-test"}),
+        (1, "Whitespace", ["X9-SUITE-518"], {"proof": "normalised"}))
+    same = [exchange(T, 0, body={"a": 1})]
+    result = differential.apply_tolerated(diff(tmp_path, same, same),
+                                          differential.read_tolerated(path))
+    assert result["tolerated"]["staleEntries"] == [9]
+    assert [e["stale"] for e in result["tolerated"]["entries"]] == [["differences[0]"], [], [], []]
+    assert differential.failed(result)
+
+
+def test_a_pending_entry_is_tolerated_and_reported_loudly(tmp_path, capsys):
+    """X9-SUITE-528 — an entry the owner has not ruled on (status pending) tolerates its difference,
+    and every report says so in capitals with its keys; the command line exits 0 when every
+    difference is tolerated, 1 on an untolerated or stale one, and 2 on a list it cannot read.
+
+    S11.2-AC2, AC3 (none left failing; what is not decided is said, not hidden)."""
+    path = tolerated(tmp_path, (27, "Cursor past the log", ["X9-EVT-056"], {
+        "status": "pending", "differences": [{"test": ".", "field": "body.nextCursor"}]}))
+    java = write_recording(tmp_path / "j", [exchange(T, 0, body={"hasMore": False})])
+    go = write_recording(tmp_path / "g", [exchange(T, 0, body={"hasMore": False, "nextCursor": "7"})])
+    assert differential.main([java, go, "--tolerated", path]) == 0
+    printed = capsys.readouterr().out
+    assert "PENDING, NEEDS THE OWNER" in printed and "entry 27: Cursor past the log" in printed
+    assert "X9-EVT-056" in printed
+
+    assert differential.main([java, go, "--no-tolerated"]) == 1
+    capsys.readouterr()
+    same = write_recording(tmp_path / "s", [exchange(T, 0, body={"hasMore": False})])
+    assert differential.main([java, same, "--tolerated", path]) == 1, "stale: nothing to tolerate"
+    broken = tmp_path / "broken.md"
+    broken.write_text("nothing here")
+    assert differential.main([java, go, "--tolerated", str(broken)]) == 2
+
+
+def test_the_repositorys_tolerated_list_takes_over_every_row_of_adr_0028():
+    """X9-SUITE-529 — the repository's TOLERATED-DIFFERENCES.md reads, holds an entry for each of
+    ADR-0028's differences (1 to 22, 8 retired), each naming at least one test key, and ADR-0028
+    points to it instead of keeping its own table.
+
+    S11.2-AC1."""
+    entries = differential.read_tolerated(differential.TOLERATED_FILE)
+    numbers = {e["entry"] for e in entries}
+    assert set(range(1, 23)) - {8} <= numbers, sorted(set(range(1, 23)) - {8} - numbers)
+    assert 8 not in numbers
+    assert all(e["keys"] for e in entries)
+    found = glob.glob(os.path.join(differential.HERE, "..", "..", "docs", "adr", "0028-*.md"))
+    if found:                                   # the suite's container stages only ADR-0035
+        text = open(found[0], encoding="utf-8").read()
+        assert "TOLERATED-DIFFERENCES.md" in text
+        assert "| 16 | GET `paymentNotification.data`" not in text, "the table moved to the list"

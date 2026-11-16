@@ -39,6 +39,14 @@ whose docstring does not start with `X9-AREA-NNN`, or a JUnit test whose javadoc
 A test is named by its key (`X9-HOLD-104`, see docs/TEST-CONVENTIONS.md). `File::function`
 (`test_signatures.py::test_each_payer_is_accepted_on_its_own_key`) still resolves, for a row
 written before every test had a key.
+
+A Go test has a key when its doc comment starts with one (`// X9-SIG-534 (...): ...` directly above
+`func TestX` or a subtest's `func testX`): the Go tests that prove a known difference between the
+builds are keyed only there (Story 11.4, S11.2). A key cited later in a comment is a reference, not a
+definition.
+
+And it fails on a test key in others/blackbox/TOLERATED-DIFFERENCES.md that no test defines: each
+tolerated difference names the tests that show it (S11.2-AC1).
 Standard library only.
 """
 
@@ -66,6 +74,9 @@ OTHER_TESTS = ("db/test/*", "db/**/test_*.py", "docs/**/test_*.py", "cmd/**/*_te
 CRITERION = re.compile(r"\bS\d+\.\d+-AC\d+[a-z]?\b")
 CRITERION_DEFINED = re.compile(r"^\*\*(S\d+\.\d+-AC\d+[a-z]?)\.", re.M)
 TEST_KEY = re.compile(r"X9-[A-Z0-9]+-\d{3}")
+TOLERATED = "others/blackbox/TOLERATED-DIFFERENCES.md"
+GO_FUNC = re.compile(r"^func (?:\([^)]*\) )?\w+\(")
+KEY_IN_GO_DOC = re.compile(r"^// (X9-[A-Z0-9]+-\d{3})\b")
 KEY_IN_JAVADOC = re.compile(r"<b>(X9-[A-Z0-9]+-\d{3})</b>")
 KEY_IN_DOCSTRING = re.compile(r'"""\s*(X9-[A-Z0-9]+-\d{3})\b')
 KEY_FIRST = re.compile(r"\s*X9-[A-Z0-9]+-\d{3}\b")
@@ -141,7 +152,27 @@ def read_tests(root):
             if key_pattern:
                 for key in key_pattern.findall(text):
                     tests.keys.setdefault(key, set()).add(rel)
+            elif path.name.endswith("_test.go"):
+                for key in go_keys(text):
+                    tests.keys.setdefault(key, set()).add(rel)
     return tests
+
+
+def go_keys(text):
+    """The keys a Go test file defines: each one that starts the doc comment of a func."""
+    lines = text.split("\n")
+    keys = []
+    for number, line in enumerate(lines):
+        if not GO_FUNC.match(line):
+            continue
+        top = number
+        while top > 0 and lines[top - 1].startswith("//"):
+            top -= 1
+        if top < number:
+            match = KEY_IN_GO_DOC.match(lines[top])
+            if match:
+                keys.append(match.group(1))
+    return keys
 
 
 def cells(line):
@@ -288,6 +319,21 @@ def check(root):
 
     out.extend(uncovered_sources(root, by_key))
     out.extend(unkeyed_tests(root))
+    out.extend(tolerated_keys(root, tests))
+    return out
+
+
+def tolerated_keys(root, tests):
+    """S11.2-AC1: every test key a tolerated difference names is a test that exists."""
+    path = root / TOLERATED
+    if not path.is_file():
+        return []
+    out = []
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        for key in TEST_KEY.findall(line):
+            if key not in tests.keys:
+                out.append(Violation(TOLERATED, f"line {number}",
+                                     f"names {key}, which is not a test that exists"))
     return out
 
 

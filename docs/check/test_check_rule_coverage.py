@@ -437,5 +437,48 @@ class TheTableItself(unittest.TestCase):
         self.assertIn("does not say what the rule is", out[0])
 
 
+GO_TEST = """package thing
+
+// X9-LIFE-005 (a known difference): a Go test keyed in its doc comment.
+//
+// It also mentions X9-LIFE-006, which is a reference, not a definition.
+func TestKeyedInItsComment(t *testing.T) {}
+
+// X9-LIFE-007: a subtest run by a parent test is keyed the same way.
+func testASubtest(t *testing.T, e *env) {}
+
+// A comment that cites X9-LIFE-008 later on defines nothing.
+func TestNotKeyed(t *testing.T) {}
+"""
+
+
+class S112GoTestsAreKeyedInTheirComments(unittest.TestCase):
+    """S11.2: a Go test's key is the first word of its doc comment; the tolerated list names tests
+    that exist."""
+
+    def test_a_go_test_is_named_by_the_key_its_doc_comment_starts_with(self):
+        repo = Repo(extra={"internal/thing/thing_test.go": GO_TEST})
+        try:
+            tests = crc.read_tests(repo.root)
+            self.assertEqual(["internal/thing/thing_test.go"], crc.files_of("X9-LIFE-005", tests))
+            self.assertEqual(["internal/thing/thing_test.go"], crc.files_of("X9-LIFE-007", tests))
+            self.assertEqual([], crc.files_of("X9-LIFE-006", tests), "a later mention is a reference")
+            self.assertEqual([], crc.files_of("X9-LIFE-008", tests), "a key not first defines nothing")
+        finally:
+            repo.close()
+
+    def test_a_rule_row_may_name_a_go_test_by_its_key(self):
+        out = run(table=changed("R-EP-01", "| `R-EP-01` | An endpoint answers. | `X9-LIFE-005` | — |"),
+                  extra={"internal/thing/thing_test.go": GO_TEST})
+        self.assertEqual([], out)
+
+    def test_a_tolerated_difference_naming_a_key_no_test_defines_fails(self):
+        tolerated = "## 1. Whitespace\n\n**Keys:** `X9-LIFE-005`, `X9-LIFE-999`\n"
+        out = run(extra={"internal/thing/thing_test.go": GO_TEST, crc.TOLERATED: tolerated})
+        self.assertEqual(1, len(out), out)
+        self.assertIn("TOLERATED-DIFFERENCES.md: line 3", out[0])
+        self.assertIn("X9-LIFE-999", out[0])
+
+
 if __name__ == "__main__":
     unittest.main()
