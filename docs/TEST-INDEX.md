@@ -6,7 +6,9 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**897 tests documented** — every JUnit test and every black-box case.
+**905 tests documented** — every JUnit test and every black-box case, and the Go tests that prove
+a known difference between the builds no black-box case can drive (ADR-0028; their key is in the
+test's comment, and the "Where" cell names the `_test.go` file).
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
 (STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036 and ADR-0027's EMV and JWS verification rules), the
@@ -398,6 +400,7 @@ Only the party that announced a payment may re-announce it, report it, or give i
 | `X9-HOLD-501` | a pre-commit is accepted and the QR Code is PAYMENT_INITIATED | `test_two_phase.py` |
 | `X9-HOLD-502` | a second payer, on its own key, is refused with 409 while the QR Code is reserved | `test_two_phase.py` |
 | `X9-HOLD-503` | a post-commit is accepted and does not mark the QR Code PAID | `test_two_phase.py` |
+| `X9-HOLD-504` | the holder's `NOT_SENT`, accepted once a hash is registered, is what GET shows as `paymentNotification.data` (a strict expected failure on Java, ADR-0028 difference 16) | `test_payers.py` |
 
 ## The transition map (ADR-0035)
 
@@ -507,6 +510,7 @@ The status-update matrix itself is `X9-MAP-010` to `-013` above.
 | `X9-LOC-511` | the advertised location endpoint is https and ends with the location id | `test_qr_code.py` |
 | `X9-LOC-512` | a new QR Code reads back ACTIVE with its Solana recipient | `test_qr_code.py` |
 | `X9-LOC-513` | sentAt is the instant the payload was composed, on the service's clock: within the request's window, never before revisedAt and never after validUntil | `test_payload.py` |
+| `X9-LOC-514` | Go only: the payload's read cancelled by the database (SQLSTATE 57014, a statement timeout's code) is 503 `internal-error`, not the generic 400 (ADR-0028 difference 10) | `payload_test.go` |
 
 ### What the payer is told when a decode is refused
 
@@ -550,6 +554,9 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-DEC-506` | another bank's payload under another correlationId than the request's is refused, `QR Code is invalid (bad correlationId)`, with or without a caller's id (black box) | `test_tolerant_reading.py` |
 | `X9-DEC-507` | another bank's payload with no correlationId in its header is refused, `QR Code is invalid (bad correlationId)`, with or without a caller's id (black box) | `test_tolerant_reading.py` |
 | `X9-DEC-508` | another bank's payload altered after signing, under another correlationId, is refused as a bad signature, not as a bad correlationId (black box) | `test_tolerant_reading.py` |
+| `X9-DEC-509` | Go only: a payload URL with a non-numeric port is 400 `validation-error`, `Invalid URI syntax: …`, and nothing is fetched (ADR-0028 difference 21, black box) | `test_tolerant_reading.py` |
+| `X9-DEC-510` | Go only: a 302 or 307 from the payload host is not followed; its body is refused as an invalid signature (ADR-0028 difference 22, black box) | `test_tolerant_reading.py` |
+| `X9-DEC-511` | Go only: the outbound client, the decoder's fetch and the notification's delivery, reads no proxy from the environment (ADR-0028 difference 17) | `client_test.go` |
 
 ## Editing a payment request
 
@@ -865,6 +872,9 @@ status is `X9-MAP-002`.
 | `X9-SIG-529` | a pre-commit answer under another correlationId, or none, or replayed (Story 3.5 cases 2-4) is refused: 502, `failed to pay - payee is not responding (bad correlationId)`, one delivery (black box) | `test_payee_answers.py` |
 | `X9-SIG-530` | a post-commit answer under another correlationId, or none, is followed by one more notification under a new correlationId, and its good answer is reported VERIFIED (black box) | `test_payee_answers.py` |
 | `X9-SIG-531` | a post-commit answer under the wrong correlationId twice: exactly two notifications, the second answer reported INVALID, nothing else changed (black box) | `test_payee_answers.py` |
+| `X9-SIG-532` | Go only: a create body with a lone surrogate escape (`"\ud800"`) or a date written as an array (`[2030,1,10]`) is 400 `malformed-json`; the well-formed control (`"A"`, `"2030-01-10"`) is created (ADR-0028 difference 7, black box) | `test_create_refusals.py` |
+| `X9-SIG-533` | Go only: a payee answer over 1 MiB is 502, as if it had not answered, and nothing changes (ADR-0028 difference 15, black box) | `test_payee_answers.py` |
+| `X9-SIG-534` | Go only: `signature/generate` signs a number as it was sent (`1e2`, `-2.50E+3`), and the token verifies (ADR-0028 difference 13) | `signature_test.go` |
 
 ## Time edges (the test clock)
 

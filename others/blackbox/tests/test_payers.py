@@ -40,6 +40,7 @@ import uuid
 import pytest
 from cryptography.hazmat.primitives import serialization
 
+import builds
 from x9client import emv as emv_module
 from x9client import jws, ocsp, samples
 from x9client import peer as peer_module
@@ -591,6 +592,38 @@ class TestNotifications:
             seen = [e["type"] for e in events.for_qr(qr, timeout=60)]
             assert "payment.cleared" not in seen, seen
             assert api.status_of(qr) == "PAYMENT_INITIATED"
+
+    @pytest.mark.xfail(builds.under_test() == "java", strict=True,
+                       reason="ADR-0028, known difference 16; ADR-0036: the Java build accepts the "
+                              "holder's NOT_SENT once a hash is registered but does not record it, "
+                              "so GET still shows the SENT")
+    def test_get_shows_the_holders_not_sent_after_a_hash_is_registered(
+            self, api, payee_certificate, business_now):
+        """X9-HOLD-504 — the holder's ``NOT_SENT``, accepted once a hash is registered, is what GET
+        shows as ``paymentNotification.data``; the QR Code stays ``PAYMENT_INITIATED``.
+
+        S11.4-AC1.
+
+        Source: Ours. ADR-0036: every accepted notification is recorded, and GET shows the latest
+          (ADR-0028, known difference 16). That it changes nothing else is ``X9-MAP-043``.
+        Why: The payer was told 200. A notification accepted and then not recorded leaves the payee
+          reading an earlier message as the payer's last word, while the payer believes it said
+          something else.
+        """
+        payer = "holder-not-sent@example.com"
+        qr = api.create_qr()
+        signed(api.notify(qr, payer_info=payer), payee_certificate, business_now, 200)
+        signed(api.notify(qr, payer_info=payer, action="SENT", transaction_id=TX_HASH),
+               payee_certificate, business_now, 200)
+
+        signed(api.notify(qr, payer_info=payer, action="NOT_SENT"), payee_certificate,
+               business_now, 200)
+
+        stored = api.qr(qr).body
+        assert stored["status"] == "PAYMENT_INITIATED", stored
+        data = stored["paymentNotification"]["data"]
+        assert data["blockchain"]["action"] == "NOT_SENT", data
+        assert "transactionId" not in data["payment"], data
 
     def test_a_qr_code_without_payment_notification_refuses_notifications(
             self, api, events, payee_certificate, business_now):

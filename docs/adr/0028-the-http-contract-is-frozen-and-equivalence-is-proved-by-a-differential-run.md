@@ -137,7 +137,9 @@ two builds agree.
 Answers the Go build gives and the Java build does not, each where Go follows the standard, an ADR
 or the contract. Epic 11's `others/blackbox/TOLERATED-DIFFERENCES.md` takes them over, with their
 test keys, when it is written; until then this list is where they are kept. A black-box test of one
-of them is `go_only`, or a strict expected failure on Java.
+of them is `go_only`, or a strict expected failure on Java. The "From" cell names a row's test key
+where Story 11.4 added one ([TEST-INDEX.md](../TEST-INDEX.md)); a row without one is proved by the
+tests of the story it names.
 
 | # | Where | Java | Go | Why | From |
 |---|---|---|---|---|---|
@@ -145,21 +147,21 @@ of them is `go_only`, or a strict expected failure on Java.
 | 4 | `GET /pub/api/v1/events?after=` that is neither empty, a decimal `seq`, nor a ULID | compared as a string: an empty page, or whatever sorts after it | **400 naming `after`** | A malformed cursor is the consumer's bug, and it should hear about it | Story 10.1 |
 | 5 | Any unexpected failure | Spring Boot's error body (only the signed notification answer uses `internal-error`) | **every 500 is the `internal-error` problem**, with no stack, SQL or internal detail | One shape for "our fault" | Story 9.2 |
 | 6 | A JSON request body over 1 MiB | read | **400 `malformed-json`** | The largest legitimate body is a few kilobytes; the cap bounds memory | Story 9.2 |
-| 7 | JSON edge cases Jackson lets through: a lone surrogate escape (`"\ud800"`), a date written as an array (`[2030,1,10]`) | read | **400 `malformed-json`** | Go's decoder is stricter; a body a strict parser refuses is not one a payer can rely on elsewhere | Story 9.2 |
+| 7 | JSON edge cases Jackson lets through: a lone surrogate escape (`"\ud800"`), a date written as an array (`[2030,1,10]`) | read | **400 `malformed-json`** | Go's decoder is stricter; a body a strict parser refuses is not one a payer can rely on elsewhere | Story 9.2; test `X9-SIG-532` (black box) |
 | 9 | `POST /api/v1/payment-requests` (create) | no `ETag` header | **`ETag: "0-ACTIVE"`** | The first PATCH can send `If-Match` without a GET first ([ADR-0016](0016-a-revision-is-a-version-of-the-request-not-of-its-status.md)) | Story 9.6 |
-| 10 | A database statement timeout while serving the signed payload | the generic 400 (every exception is caught) | **503** | "Try again" is not "your request is wrong" ([ADR-0025](0025-a-transition-is-one-transaction-and-its-event-is-in-it.md)) | Story 10.3 |
+| 10 | A database statement timeout while serving the signed payload | the generic 400 (every exception is caught) | **503** | "Try again" is not "your request is wrong" ([ADR-0025](0025-a-transition-is-one-transaction-and-its-event-is-in-it.md)) | Story 10.3; test `X9-LOC-514` (Go, on PostgreSQL) |
 | 11 | `GET /pub/.well-known/certificate/{name}` with a name other than `x9-key.pem` | 200 with the certificate, whatever the name | **404** | Only the name every `x5u` gives is published | Story 10.2 |
 | 12 | `POST /api/v1/signature/generate` with the nil UUID as `Correlation-Id` | signed | **400**, the missing-`correlationId` refusal | The nil UUID identifies no exchange | Story 10.2 |
-| 13 | Number spelling in the body `signature/generate` signs | Jackson's (`1e2` becomes `100.0`) | **as sent** (`1e2`) | Both are the same JSON number; a token from either build verifies on the other | Story 10.2 |
+| 13 | Number spelling in the body `signature/generate` signs | Jackson's (`1e2` becomes `100.0`) | **as sent** (`1e2`) | Both are the same JSON number; a token from either build verifies on the other | Story 10.2; test `X9-SIG-534` (Go) |
 | 14 | A blank `transactionId` (`""`, spaces) on an outbound notification | signed verbatim | **left off the wire** | A blank is never a reference, and the phase is read from its absence ([ADR-0004](0004-phase-inferred-from-transaction-id.md)) | Story 10.6 |
-| 15 | The payee's answer to an outbound notification, over 1 MiB | read | **502** | A signed `{"statusCode": n}` is a few kilobytes; the cap bounds memory | Story 10.6 |
-| 16 | GET `paymentNotification.data` after the holder's `NOT_SENT` once a hash is registered | the earlier notification (the accepted `NOT_SENT` is not recorded) | **the `NOT_SENT`** | GET shows the latest accepted notification; an accepted notification that goes unrecorded is a Java defect, not a contract ([ADR-0036](0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md)) | Story 10.5 |
-| 17 | `POST /api/v1/qrcode-emv-decoder`: fetching the payee's payload | the shared HTTP client, with no timeout | **Story 10.6's bounds**: 5 s to connect, 15 s for the whole answer, 1 MiB cap, no redirect followed, no proxy; past any of them, `502 payload-unreachable` | A payee that never answers must not hold a request, or memory, without end | Story 10.7 |
+| 15 | The payee's answer to an outbound notification, over 1 MiB | read | **502** | A signed `{"statusCode": n}` is a few kilobytes; the cap bounds memory | Story 10.6; test `X9-SIG-533` (black box) |
+| 16 | GET `paymentNotification.data` after the holder's `NOT_SENT` once a hash is registered | the earlier notification (the accepted `NOT_SENT` is not recorded) | **the `NOT_SENT`** | GET shows the latest accepted notification; an accepted notification that goes unrecorded is a Java defect, not a contract ([ADR-0036](0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md)) | Story 10.5; test `X9-HOLD-504` (black box) |
+| 17 | `POST /api/v1/qrcode-emv-decoder`: fetching the payee's payload | the shared HTTP client, with no timeout | **Story 10.6's bounds**: 5 s to connect, 15 s for the whole answer, 1 MiB cap, no redirect followed, no proxy; past any of them, `502 payload-unreachable` | A payee that never answers must not hold a request, or memory, without end | Story 10.7; test `X9-DEC-511` (Go, the no-proxy part) |
 | 18 | The decoder, a payload that verifies but is not a JSON object | 500 (the mapping fails) | **400 business-rule**, naming the payload | The payee's fault is not ours; a 500 says it is | Story 10.7 |
 | 19 | The decoder, a known payload member of the wrong JSON type, or a date-time the X9.150 format cannot read | 500: the typed mapping fails the whole decode | **the member is dropped**; an unreadable date-time is **presented as written** | Strict to generate, tolerant to read (INTERPRETATION I-16): another bank's slip in one member does not hide the rest of its payload | Story 10.7 |
 | 20 | The decoder, `correlationId` the nil UUID | signed and sent | **400**, nothing fetched | As row 12: the nil UUID identifies no exchange | Story 10.7 |
-| 21 | The decoder, a location URL that `java.net.URI` accepts but Go's parser does not (a non-numeric port) | fetched, or failed later | **400 `validation-error`** in Java's words (`Invalid URI syntax: …`), nothing fetched | A URL that cannot name one host and port is not fetched | Story 10.7 |
-| 22 | The decoder, a 3xx from the payee | followed | **not followed**: its body is checked as the payload's JWS and refused as an invalid signature | A payload is served where the QR Code says; a redirect could send the fetch anywhere | Story 10.7 |
+| 21 | The decoder, a location URL that `java.net.URI` accepts but Go's parser does not (a non-numeric port) | fetched, or failed later | **400 `validation-error`** in Java's words (`Invalid URI syntax: …`), nothing fetched | A URL that cannot name one host and port is not fetched | Story 10.7; test `X9-DEC-509` (black box) |
+| 22 | The decoder, a 3xx from the payee | followed | **not followed**: its body is checked as the payload's JWS and refused as an invalid signature | A payload is served where the QR Code says; a redirect could send the fetch anywhere | Story 10.7; test `X9-DEC-510` (black box) |
 
 Numbers 1 and 2 are the intended differences above. Row 8 (an unknown field in `fednow`, `rtp`
 or `ach` on create or PATCH: ignored by Java, refused by Go) left this list on 2026-11-15, when the

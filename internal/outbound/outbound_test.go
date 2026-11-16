@@ -511,6 +511,22 @@ func TestNoAnswerIsUndeliverable(t *testing.T) {
 			}
 		})
 	}
+	// ADR-0028, known difference 15 (the black-box X9-SIG-533): an answer past the cap is not read
+	// whole, so it is no answer; the Java build reads it.
+	t.Run("an answer over 1 MiB", func(t *testing.T) {
+		f := serve(t, 5*time.Second)
+		f.payee.answer = func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", ContentTypeJOSE)
+			_, _ = io.WriteString(w, strings.Repeat("a", DefaultMaxAnswerBytes+1))
+		}
+
+		got := f.post(PrePaymentPath, f.request(false))
+
+		assertUndeliverable(t, got)
+		if n := len(f.payee.received()); n != 1 {
+			t.Errorf("%d deliveries, want 1", n)
+		}
+	})
 	t.Run("nobody listens", func(t *testing.T) {
 		f := serve(t, 5*time.Second)
 		l, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")

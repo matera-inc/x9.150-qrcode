@@ -1,6 +1,8 @@
 # Copyright © 2026 Matera Systems, Inc.
 # Licensed under the Matera Source License v1.0 (source-available; not open source). See LICENSE.md.
 """It refuses what it cannot honour, by name (acceptance.py section 6, folded in by Story 3.4)."""
+import json
+
 import pytest
 
 from x9client import samples
@@ -159,3 +161,50 @@ def test_an_unknown_field_in_a_bank_rail_is_refused_on_patch_and_nothing_moves(a
         f"paymentMethods[0].networks.{rail}.x: is not a field of {rail}, whose fields are "
         f"{BANK_FIELDS}"], response.body
     assert api.qr(qr).etag == current.etag, "a refused patch does not move the ETag"
+
+
+# ADR-0028, known difference 7: a JSON edge case Jackson reads is malformed to the Go build. Each
+# case is a placeholder in an otherwise good create body, replaced by the edge, or by its control.
+STRICT_JSON = [
+    ("a lone surrogate escape", ("bill", "description"), '"\\ud800"', '"\\u0041"'),
+    ("a date written as an array", ("bill", "order", "date"), "[2030,1,10]", '"2030-01-10"'),
+]
+
+
+@pytest.mark.go_only(reason="go_only: Jackson reads a lone surrogate escape and a date written as an "
+                            "array; the Go build's decoder refuses both (ADR-0028, known difference 7)")
+@pytest.mark.parametrize("name, path, edge, control", STRICT_JSON,
+                         ids=[case[0] for case in STRICT_JSON])
+def test_a_json_edge_case_jackson_reads_is_malformed(api, name, path, edge, control):
+    """X9-SIG-532 — a create body carrying a lone surrogate escape (``"\\ud800"``) or a date written
+    as an array (``[2030,1,10]``) is 400 ``malformed-json``, no id; the same body with an escape
+    that is a whole character (``"\\u0041"``; the description must be printable ASCII, so a
+    surrogate pair would be refused for that), or the date as ``"2030-01-10"``, is created.
+
+    S11.4-AC1.
+
+    Source: Ours. ADR-0028, known difference 7 (Story 9.2). RFC 8259 §8.2 leaves what a lone
+      surrogate means unpredictable; ``format: date`` in openapi.yaml is a string.
+    Why: A body a strict parser refuses is not one a payer can rely on anywhere else: a string that
+      is not Unicode text cannot be carried in a QR Code or signed as UTF-8, and an array where the
+      contract says a date is a Java serialisation habit, not the contract.
+    """
+    body = samples.payment_request()
+    if path[:2] == ("bill", "order"):
+        body["bill"]["order"] = {"number": "ORD-1"}
+    target = body
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = "X9-PLACEHOLDER"
+    text = json.dumps(body)
+
+    response = api.call("POST", "/api/v1/payment-request",
+                        raw=text.replace('"X9-PLACEHOLDER"', edge))
+
+    assert response.status == 400, f"{name}: {response}"
+    assert response.problem.get("type", "").endswith("/malformed-json"), response.body
+    assert "id" not in response.body
+
+    control = api.call("POST", "/api/v1/payment-request",
+                       raw=text.replace('"X9-PLACEHOLDER"', control))
+    assert control.status == 201, f"{name}, the control: {control}"

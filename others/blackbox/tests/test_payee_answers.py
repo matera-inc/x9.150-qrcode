@@ -237,6 +237,30 @@ def test_a_payee_answering_after_the_timeout_is_502(api, peer, events):
     assert_untouched(api, events, qr)
 
 
+@pytest.mark.go_only(reason="go_only: the Java build reads the payee's answer whatever its size "
+                            "(ADR-0028, known difference 15)")
+def test_a_payee_answer_over_1_mib_is_502(api, peer, events):
+    """X9-SIG-533 — a payee answering with more than 1 MiB is 502, as if it had not answered, and
+    nothing changes here.
+
+    S11.4-AC1.
+
+    Source: Ours. ADR-0028, known difference 15 (Story 10.6): the outbound client reads at most
+      1 MiB of an answer.
+    Why: A signed ``{"statusCode": n}`` is a few kilobytes. The payee's address came from a request
+      this service cannot vouch for, and an answer read whatever its size lets that host decide how
+      much memory a notification costs.
+    """
+    peer.answer = lambda question: peer_module.Answer(200, b"a" * (1024 * 1024 + 1))
+
+    response, qr = notify_through(api, peer)
+
+    assert response.status == 502, f"an answer past the cap is no answer: {response}"
+    assert response.body["detail"] == ANSWER_NOT_RECEIVED, response
+    assert len(peer.received) == 1, "it was delivered once"
+    assert_untouched(api, events, qr)
+
+
 @pytest.mark.parametrize("redirect", [302, 307])
 def test_a_redirect_from_the_payee_is_not_followed(api, peer, events, redirect):
     """X9-SIG-150 — a payee answering 302 or 307 with a ``Location`` that would answer a signed

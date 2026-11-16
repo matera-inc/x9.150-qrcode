@@ -24,6 +24,7 @@ import (
 	"github.com/matera-inc/x9.150-qrcode/internal/clock"
 	"github.com/matera-inc/x9.150-qrcode/internal/config"
 	"github.com/matera-inc/x9.150-qrcode/internal/emv"
+	"github.com/matera-inc/x9.150-qrcode/internal/httpapi"
 	"github.com/matera-inc/x9.150-qrcode/internal/jws"
 	"github.com/matera-inc/x9.150-qrcode/internal/keys"
 	"github.com/matera-inc/x9.150-qrcode/internal/pki"
@@ -162,6 +163,7 @@ func TestPayloadAgainstPostgres(t *testing.T) {
 		{"PricedAtTheLaterOfDateForPaymentAndNow", testPricedAtTheLaterOfDateForPaymentAndNow},
 		{"TheExternalEndpointIsTheCreditors", testTheExternalEndpointIsTheCreditors},
 		{"BindingRefusals", testBindingRefusals},
+		{"AStatementCancelledIs503", testAStatementCancelledIs503},
 	} {
 		e.clock.set(start)
 		t.Run(tc.name, func(t *testing.T) { tc.test(t, e, p) })
@@ -257,6 +259,54 @@ func testAnUnknownLocationIs400(t *testing.T, e *env, p *payer) {
 	moved := withCRC(t, strings.Replace(content[:len(content)-4], location, unknown, 1))
 
 	refused(t, e.post(t, unknown, p.request(t, moved, uuid.New()), nil), msgUnreadable)
+}
+
+// X9-LOC-514 (S11.4-AC1; ADR-0028, known difference 10; ADR-0025): when the database cancels the
+// payload's read (SQLSTATE 57014, what a statement past statement_timeout raises), the payer is
+// answered 503 internal-error, "try again", where the Java build answers its generic 400. The read
+// is made to wait on a lock and is then cancelled by the server, as statement_timeout would cancel
+// it after 30 s.
+func testAStatementCancelledIs503(t *testing.T, e *env, p *payer) {
+	_, location, content := e.issued(t, nil)
+	token := p.request(t, content, uuid.New())
+	ctx := t.Context()
+	lock, err := e.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = lock.Rollback(context.Background()) }()
+	if _, err := lock.Exec(ctx, "LOCK TABLE qr_code IN ACCESS EXCLUSIVE MODE"); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan fetched, 1)
+	go func() { done <- e.post(t, location, token, nil) }()
+	cancelled := false
+	for range 200 {
+		err := e.pool.QueryRow(ctx, `SELECT COALESCE(bool_or(pg_cancel_backend(pid)), false) FROM pg_stat_activity
+ WHERE wait_event_type = 'Lock' AND state = 'active' AND query LIKE '%qr_code%' AND pid <> pg_backend_pid()`).Scan(&cancelled)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cancelled {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if !cancelled {
+		t.Fatal("the payload's read never waited on the lock")
+	}
+	f := <-done
+	if err := lock.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	if f.status != http.StatusServiceUnavailable || f.body["type"] != httpapi.TypeInternalError {
+		t.Fatalf("want a 503 internal-error: %d %s", f.status, f.text)
+	}
+	if strings.Contains(f.text, "57014") || strings.Contains(f.text, "qr_code") || strings.Contains(f.text, recipient) {
+		t.Fatalf("the 503 carries an internal detail or the payload: %s", f.text)
+	}
 }
 
 // S10.3-AC2: a well-formed EMV string for this location that is not byte-equal to the one issued
