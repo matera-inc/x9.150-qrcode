@@ -1,4 +1,5 @@
-{{- if .Values.autoscaling.enabled }}
+{{- /* No HPA for the Go build: one active instance (ADR-0031). */ -}}
+{{- if and .Values.autoscaling.enabled (ne (include "x9-qrcode.runtime" .) "go") }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:

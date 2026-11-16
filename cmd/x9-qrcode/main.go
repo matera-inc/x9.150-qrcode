@@ -72,12 +72,21 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	flags.SetOutput(stdout)
 	configFile := flags.String("config", lookup(env, "X9_CONFIG_FILE"), "the YAML configuration file (or X9_CONFIG_FILE)")
 	showVersion := flags.Bool("version", false, "print the version and exit")
+	healthcheck := flags.Bool("healthcheck", false,
+		"ask the service running with this configuration for /actuator/health, and exit 0 only if it answers UP")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if *showVersion {
 		_, err := fmt.Fprintf(stdout, "x9-qrcode %s (%s)\n", version, commit)
 		return err
+	}
+	if *healthcheck {
+		cfg, err := config.Load(*configFile, env)
+		if err != nil {
+			return err
+		}
+		return checkHealth(ctx, cfg.Server.Port)
 	}
 
 	// ── 1. Configuration, then the logger it configures ──────────────────────────────────────
@@ -381,6 +390,34 @@ func newServer(port int, h http.Handler) *http.Server {
 		// httpapi refuses past 30 KB as Tomcat does (a 400), so this stays well above it.
 		MaxHeaderBytes: 1 << 20,
 	}
+}
+
+// healthcheckTimeout bounds -healthcheck, below a container health check's usual timeout.
+const healthcheckTimeout = 3 * time.Second
+
+// checkHealth is -healthcheck: the distroless image has no shell, curl or wget, so a container
+// health check (docker-compose.go.yml) runs the binary itself against the port it serves on. A
+// 200 from /actuator/health is UP; anything else, or no answer, is an error and exit code 1.
+func checkHealth(ctx context.Context, port int) error {
+	ctx, cancel := context.WithTimeout(ctx, healthcheckTimeout)
+	defer cancel()
+	url := "http://" + net.JoinHostPort("127.0.0.1", strconv.Itoa(port)) + "/actuator/health"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("healthcheck: %w", err)
+	}
+	transport := &http.Transport{DisableKeepAlives: true}
+	defer transport.CloseIdleConnections()
+	resp, err := (&http.Client{Transport: transport}).Do(req)
+	if err != nil {
+		return fmt.Errorf("healthcheck: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("healthcheck: %s answered %d", url, resp.StatusCode)
+	}
+	return nil
 }
 
 func lookup(env []string, name string) string {

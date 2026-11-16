@@ -185,8 +185,11 @@ These keys are new; the Java build had none.
 
 ## The Helm chart's values
 
-The chart under `others/helm/x9-qrcode/` still deploys the Java build; it moves to Go at the
-cutover. Until then, this is what each of its values becomes in a Go deployment.
+The chart under `others/helm/x9-qrcode/` deploys the Java build by default until the cutover;
+with `-f values-go.yaml` (`runtime: go`) it deploys the Go build, as its
+[README](../others/helm/x9-qrcode/README.md#the-go-build-values-goyaml) explains. This is what each
+of the Java values becomes in that rendering; the `application.x9.*` values feed both builds, and
+the Go-only values are under `go.*`.
 
 | Chart value | Java setting it feeds | Go key | Go variable | Notes |
 |---|---|---|---|---|
@@ -196,23 +199,24 @@ cutover. Until then, this is what each of its values becomes in a Go deployment.
 | `application.x9.reservation.ttl-seconds` | `x9.reservation.ttl-seconds` | `reservation.ttl-seconds` | `X9_RESERVATION_TTL_SECONDS` | Same. |
 | `application.loggingFormat` | `application.loggingFormat` | dropped | — | Always JSON. |
 | `applicationExtra` | any Spring property | dropped | — | Write Go keys in the Go YAML file instead. |
-| `secrets.spring.data.mongodb.uri` | `spring.data.mongodb.uri` | `database.host` | `DATABASE_HOST` | And the other `DATABASE_*` variables above. |
-| `secrets.x9.certificate.privateKeystore.password` | `x9.certificate.private-keystore.password` | `certificate.private-keystore.password` | `X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD` | From a Kubernetes Secret, through `secretKeyRef`. |
+| `secrets.spring.data.mongodb.uri` | `spring.data.mongodb.uri` | `database.host` | `DATABASE_HOST` | And the other `DATABASE_*` variables above: chart values `go.database.*`; the password is `DATABASE_PASSWORD_FILE`, mounted from the Secret `go.existingSecret`. |
+| `secrets.x9.certificate.privateKeystore.password` | `x9.certificate.private-keystore.password` | `certificate.private-keystore.password` | `X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD` | From the Secret `go.existingSecret`, through `secretKeyRef`; the chart takes no password as a value. |
 | `secrets.x9.certificate.privateKeystore.privateKeyPassword` | `x9.certificate.private-keystore.private-key-password` | `certificate.private-keystore.private-key-password` | `X9_CERTIFICATE_PRIVATEKEYSTORE_PRIVATEKEYPASSWORD` | Equal to the password, or empty. |
-| `secrets.x9.certificate.truststore.password` | `x9.certificate.truststore.password` | `certificate.truststore.password` | `X9_CERTIFICATE_TRUSTSTORE_PASSWORD` | From a Kubernetes Secret. |
+| `secrets.x9.certificate.truststore.password` | `x9.certificate.truststore.password` | `certificate.truststore.password` | `X9_CERTIFICATE_TRUSTSTORE_PASSWORD` | From the Secret `go.existingSecret`. |
 | `secrets.configEncryption.enabled`, `password` | `jasypt.encryptor.password` | dropped | — | No Jasypt. |
 | `environment.env` (`SPRING_CONFIG_LOCATION`) | `spring.config.location` | `-config` flag | `X9_CONFIG_FILE` | Mount the Go YAML file and name it. |
 | `deploy.ports.containerPort` (8080) | `server.port` | `server.port` | `X9_SERVER_PORT` | Same port. |
 | `deploy.ports.managementPort` (12345), the probes' `port` | `management.server.port` | dropped | — | Probes move to the API port; the paths are the same. |
 | `autoscaling.*`, `replicaCount` | — | dropped | — | **One instance** (ADR-0031). |
 | `deploymentStrategy.type` (`RollingUpdate`) | — | dropped | — | `Recreate`, so two instances never overlap (ADR-0031). |
-| `deploymentStrategy.terminationGracePeriodSeconds`, `preStop.sleep` | — | `server.shutdown-delay-seconds` | `X9_SERVER_SHUTDOWNDELAYSECONDS` | The grace period must exceed this delay plus the 20 s drain. |
+| `deploymentStrategy.terminationGracePeriodSeconds`, `preStop.sleep` | — | `server.shutdown-delay-seconds` | `X9_SERVER_SHUTDOWNDELAYSECONDS` | Chart value `go.shutdownDelaySeconds`; the grace period must exceed this delay plus the 20 s drain. No `preStop` hook. |
+| `resources.limits.memory` | the JVM's heap | — | — | The Go runtime's own `GOMEMLIMIT` is set to `go.memLimitPercent` (80) percent of the limit, in bytes. |
 
 ## The Compose files and `secrets/`
 
 | Where | Java setting | Go key | Go variable | Notes |
 |---|---|---|---|---|
-| `docker-compose.yml`, `docker-compose.prod.yml` | `SPRING_DATA_MONGODB_HOST`, `_PORT`, `_REPLICA_SET_NAME` | `database.host` | `DATABASE_HOST` | Refused at start; use the `DATABASE_*` variables. The Go stack is `db/docker-compose.yml` plus the image. |
+| `docker-compose.yml`, `docker-compose.prod.yml` | `SPRING_DATA_MONGODB_HOST`, `_PORT`, `_REPLICA_SET_NAME` | `database.host` | `DATABASE_HOST` | Refused at start; use the `DATABASE_*` variables. The Go stack is `docker-compose.go.yml` (`make go-up`): PostgreSQL 16, Liquibase, then the service. |
 | `docker-compose.yml` | `SPRING_PROFILES_ACTIVE`, `SPRING_CONFIG_LOCATION` | `-config` flag | `X9_CONFIG_FILE` | Refused at start. |
 | `docker-compose.yml`, `docker-compose.prod.yml` | `X9_PUBLICENDPOINTS_HOST` | `public-endpoints.host` | `X9_PUBLICENDPOINTS_HOST` | Same. |
 | `docker-compose.prod.yml` | `X9_PUBLICENDPOINTS_BASEPATH` | dropped | — | Always `/pub`. |

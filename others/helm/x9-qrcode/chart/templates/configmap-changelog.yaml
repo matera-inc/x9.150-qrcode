@@ -1,0 +1,24 @@
+{{- /*
+The Liquibase changelog for the Go build's init container (Story 14.3). files/changelog is a link to
+the repository's db/changelog, so the chart carries the very files CI applies and checks; Helm
+follows the link when it renders or packages the chart. A ConfigMap key cannot hold a "/", so
+changes/0001-….yaml is the key changes__0001-….yaml, and deployment-go.yaml mounts each key back at
+its path.
+*/ -}}
+{{- if and (eq (include "x9-qrcode.runtime" .) "go") .Values.go.liquibase.enabled }}
+{{- $files := .Files.Glob "files/changelog/**" }}
+{{- if not $files }}
+{{- fail "files/changelog is empty: the chart's link to db/changelog did not resolve" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "x9-qrcode.fullname" . }}-changelog
+  labels:
+    {{- include "x9-qrcode.labels" . | nindent 4 }}
+data:
+  {{- range $path, $_ := $files }}
+  {{ trimPrefix "files/changelog/" $path | replace "/" "__" }}: |-
+    {{- $.Files.Get $path | nindent 4 }}
+  {{- end }}
+{{- end }}

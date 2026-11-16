@@ -94,6 +94,47 @@ func TestVersionFlag(t *testing.T) {
 	}
 }
 
+// S14.2-AC1: -healthcheck is the Compose health check of the distroless image; it exits 0 only
+// when the service on the configured port answers /actuator/health with a 200.
+func TestHealthcheckFlag(t *testing.T) {
+	base := []string{
+		"DATABASE_HOST=db", "DATABASE_NAME=bank", "DATABASE_USER=app", "DATABASE_PASSWORD=pw", "DATABASE_SSLMODE=disable",
+	}
+	for _, tc := range []struct {
+		name   string
+		status int // 0: nothing listens on the port
+		ok     bool
+	}{
+		{"UP", http.StatusOK, true},
+		{"DOWN", http.StatusServiceUnavailable, false},
+		{"nothing listening", 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			port := freePort(t.Context(), t)
+			if tc.status != 0 {
+				l, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:"+strconv.Itoa(port))
+				if err != nil {
+					t.Fatal(err)
+				}
+				srv := &http.Server{ReadHeaderTimeout: time.Second, Handler: http.HandlerFunc(
+					func(w http.ResponseWriter, r *http.Request) {
+						if r.URL.Path != "/actuator/health" {
+							http.NotFound(w, r)
+							return
+						}
+						w.WriteHeader(tc.status)
+					})}
+				go func() { _ = srv.Serve(l) }()
+				t.Cleanup(func() { _ = srv.Close() })
+			}
+			env := append(slices.Clone(base), "X9_SERVER_PORT="+strconv.Itoa(port))
+			if err := run(t.Context(), []string{"-healthcheck"}, env, io.Discard); (err == nil) != tc.ok {
+				t.Fatalf("err = %v, want ok = %v", err, tc.ok)
+			}
+		})
+	}
+}
+
 // S7.1-AC3: every log line is JSON, and a request's traceparent appears in its log line.
 func TestRunLogsJSONWithTraceIDs(t *testing.T) {
 	port := freePort(t.Context(), t)

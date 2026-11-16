@@ -226,6 +226,10 @@ make go-test                      # the tests, as CI runs them
 make go-image                     # image x9-qrcode:go for this machine (never pushed)
 make go-image-smoke               # non-root, health UP against PostgreSQL, exit 0 on SIGTERM, size
 make go-image-multiarch           # amd64 + arm64 with docker buildx (no push)
+make go-up                        # docker-compose.go.yml: PostgreSQL 16, Liquibase, then the service on
+                                  # :8080 with the demo identity; waits for health UP (make go-down)
+make go-compose-smoke             # the same on its own project: health, one create, then down
+make helm-check                   # the chart, both builds: lint, template, no Java variable for Go
 others/scripts/ci-go.sh           # everything CI's `go` job runs: vet, lint, nilaway, govulncheck,
                                   # go-licenses, race + shuffle + leak checks, fuzz smoke,
                                   # reproducible build, SBOM. `ci-go.sh lint test` runs just those.

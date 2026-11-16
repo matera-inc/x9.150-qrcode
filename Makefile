@@ -9,7 +9,7 @@ IMAGE   ?= x9-qrcode:latest
 
 .DEFAULT_GOAL := help
 .PHONY: help build test run-local image image-amd64 publish up up-prod down clean smoke \
-	go-build go-test go-image go-image-multiarch go-image-smoke
+	go-build go-test go-image go-image-multiarch go-image-smoke go-up go-down go-compose-smoke helm-check
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
@@ -111,6 +111,24 @@ go-image-multiarch: ## Build the Go image for amd64 and arm64 with docker buildx
 
 go-image-smoke: ## Check the Go image: non-root, health UP against PostgreSQL, exit 0 on SIGTERM; records size
 	others/scripts/go-image-smoke.sh $(GO_IMAGE)
+
+# docker-compose.go.yml (Story 14.2). X9_IMAGE runs an image you already have instead of building one.
+GO_COMPOSE = $(COMPOSE) -f docker-compose.go.yml
+
+# Without X9_IMAGE the Go image is built by go-image (which also works without buildx), not by Compose.
+go-up: ## Start the Go build with PostgreSQL 16 and Liquibase (docker-compose.go.yml); waits for health UP
+	$(if $(X9_IMAGE),,$(MAKE) go-image)
+	$(GO_COMPOSE) build bootstrap liquibase
+	X9_IMAGE=$(or $(X9_IMAGE),$(GO_IMAGE)) $(GO_COMPOSE) up -d --no-build --wait --wait-timeout 180
+
+go-down: ## Stop the Go stack and throw its database away (docker-compose.go.yml)
+	$(GO_COMPOSE) down -v
+
+go-compose-smoke: ## Bring docker-compose.go.yml up on its own project, check health and one create, take it down
+	others/scripts/compose-go-smoke.sh
+
+helm-check: ## helm lint and template the chart for Java (default) and Go (values-go.yaml); Go renders no refused variable
+	others/scripts/helm-check.sh
 
 clean: ## Remove build output (target/)
 	$(MVNW) clean

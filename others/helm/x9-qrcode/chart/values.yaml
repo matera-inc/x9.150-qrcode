@@ -2,6 +2,11 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
+# -- Which build this release deploys: `java` (Spring Boot on MongoDB, the default until the
+# cutover) or `go` (PostgreSQL). Deploy the Go build with `-f values-go.yaml`, which sets this and
+# the `go` section below; see the chart README.
+runtime: java
+
 image:
   repository: "registry.example.com/x9-qrcode"
   pullPolicy: IfNotPresent
@@ -319,3 +324,95 @@ secrets:
       truststore:
         # -- Password for the truststore used to validate certificate chains.
         password:
+
+# -- The Go build (`runtime: go`, values-go.yaml); ignored by the Java build. Every variable it
+# sets is listed in docs/CONFIGURATION-FROM-JAVA.md. `application.x9.*` above (public host, keystore
+# locations, reservation window) feeds both builds.
+go:
+  # -- The Secret, created by you, never by the chart, that holds the passwords below. It must
+  # exist before the release is installed.
+  existingSecret: ""
+  # -- The key of each password in `existingSecret`. The database password is required; the
+  # keystore passwords may be absent (the image's bundled demo identity needs none).
+  secretKeys:
+    databasePassword: database-password
+    privateKeystorePassword: private-keystore-password
+    privateKeyPassword: private-key-password
+    truststorePassword: truststore-password
+  # The bank's own PostgreSQL (ADR-0032): the chart ships no database. Its roles and schema are
+  # created once by the DBA, as db/README.md says.
+  database:
+    # -- PostgreSQL host (DATABASE_HOST). Required.
+    host: ""
+    # -- PostgreSQL port (DATABASE_PORT).
+    port: 5432
+    # -- Database name (DATABASE_NAME). Required.
+    name: ""
+    # -- The application role the service connects as (DATABASE_USER); never the owner.
+    user: x9_qrcode_app
+    # -- The schema (DATABASE_SCHEMA), also Liquibase's default and its own tables' schema.
+    schema: x9_qrcode
+    # -- TLS mode (DATABASE_SSLMODE), for the service and for Liquibase. `verify-full` is recommended.
+    sslmode: verify-full
+    # -- A Secret holding the CA certificate that signs the database's (DATABASE_SSLROOTCERT);
+    # required by `verify-ca` and `verify-full` unless the database's certificate chains to a public CA.
+    caSecret: ""
+    # -- The key of that certificate in `caSecret`.
+    caSecretKey: ca.crt
+    # -- Connections for writes (DATABASE_POOL_WRITES).
+    poolWrites: 8
+    # -- Connections for reads (DATABASE_POOL_READS).
+    poolReads: 4
+    # -- `exec` behind PgBouncer older than 1.21 (DATABASE_QUERY_EXEC_MODE); empty is the default.
+    queryExecMode: ""
+  # Liquibase 4.33.0 (Apache-2.0, ADR-0031) as an init container: it applies db/changelog as the
+  # owner role before the service starts, on every start (nothing to do when the schema is current).
+  liquibase:
+    # -- Run Liquibase before the service. Set false when your DBA applies the changelog (or the SQL
+    # `liquibase update-sql` writes) by hand; the service then refuses to start on an older schema.
+    enabled: true
+    # -- The official image, pinned: 4.33.0 is the last Apache-2.0 release (ADR-0031).
+    image: liquibase/liquibase:4.33.0
+    pullPolicy: IfNotPresent
+    # -- The owner role Liquibase connects as (db/README.md).
+    owner: x9_qrcode_owner
+    # -- The Secret with the owner's password; empty means `go.existingSecret`.
+    existingSecret: ""
+    # -- The key of the owner's password in that Secret.
+    passwordKey: liquibase-password
+    # The other roles the changelog creates, or uses if they exist (the application role is
+    # `go.database.user`).
+    roles:
+      readonly: x9_qrcode_readonly
+      eventReader: x9_qrcode_event_reader
+    # -- Liquibase is a JVM; cap its heap within the container's limit.
+    javaOpts: "-XX:MaxRAMPercentage=75"
+    # -- The init container's resources (requests equal to limits keep the pod's QoS).
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 500m
+        memory: 512Mi
+    # -- The official image's user is liquibase (1001), and its directory is that user's only.
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1001
+      runAsGroup: 1001
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      seccompProfile:
+        type: RuntimeDefault
+  # -- GOMEMLIMIT as a percentage of `resources.limits.memory` (ADR-0031).
+  memLimitPercent: 80
+  # -- GOMEMLIMIT as given (e.g. `400MiB`), instead of the percentage.
+  gomemlimit: ""
+  # -- Seconds readiness is down before the service stops accepting connections, on SIGTERM
+  # (X9_SERVER_SHUTDOWNDELAYSECONDS). `deploymentStrategy.terminationGracePeriodSeconds` must exceed
+  # this plus the 20 s drain.
+  shutdownDelaySeconds: 5
+  # -- More Go variables, as `name`/`value` (X9_LOG_LEVEL, X9_EVENTS_RETENTION, …). A SPRING_*,
+  # MONGO* or JASYPT_* name is refused when the chart renders, as the service would refuse it.
+  env: []
