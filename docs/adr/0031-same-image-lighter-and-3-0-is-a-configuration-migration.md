@@ -6,6 +6,11 @@ Date: 2026-11-13
 
 Accepted 2026-11-13. Part of [0022](0022-rewrite-in-go-as-a-standalone-product.md).
 
+**Amended 2026-11-16 by [0038](0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md):** `x9-config-convert` and the migrate image are **not built**,
+because the Java build has no production users. [CONFIGURATION-FROM-JAVA.md](../CONFIGURATION-FROM-JAVA.md) maps every setting of
+the Java build to its Go key and variable instead, and the start-up refusals name that document.
+Everything else here stands.
+
 ## Context
 
 The product reaches most people as `materainc/x9-qrcode` on Docker Hub. The owner's intent is that
@@ -34,7 +39,8 @@ third parties. 4.33.0 is the last Apache-2.0 release.
 ## Decision
 
 **Same image name, same contract, a new major: 3.0.0. It is a documented configuration migration,
-with a converter.**
+with a converter.** *(Amended 2026-11-16, [0038](0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md): with a written mapping, [CONFIGURATION-FROM-JAVA.md](../CONFIGURATION-FROM-JAVA.md), not a
+converter.)*
 
 **Kept:**
 
@@ -52,12 +58,13 @@ with a converter.**
 **Changed, explicitly, with tools:**
 
 - **Configuration file.** One YAML file of Go keys, plus the same environment variables.
-- **`x9-config-convert`** ships in the migrate image, `materainc/x9-qrcode:<version>-migrate` ([0030](0030-a-black-box-suite-defines-done-and-migration-writes-only-runtime-valid-rows.md)).
+- *(Not built, [0038](0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md).)* **`x9-config-convert`** ships in the migrate image, `materainc/x9-qrcode:<version>-migrate` ([0030](0030-a-black-box-suite-defines-done-and-migration-writes-only-runtime-valid-rows.md)).
   It reads an operator's Spring YAML, `application-secrets.yml`, the Jasypt password and the
   keystores. It writes the Go config file, decrypts `ENC(...)` into plain secret files, and converts
   JKS to PKCS#12.
 - **Refusing to start on old configuration.** Given Spring-style configuration or MongoDB
-  variables, the binary refuses to start and names the converter.
+  variables, the binary refuses to start and names the converter. *(Amended 2026-11-16,
+  [0038](0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md): it names [CONFIGURATION-FROM-JAVA.md](../CONFIGURATION-FROM-JAVA.md).)*
 - **Secrets** come from mounted files or the environment. The Kubernetes secrets API and Jasypt are
   gone.
 - **Database:** PostgreSQL (`DATABASE_*`), with Liquibase run first as a one-shot. The image is the
@@ -83,7 +90,7 @@ with a converter.**
      `gcr.io/distroless/static-debian13:nonroot`, pinned by digest.
 - **Multi-arch:** `docker buildx` builds `linux/amd64` and `linux/arm64` and publishes one manifest.
   `org.opencontainers.image.revision` and the other OCI labels are set from build arguments.
-- **The migrate image** (`<version>-migrate`) is a second target in the same `Dockerfile`, carrying
+- *(Not built, [0038](0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md).)* **The migrate image** (`<version>-migrate`) is a second target in the same `Dockerfile`, carrying
   `x9-migrate` and `x9-config-convert`.
 - **The `Makefile` stays a thin wrapper.** `make build`, `make test`, `make image`,
   `make image-amd64` and `make up` keep their names, so muscle memory and the existing docs still
@@ -129,7 +136,8 @@ with a converter.**
 ## Consequences
 
 - An operator upgrades by running two tools: the converter and the migrator. Their API consumers
-  notice nothing.
+  notice nothing. *(Amended 2026-11-16, [0038](0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md): no tool; the operator configures the Go build
+  from [CONFIGURATION-FROM-JAVA.md](../CONFIGURATION-FROM-JAVA.md) and starts it on an empty schema.)*
 - `java-final` keeps working for anyone not ready to move.
 - Liquibase stays Apache-2.0 for now. A future major release needs an explicit licence decision.
 

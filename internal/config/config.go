@@ -8,9 +8,9 @@
 // and every error names the key and its variable. A key that matters to security has no default:
 // leaving it out is a refusal, never a guess.
 //
-// A Spring-style file or a MongoDB variable is refused outright, naming x9-config-convert: the Go
-// build does not read the Java build's configuration, and saying so at start is kinder than
-// half-reading it.
+// A Spring-style file or a MongoDB variable is refused outright, naming MappingDoc: the Go build
+// does not read the Java build's configuration, and saying so at start is kinder than half-reading
+// it. There is no converter (ADR-0038): the document maps every Java setting to its Go key.
 package config
 
 import (
@@ -32,8 +32,10 @@ import (
 	"github.com/matera-inc/x9.150-qrcode/internal/emv"
 )
 
-// Converter is the tool that turns the Java build's configuration into this one (ADR-0031).
-const Converter = "x9-config-convert"
+// MappingDoc is the document, by its path in the repository, that maps every setting of the Java
+// build to this build's key and environment variable, or says why it is dropped (ADR-0038). Every
+// refusal of the Java build's configuration names it.
+const MappingDoc = "docs/CONFIGURATION-FROM-JAVA.md"
 
 // ErrOldConfiguration is returned for a Spring-style file or a MongoDB / Spring variable.
 var ErrOldConfiguration = errors.New("old configuration")
@@ -519,11 +521,13 @@ func refuseOldEnvironment(env []string) error {
 		return nil
 	}
 	return fmt.Errorf("%w: the environment sets %s, which the Java build read and this build does not; "+
-		"convert the configuration with %s and remove them (ADR-0031)", ErrOldConfiguration, strings.Join(found, ", "), Converter)
+		"remove them and set this build's variables instead, as %s lists them (ADR-0031)",
+		ErrOldConfiguration, strings.Join(found, ", "), MappingDoc)
 }
 
 // refuseEncryptedValues refuses a Jasypt ENC(…) value in any variable this service reads. Go never
-// decrypts Jasypt: the converter decrypts it once and writes the plain secret (ADR-0027, ADR-0031).
+// decrypts Jasypt: the operator passes the plain secret, from the environment or a mounted file,
+// as MappingDoc shows (ADR-0027, ADR-0038).
 func refuseEncryptedValues(vars map[string]string) error {
 	var found []string
 	for _, e := range envVars {
@@ -535,8 +539,8 @@ func refuseEncryptedValues(vars map[string]string) error {
 		return nil
 	}
 	return fmt.Errorf("%w: %s holds a Jasypt ENC(…) value, which this build never decrypts; "+
-		"decrypt it once with %s, which writes the plain secret, and pass that instead (ADR-0031)",
-		ErrOldConfiguration, strings.Join(found, ", "), Converter)
+		"pass the plain secret instead, from the environment or a mounted file, as %s shows (ADR-0031)",
+		ErrOldConfiguration, strings.Join(found, ", "), MappingDoc)
 }
 
 func refuseUnsupportedKeystores(vars map[string]string) []error {
@@ -572,7 +576,8 @@ var springKeys = []string{"spring", "management", "jasypt", "info", "logging", "
 
 func readFile(path string, cfg *Config) error {
 	if ext := strings.ToLower(filepath.Ext(path)); ext == ".properties" {
-		return fmt.Errorf("%w: %s is a Spring properties file; convert it with %s (ADR-0031)", ErrOldConfiguration, path, Converter)
+		return fmt.Errorf("%w: %s is a Spring properties file; write this build's YAML instead, as %s maps "+
+			"each setting (ADR-0031)", ErrOldConfiguration, path, MappingDoc)
 	}
 	data, err := os.ReadFile(path) //nolint:gosec // G304: the path is the operator's own configuration file.
 	if err != nil {
@@ -623,8 +628,8 @@ func refuseSpringDocument(path string, doc *yaml.Node) error {
 	if len(found) == 0 {
 		return nil
 	}
-	return fmt.Errorf("%w: %s is a Spring-style configuration (%s); convert it with %s (ADR-0031)",
-		ErrOldConfiguration, path, strings.Join(found, ", "), Converter)
+	return fmt.Errorf("%w: %s is a Spring-style configuration (%s); write this build's YAML instead, "+
+		"as %s maps each setting (ADR-0031)", ErrOldConfiguration, path, strings.Join(found, ", "), MappingDoc)
 }
 
 func walkScalars(n *yaml.Node, visit func(string)) {
@@ -842,7 +847,7 @@ func (c Certificate) validate() []error {
 		case location == "":
 		case strings.HasPrefix(location, "classpath:"):
 			errs = append(errs, problem(prefix+".location", "%q is a Java classpath location; leave it empty for the "+
-				"bundled demo identity, or mount the file and give its path (%s converts the configuration, ADR-0031)", location, Converter))
+				"bundled demo identity, or mount the file and give its path (%s maps each setting, ADR-0031)", location, MappingDoc))
 		default:
 			if _, err := os.Stat(location); err != nil {
 				errs = append(errs, problem(prefix+".location", "cannot be read: %v", err))

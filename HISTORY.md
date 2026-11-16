@@ -86,6 +86,7 @@ numbers. [BENCHMARK.md](BENCHMARK.md) publishes every number as measured, whiche
 | 2026-11-15 | Go signs, verifies and encodes exactly as Java does (Epic 8); the benchmark harness (Epic 5) |
 | 2026-11-15 | Billers create, read, edit and settle QR Codes on Go (Epic 9) |
 | 2026-11-15 | Payers fetch, notify and are evented on Go; the whole suite is required against Go (Epic 10) |
+| 2026-11-16 | ADR-0038: no data migration from the Java build; a written configuration mapping instead (Epic 13) |
 
 ## What's next
 
@@ -94,7 +95,10 @@ The remaining epics are listed in
 
 - **Epic 11:** prove the builds equivalent with a differential run, Java against Go.
 - **Epic 12:** retention and housekeeping of old rows.
-- **Epic 13:** tools to migrate existing MongoDB data and Java configuration.
+- **Epic 13:** no data migration: the Java build has no production users, so the Go build starts
+  on an empty database ([ADR-0038](docs/adr/0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md)).
+  Every Java setting is mapped to its Go key in
+  [docs/CONFIGURATION-FROM-JAVA.md](docs/CONFIGURATION-FROM-JAVA.md); no migration tool is built.
 - **Epic 14:** the lighter image ships.
 - **Epic 15:** [BENCHMARK.md](BENCHMARK.md) is re-run for the release.
 - **Epic 16:** the cutover.

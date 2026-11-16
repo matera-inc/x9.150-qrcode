@@ -6,6 +6,11 @@ Date: 2026-11-13
 
 Accepted 2026-11-13. Part of [0022](0022-rewrite-in-go-as-a-standalone-product.md).
 
+**Amended 2026-11-16 by [0038](0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md):** the Java build has no production users, so `x9-migrate` and
+the migrate image are **not built**. The migration rules and the cutover steps below are kept as
+the record of what was worked out, should a production user of the Java build appear before the
+cutover. The black-box suite and the definition of "done" are unchanged.
+
 ## Context
 
 Most of the Java build's 293 test methods are Spring integration tests that cannot run against a Go
@@ -30,6 +35,9 @@ lose.
   shows no untolerated difference;
 - the golden JWS and EMV corpora pass;
 - `two-instance-payment-cycle.sh` completes in all four Java/Go pairings.
+
+> **Amended 2026-11-16 ([0038](0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md)):** not built. Nothing below runs; the Go build starts on an
+> empty schema.
 
 **`x9-migrate` produces only rows the runtime could have written.** It ships as a **separate image
 tag** (`materainc/x9-qrcode:<version>-migrate`), so the service image carries no MongoDB driver. It:
@@ -57,7 +65,8 @@ tag** (`materainc/x9-qrcode:<version>-migrate`), so the service image carries no
   lookup rows and the sequence row seeded by Liquibase are expected;
 - prints row counts and a per-QR checksum, and has a `--dry-run` mode.
 
-**Cutover, per deployment:**
+**Cutover, per deployment:** *(amended 2026-11-16, [0038](0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md): without `x9-migrate`, steps 2 and 5
+fall away and the schema stays empty; consumers start over from the Go log)*
 
 1. Announce the window.
 2. Stop **inbound traffic** to Java, but leave the process running until its drain has emptied every

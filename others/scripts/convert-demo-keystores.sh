@@ -16,7 +16,7 @@
 #   others/scripts/convert-demo-keystores.sh --check   # fail if the committed copies differ
 #
 # Needs keytool (from the JDK) and openssl. A true JKS keystore (one starting with 0xFEEDFEED) is
-# converted the same way an operator converts theirs (x9-config-convert does it for them):
+# converted the same way an operator converts theirs (docs/CONFIGURATION-FROM-JAVA.md, ADR-0038):
 #   keytool -importkeystore -srckeystore my.jks -srcstoretype JKS \
 #           -destkeystore my.p12 -deststoretype PKCS12
 

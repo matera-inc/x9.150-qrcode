@@ -206,7 +206,8 @@ func TestGoldenTestCATruststore(t *testing.T) {
 	}
 }
 
-// S8.2-AC1: a JKS or JCEKS file is refused at startup, naming the conversion (ADR-0031).
+// S8.2-AC1, S13.2-AC2: a JKS or JCEKS file is refused at startup, naming the keytool conversion and
+// the mapping document that shows it (ADR-0031, ADR-0038).
 func TestJKSIsRefusedWithItsConversion(t *testing.T) {
 	// A JKS keystore starts with 0xFEEDFEED (JCEKS with 0xCECECECE); the rest is never read.
 	jks := writeFile(t, t.TempDir(), "signer.jks", []byte{0xFE, 0xED, 0xFE, 0xED, 0, 0, 0, 2})
@@ -217,11 +218,11 @@ func TestJKSIsRefusedWithItsConversion(t *testing.T) {
 		want []string
 	}{
 		{"JKS keystore", config.Certificate{PrivateKeystore: config.PrivateKeystore{Location: jks}},
-			[]string{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION", "JKS", "x9-config-convert", "keytool -importkeystore", "ADR-0031"}},
+			[]string{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION", "JKS", config.MappingDoc, "keytool -importkeystore", "ADR-0031"}},
 		{"JCEKS keystore", config.Certificate{PrivateKeystore: config.PrivateKeystore{Location: jceks}},
-			[]string{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION", "JKS", "x9-config-convert"}},
+			[]string{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION", "JKS", config.MappingDoc}},
 		{"Java's JKS test truststore", config.Certificate{Truststore: config.Truststore{Location: javaTestPKI + "x9-test-truststore.jks"}},
-			[]string{"X9_CERTIFICATE_TRUSTSTORE_LOCATION", "JKS", "x9-config-convert", "keytool -importkeystore"}},
+			[]string{"X9_CERTIFICATE_TRUSTSTORE_LOCATION", "JKS", config.MappingDoc, "keytool -importkeystore"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := Load(tc.cfg, newLogger(io.Discard))

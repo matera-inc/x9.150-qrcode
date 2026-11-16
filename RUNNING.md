@@ -254,7 +254,9 @@ the variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`.
 - **The Java build's configuration is refused, not half-read.** A Spring-style file (`spring:`,
   `management:` or `x9:` at the top, Jasypt `ENC(…)`, `classpath:`, `${…}` placeholders, a
   `.properties` file) or any `SPRING_*`, `MONGO*` or `JASYPT_*` variable stops the service and
-  names `x9-config-convert`, the converter that ships with the 3.0.0 migration.
+  names [`docs/CONFIGURATION-FROM-JAVA.md`](docs/CONFIGURATION-FROM-JAVA.md), which maps every
+  Java setting to its Go key and variable (there is no converter,
+  [ADR-0038](docs/adr/0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md)).
 - **Logs are JSON** (`log/slog`), one line per request with `method`, `path`, `status` and
   `durationMs`. An incoming `b3`, `X-B3-TraceId`/`X-B3-SpanId` or `traceparent` header adds
   `traceId` and `spanId`. The ids are logged only; nothing is exported.

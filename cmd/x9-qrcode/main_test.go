@@ -76,10 +76,10 @@ func TestRunRefusesAQRCodeRetentionShorterThanTheEvents(t *testing.T) {
 	}
 }
 
-// S7.1-AC2: Spring-style configuration is refused, naming the converter.
+// S7.1-AC2, S13.2-AC2: Spring-style configuration is refused, naming the mapping document.
 func TestRunRefusesSpringConfiguration(t *testing.T) {
 	err := run(t.Context(), nil, []string{"SPRING_CONFIG_LOCATION=/config/application.yml"}, io.Discard)
-	if err == nil || !strings.Contains(err.Error(), "x9-config-convert") {
+	if err == nil || !strings.Contains(err.Error(), "docs/CONFIGURATION-FROM-JAVA.md") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -161,8 +161,8 @@ func TestRunLogsJSONWithTraceIDs(t *testing.T) {
 	}
 }
 
-// S8.2-AC1: a JKS keystore is refused at start, naming the conversion; the database is never
-// reached.
+// S8.2-AC1, S13.2-AC2: a JKS keystore is refused at start, naming the mapping document; the
+// database is never reached.
 func TestRunRefusesAJKSTruststore(t *testing.T) {
 	env := []string{
 		"DATABASE_HOST=127.0.0.1", "DATABASE_PORT=1", "DATABASE_NAME=bank", "DATABASE_USER=app", "DATABASE_PASSWORD=pw",
@@ -170,8 +170,8 @@ func TestRunRefusesAJKSTruststore(t *testing.T) {
 		"X9_CERTIFICATE_TRUSTSTORE_LOCATION=file:../../x9-qrcode-infrastructure/src/test/resources/certificate/x9-test-truststore.jks",
 	}
 	err := run(t.Context(), nil, env, io.Discard)
-	if err == nil || !errors.Is(err, keys.ErrUnsupportedFormat) || !strings.Contains(err.Error(), "x9-config-convert") {
-		t.Fatalf("err = %v, want a JKS refusal naming x9-config-convert", err)
+	if err == nil || !errors.Is(err, keys.ErrUnsupportedFormat) || !strings.Contains(err.Error(), "docs/CONFIGURATION-FROM-JAVA.md") {
+		t.Fatalf("err = %v, want a JKS refusal naming docs/CONFIGURATION-FROM-JAVA.md", err)
 	}
 }
 

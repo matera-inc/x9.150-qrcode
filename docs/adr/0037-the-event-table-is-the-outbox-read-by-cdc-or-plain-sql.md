@@ -45,7 +45,7 @@ outbox to drain; the event table plays that role itself.
 - **`event_id` is a UUIDv7** (ADR-0026): it starts with a millisecond timestamp, so ids sort
   *roughly* in the order the events happened. That is all it promises. Events migrated from Java
   keep their original ids, which are random UUIDv4s and do not sort by time at all (corrected
-  2026-11-14).
+  2026-11-14). *(Amended 2026-11-16, [0038](0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md): no events are migrated.)*
 - **Use `seq` to order events; use `event_id` to recognise one** (the dedupe key, a CDC message
   key).
 
