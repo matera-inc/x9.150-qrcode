@@ -8,12 +8,19 @@ you help immediately without reading every doc.
 An **ANSI X9.150-2026 Payment QR Code** backend. It plays the **Payee-PSP** role: it creates QR
 codes, serves the signed Payment Payload a payer's app fetches, and receives payment notifications.
 
-- **Stack:** Java 25, Spring Boot 3.5.x, MongoDB (replica set), Maven (wrapper `./mvnw`).
-- **Planned rewrite:** a Go + PostgreSQL build is designed but not yet started. See
-  [PLAN-GO-POSTGRES-REWRITE.md](PLAN-GO-POSTGRES-REWRITE.md) and
-  [ADR-0022](docs/adr/0022-rewrite-in-go-as-a-standalone-product.md); until it ships, everything in
-  this file describes the Java build.
-- **Architecture:** Clean / Hexagonal, three modules — `x9-qrcode-domain` (pure Java, no Spring),
+- **Stack:** **Go 1.27 on PostgreSQL 16.** One binary, `cmd/x9-qrcode`, with one package per
+  concern under `internal/<domain>/`; standard-library `net/http`; `pgx/v5` with hand-written SQL;
+  the schema is a Liquibase changelog in `db/changelog/`, applied **before** the binary starts
+  ([db/README.md](db/README.md)). Decided in
+  [ADR-0022](docs/adr/0022-rewrite-in-go-as-a-standalone-product.md); why, in
+  [HISTORY.md](HISTORY.md).
+- **The Java build is still here.** Java 25, Spring Boot 3.5.x, MongoDB (replica set), Maven
+  (wrapper `./mvnw`), in the `x9-qrcode-*` modules. It stays until it is frozen under
+  `legacy/java/`, and the Docker Hub image is still built from it until the cutover. Where this
+  file names Java classes, Spring rules or MongoDB, it describes the Java build; the behaviour it
+  describes is the same in both builds unless ADR-0028's "Known differences between the builds"
+  says otherwise.
+- **Java architecture:** Clean / Hexagonal, three modules — `x9-qrcode-domain` (pure Java, no Spring),
   `x9-qrcode-application` (use cases, depends only on domain), `x9-qrcode-infrastructure` (Spring,
   web, persistence, config). Dependency direction is inward-only.
 - **API:** open / unauthenticated by design — secure it at the edge. Management endpoints under
@@ -141,6 +148,18 @@ These describe how our software behaves; they're enforced in `openapi.yaml` + th
 
 ## Build / test / run
 
+The Go build (see README's "Running the Application" for the full sequence):
+
+```bash
+docker compose -f db/docker-compose.yml up -d --build   # throwaway PostgreSQL 16 + Liquibase
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=postgres DATABASE_USER=x9_qrcode_app \
+DATABASE_PASSWORD=unused DATABASE_SSLMODE=disable go run ./cmd/x9-qrcode
+make go-test                # the Go tests, as CI runs them
+make go-image               # image x9-qrcode:go (never pushed)
+```
+
+The Java build:
+
 ```bash
 ./mvnw clean install        # build + test all modules
 ./mvnw test                 # full test suite
@@ -149,8 +168,8 @@ make smoke                  # health check (curl /actuator/health + /pub/.well-k
 make down                   # stop everything
 ```
 
-Default port `8080`; health at `http://localhost:8080/actuator/health`. MongoDB **must** be a
-replica set (transactions) — Compose starts one automatically. See `RUNNING.md` for host-JVM runs
+Default port `8080` in both builds; health at `http://localhost:8080/actuator/health`. For the
+Java build, MongoDB **must** be a replica set (transactions) — Compose starts one automatically. See `RUNNING.md` for host-JVM runs
 (`make run-local`) and details.
 
 ## Generate a QR code (the first thing to try)
@@ -207,7 +226,7 @@ zbarimg --raw -q playground/qr-cloudprovider.png   # prints the exact EMV string
 
 Full walkthrough: the `x9-qrcode` skill and `playground/README.md`.
 
-## Architecture rules (mandatory)
+## Architecture rules (mandatory, Java build)
 
 - **No Spring in `domain` or `application`** — no `@Component`/`@Service`/`@Autowired` there. All
   wiring lives in `infrastructure/configuration/` via `@Configuration` + `@Bean`.
@@ -239,10 +258,12 @@ Use `x9-qrcode` when helping someone get started.
 | Doc | Purpose |
 |---|---|
 | `README.md` | Project overview and structure |
+| `HISTORY.md` | Why the service moved from Java/MongoDB to Go/PostgreSQL, and what is next |
+| `db/README.md` | The PostgreSQL schema, its roles, and what the service asks of the database |
 | `RUNNING.md` | First-run guide (build, run, smoke-test) |
 | `ENDPOINTS.md` | Endpoint reference + local scan testing |
 | `STATE-MACHINE.md` | QR lifecycle (ACTIVE → PAYMENT_INITIATED → PAID / CANCELLED) |
-| `HIGH-AVAILABILITY.md` | MongoDB replica set & HA guidance |
+| `HIGH-AVAILABILITY.md` | HA guidance; MongoDB replica set for the Java build |
 | `others/helm/x9-qrcode/README.md` | Kubernetes / Helm deploy |
 | `playground/README.md` | Payee/payer simulation scripts (generate & fetch QRs) |
 | `CONTRIBUTING.md` / `SECURITY.md` | Contribution flow / vulnerability reporting |

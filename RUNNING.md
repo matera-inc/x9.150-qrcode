@@ -4,6 +4,13 @@ A step-by-step guide to build, run, and smoke-test the X9 QRCode backend for the
 locally on the JVM, or as a container. For endpoint/URL configuration see
 [`ENDPOINTS.md`](ENDPOINTS.md).
 
+> **Two builds.** The service is the Go build on PostgreSQL: see [The Go build](#the-go-build) and
+> the README's [Running the Application](README.md#running-the-application). The sections from
+> Prerequisites to Multi-arch images describe the Java build, on the JVM with MongoDB, which stays
+> in this repository until it is frozen under `legacy/java/` ([HISTORY.md](HISTORY.md)). Its MongoDB
+> notes are in [Java build (legacy): MongoDB](#java-build-legacy-mongodb). The JWS clock skew and
+> the test clock apply to both builds.
+
 ## Prerequisites
 
 | Need | Why | Notes |
@@ -203,11 +210,11 @@ docker manifest create REPO:latest REPO:latest-arm64 REPO:latest-amd64
 docker manifest push   REPO:latest
 ```
 
-## The Go build (in progress)
+## The Go build
 
-The Go + PostgreSQL rewrite ([ADR-0022](docs/adr/0022-rewrite-in-go-as-a-standalone-product.md))
-is being built alongside the Java build, which stays the one you run. It serves no business
-endpoint yet. It needs Go (the version `go.mod` pins; with the default `GOTOOLCHAIN=auto`, `go`
+The Go + PostgreSQL build ([ADR-0022](docs/adr/0022-rewrite-in-go-as-a-standalone-product.md))
+serves the whole HTTP contract, and the whole black-box suite runs against it. The image on Docker
+Hub stays the Java build until the cutover. It needs Go (the version `go.mod` pins; with the default `GOTOOLCHAIN=auto`, `go`
 fetches it).
 
 ```bash
@@ -277,8 +284,8 @@ the variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`.
   ([ADR-0033](docs/adr/0033-the-clock-can-be-moved-in-test-deployments-only.md)). Lint refuses
   `time.Now`, `Since`, `Until`, `After`, `Tick` and `NewTimer` anywhere else, except at a
   `//nolint:forbidigo` that says which real duration it measures. The clock supports a
-  millisecond offset, but it stays disabled in the Go build until the `/test/clock` listener and
-  its certificate guard arrive with the signing keys.
+  millisecond offset, moved through `/test/clock` (`internal/testclock`) in test deployments only,
+  as described in [Moving the clock](#moving-the-clock-test-deployments-only).
 - **Signatures on the wire.** The Go build publishes its signing key at
   `/pub/.well-known/jwks` (a JWK set with the `x5c` chain, in the Java build's shape) and
   `/pub/.well-known/certificate/x9-key.pem` (the chain in PEM; the name every `x5u` gives it,
@@ -316,6 +323,38 @@ the variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`.
   Go's tokens with the black-box suite's own verifier (`others/blackbox/x9client`) when
   `.blackbox-venv` exists (`make blackbox-venv`) or `X9_BLACKBOX_PYTHON` names an interpreter with
   the suite's dependencies; CI always runs it.
+
+## Java build (legacy): MongoDB
+
+This section concerns only the Java build. The Go build runs on PostgreSQL (see
+[`db/README.md`](db/README.md)).
+
+MongoDB Community is free to run in Docker. The compose files use the official **`mongo`** image
+started as a **single-node replica set** (`mongod --replSet`) — the minimum required for the
+transactions this app uses. `docker-compose*.yml` set that up for you (`rs.initiate` on a 1-node
+set), so nothing further is needed for local testing.
+
+> **The MongoDB tag is pinned to `mongo:7.0.45`, and not simply out of caution.**
+> MongoDB **8.x refuses to start on Linux kernels 6.19 and newer** — a deliberate startup check
+> rather than a crash: its bundled tcmalloc violates the kernel's rseq ABI, so it exits instead of
+> risking corruption ([SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912)). 7.0 links a
+> different allocator, has no rseq references and no upper kernel bound, so one tag serves old and
+> new hosts. That kernel is not exotic — on Ubuntu 24.04 it arrives through the HWE track, which
+> rolls forward on its own.
+>
+> The cost is stated plainly: MongoDB 7.0 is supported until **2027-08-31**, against 2029-10-31 for
+> 8.0. For a deployment whose job is to start on a stranger's machine that is the right trade today,
+> since an 8.x that will not boot has no support value either. Revisit once upstream fixes the
+> allocator.
+>
+> **If you already have MongoDB 8.x data on disk, do not simply change the tag.** MongoDB does not
+> support an in-place major *downgrade* once a server has raised the data directory's feature
+> compatibility version, so a 7.0 server started against it can refuse to come up — and the service
+> is then down. The supported route is `mongodump` → wipe → restore, and it has to be done **while
+> 8.x still starts**. Check `featureCompatibilityVersion` before you change anything.
+>
+> Running your own MongoDB (the Helm chart expects an external one) puts the same kernel
+> requirement on you.
 
 ## Troubleshooting
 
