@@ -1,0 +1,22 @@
+{
+ "scenario": "S7",
+ "build": "java-mongo",
+ "image": {
+  "image": "x9-qrcode:git-66d113c",
+  "id": "sha256:8b61b83823c5c9e18e2a8737ab0517e2744fbdc5db10c7548a22a5c873849450",
+  "revision": "66d113c9702096aba9b5d5abd8b118968853d3c0",
+  "version": "git-66d113c",
+  "platform": "linux/arm64",
+  "sizeBytes": 392796754
+ },
+ "sizeBytes": 392796754,
+ "compressedSizeBytes": 176099199,
+ "coldStartToHealthUpMs": 2635,
+ "restingMemoryBytes": 295279001,
+ "idleSeconds": 300,
+ "limits": {
+  "cpus": "2",
+  "memory": "2g"
+ },
+ "method": "docker run to the first 200 UP from /actuator/health, polled every 50 ms, database already up; resting memory from docker stats (usage minus inactive file cache) after the idle period, no request in between"
+}

@@ -1,0 +1,1 @@
+{"database" : "postgresql", "version" : "16.16 (Debian 16.16-1.pgdg13+1)", "synchronous_commit" : "on", "fsync" : "on", "wal_sync_method" : "fdatasync", "max_connections" : 20}

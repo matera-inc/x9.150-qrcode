@@ -1,0 +1,1 @@
+{"database":"mongodb","version":"7.0.45","writeConcernMajorityJournalDefault":true,"defaultWriteConcern":{"w":"majority","j":true,"wtimeout":0},"serviceUri":"w=majority&journal=true"}
