@@ -124,9 +124,12 @@ a test, by position, aligned on the request so that an exchange only one build m
 its index and the rest still pair. Before comparing it normalises both sides: JSON compared as
 values (whitespace and key order ignored); server-minted ids, `correlationId`s, event ids, cursors,
 times and dates masked (keeping whether an offset is `Z` or numeric); a JWS compared as its decoded
-header minus `iat`, `correlationId` and `x5c`, and its decoded payload, with its signature masked;
+header minus `iat`, `correlationId`, `x5c` and the certificate thumbprint, and its decoded payload,
+with its signature masked; a header's `crit` and a problem's `violations` compared as sets (Java's
+order of violations changes from run to run);
 an EMV string's location id and CRC masked, inside `qrCodeB64` too; an event-stream page reduced to
-the events of the test's own QR Codes, and a run of polls counted once, its last. Then status,
+the events of the test's own QR Codes, grouped by QR Code (the order promised is per QR Code;
+across QR Codes it is timing), and a run of polls counted once, its last. Then status,
 `ETag`, `Content-Type`, `Location` and the body must match. It prints counts by kind, the most
 recurring differences and every difference, and `--json` writes them with the test node id, the
 exchange index, the field and both values. A test only one build recorded is named with why
