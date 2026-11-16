@@ -356,7 +356,8 @@ None. The service has no UI.
 | FR25 | Epic 10 | event stream, published keys and signature endpoints, payload, notifications under ADR-0036, payer-side endpoints, decoder; the whole black-box suite green on Go |
 | FR26 | Epic 11 | the differential run and interop |
 | FR27 | Epic 12 | retention and housekeeping |
-| FR28–FR32 | Epics 13–17 | stubs for plan phases 9–12 |
+| FR28 | Epic 13 | moving from the Java build (reduced: no data migration) |
+| FR29–FR32 | Epics 14–17 | stubs for plan phases 10–12 |
 
 ## Epic List
 
@@ -366,8 +367,8 @@ alongside 3–4.
 **Track B: Go/PostgreSQL foundations.** Epics 6–7 follow each other, and the track runs in parallel
 with track A.
 
-**Stubs.** Epics 13–17. Epic 8 was detailed on 2026-11-14, once Epic 4 was green; Epics 9 and 10
-on 2026-11-15, once Epic 8 was built; Epic 11 on 2026-11-16, once Epic 10 was done; Epic 12 the same day, once Epic 11 was done.
+**Stubs.** Epics 14–17. Epic 8 was detailed on 2026-11-14, once Epic 4 was green; Epics 9 and 10
+on 2026-11-15, once Epic 8 was built; Epic 11 on 2026-11-16, once Epic 10 was done; Epic 12 the same day, once Epic 11 was done; Epic 13 the same day, reduced by the owner.
 
 ### Epic 1: The docs tell the truth
 
@@ -460,11 +461,17 @@ never changing a status; an operator can see what it did and size it.
 
 **FRs covered:** FR27
 
-### Epics 13–17: stubs (detailed later)
+### Epic 13: Moving from the Java build: a documented mapping, no data migration
+
+No data migration is built (owner, 2026-11-16: the Java build has no production users); every old
+setting maps to its new one in a document, and no text promises a migration tool.
+
+**FRs covered:** FR28 (reduced)
+
+### Epics 14–17: stubs (detailed later)
 
 | Epic | Phase | Scope |
 |---|---|---|
-| 13 | 9 | Operators can migrate data and configuration (FR28) |
 | 14 | 10 | The lighter image ships (FR29) |
 | 15 | 10b | `BENCHMARK.md` published (FR30) |
 | 16 | 11 | Cutover (FR31) |
@@ -2803,13 +2810,78 @@ their defaults, the start-up rule, the interval, and what an operator gives up b
 (an expired QR Code is readable until `qrcode.retention`; a consumer must read events within
 `events.retention`), with the storage measured in `BENCHMARK.md` as a sizing guide.
 
-## Epics 13–17: stubs
+## Epic 13: Moving from the Java build: a documented mapping, no data migration
+
+The plan had two migration tools: `x9-migrate` (MongoDB data into PostgreSQL) and
+`x9-config-convert` (Spring configuration into the Go file), shipped in a separate migrate image.
+**The owner decided on 2026-11-16 not to build them:** the Java build has no production users, so
+there is no data to move ("we don't have real users using it yet"). An operator who tried the Java
+build starts the Go build on an empty database, with a written mapping from every old setting to its
+new one. This epic records that decision, writes the mapping, and removes every promise of the two
+tools.
+
+**Implements:** FR28 (reduced by the owner, 2026-11-16); supersedes the migration parts of ADR-0030
+and ADR-0031; plan §9 (phase 9).
+
+Order: 13.1, then 13.2 and 13.3.
+
+### Story 13.1: The decision not to migrate data is recorded
+
+As a **reader of this repository**,
+I want to know why there is no data migration,
+So that its absence is a decision, not a gap.
+
+**Acceptance Criteria:**
+
+**S13.1-AC1.** **Given** a new ADR (next free number)
+**Then** it records the owner's decision and its reason (no production users of the Java build),
+what is not built (`x9-migrate`, `x9-config-convert`, the `-migrate` image tag), what stays (the
+legacy event-cursor support of ADR-0026, harmless and already built), and when to revisit it (if a
+production user of the Java build appears before the cutover). ADR-0030 and ADR-0031 are marked as
+amended by it where they describe the tools, and the ADR index lists it.
+
+**S13.1-AC2.** **Given** `PLAN-GO-POSTGRES-REWRITE.md` and `HISTORY.md`
+**Then** phase 9 and "What's next" say the same, pointing to the new ADR.
+
+### Story 13.2: Every setting of the Java build maps to the Go build's, in one document
+
+As an **operator** who ran the Java build,
+I want each old setting's new name, or the reason it is gone,
+So that I can configure the Go build without a converter.
+
+**Acceptance Criteria:**
+
+**S13.2-AC1.** **Given** a new document (`docs/CONFIGURATION-FROM-JAVA.md`)
+**Then** it lists every property and environment variable the Java build reads (from its
+`application.yml` files and Helm values), each with its Go key and environment variable, or
+"dropped" and why; it shows how to turn a JKS keystore into PKCS#12 with `keytool`, and how to
+replace a Jasypt `ENC(…)` value with the plain secret supplied safely (an environment variable or a
+mounted file).
+
+**S13.2-AC2.** **Given** the Go build's start-up refusals (a Spring-style file, a `SPRING_*`,
+`MONGO*` or `JASYPT_*` variable, an `ENC(…)` value)
+**Then** they name this document instead of `x9-config-convert`; their tests follow.
+
+### Story 13.3: No document promises a migration tool
+
+As a **reader**,
+I want the docs to describe what exists,
+So that nobody looks for a tool that was never built.
+
+**Acceptance Criteria:**
+
+**S13.3-AC1.** **Given** the repository's docs (README, RUNNING, AGENTS, DOCKERHUB, the plan, the
+ADRs, the skills under `.agents/`)
+**Then** no text promises `x9-migrate`, `x9-config-convert` or a `-migrate` image; each mention is
+removed or points to the new ADR and the mapping document. The Helm chart and the Compose files keep
+deploying the Java build until the cutover (Epic 16), which moves them to Go.
+
+## Epics 14–17: stubs
 
 Detailed in a later run of this workflow.
 
 | Epic | Phase | Scope |
 |---|---|---|
-| 13 | 9 | Operators can migrate data and configuration, reservation holders included; the legacy `SPRING_*`, `MONGO*` and `JASYPT_*` variables are housekept out of the Helm chart, the compose files and the docs, since the Go service refuses them (owner, 2026-11-14) (FR28) |
 | 14 | 10 | The lighter image ships (FR29) |
 | 15 | 10b | `BENCHMARK.md` published (FR30) |
 | 16 | 11 | Cutover; `make` targets renamed (FR31) |
