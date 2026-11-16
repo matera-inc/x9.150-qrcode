@@ -50,7 +50,7 @@ converter.)*
 | Ports | `8080` API; the management port as today |
 | Contract | [0028](0028-the-http-contract-is-frozen-and-equivalence-is-proved-by-a-differential-run.md) |
 | Health | `/actuator/health`, `/actuator/health/liveness`, `/actuator/health/readiness`, same JSON shape |
-| Metrics | `/actuator/prometheus`. The plan inventories every metric Java exports; each is kept under its name or listed as dropped |
+| Metrics | `/actuator/prometheus`. The plan inventories every metric Java exports; each is kept under its name or listed as dropped. *(Done, Story 14.1: [METRICS.md](../METRICS.md).)* |
 | Environment variables | every documented variable keeps its name and meaning |
 | Out-of-the-box run | the demo identity is bundled (as PKCS#12), so `docker run` works with no secrets |
 | Provenance | the OCI `revision` label; tags `git-<sha>`, `latest`, `latest-arm64`, `latest-amd64` |
@@ -70,7 +70,9 @@ converter.)*
 - **Database:** PostgreSQL (`DATABASE_*`), with Liquibase run first as a one-shot. The image is the
   official `liquibase/liquibase:4.33.0` (Apache-2.0), pinned until Matera's legal review of FSL.
 - **Actuator:** only health, prometheus and info are exposed. The other endpoints Java exposed with
-  `include: "*"` are dropped, and listed in the upgrade notes.
+  `include: "*"` are dropped, and listed in the upgrade notes. *(Done, Story 14.1: info answers
+  the build's version and commit; the dropped endpoints are listed in
+  [METRICS.md](../METRICS.md#the-other-actuator-endpoints).)*
 - **Tracing:** incoming `b3` / `traceparent` ids are logged with every request. There is no exporter
   in 3.0.0.
 - **Log format:** `slog` JSON; the field mapping is in the upgrade notes.

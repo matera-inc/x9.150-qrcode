@@ -251,6 +251,7 @@ Architecture, standard-alignment, and integration design notes:
 - [Running & Testing](RUNNING.md) — first-run guide: the Go build, configuration, health, the test clock; the Java build and its MongoDB
 - [The database, for a DBA](db/README.md) — the PostgreSQL schema, its roles, and what the service asks of your database
 - [The event table](docs/EVENTS-TABLE.md) — reading `payment_event` by change data capture or plain SQL
+- [Metrics and actuator endpoints](docs/METRICS.md) — every metric the Java build exported, kept, replaced or dropped, and the Go build's own; `/actuator/info`
 - [Architecture decisions](docs/adr/README.md) — every ADR, including the rewrite's (0022 onwards)
 - [Plan: Go + PostgreSQL rewrite](PLAN-GO-POSTGRES-REWRITE.md) — the rewrite's evaluation, phases and benchmark method
 - [Endpoints & Local Scan Testing](ENDPOINTS.md) — public/management endpoints, the single-origin URL model, and Cloudflare-tunnel setup for phone-scan testing

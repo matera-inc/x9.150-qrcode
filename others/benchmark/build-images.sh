@@ -48,5 +48,7 @@ for what in "${WHAT[@]}"; do
         --label org.opencontainers.image.version="git-$SHA" -f db/local/liquibase.Dockerfile db ;;
     *) echo "unknown image $what (java, go, liquibase)" >&2; exit 2 ;;
   esac
-  docker image inspect "$image" --format "built $image: {{.Os}}/{{.Architecture}}, {{.Size}} bytes, revision {{index .Config.Labels \"org.opencontainers.image.revision\"}}"
+  # The size from `docker save`, not {{.Size}}, whose meaning depends on the image store.
+  size="$(python3 -I others/scripts/image-size.py "$image" --field sizeBytes)"
+  docker image inspect "$image" --format "built $image: {{.Os}}/{{.Architecture}}, $size bytes unpacked, revision {{index .Config.Labels \"org.opencontainers.image.revision\"}}"
 done

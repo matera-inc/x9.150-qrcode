@@ -9,8 +9,10 @@
 #   footprint.sh java-mongo|go-postgres <out-dir>
 #
 # Records into <out-dir>/s7.json:
-#   - image size: uncompressed (as the runtime stores it) and compressed (docker save | gzip, close
-#     to what a registry transfers);
+#   - image size: unpacked (the layers' tars) and compressed (each layer gzipped, close to what a
+#     registry transfers), both read from `docker save` by others/scripts/image-size.py, the same
+#     on Docker's classic and containerd image stores (`docker image inspect`'s {{.Size}} is not:
+#     on the containerd store it is the compressed content or the disk usage, by version);
 #   - cold start: milliseconds from `docker run` to the first /actuator/health answering 200 UP,
 #     polled every 50 ms, with the database already up (the method of others/scripts/go-image-smoke.sh);
 #   - resting memory: the container's memory use (cgroup usage minus inactive file cache, as
@@ -46,8 +48,8 @@ docker image inspect "$IMAGE" >/dev/null 2>&1 || die "image $IMAGE is not built 
 mkdir -p "$OUT"
 
 log "S7 $BUILD: image size"
-size="$(docker image inspect "$IMAGE" --format '{{.Size}}')"
-compressed="$(docker save "$IMAGE" | gzip -c | wc -c | tr -d ' ')"
+size="$(image_size "$IMAGE" sizeBytes)"
+compressed="$(image_size "$IMAGE" compressedSizeBytes)"
 
 log "S7 $BUILD: database"
 if [ "$BUILD" = java-mongo ]; then

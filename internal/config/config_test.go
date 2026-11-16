@@ -392,6 +392,38 @@ func TestMappingDocCoversEveryKeyAndInventsNone(t *testing.T) {
 	}
 }
 
+// X9-OPS-007 (S14.1-AC3): ADR-0031 and the mapping document agree on the actuator: the three
+// endpoints ADR-0031 keeps (health, prometheus, info) are the ones the mapping says are served, and
+// the mapping no longer says /actuator/info is gone.
+func TestMappingDocAgreesWithADR0031OnTheActuator(t *testing.T) {
+	adr, err := os.ReadFile(filepath.Join("..", "..", "docs", "adr", "0031-same-image-lighter-and-3-0-is-a-configuration-migration.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(adr), "only health, prometheus and info are exposed") {
+		t.Fatal("ADR-0031 no longer says which actuator endpoints are exposed; update this test with it")
+	}
+	data, err := os.ReadFile(filepath.Join("..", "..", MappingDoc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(data)
+	var exposure string
+	for line := range strings.SplitSeq(doc, "\n") {
+		if strings.HasPrefix(line, "| `management.endpoints.web.exposure.include`") {
+			exposure = line
+		}
+	}
+	for _, path := range []string{"/actuator/health", "/actuator/prometheus", "/actuator/info"} {
+		if !strings.Contains(exposure, "`"+path+"`") {
+			t.Errorf("%s's exposure row does not say %s is served: %q", MappingDoc, path, exposure)
+		}
+	}
+	if strings.Contains(doc, "No `/actuator/info`") {
+		t.Errorf("%s still says /actuator/info is gone", MappingDoc)
+	}
+}
+
 func TestPasswordIsNeverLogged(t *testing.T) {
 	cfg, err := Load("", complete())
 	if err != nil {
