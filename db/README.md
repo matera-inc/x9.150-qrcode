@@ -131,6 +131,25 @@ These describe the Go service as designed (ADR-0025, ADR-0032).
 - **Short transactions.** No transaction spans an outbound HTTP call. The one intentionally
   contended lock is the single `event_sequence` row, held only for the final batch of a
   transition and its commit, with a 2 s `lock_timeout`.
+- **One job deletes, and nothing else does**
+  ([ADR-0029](../docs/adr/0029-time-is-applied-on-read-and-retention-is-the-only-job.md)). Every
+  `X9_RETENTION_INTERVAL` (default one hour) the service deletes, as the application role, the
+  `payment_event` rows (and their `payment_event_legacy_cursor` rows) older than
+  `X9_EVENTS_RETENTION` (default `P30D`), then the `qr_code` rows whose `valid_until` and
+  `revised_at` are both older than `X9_QRCODE_RETENTION` (default `P400D`), with their
+  `qr_code_audit_log` and `qr_code_notification` rows. It works in batches of 500 rows, one short
+  `READ COMMITTED` transaction each with a 30 s statement and 2 s lock timeout, 100 ms apart; it
+  locks the `qr_code` rows it chooses with `FOR UPDATE SKIP LOCKED`, so it never waits for a
+  payment and a payment never waits long for it. The cutoffs are computed in the service, never by
+  the database's clock, and every query uses an index the changelog already creates
+  (`ix_payment_event_occurred_at`, `ix_qr_code_purge`, `ix_payment_event_legacy_cursor_seq`,
+  `ix_qr_code_notification_qr_code_id`, and the primary keys); no changeset was needed for it, and
+  the `DELETE` grants are changeset `0002-09-retention-purge-grant`. The service refuses to start
+  if `qrcode.retention` is shorter than `events.retention`. **Storage** grows with
+  `qrcode.retention`: about 15 KB per payment in [BENCHMARK.md](../BENCHMARK.md#database), so
+  10,000 payments a day kept `P400D` is about 60 GB; shorten it to keep less, knowing that an
+  expired QR Code is readable only until then, and that a consumer of the event table must read
+  an event within `events.retention`.
 - **No coupling to anything else in your database:** no foreign keys into, views over, or reads of
   any other schema. Your systems integrate over HTTP and the event table.
 - **Backup:** your existing backup covers the schema. Restore `qr_code`, `qr_code_audit_log`,
