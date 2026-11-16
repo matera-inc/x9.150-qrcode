@@ -33,7 +33,10 @@ import (
 //     unknown one, as is a null (Jackson's NON_NULL); a list left empty is not written, as the Java
 //     build's DecoderResponseMapper does not write one;
 //   - a date-time the X9.150 format reads is written as this service writes an instant; one it
-//     does not read is presented as written.
+//     does not read is presented as written;
+//   - one value is added: bill.paymentTiming "immediate" when the bill has neither it nor an
+//     invoice.dueDate, as the standard requires the member and our contract documents its default
+//     (withPaymentTiming says why).
 //
 // The only refusal is a payload that is not a JSON object: there is nothing in it to present.
 //
@@ -149,9 +152,76 @@ func readForeign(payload []byte) ([]byte, error) {
 	if !ok {
 		return nil, errNotObject
 	}
+	if bill, sent := top.values["bill"]; sent {
+		if top.values["bill"], err = withPaymentTiming(bill); err != nil {
+			return nil, err
+		}
+	}
 	var buf bytes.Buffer
 	enc := jsontext.NewEncoder(&buf)
 	if err := writeObject(enc, top, paymentPayloadResponse); err != nil {
+		return nil, err
+	}
+	return bytes.TrimRight(buf.Bytes(), "\n"), nil
+}
+
+// immediate is bill.paymentTiming's value when another bank's payload leaves it out.
+var immediate = jsontext.Value(`"immediate"`)
+
+// withPaymentTiming is the bill as it is presented: paymentTiming "immediate" is added when the
+// other bank sent none (or null, or a value that is not a string) and the bill has no
+// invoice.dueDate (owner decision, 2026-11-16).
+//
+// Why a value is added here, by a decoder that otherwise presents only what the other bank wrote:
+// ANSI X9.150-2026 §13.1 makes bill.paymentTiming mandatory ("SHALL be present"). "immediate" means
+// due when the QR Code is scanned; "deferred" means due at a future date, and then
+// bill.invoice.dueDate SHALL be present. Our openapi.yaml promises that paymentTiming is always
+// present in a payload response, and that it defaults to "immediate" on create. So when another
+// bank leaves it out, the decoder presents "immediate": the only safe reading, since a deferred
+// bill needs a due date the payer could defer to. It does so only when there is no dueDate: with
+// one, the bill may be meant as deferred, the intent is ambiguous, and we do not guess, so
+// paymentTiming stays absent.
+//
+// This does not break "strict to generate, tolerant to read" (INTERPRETATION I-16): that rule is
+// about not refusing a payload for vocabulary we do not know. This fills a field the standard
+// requires, with the default our contract documents. The Java build applies the same rule
+// (DecoderResponseMapper), so both builds present the same bill.
+func withPaymentTiming(raw jsontext.Value) (jsontext.Value, error) {
+	bill, ok, err := members(raw)
+	if err != nil || !ok {
+		return raw, err // not an object: writeMember drops it
+	}
+	timing, sent := bill.values["paymentTiming"]
+	if sent && timing.Kind() == '"' {
+		return raw, nil
+	}
+	if invoice, hasInvoice := bill.values["invoice"]; hasInvoice {
+		inv, isObject, err := members(invoice)
+		if err != nil {
+			return nil, err
+		}
+		if due, hasDue := inv.values["dueDate"]; isObject && hasDue && due.Kind() != 'n' {
+			return raw, nil
+		}
+	}
+	if !sent {
+		bill.names = append(bill.names, "paymentTiming")
+	}
+	bill.values["paymentTiming"] = immediate
+	var buf bytes.Buffer
+	enc := jsontext.NewEncoder(&buf)
+	if err := enc.WriteToken(jsontext.BeginObject); err != nil {
+		return nil, err
+	}
+	for _, name := range bill.names {
+		if err := enc.WriteToken(jsontext.String(name)); err != nil {
+			return nil, err
+		}
+		if err := enc.WriteValue(bill.values[name]); err != nil {
+			return nil, err
+		}
+	}
+	if err := enc.WriteToken(jsontext.EndObject); err != nil {
 		return nil, err
 	}
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil

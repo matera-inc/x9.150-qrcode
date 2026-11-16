@@ -278,6 +278,10 @@ func testPlainSQLReader(t *testing.T, e *env) {
 	}
 }
 
+// X9-EVT-506 (ADR-0028, a known difference between the builds): a ULID later than every migrated
+// cursor resumes after the last migrated event, the beginning when nothing was migrated, where the
+// Java build answers an empty page (TOLERATED-DIFFERENCES.md, entry 27).
+//
 // S10.1-AC1: a Java build's ULID cursor translates to the seq to resume after (ADR-0026).
 func testLegacyCursor(t *testing.T, e *env) {
 	ctx := t.Context()

@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**933 tests documented** — every JUnit test and every black-box case, and the Go tests that prove
+**937 tests documented** — every JUnit test and every black-box case, and the Go tests that prove
 a difference between the builds no black-box case can drive, or a fix the differential run found
 (ADR-0028, [TOLERATED-DIFFERENCES.md](../others/blackbox/TOLERATED-DIFFERENCES.md); their key starts
 the test's doc comment, and the "Where" cell names the `_test.go` file).
@@ -174,6 +174,7 @@ single most important thing this index exists for.
 | `X9-EVT-503` | payment.sent carries the transaction hash the payer reported | `test_two_phase.py` |
 | `X9-EVT-504` | reading on from the cursor returns none of the events already read | `test_two_phase.py` |
 | `X9-EVT-505` | Go only: an `after=` that is neither empty, a decimal seq nor a ULID is a 400 naming `after` (TOLERATED-DIFFERENCES.md, entry 4) | `eventstream_test.go` |
+| `X9-EVT-506` | Go only: a ULID cursor later than every migrated one resumes after the last migrated event, the beginning when nothing was migrated (ADR-0026; TOLERATED-DIFFERENCES.md, entry 27) | `events_postgres_test.go` |
 
 ## Lifecycle, status and delivery
 
@@ -550,6 +551,7 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-DEC-024` | a payload whose header carries no correlationId is refused, `QR Code is invalid (bad correlationId)`, whether or not the caller gave one | `DecoderPayloadEchoesOurCorrelationIdApiTest.java` |
 | `X9-DEC-025` | the payload is verified against the correlationId the request was sent under, never against none | `DecoveEmvUseCaseTest.java` |
 | `X9-DEC-026` | a payload altered after signing, under another correlationId, is a bad signature, not a bad correlationId | `DecoderPayloadEchoesOurCorrelationIdApiTest.java` |
+| `X9-DEC-027` | Java: another bank's bill without paymentTiming is presented as `immediate` only without an `invoice.dueDate`; with one it stays absent; a value sent is kept | `DecoderResponseMapperTest.java` |
 | `X9-DEC-501` | another bank's payload, served over https and signed by its own key, with unknown rails, an unknown currency and unknown fields decodes (black box) | `test_tolerant_reading.py` |
 | `X9-DEC-502` | an unknown currency and an unknown rail reach the payer as the other bank wrote them | `test_tolerant_reading.py` |
 | `X9-DEC-503` | an unknown field inside a known rail of another bank's payload is ignored | `test_tolerant_reading.py` |
@@ -565,6 +567,8 @@ tampered one and an outage were indistinguishable — and four of the five invit
 | `X9-DEC-513` | Go only: a verified payload that is not a JSON object is a 400 business-rule, not a 500 (TOLERATED-DIFFERENCES.md, entry 18) | `decoder_test.go` |
 | `X9-DEC-514` | Go only: a payload member of the wrong JSON type is dropped and an unreadable date-time presented as written (TOLERATED-DIFFERENCES.md, entry 19) | `foreign_test.go` |
 | `X9-DEC-515` | Go only: the nil UUID as `correlationID` is a 400, and nothing is fetched (TOLERATED-DIFFERENCES.md, entry 20) | `decoder_test.go` |
+| `X9-DEC-516` | Go: another bank's bill without paymentTiming is presented as `immediate` only without an `invoice.dueDate`; with one it stays absent; a value sent is kept | `timing_test.go` |
+| `X9-DEC-517` | a bill another bank sent without paymentTiming decodes as `immediate` without a dueDate, without paymentTiming beside one, and as sent when sent (both builds) | `test_tolerant_reading.py` |
 
 ## Editing a payment request
 

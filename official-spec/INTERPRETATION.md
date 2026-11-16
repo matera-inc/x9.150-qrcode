@@ -919,6 +919,11 @@ For example, decoding another bank's payload that offers `{"fednow": {...}, "pix
 in a method that also says `"priority": "high"`, under a creditor with `"county": "LA"`: the answer
 is 200, `pix` is there exactly as sent, and neither `priority` nor `county` is.
 
+One value is filled in, not invented (owner, 2026-11-16): a bill that comes without
+`bill.paymentTiming` is presented as `immediate` when it has no `bill.invoice.dueDate`, because
+§13.1 requires the member and our contract documents that default, while with a `dueDate` (perhaps
+a deferred bill) nothing is guessed and `paymentTiming` stays absent, on both builds.
+
 Why the two differ: an unknown network is the only thing a payer may need in order to pay (their
 software may understand the rail), and it is opaque by the standard's own design (§14.5), so it is
 carried. An unknown field elsewhere sits in an object the standard declares exhaustively; there is

@@ -37,10 +37,13 @@ public class QRCodesEMVController implements QrcodeEmvApi {
             decoveEmvUseCase.execute(new DecodeEmvInput(qrCodeEmvDecoderDTO.getQrCode(),
                 qrCodeEmvDecoderDTO.getDateForPayment(), qrCodeEmvDecoderDTO.getCorrelationID()));
 
+        String payload = getJwsPayload(decodeEmvOutput);
         PaymentPayloadResponseDTO paymentPayloadResponseDTO = objectMapper
-            .readValue(getJwsPayload(decodeEmvOutput), PaymentPayloadResponseDTO.class);
+            .readValue(payload, PaymentPayloadResponseDTO.class);
 
-        PaymentPayloadResponseDTO response = DecoderResponseMapper.map(paymentPayloadResponseDTO);
+        // The tree only tells which members the other bank sent (bill.paymentTiming's default).
+        PaymentPayloadResponseDTO response =
+            DecoderResponseMapper.map(paymentPayloadResponseDTO, objectMapper.readTree(payload));
         return ResponseEntity.ok().body(response);
     }
 

@@ -138,6 +138,35 @@ def test_an_unknown_field_on_a_method_or_at_the_top_is_ignored(decode):
     assert "loyaltyId" not in response.body["creditor"], response.body
 
 
+def test_a_missing_payment_timing_is_immediate_only_without_a_due_date(decode):
+    """X9-DEC-517 — a bill another bank sent without ``paymentTiming`` is presented with
+    ``immediate`` when it has no ``invoice.dueDate``, and without ``paymentTiming`` when it has one;
+    one that was sent is presented as sent. Both builds.
+
+    Source: ANSI X9.150-2026 §13.1 (``paymentTiming`` SHALL be present; ``deferred`` requires
+      ``invoice.dueDate``); openapi.yaml (always present, ``immediate`` by default). Owner decision,
+      2026-11-16; INTERPRETATION I-16.
+    Why: ``immediate`` is the only safe reading of a bill with nothing to defer to. With a due date
+      the bill may be meant as deferred, and presenting ``immediate`` would tell the payer it is due
+      now when it may not be, so nothing is guessed.
+    """
+    response = decode(FOREIGN)
+    assert response.status == 200, response
+    assert response.body["bill"]["paymentTiming"] == "immediate", response.body["bill"]
+
+    due = copy.deepcopy(FOREIGN)
+    due["bill"]["invoice"] = {"number": "INV-9", "dueDate": "2030-06-30T23:59:59Z"}
+    response = decode(due)
+    assert response.status == 200, response
+    assert "paymentTiming" not in response.body["bill"], response.body["bill"]
+    assert response.body["bill"]["invoice"]["dueDate"] == "2030-06-30T23:59:59Z", response.body["bill"]
+
+    due["bill"]["paymentTiming"] = "deferred"
+    response = decode(due)
+    assert response.status == 200, response
+    assert response.body["bill"]["paymentTiming"] == "deferred", response.body["bill"]
+
+
 def test_tolerance_stops_at_integrity(decode, pki, business_now):
     """X9-DEC-505 — the same tolerant payload is refused when its integrity fails: signed by a CA
     nobody trusts, or altered after signing. Nothing of it reaches the payer.

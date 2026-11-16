@@ -147,12 +147,15 @@ signs what it was sent as it was sent, keeps an expired QR Code instead of delet
 entry gives the reason, the test keys that show it and the matcher the differential run applies; a
 difference no entry matches fails the build, and so does an entry that no longer matches anything.
 The first full diff (Story 11.1) added the `ETag` on PATCH to entry 9, `X9-MAP-043` to entry 16,
-and entries 23 to 26 (the Java `BUG-004`, the free wording of `signatureDetail`, the decoder's
-default `paymentTiming`, which concurrent payer wins), and fixed three differences instead of listing them: the Go build's
-`payer.info: null`, the Java build's `null` members in the payer-side answers, and its 500 for a
-signed message that is not a notification. One entry is **pending** the owner's ruling (27: a ULID
-cursor later than every migrated one, which Go reads as ADR-0026 says and Java as the end of the
-stream); the run tolerates it and says so loudly until it is decided.
+and entries 23, 24 and 26 (the Java `BUG-004`, the free wording of `signatureDetail`, which
+concurrent payer wins). The owner accepted every remaining entry and the comparison of `violations`
+as a set on 2026-11-16. Four differences were fixed instead of listed: the Go build's
+`payer.info: null`, the Java build's `null` members in the payer-side answers, its 500 for a signed
+message that is not a notification, and the decoder's `bill.paymentTiming`, which both builds now
+present as `immediate` only when another bank's bill has neither it nor an `invoice.dueDate`
+(owner, 2026-11-16; entry 25 retired). The same day the owner added entry 27 (a ULID cursor
+later than every migrated one, which Go reads as ADR-0026 says and Java as the end of the stream):
+nothing is pending.
 
 ## Alternatives rejected
 
