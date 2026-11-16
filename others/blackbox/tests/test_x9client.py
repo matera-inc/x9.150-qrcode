@@ -95,3 +95,17 @@ class TestOptionalCapabilities:
         S3.1-AC4 — the clock fixture skips with this message, rather than failing."""
         assert not clock_module.Clock("http://127.0.0.1:9", timeout=2).available()
         assert clock_module.NOT_ENABLED == "test clock not enabled"
+
+
+def test_runs_last_tests_are_the_last_collected(request):
+    """X9-SUITE-531 — every test marked ``runs_last`` (X9-TIME-015, which moves the test clock past
+    both retentions) comes after every other test of the session.
+
+    Source: Mechanism. conftest.py's ``pytest_collection_modifyitems``.
+    Why: the Go build's retention job purges what earlier tests created once X9-TIME-015 has moved
+    the clock; run anywhere but last, it would take rows another test still reads.
+    """
+    marked = [item.get_closest_marker("runs_last") is not None for item in request.session.items]
+    if True in marked:
+        first = marked.index(True)
+        assert all(marked[first:]), "a runs_last test is followed by an unmarked one"

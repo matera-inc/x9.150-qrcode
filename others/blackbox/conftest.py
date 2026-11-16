@@ -279,6 +279,17 @@ def build_under_test():
     return builds.under_test()
 
 
+@pytest.hookimpl(trylast=True)
+def pytest_collection_modifyitems(items):
+    """Tests marked ``runs_last`` run after every other test, in their collected order, whatever
+    the file order or a ``-k`` selection. X9-TIME-015 moves the test clock past both retentions,
+    so the Go build's retention job purges every earlier test's events and short-lived QR Codes;
+    run last, it cannot take a row another test still needs."""
+    last = [item for item in items if item.get_closest_marker("runs_last") is not None]
+    if last:
+        items[:] = [item for item in items if item.get_closest_marker("runs_last") is None] + last
+
+
 def pytest_runtest_setup(item):
     """``go_only`` skips on Java and ``java_only`` on Go, with the reason (S4.5-AC3). Not a
     missing capability, so ``X9_REQUIRE_ALL`` does not turn it into a failure."""

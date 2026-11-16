@@ -79,7 +79,10 @@ test itself, never in a list beside it:
 - `X9-TIME-015` (retention, ADR-0029) is `go_only` and passes on Go since Epic 12: the Go
   deployment keeps the default retentions (`P30D`, `P400D`) and runs the job every 5 s, and
   `X9_EVENTS_RETENTION_DAYS`, `X9_QRCODE_RETENTION_DAYS` and `X9_RETENTION_WAIT_SECONDS` describe
-  that to the suite (`docker-compose.go.yml` sets the service and the suite from the same values);
+  that to the suite (`docker-compose.go.yml` sets the service and the suite from the same values).
+  It moves the test clock past both retentions, so the job purges every earlier test's events and
+  short-lived QR Codes: it is marked `runs_last` and runs last in every session, on every build,
+  whatever the file order (conftest.py; `X9-SUITE-531` checks it);
 - a behaviour where Go follows the standard or an ADR and Java does not is a `go_only` test, or a
   strict expected failure on Java (`X9-LOC-421`, BUG-004), listed in ADR-0028's "Known differences
   between the builds".

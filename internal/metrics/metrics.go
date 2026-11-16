@@ -9,6 +9,9 @@
 // is written by hand. It carries what the Go build counts today (the retention job's, ADR-0029);
 // the inventory of the Java build's metrics, each kept under its name or listed as dropped, is the
 // image-and-deploy phase's work.
+//
+// Epic 14 (the image ships, with the metric inventory) decides whether this stays or becomes
+// prometheus/client_golang.
 package metrics
 
 import (

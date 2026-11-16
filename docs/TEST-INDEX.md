@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**938 tests documented** — every JUnit test and every black-box case, and the Go tests that prove
+**939 tests documented** — every JUnit test and every black-box case, and the Go tests that prove
 a difference between the builds no black-box case can drive, or a fix the differential run found
 (ADR-0028, [TOLERATED-DIFFERENCES.md](../others/blackbox/TOLERATED-DIFFERENCES.md); their key starts
 the test's doc comment, and the "Where" cell names the `_test.go` file).
@@ -1068,3 +1068,4 @@ prove nothing about the service; they prove the suite can be trusted to.
 | `X9-SUITE-528` | a pending entry is tolerated and reported loudly; the command line exits 0, 1 or 2 | `test_differential.py` |
 | `X9-SUITE-529` | the repository's TOLERATED-DIFFERENCES.md takes over every row of ADR-0028, each naming a test key | `test_differential.py` |
 | `X9-SUITE-530` | a run of event polls counts as one exchange holding every event it read, each once, so which poll an event landed in never counts | `test_differential.py` |
+| `X9-SUITE-531` | the tests marked `runs_last` (X9-TIME-015's retention purge) run after every other test of the session | `test_x9client.py` |

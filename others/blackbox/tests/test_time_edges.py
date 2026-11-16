@@ -668,6 +668,7 @@ def _duration_ms(name, default_days):
 
 @pytest.mark.go_only(reason="go_only: retention is the Go build's one background job (ADR-0029); "
                             "the Java build has MongoDB's TTL index instead (X9-TIME-013)")
+@pytest.mark.runs_last
 def test_t12_retention_purges_events_then_qr_codes_by_the_test_clock(api, clock, events):
     """X9-TIME-015 — T12: past the events' retention, an old QR Code's events are purged and the
     code is kept; past the QR Codes' retention, the code goes too; nothing younger is touched;
@@ -677,7 +678,9 @@ def test_t12_retention_purges_events_then_qr_codes_by_the_test_clock(api, clock,
     ``valid_until`` and ``revised_at`` are both older than ``qrcode.retention``, default P400D);
     plan §4.2 T12. ``X9_EVENTS_RETENTION_DAYS``, ``X9_QRCODE_RETENTION_DAYS`` and
     ``X9_RETENTION_WAIT_SECONDS`` (the test deployment's timer interval, plus slack) describe the
-    deployment under test.
+    deployment under test. It moves the test clock past both retentions, so the job purges every
+    earlier test's events and short-lived QR Codes: it is marked ``runs_last`` and always runs
+    last in the session (conftest.py), whatever the file order (X9-SUITE-531).
     Why: the only sweep deletes; one that read the real clock could not be tested, and one that
     deleted a young row would lose a live bill.
     """
