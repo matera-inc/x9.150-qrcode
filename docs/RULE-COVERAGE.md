@@ -489,7 +489,7 @@ run found both builds breaking.
 
 | Rule | What it says | Tests | Proves |
 |---|---|---|---|
-| `R-ADR0028-01` | The normalised answers of the two builds (status, `ETag`, `Content-Type`, `Location`, body) must match; a difference no tolerated entry matches fails the build, and so does a test only one build recorded that no entry names. | `X9-SUITE-522`, `X9-SUITE-523`, `X9-SUITE-526` | `S11.2-AC2` |
+| `R-ADR0028-01` | The normalised answers of the two builds (status, `ETag`, `Content-Type`, `Location`, body) must match; a difference no tolerated entry matches fails the build, and so does a test only one build recorded that no entry names. | `X9-SUITE-522`, `X9-SUITE-523`, `X9-SUITE-526`, `X9-SUITE-530` | `S11.2-AC2` |
 | `R-ADR0028-02` | A tolerated entry, or one of its selectors, that matched nothing in a run is stale and fails the build, unless its difference depends on the run (`mayNotOccur`) or no recording can show it (proved by a Go test, or removed by the normaliser). | `X9-SUITE-527` | `S11.2-AC2` |
 | `R-ADR0028-03` | Every tolerated difference has a number, its reason, at least one test key that exists, and one machine-readable matcher; the list takes over every row of ADR-0028's former table; a list that cannot be applied as written stops the run. | `X9-SUITE-525`, `X9-SUITE-529` | `S11.2-AC1` |
 | `R-ADR0028-04` | A difference the owner has not ruled on is entered as `pending`: tolerated, so that the run is not red, and reported loudly by every run until it is decided. | `X9-SUITE-528` | `S11.2-AC2` |

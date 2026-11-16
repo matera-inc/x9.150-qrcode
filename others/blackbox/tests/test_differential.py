@@ -547,3 +547,34 @@ def test_the_repositorys_tolerated_list_takes_over_every_row_of_adr_0028():
         text = open(found[0], encoding="utf-8").read()
         assert "TOLERATED-DIFFERENCES.md" in text
         assert "| 16 | GET `paymentNotification.data`" not in text, "the table moved to the list"
+
+
+def test_a_run_of_polls_holds_every_event_the_run_read(tmp_path):
+    """X9-SUITE-530 — a run of polls counts as one exchange holding every event it read, each once:
+    a reader moving its cursor between polls sees an event in whichever poll it committed before,
+    which is timing, so one build reading two events in one poll and the other in two is no
+    difference; a different event still is.
+
+    S11.2-AC3: found by the first CI run of the differential job (a shared fixture's event reader,
+    ``test_two_phase.py``'s ``paid_for``, polled once on one build and twice on the other)."""
+    create = lambda t, i, qr: exchange(t, i, "POST", "/api/v1/payment-request", 201,  # noqa: E731
+                                       body={"id": qr})
+
+    def page(i, events, after, wait=2):
+        return exchange(T, i, raw_path=f"/pub/api/v1/events?after={after}&limit=500&wait={wait}",
+                        body={"events": events, "hasMore": False})
+
+    first = {"qrCodeId": QR, "eventId": "e1", "type": "payment.initiated"}
+    second = {"qrCodeId": QR, "eventId": "e2", "type": "payment.sent"}
+    java = [create(T, 0, QR), page(1, [first], "A"), page(2, [second], "B")]
+    go = [create(T, 0, QR), page(1, [first, second], "7")]
+    assert diff(tmp_path, java, go)["differences"] == []
+
+    again = [create(T, 0, QR), page(1, [first], "A"), page(2, [first], "A")]
+    assert diff(tmp_path / "again", again, [create(T, 0, QR), page(1, [first], "7")])["differences"] \
+        == [], "an event read twice by a reader that did not move counts once"
+
+    other = dict(second, type="payment.failed")
+    rows = diff(tmp_path / "other", java, [create(T, 0, QR), page(1, [first, other], "7")])
+    assert [(r["field"], r["java"], r["go"]) for r in rows["differences"]] == [
+        ("body.events[1].type", "payment.sent", "payment.failed")]

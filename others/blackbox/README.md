@@ -135,12 +135,13 @@ with its signature masked; a header's `crit` and a problem's `violations` compar
 order of violations changes from run to run);
 an EMV string's location id and CRC masked, inside `qrCodeB64` too; an event-stream page reduced to
 the events of the test's own QR Codes, grouped by QR Code (the order promised is per QR Code;
-across QR Codes it is timing), and a run of polls counted once, its last. Then status,
+across QR Codes it is timing), and a run of polls counted once, as its last page holding every event the run read (each once:
+which poll an event landed in is timing). Then status,
 `ETag`, `Content-Type`, `Location` and the body must match. It prints counts by kind, the most
 recurring differences and every difference, and `--json` writes them with the test node id, the
 exchange index, the field and both values. A test only one build recorded is named with why
 (`go_only`, `java_only`, skipped). Its own tests are `tests/test_differential.py` (`X9-SUITE-516`
-to `529`).
+to `530`).
 
 **The tolerated list** ([TOLERATED-DIFFERENCES.md](TOLERATED-DIFFERENCES.md), Story 11.2) is every
 difference ADR-0028 accepts: per entry, the two answers, the reason, the test keys that show it,
