@@ -357,7 +357,8 @@ None. The service has no UI.
 | FR26 | Epic 11 | the differential run and interop |
 | FR27 | Epic 12 | retention and housekeeping |
 | FR28 | Epic 13 | moving from the Java build (reduced: no data migration) |
-| FR29–FR32 | Epics 14–17 | stubs for plan phases 10–12 |
+| FR29 | Epic 14 | the lighter image ships |
+| FR30–FR32 | Epics 15–17 | stubs for plan phases 10b–12 |
 
 ## Epic List
 
@@ -367,8 +368,8 @@ alongside 3–4.
 **Track B: Go/PostgreSQL foundations.** Epics 6–7 follow each other, and the track runs in parallel
 with track A.
 
-**Stubs.** Epics 14–17. Epic 8 was detailed on 2026-11-14, once Epic 4 was green; Epics 9 and 10
-on 2026-11-15, once Epic 8 was built; Epic 11 on 2026-11-16, once Epic 10 was done; Epic 12 the same day, once Epic 11 was done; Epic 13 the same day, reduced by the owner.
+**Stubs.** Epics 15–17. Epic 8 was detailed on 2026-11-14, once Epic 4 was green; Epics 9 and 10
+on 2026-11-15, once Epic 8 was built; Epic 11 on 2026-11-16, once Epic 10 was done; Epic 12 the same day, once Epic 11 was done; Epic 13 the same day, reduced by the owner; Epic 14 the same day.
 
 ### Epic 1: The docs tell the truth
 
@@ -468,11 +469,17 @@ setting maps to its new one in a document, and no text promises a migration tool
 
 **FRs covered:** FR28 (reduced)
 
-### Epics 14–17: stubs (detailed later)
+### Epic 14: The lighter image ships, ready to deploy
+
+Every Java metric and actuator endpoint is kept or listed as dropped; Compose and Helm can run the
+Go build; the upgrade notes say what changes. Nothing is published until the cutover.
+
+**FRs covered:** FR29
+
+### Epics 15–17: stubs (detailed later)
 
 | Epic | Phase | Scope |
 |---|---|---|
-| 14 | 10 | The lighter image ships (FR29) |
 | 15 | 10b | `BENCHMARK.md` published (FR30) |
 | 16 | 11 | Cutover (FR31) |
 | 17 | 12 | Java frozen in `legacy/java/` (FR32) |
@@ -2876,13 +2883,99 @@ ADRs, the skills under `.agents/`)
 removed or points to the new ADR and the mapping document. The Helm chart and the Compose files keep
 deploying the Java build until the cutover (Epic 16), which moves them to Go.
 
-## Epics 14–17: stubs
+## Epic 14: The lighter image ships, ready to deploy
+
+The Go image already builds for amd64 and arm64 on a pinned distroless base, with OCI labels and
+the demo identity, and CI checks it (Story 7.6). This epic makes it **ready for an operator**: the
+metrics an operator scrapes today are accounted for, Compose and Helm can run the Go build, and
+the upgrade notes say what changes. Nothing is published: Docker Hub, and making Go the default in
+Compose and Helm, are the cutover's (Epic 16).
+
+**Implements:** FR29; ADR-0031 (same image, lighter; operations), ADR-0032, ADR-0038; plan §8
+(phase 10).
+
+Order: 14.1 to 14.3 in any order; 14.4 last.
+
+### Story 14.1: Every metric and actuator endpoint Java exposes is kept or listed as dropped
+
+As an **operator** with dashboards and alerts on the Java build,
+I want to know which metrics survive,
+So that my monitoring keeps working, or I know what to change.
+
+**Acceptance Criteria:**
+
+**S14.1-AC1.** **Given** the Java build's `/actuator/prometheus` (scraped from a running Java
+image after a short load)
+**Then** an inventory (`docs/METRICS.md`) lists every metric family, each kept under its name by
+the Go build (with what it measures there), replaced (old name → new name), or dropped (why); the
+Go build's own metrics (retention, Epic 12) are listed too.
+
+**S14.1-AC2.** **Given** the inventory
+**Then** the Go build exports every metric marked kept, under the same name, type and labels where
+the meaning is the same; a test scrapes `/actuator/prometheus` and checks every kept name is there.
+Whether `internal/metrics` stays standard-library or becomes `prometheus/client_golang` is decided
+here and written down.
+
+**S14.1-AC3.** **Given** ADR-0031 ("only health, prometheus and info are exposed")
+**Then** `/actuator/info` answers with the build's version and commit, as the Java build's did,
+or ADR-0031 and `CONFIGURATION-FROM-JAVA.md` are made to agree that it is dropped; the two
+documents never contradict each other.
+
+### Story 14.2: Docker Compose runs the Go build on a clean machine
+
+As a **developer** trying the service,
+I want one command to start the Go build with its database,
+So that I can try it without installing PostgreSQL or Liquibase.
+
+**Acceptance Criteria:**
+
+**S14.2-AC1.** **Given** a Compose file for the Go build at the repository root
+**Then** `docker compose -f <it> up` starts PostgreSQL 16, applies the schema with Liquibase
+`4.33.0` as a one-shot, and starts the Go service once the schema is in place, with the demo
+identity; `/actuator/health` answers UP. The existing Java Compose files stay as they are.
+
+**S14.2-AC2.** **Given** CI
+**Then** a job brings that Compose file up on a clean runner and checks health and one create.
+
+### Story 14.3: The Helm chart can deploy the Go build
+
+As an **operator** on Kubernetes,
+I want the chart to deploy the Go build,
+So that the cutover is a values change, not a new chart.
+
+**Acceptance Criteria:**
+
+**S14.3-AC1.** **Given** the chart with a values file for the Go build
+**Then** it renders: Liquibase as an init container (or a pre-install Job), `strategy: Recreate`, no
+HPA, `GOMEMLIMIT` from the memory limit, the Go build's environment variables (never a `SPRING_*`,
+`MONGO*` or `JASYPT_*`), probes on the same health paths, and secrets from a Secret, never inline.
+The Java values stay the default until the cutover.
+
+**S14.3-AC2.** **Given** CI
+**Then** `helm lint` and `helm template` run for both value sets, and a check fails if the Go
+rendering contains a refused variable.
+
+### Story 14.4: The upgrade notes say what changes
+
+As an **operator** moving from 2.x to 3.0.0,
+I want one page of what changes,
+So that the upgrade holds no surprises.
+
+**Acceptance Criteria:**
+
+**S14.4-AC1.** **Given** `UPGRADING-TO-3.md`
+**Then** it covers: the database (PostgreSQL, the schema and roles, no data migration — ADR-0038),
+configuration (`CONFIGURATION-FROM-JAVA.md`), secrets (files or environment; no Jasypt), the
+keystore (PKCS#12), the actuator endpoints kept and dropped, the metrics (`METRICS.md`), the log
+format (the JSON fields and their Java equivalents), one instance and `Recreate`, the image tags
+and `java-final`, and Compose and Helm. README and DOCKERHUB.md link to it.
+
+## Epics 15–17: stubs
 
 Detailed in a later run of this workflow.
 
 | Epic | Phase | Scope |
 |---|---|---|
-| 14 | 10 | The lighter image ships (FR29) |
 | 15 | 10b | `BENCHMARK.md` published (FR30) |
 | 16 | 11 | Cutover; `make` targets renamed (FR31) |
 | 17 | 12 | Java frozen in `legacy/java/` (FR32) |
