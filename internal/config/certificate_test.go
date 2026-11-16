@@ -189,7 +189,8 @@ func TestCertificateRefusals(t *testing.T) {
 	}
 }
 
-// S8.2-AC2: an ENC(…) value is refused at start, naming the converter; Go never decrypts Jasypt.
+// S8.2-AC2, S13.2-AC2: an ENC(…) value is refused at start, naming the mapping document; Go never
+// decrypts Jasypt.
 func TestEncryptedValuesAreRefused(t *testing.T) {
 	for _, name := range []string{"X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD", "X9_CERTIFICATE_TRUSTSTORE_PASSWORD", "DATABASE_PASSWORD"} {
 		t.Run(name, func(t *testing.T) {
@@ -197,7 +198,7 @@ func TestEncryptedValuesAreRefused(t *testing.T) {
 			if !errors.Is(err, ErrOldConfiguration) {
 				t.Fatalf("err = %v, want ErrOldConfiguration", err)
 			}
-			for _, w := range []string{name, "Jasypt", Converter} {
+			for _, w := range []string{name, "Jasypt", MappingDoc, "mounted file"} {
 				if !strings.Contains(err.Error(), w) {
 					t.Errorf("the refusal does not name %q: %v", w, err)
 				}
@@ -205,7 +206,7 @@ func TestEncryptedValuesAreRefused(t *testing.T) {
 		})
 	}
 	path := writeFile(t, "x9.yaml", "certificate:\n  private-keystore:\n    password: ENC(n3SxV0l1E2fZ)\n")
-	if _, err := Load(path, complete()); !errors.Is(err, ErrOldConfiguration) || !strings.Contains(err.Error(), Converter) {
+	if _, err := Load(path, complete()); !errors.Is(err, ErrOldConfiguration) || !strings.Contains(err.Error(), MappingDoc) {
 		t.Fatalf("an ENC(…) value in the file: err = %v", err)
 	}
 }

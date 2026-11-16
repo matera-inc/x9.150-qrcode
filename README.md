@@ -98,8 +98,11 @@ was built for, and refuses to start otherwise.
 >   tests. To run the Go build today, build it from this repository.
 > - **The Java build is still in this repository** (`x9-qrcode-*` modules, Maven, MongoDB). It will
 >   be frozen, unchanged, for history, under `legacy/java/`. See [The Java build](#the-java-build).
-> - **Still to come:** a converter that migrates existing MongoDB data and Java configuration to the
->   Go build, and retention (the housekeeping of old rows).
+> - **No migration tool.** The Java build has no production users, so its MongoDB data is not
+>   migrated: the Go build starts on an empty database
+>   ([ADR-0038](docs/adr/0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md)).
+>   [docs/CONFIGURATION-FROM-JAVA.md](docs/CONFIGURATION-FROM-JAVA.md) maps every Java setting to
+>   its Go key.
 >
 > [HISTORY.md](HISTORY.md#whats-next) lists the remaining steps.
 
@@ -217,8 +220,10 @@ exists in both builds, its environment variable has the same name in both.
 - Nothing security-relevant has a default: the database host, user, credential and TLS mode must be
   given.
 - The Java build's configuration (Spring YAML, Jasypt `ENC(…)`, `SPRING_*` or MongoDB variables) is
-  refused at start, not half-read. The converter that translates it is still to come (see
-  [Stack](#stack)).
+  refused at start, not half-read; the error names
+  [docs/CONFIGURATION-FROM-JAVA.md](docs/CONFIGURATION-FROM-JAVA.md), which maps every Java setting
+  to its Go key and variable (there is no converter,
+  [ADR-0038](docs/adr/0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md)).
 
 [RUNNING.md](RUNNING.md#the-go-build) explains each group of settings, and
 [db/README.md](db/README.md) what the service asks of the database.

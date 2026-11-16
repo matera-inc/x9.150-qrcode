@@ -213,7 +213,8 @@ The test CA covers each branch: valid, revoked by CRL, revoked by OCSP, no respo
 
 **Keys:**
 
-- **PKCS#12 and PEM;** JKS is converted ([0031](0031-same-image-lighter-and-3-0-is-a-configuration-migration.md)).
+- **PKCS#12 and PEM;** JKS is converted ([0031](0031-same-image-lighter-and-3-0-is-a-configuration-migration.md);
+  *amended 2026-11-16, [0038](0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md): by the operator, with `keytool`, as [CONFIGURATION-FROM-JAVA.md](../CONFIGURATION-FROM-JAVA.md) shows*).
   PKCS#12 is read with `software.sslmate.com/src/go-pkcs12` (BSD-3-Clause), approved by the owner on
   2026-11-15, because neither the standard library nor `golang.org/x/crypto/pkcs12` reads what
   current keytool and OpenSSL write (PBES2 with AES, an HMAC-SHA-256 MAC).
@@ -221,7 +222,9 @@ The test CA covers each branch: valid, revoked by CRL, revoked by OCSP, no respo
   deployment needs it (plan B2).
 - **Reload:** the mounted files are re-read on a timer.
 - **No Jasypt:** secrets come from mounted files or the environment, and `ENC(...)` values are
-  decrypted once by the configuration converter.
+  decrypted once by the configuration converter. *(Amended 2026-11-16, [0038](0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md): there is no
+  converter; the operator supplies the plain secret through the environment or a mounted file,
+  as [CONFIGURATION-FROM-JAVA.md](../CONFIGURATION-FROM-JAVA.md) shows.)*
 
 **EMV: `internal/emv`, by hand:**
 

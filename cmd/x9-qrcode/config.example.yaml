@@ -12,7 +12,8 @@
 # TLS mode is never guessed. Unknown keys are refused, so a typo is not silently ignored.
 #
 # The Java build's configuration (Spring YAML, application-secrets.yml, Jasypt ENC(…), SPRING_* or
-# MongoDB variables) is refused at start: convert it with x9-config-convert.
+# MongoDB variables) is refused at start. docs/CONFIGURATION-FROM-JAVA.md maps each Java setting to its
+# key here, or says why it is dropped; there is no converter (ADR-0038).
 
 server:
   port: 8080                     # X9_SERVER_PORT. API and health share it, as in the Java build.
@@ -88,8 +89,9 @@ currency:
 # identity is used, as in Java: NON-PRODUCTION, its private key is public, and a WARN says so.
 # The file's content decides its format: PEM (one unencrypted private key, RSA or EC, and its
 # certificate, in one file) or PKCS#12 (keytool's and OpenSSL's, AES or legacy 3DES / RC2). A JKS
-# or JCEKS file is refused: convert it with x9-config-convert.
-# An ENC(…) value is refused: x9-config-convert decrypts it once. HSM / provider settings are refused.
+# or JCEKS file is refused: convert it with keytool, as docs/CONFIGURATION-FROM-JAVA.md shows.
+# An ENC(…) value is refused: pass the plain secret from the environment or a mounted file (same
+# document). HSM / provider settings are refused.
 certificate:
   endpoint-type: JWK_SET         # X9_CERTIFICATE_ENDPOINTTYPE. Where a signed JWS says the certificate is:
                                  #   JWK_SET (jku, https://<host>/pub/.well-known/jwks), PEM (x5u,

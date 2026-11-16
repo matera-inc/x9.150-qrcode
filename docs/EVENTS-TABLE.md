@@ -31,7 +31,7 @@ on each column as a database `COMMENT`; `\d+ payment_event` in psql shows it.
 | Column | Type | Meaning | None / sentinel |
 |---|---|---|---|
 | `seq` | `BIGINT`, primary key | The event's position: **the exact order** of events, gapless, equal to commit order. On the HTTP API it is the cursor, as a decimal string | — |
-| `event_id` | `UUID`, unique | `eventId` on the wire. A UUIDv7 (roughly time-ordered, **not** an order: use `seq`) for new events; the original id for events migrated from the Java build. **Your dedupe key** | — |
+| `event_id` | `UUID`, unique | `eventId` on the wire. A UUIDv7 (roughly time-ordered, **not** an order: use `seq`). **Your dedupe key** | — |
 | `type_code` | `VARCHAR(4)` → `event_type.code` | What happened. See [Event types](#event-types) | — |
 | `occurred_at` | `TIMESTAMP` (UTC) | When the transition that emitted the event happened, on X9.150's clock | — |
 | `qr_code_id` | `UUID` | The QR Code the event is about. **Not a foreign key:** the QR Code may be purged before its events | — |
@@ -97,10 +97,9 @@ matched the funds it received, through `PUT /api/v1/payment-request/{id}/status-
 - **`event_id` is the dedupe key.** Store it with whatever you do with the event, and ignore an
   event whose id you already have. Every way of reading below can, after a crash, hand you an event
   twice.
-- **Migrated events keep their original ids.** Events copied from the Java build keep their Java
-  `eventId`, which is a random UUID (version 4). They come before every new event in `seq` order,
-  but **their `event_id` is not even roughly in time order.** Order them by `seq`, like every
-  other event.
+- **No events are copied from the Java build.** The Go build starts with an empty log
+  ([ADR-0038](adr/0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md)), so
+  every `event_id` is a UUIDv7. Order events by `seq` all the same.
 
 ## Three ways to read it
 

@@ -64,9 +64,9 @@ understood: 21 ADRs, a state machine and an interpretation document.
 | Java tests don't port | Black-box suite first, green on Java, then a differential run Java vs Go ([ADR-0028](docs/adr/0028-the-http-contract-is-frozen-and-equivalence-is-proved-by-a-differential-run.md), [ADR-0030](docs/adr/0030-a-black-box-suite-defines-done-and-migration-writes-only-runtime-valid-rows.md)) |
 | Go has no built-in revocation checking | Explicit CRL check with OCSP fallback and soft-fail, test CA fixtures, policy unchanged ([ADR-0027](docs/adr/0027-crypto-in-go-x9150-jws-profile-pkix-with-crl-and-emv-by-hand.md)) |
 | JWS `crit` / milliseconds subtleties | Own verification sequence on go-jose's parser, golden corpus from Java, fuzzing (ADR-0027) |
-| JKS and PKCS#11 HSM support | JKS → PKCS#12 by `x9-config-convert` ([ADR-0031](docs/adr/0031-same-image-lighter-and-3-0-is-a-configuration-migration.md)); HSM behind `crypto.Signer`, deferred (§8 B2) |
-| Operators must migrate configuration | 3.0.0 is a documented configuration migration with a converter; old configuration makes the binary refuse to start and name the converter (ADR-0031) |
-| Consumer cursors at cutover | **Translated, not reset**: migrated events keep their ULID in `payment_event_legacy_cursor`; `eventId` dedupe covers any overlap ([ADR-0026](docs/adr/0026-identifiers-and-the-event-cursor.md)) |
+| JKS and PKCS#11 HSM support | JKS → PKCS#12 by the operator with `keytool`, as [`docs/CONFIGURATION-FROM-JAVA.md`](docs/CONFIGURATION-FROM-JAVA.md) shows ([ADR-0038](docs/adr/0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md)); HSM behind `crypto.Signer`, deferred (§8 B2) |
+| Operators must migrate configuration | 3.0.0 is a documented configuration migration: [`docs/CONFIGURATION-FROM-JAVA.md`](docs/CONFIGURATION-FROM-JAVA.md) maps every Java setting; old configuration makes the binary refuse to start and name that document (ADR-0031, [ADR-0038](docs/adr/0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md)) |
+| Consumer cursors at cutover | No data is migrated ([ADR-0038](docs/adr/0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md)): the Go log starts empty, and a stored ULID cursor resumes at its start. The translation of [ADR-0026](docs/adr/0026-identifiers-and-the-event-cursor.md) stays built, unused |
 | Feature freeze on Java during the rewrite | Keep the freeze short; any rule added to Java must land as a black-box test first |
 | The portable SQL dialect is stricter than PostgreSQL | Fine for this workload; no recorded exceptions ([ADR-0023](docs/adr/0023-postgresql-one-schema-portable-sql.md)) |
 
@@ -102,8 +102,6 @@ understood: 21 ADRs, a state machine and an interpretation document.
 ```
 x9.150-qrcode/
 ├── cmd/x9-qrcode/main.go          wiring only: slog, config, two pgxpools (write/read), mux, retention timer, Ready()
-├── cmd/x9-migrate/main.go         Mongo → PostgreSQL (ADR-0030) ┐ shipped in the separate migrate image tag
-├── cmd/x9-config-convert/main.go  Spring config → Go config      ┘ (ADR-0030/0031), NOT in the service image
 ├── legacy/java/                   the Maven modules, moved with git mv, frozen, not built in CI (ADR-0022)
 ├── internal/
 │   ├── paymentrequest/            create, get, patch, status-update — handler, service, store
@@ -136,7 +134,7 @@ Three `domain` functions each have exactly one owner role:
 
 - **`EMV(location_id, emvConfig)`** computes `emv_content`, written only with `location_id` (create, PATCH, rebind); `valid_until` is computed from `request_json`. The location is a column, not part of `request_json` (ADR-0024).
   Only create and PATCH call it, and they write its result in the same statement as `request_json`
-  (ADR-0024). `x9-migrate` calls the same function (ADR-0030).
+  (ADR-0024).
 - **`BuildEvent(type, row, lastNotification, now, reason)`** builds every `payment_event`, following
   Java's body rule field for field (ADR-0035).
 - **`ETag(row, now)`** builds the ETag from the effective status; `If-Match` compares against the same
@@ -151,7 +149,7 @@ effective, ADR-0029), the status after, and the event it emits. Every row is pin
 |---|---|
 | `qr_code` | `id UUID PK` (v7), `location_id UUID` (v4, **UNIQUE across all rows**), `status_code VARCHAR(4)`, `revision INT`, `lock_version INT`, `request_json JSON` (request fields only — never lifecycle data), `valid_until`, `reserved_until` (sentinel `9999-12-31`), `reserved_by_payer_info VARCHAR(…)`, `reserved_by_signer_subject VARCHAR(1024)`, `hash_registered BOOLEAN` (true once a transaction hash is registered for the reservation, ADR-0036; changeset 0003), `end_to_end_id`, `payment_network`, `emv_content VARCHAR(512)`, `created_at`, `revised_at`. **`location_id` and `emv_content` are written together (create, PATCH, rebind), `emv_content` only via `domain.EMV`; `valid_until` from `request_json` by create and PATCH**; lifecycle columns, and `revised_at` on every transition, only by the transition functions |
 | `qr_code_audit_log` | audit log of updates: PK `(qr_code_id, revision)` = the revision **before** `++`, `changed_at TIMESTAMP`, `changed_fields VARCHAR(128)` (which of the six top-level tags changed), `previous_values JSON` (**only those tags**, with their previous values; `null` = had no value); append-only, purged with its QR Code |
-| `qr_code_notification` | every **accepted** inbound notification: `id UUID PK`, `qr_code_id`, `received_at`, `phase`, `network`, `amount`, `tip_amount`, `currency`, `transaction_id`, `payer_info`, `signer_subject`, `jws_compact` (empty for migrated rows); the newest row is the "last stored notification" of ADR-0035 |
+| `qr_code_notification` | every **accepted** inbound notification: `id UUID PK`, `qr_code_id`, `received_at`, `phase`, `network`, `amount`, `tip_amount`, `currency`, `transaction_id`, `payer_info`, `signer_subject`, `jws_compact`; the newest row is the "last stored notification" of ADR-0035 |
 | `payment_event` | `seq BIGINT PK`, `event_id UUID UNIQUE` (v7 for new events), `qr_code_id` (**no FK to `qr_code`**, ADR-0029), `qr_code_revision`, `type_code`, `occurred_at`, payload columns per EVENTS contract, `schema_version` |
 | `event_sequence` | one row: `id SMALLINT PK = 1`, `last_seq BIGINT`; incremented by `UPDATE`, then read by `INSERT … SELECT last_seq` in the same batch (ADR-0025); no `RETURNING` |
 | lookups | `qr_code_status`, `event_type` |
@@ -169,7 +167,7 @@ Indexes:
 
 - the unique index on `qr_code(location_id)` (all rows, not partial — ADR-0024);
 - `payment_event(occurred_at)` for the event purge;
-- `payment_event_legacy_cursor(legacy_cursor PK, seq)` for cursor translation, with rows for migrated events only (ADR-0026);
+- `payment_event_legacy_cursor(legacy_cursor PK, seq)` for cursor translation, with rows for migrated events only (ADR-0026), and so empty: nothing is migrated (ADR-0038);
 - an index serving the QR Code purge (`valid_until`, `revised_at`);
 - an index on every FK (`qr_code_notification.qr_code_id`; the audit log's PK covers its own).
 
@@ -194,14 +192,14 @@ from phase 7 on the **differential run** compares Java and Go.
 | 6 | **Payload + notifications + events** | `/pub/api/v1/loc/{id}` with formula; inbound notifications with acceptance policy, reservation and holder (0019, 0021); outbound pre/post (0015); `BuildEvent` and the transition map (0035); event sequence row (0025); `GET /events` with in-process long-poll and ULID cursor translation (0026). **Transaction rules (ADR-0025/0032):** 0 rows on the conditional `UPDATE` ⇒ re-run the whole script from the read, up to 3 times, 409 "busy" only when exhausted; `READ COMMITTED` set on every transaction; two pools (writes 8, reads 4); `lock_timeout` 2 s on event transactions, `statement_timeout` 30 s; the event is the last step, one pgx batch of `UPDATE event_sequence` + `INSERT payment_event … SELECT last_seq` (no `RETURNING`); retry on 40001/40P01/55P03, never 57014; notification row inserted before the event; no transaction spans an outbound HTTP call | Whole suite green on Go; concurrency test: 32 concurrent notifications → exactly one 200 and one event, no gaps in the cursor; the same payer's racing retry gets 200 (ADR-0021); store tests assert statement order and no HTTP inside a transaction |
 | 7 | **Differential run + interop** | **Differential run against Java** (ADR-0028): the suite runs on both builds with the same inputs, normalised responses (JSON re-serialised, ids/times/signatures masked) are diffed on status, `ETag`/`Content-Type`/`Location` and body; every tolerated difference is listed in `others/blackbox/TOLERATED-DIFFERENCES.md` (1: whitespace; 2: expired → expiry reason instead of 404); `two-instance-payment-cycle.sh` in all four Java/Go pairings; k6 at today's profile | No untolerated difference; golden corpora pass; four pairings complete; P95 < 2 s at 500 VUs as in README |
 | 8 | **Housekeeping** | Retention per ADR-0029: **one goroutine, one `time.Timer`, no schedule table**; purge events then QR Codes (with their audit and notification rows) in paced batches; start-up refusal if `qrcode.retention` < `events.retention`; keystore reload timer | Retention tests driven by the test clock |
-| 9 | **Migration + config tools** | **`x9-migrate`** (ADR-0030): each document → one `qr_code` row, `revision` kept, `request_json` bill fields only, `location_id` and **`emv_content` copied verbatim** (refuse if `EMV(location, converted config)` differs), `valid_until` computed; **no audit rows**; last stored notification → one `qr_code_notification` row without JWS; `payment_events` copied in order with new `seq`, original `eventId`, ULID into `payment_event_legacy_cursor` (events of deleted codes included); `event_sequence.last_seq` set to the highest `seq`; **refuses to run if any Mongo document has a non-empty `outbox` or the target schema is not empty**; row counts, per-QR checksum, `--dry-run`. **`x9-config-convert`** (ADR-0031): Spring YAML + `application-secrets.yml` + Jasypt password + keystores → Go config file, `ENC(...)` decrypted into secret files, JKS → PKCS#12 | A restored copy of a real deployment converts and migrates, the suite's read-only checks pass against it, and a translated ULID cursor resumes without gaps |
-| 10 | **Image & deploy** | Per ADR-0031: multi-stage `Dockerfile` built with `docker buildx` (amd64 + arm64), `Makefile` targets kept as thin wrappers over `go`/`docker`; distroless service image carrying `x9-qrcode` + the demo identity as PKCS#12 (no Mongo driver); a **separate migrate image tag** carrying `x9-migrate` + `x9-config-convert`; same ports, health paths and JSON shape, documented env var names, OCI labels; multi-arch; start-up refusal on Spring-style or MongoDB configuration, naming the converter; actuator exposes **only health, prometheus and info**; incoming `b3`/`traceparent` ids logged per request, no exporter; **metric inventory**: every metric Java exports is kept under its name or listed as dropped; upgrade notes (dropped actuator endpoints, log field mapping, configuration migration); compose with PostgreSQL + Liquibase `4.33.0` (Apache-2.0) one-shot; Helm with Liquibase init container, `strategy: Recreate`, **no HPA**, `GOMEMLIMIT`; tag the last Java build `java-final`; Go line tagged `3.x` | `docker run` with only the demo identity serves `/actuator/health` UP and the black-box suite passes; compose `up` works on a clean machine; `helm template` smoke check in CI |
+| 9 | **No migration; a written mapping** | *Reduced by the owner, 2026-11-16* ([ADR-0038](docs/adr/0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md)): the Java build has no production users, so **`x9-migrate`, `x9-config-convert` and the migrate image are not built.** The Go build starts on an empty schema. [`docs/CONFIGURATION-FROM-JAVA.md`](docs/CONFIGURATION-FROM-JAVA.md) maps every property and variable the Java build reads to its Go key and variable, or says why it is dropped; it shows JKS → PKCS#12 with `keytool` and how to replace a Jasypt `ENC(…)` value. The start-up refusals name that document | The ADR and the mapping document are merged; no document promises a migration tool |
+| 10 | **Image & deploy** | Per ADR-0031: multi-stage `Dockerfile` built with `docker buildx` (amd64 + arm64), `Makefile` targets kept as thin wrappers over `go`/`docker`; distroless service image carrying `x9-qrcode` + the demo identity as PKCS#12 (no Mongo driver); same ports, health paths and JSON shape, documented env var names, OCI labels; multi-arch; start-up refusal on Spring-style or MongoDB configuration, naming the mapping document (ADR-0038); actuator exposes **only health, prometheus and info**; incoming `b3`/`traceparent` ids logged per request, no exporter; **metric inventory**: every metric Java exports is kept under its name or listed as dropped; upgrade notes (dropped actuator endpoints, log field mapping, configuration migration); compose with PostgreSQL + Liquibase `4.33.0` (Apache-2.0) one-shot; Helm with Liquibase init container, `strategy: Recreate`, **no HPA**, `GOMEMLIMIT`; tag the last Java build `java-final`; Go line tagged `3.x` | `docker run` with only the demo identity serves `/actuator/health` UP and the black-box suite passes; compose `up` works on a clean machine; `helm template` smoke check in CI |
 | 10b | **Benchmark & `BENCHMARK.md`** | §9 campaign — **S1, S2, S7** (owner decision D6) — Java and Go interleaved on the same machine; `BENCHMARK.md` published with method, environment, results and raw data | Every number in `BENCHMARK.md` traces to a committed raw file; the Docker Hub "lighter" claim cites it |
-| 11 | **Cutover** | Per deployment, per ADR-0030: (1) announce the window; (2) stop **inbound** traffic to Java but keep it running until its drain has emptied every outbox (`x9-migrate` checks); (3) stop Java; (4) Liquibase on the empty schema; (5) `x9-config-convert` + `x9-migrate`; (6) start Go; (7) consumers continue with their stored cursors, translated. **Rollback** (stop Go, start Java on the untouched MongoDB) is rehearsed once and is allowed **only until Go accepts its first write of any kind** (create, PATCH, notification, status-update); after that, forward-fix only — the runbook checks the event count since start. **Then** move `:latest` to Go, tag `3.0.0`, push DOCKERHUB.md stating the database and configuration change in its first paragraph and linking the upgrade guide | An existing consumer of the event stream continues from its stored cursor with no gaps and no duplicates beyond `eventId` replays |
+| 11 | **Cutover** | Per deployment, with no data migration (ADR-0038): (1) announce the window; (2) stop Java, leaving its MongoDB untouched; (3) Liquibase on the empty schema; (4) configure Go from `docs/CONFIGURATION-FROM-JAVA.md`; (5) start Go; (6) event consumers start over from the Go log. **Rollback** (stop Go, start Java on the untouched MongoDB) is rehearsed once and is allowed **only until Go accepts its first write of any kind** (create, PATCH, notification, status-update); after that, forward-fix only — the runbook checks the event count since start. **Then** move `:latest` to Go, tag `3.0.0`, push DOCKERHUB.md stating the database and configuration change in its first paragraph and linking the upgrade guide | Go serves on an empty schema with the operator's configuration, and the black-box suite passes against it |
 | 12 | **Freeze Java** | `git mv` the Maven modules, `x9-qrcode-build-init` and the vendored jar into `legacy/java/` with a README (frozen, last tag `java-final`, how to build it if ever needed); drop them from CI; keep the Mongo compose file there; mark ADR-0002 and ADR-0013 *Superseded*; rewrite AGENTS.md, CLAUDE.md, README, RUNNING, HIGH-AVAILABILITY, ENDPOINTS for Go/PostgreSQL; delete this plan | Root builds only Go; `legacy/java/` untouched afterwards |
 
 Phases 4 and 5 can run in parallel once phase 3 lands. Phase 8 can run any time after phase 6.
-Phase 9's converter can start as soon as phase 3 fixes the Go config shape.
+Phase 9 is a decision and a document (ADR-0038); its mapping changes with every Go configuration key.
 
 ---
 
@@ -289,17 +287,18 @@ after E.
 
 ## 5. Configuration (ADR-0031)
 
-3.0.0 is a **documented configuration migration with a converter**, not a silent drop-in.
+3.0.0 is a **documented configuration migration**, not a silent drop-in. *(Amended 2026-11-16,
+[ADR-0038](docs/adr/0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md): a written mapping, [`docs/CONFIGURATION-FROM-JAVA.md`](docs/CONFIGURATION-FROM-JAVA.md), replaces the converter.)*
 
 - **The Go build reads one YAML file of Go keys, plus the same documented environment variables.**
   Every documented variable keeps its name and meaning (`X9_PUBLICENDPOINTS_HOST`,
   `X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION`, …).
-- **`x9-config-convert`** (migrate image) reads an operator's Spring YAML (the ConfigMap selected by
-  `SPRING_CONFIG_LOCATION`), `secrets/application-secrets.yml`, the **Jasypt password** and the
-  keystores. It writes the Go config file, decrypts every `ENC(...)` value into a plain secret
-  file, and converts **JKS → PKCS#12**. Keys it cannot place are reported, never guessed.
+- **No converter** ([ADR-0038](docs/adr/0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md)). [`docs/CONFIGURATION-FROM-JAVA.md`](docs/CONFIGURATION-FROM-JAVA.md) lists every property and variable the Java
+  build reads, with its Go key and variable or the reason it is dropped, and shows how to convert a
+  JKS keystore to **PKCS#12** with `keytool` and how to replace a Jasypt `ENC(...)` value with the
+  plain secret, from the environment or a mounted file.
 - **Old configuration is refused.** Given Spring-style configuration or MongoDB variables, the
-  binary refuses to start and names the converter. There is no compatibility loader.
+  binary refuses to start and names the mapping document. There is no compatibility loader.
 - **Secrets** come from mounted files or the environment. The Spring Cloud Kubernetes secrets API
   and Jasypt are gone.
 - **Database:** `DATABASE_*` variables replace `SPRING_DATA_MONGODB_*`: URL/host, schema name
@@ -317,14 +316,15 @@ after E.
 
 ## 6. Consumer impact (to announce before cutover)
 
-- **Event cursors are translated, not reset.** A stored ULID cursor keeps working: it is resolved
-  to the matching migrated event (or the next one after it). New cursors are decimal strings, still
-  opaque. Keep deduplicating by `eventId` (ADR-0026).
+- **Event consumers start over.** No events are migrated ([ADR-0038](docs/adr/0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md)), so a stored ULID cursor
+  resumes at the start of the Go log. New cursors are decimal strings, still opaque. Keep
+  deduplicating by `eventId` (ADR-0026).
 - **`eventId`s minted after cutover are UUIDv7.** No action needed.
 - **Expired QR Codes return their expiry reason instead of 404** once they are past `validUntil` and
   not yet purged (ADR-0028, ADR-0029).
-- **Operators** of a self-hosted image run the 3.0.0 configuration migration (`x9-config-convert`)
-  and the data migration (`x9-migrate`) once; `java-final` stays available (ADR-0031).
+- **Operators** of a self-hosted image configure the Go build once from
+  `docs/CONFIGURATION-FROM-JAVA.md` and start it on an empty schema; QR Codes created on the Java
+  build are not carried over (ADR-0038); `java-final` stays available (ADR-0031).
 - **Nothing else.** Paths, payloads, status codes and signatures are compatible, and the
   differential run is the evidence (ADR-0028).
 
@@ -339,10 +339,10 @@ after E.
 | Phase 4 (EMV, JWS, PKIX/CRL/OCSP, keys) | 2 weeks |
 | Phase 5–6 (domain, endpoints, events; no idempotency) | 3–3.5 weeks |
 | Phase 7 (differential harness, tolerated-differences list, interop) | 0.5–1 week |
-| Phase 8–10 (retention timer, `x9-migrate`, `x9-config-convert` ~1 week, image & deploy) | 2.5–3 weeks |
+| Phase 8–10 (retention timer, the configuration mapping (no migration tools, ADR-0038), image & deploy) | 1.5–2 weeks |
 | Phase 1b + 10b (benchmark harness, baseline, S1/S2/S7 campaign, `BENCHMARK.md`) | 0.5–1 week |
 | Phase 11–12 (cutover, freeze Java) | 1 week |
-| **Total** | **~13–16 weeks**, against ~6–8k LOC of Go expected |
+| **Total** | **~12–15 weeks** (a week less since ADR-0038), against ~6–8k LOC of Go expected |
 
 Phase 1 is the most underestimated line. It is also the one that pays for itself even if the
 rewrite is cancelled.
@@ -354,10 +354,10 @@ rewrite is cancelled.
 | # | Question | Blocks |
 |---|---|---|
 | ~~B1~~ | ~~Licence~~ — **resolved**: Matera owns the work; a rewrite by the owner is a new version, not a third party's Derivative Work (ADR-0022) | — |
-| **B2** | **Does any deployment use a PKCS#11 HSM or a JKS keystore that `x9-config-convert` cannot convert?** If yes, the PKCS#11 signer moves into phase 4, and the cgo question reopens; until then such deployments stay on `java-final` | Phase 4 |
+| **B2** | **Does any deployment use a PKCS#11 HSM or a JKS keystore that `keytool -importkeystore` cannot convert to PKCS#12** (`docs/CONFIGURATION-FROM-JAVA.md`, ADR-0038)? If yes, the PKCS#11 signer moves into phase 4, and the cgo question reopens; until then such deployments stay on `java-final` | Phase 4 |
 | ~~D1~~ | ~~Location rule~~ — **resolved** (ADR-0024): unique across all rows; rebind only for the same creditor and a holder that is not live (stored `PAID`/`CANCELLED` or past `valid_until`); holder gets a fresh location in the same transaction | — |
 | ~~D2~~ | ~~How equivalence is proved~~ — **resolved** (ADR-0028): a differential run Java vs Go with normalised diffs and `TOLERATED-DIFFERENCES.md`; the ETag bug fixed in both | — |
-| ~~D3~~ | ~~Configuration compatibility and image name~~ — **resolved** (ADR-0031): same `materainc/x9-qrcode`, Go line `3.x`, `java-final` kept; Go YAML + same env vars; `x9-config-convert` in the migrate image; old configuration refused naming the converter | — |
+| ~~D3~~ | ~~Configuration compatibility and image name~~ — **resolved** (ADR-0031): same `materainc/x9-qrcode`, Go line `3.x`, `java-final` kept; Go YAML + same env vars; no converter and no migrate image (ADR-0038); old configuration refused naming `docs/CONFIGURATION-FROM-JAVA.md` | — |
 | D4 | **Matera's internal shared Go packages are proprietary; this repo is public.** Relicense the ones X9.150 would use under the Matera Source License (published as a module or copied in), or keep reimplementing them here? **Recommendation:** relicense the JWS helpers and the HTTP-error / health helpers, which are the bulk of the reuse; reimplement the rest (ADR-0022) | Phase 3 |
 | ~~D5~~ | ~~Public scrub of internal references~~ — **done**: this plan and ADRs 0022–0035 name no internal document, rule or package; the internal standards show only through code and CI configuration (ADR-0022) | — |
 | ~~D6~~ | ~~Benchmark scope~~ — **resolved by the owner**: S1, S2 and S7 only; S3–S6 deferred (§9) | — |
@@ -366,7 +366,7 @@ rewrite is cancelled.
 | Q3 | Should `qr_code_notification` keep **refused** notifications too (with reason), for dispute evidence? Today they leave no trace | Phase 6 |
 | Q4 | Do ADRs 0003 / 0006 / 0007 / 0011 stay *Accepted-but-unbuilt* or move to *Deferred*? | Phase 12 |
 | Q5 | ~~Should change data capture on `payment_event` ever replace the pull API for push-minded consumers?~~ **Resolved (ADR-0037):** `payment_event` is the outbox. CDC (Debezium expected) and plain SQL with a read-status column are documented ways to read it; the HTTP pull API stays | — |
-| Q7 | Who runs the repository's compose against an existing Mongo volume? If anyone outside Matera does, the compose file must refuse to start PostgreSQL next to a populated Mongo volume until `x9-migrate` has run | Phase 10 |
+| ~~Q7~~ | ~~Who runs the repository's compose against an existing Mongo volume?~~ — **resolved** (ADR-0038): nobody depends on its data, and nothing is migrated; the Go compose starts PostgreSQL empty | — |
 | Q8 | Which dedicated host runs the benchmark campaign? It must be reservable exclusively for the whole campaign (§9.1) | Phase 1b |
 | Q9 | Shared-database test: run the black-box suite with X9.150 in a schema of a PostgreSQL that is also running an unrelated load, using the application role. Is a pgbench background load enough, or should another real service share it? | Phase 10 |
 | Q10 | Do auditors need **status** history beyond the 30-day event retention? If yes, add a separate `qr_code_status_audit_log` (one row per transition, same retention as the QR Code). Status moves don't bump `revision` (ADR-0016), so they cannot share `qr_code_audit_log`'s key | Phase 5 |

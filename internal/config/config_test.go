@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -277,7 +278,8 @@ func TestEmptyFileIsAllowed(t *testing.T) {
 	}
 }
 
-// S7.1-AC2: a Spring-style configuration is refused, naming the converter.
+// S7.1-AC2, S13.2-AC2: a Spring-style configuration is refused, naming the mapping document (there
+// is no converter, ADR-0038).
 func TestSpringFileIsRefused(t *testing.T) {
 	for _, tc := range []struct{ name, file, content, want string }{
 		{"spring key", "application.yml", "spring:\n  data:\n    mongodb:\n      database: x9\n", `top-level key "spring"`},
@@ -293,20 +295,23 @@ func TestSpringFileIsRefused(t *testing.T) {
 			if !errors.Is(err, ErrOldConfiguration) {
 				t.Fatalf("err = %v, want ErrOldConfiguration", err)
 			}
-			if !strings.Contains(err.Error(), Converter) || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("err = %v, want it to name %s and %q", err, Converter, tc.want)
+			if !strings.Contains(err.Error(), MappingDoc) || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want it to name %s and %q", err, MappingDoc, tc.want)
+			}
+			if strings.Contains(err.Error(), "x9-config-convert") {
+				t.Fatalf("err = %v names a converter that was never built (ADR-0038)", err)
 			}
 		})
 	}
 }
 
-// S7.1-AC2: a Spring or MongoDB variable is refused, naming the converter.
+// S7.1-AC2, S13.2-AC2: a Spring, MongoDB or Jasypt variable is refused, naming the mapping document.
 func TestOldEnvironmentIsRefused(t *testing.T) {
 	for _, name := range []string{"SPRING_CONFIG_LOCATION", "SPRING_DATA_MONGODB_HOST", "MONGODB_URI", "MONGO_INITDB_DATABASE", "JASYPT_ENCRYPTOR_PASSWORD"} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Load("", append(complete(), name+"=x"))
-			if !errors.Is(err, ErrOldConfiguration) || !strings.Contains(err.Error(), name) || !strings.Contains(err.Error(), Converter) {
-				t.Fatalf("err = %v, want ErrOldConfiguration naming %s and %s", err, name, Converter)
+			if !errors.Is(err, ErrOldConfiguration) || !strings.Contains(err.Error(), name) || !strings.Contains(err.Error(), MappingDoc) {
+				t.Fatalf("err = %v, want ErrOldConfiguration naming %s and %s", err, name, MappingDoc)
 			}
 		})
 	}
@@ -334,6 +339,56 @@ func TestExampleFileIsCompleteAndLoads(t *testing.T) {
 	}
 	if cfg.Database.SSLMode != "verify-full" || cfg.Database.Host != "postgres.example.com" {
 		t.Fatalf("unexpected: %+v", cfg.Database)
+	}
+}
+
+// S13.2-AC1: the mapping document names every Go key and variable, and only real ones. In each of
+// its five-column tables, a backquoted name in the "Go key" column must be a key of envVars (or the
+// -config flag), and one in the "Go variable" column must be one of its variables (or
+// X9_CONFIG_FILE): the document never invents a Go setting.
+func TestMappingDocCoversEveryKeyAndInventsNone(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", MappingDoc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(data)
+	keys := map[string]bool{"-config": true}
+	vars := map[string]bool{"X9_CONFIG_FILE": true}
+	for _, e := range envVars {
+		keys[e.key], vars[e.name] = true, true
+		if !strings.Contains(doc, "`"+e.key+"`") || !strings.Contains(doc, "`"+e.name+"`") {
+			t.Errorf("%s does not map %s (%s)", MappingDoc, e.key, e.name)
+		}
+	}
+	for _, u := range unsupportedKeystoreVars {
+		if name := "X9_CERTIFICATE_PRIVATEKEYSTORE_" + u.suffix; !strings.Contains(doc, "`"+name+"`") {
+			t.Errorf("%s does not name the refused %s", MappingDoc, name)
+		}
+	}
+	quoted := regexp.MustCompile("`([^`]+)`")
+	rows := 0
+	for line := range strings.SplitSeq(doc, "\n") {
+		if !strings.HasPrefix(line, "|") {
+			continue
+		}
+		cells := strings.Split(strings.Trim(strings.TrimSpace(line), "|"), "|")
+		if len(cells) != 5 || strings.HasPrefix(strings.TrimSpace(cells[0]), "---") {
+			continue
+		}
+		rows++
+		for _, m := range quoted.FindAllStringSubmatch(cells[2], -1) {
+			if !keys[m[1]] {
+				t.Errorf("%s: %q in the Go key column is not a Go key: %s", MappingDoc, m[1], line)
+			}
+		}
+		for _, m := range quoted.FindAllStringSubmatch(cells[3], -1) {
+			if !vars[m[1]] {
+				t.Errorf("%s: %q in the Go variable column is not a Go variable: %s", MappingDoc, m[1], line)
+			}
+		}
+	}
+	if rows < len(envVars) {
+		t.Fatalf("%s: only %d table rows read; is the table format still five columns?", MappingDoc, rows)
 	}
 }
 

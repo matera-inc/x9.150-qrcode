@@ -62,8 +62,8 @@ func refuseFormat(f format, name string) error {
 	switch f {
 	case formatJKS:
 		return fmt.Errorf("%w: %s is a JKS keystore, which the Go build does not read: convert it to PKCS#12 with "+
-			"x9-config-convert, or by hand with `keytool -importkeystore -srcstoretype JKS -deststoretype PKCS12` "+
-			"(ADR-0031)", ErrUnsupportedFormat, name)
+			"`keytool -importkeystore -srcstoretype JKS -deststoretype PKCS12`, as %s shows (ADR-0031)",
+			ErrUnsupportedFormat, name, config.MappingDoc)
 	case formatUnknown:
 		return fmt.Errorf("%w: %s is neither PEM nor PKCS#12", ErrUnsupportedFormat, name)
 	case formatPEM, formatPKCS12:

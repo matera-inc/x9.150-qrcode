@@ -126,6 +126,7 @@ parsed at the boundary. PATCH presence is tracked on the same struct.
 - Reading the current QR Code is one row.
 - A printed QR Code's EMV string changes only when its location changes. Migration copies it
   verbatim ([0030](0030-a-black-box-suite-defines-done-and-migration-writes-only-runtime-valid-rows.md)).
+  *(Amended 2026-11-16, [0038](0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md): there is no data migration.)*
 - Rebuilding the request at time T walks the log backwards. It is slow, and acceptable for an audit.
 
 ## Alternatives rejected

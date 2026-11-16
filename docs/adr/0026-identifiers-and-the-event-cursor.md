@@ -33,7 +33,9 @@ some have persisted ULID cursors.
   standard's id format, not a rule for every UUID:** `eventId` and `correlationId` keep the usual
   dashed form (`format: uuid` in the contract). *(Amended 2026-11-15, owner.)*
 - **The cursor is `payment_event.seq`, as a decimal string** ([0025](0025-a-transition-is-one-transaction-and-its-event-is-in-it.md)).
-- **ULID cursors are translated, not reset.**
+- **ULID cursors are translated, not reset.** *(Amended 2026-11-16, [0038](0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md): no data is
+  migrated, so the legacy-cursor table stays empty and every ULID resumes at the start, as the
+  last item below says. The translation stays built.)*
   - Migrated events keep their Java cursor in a separate table,
     `payment_event_legacy_cursor(legacy_cursor PK, seq)`. Only migrated events have a row there, so
     no nullable unique column is needed.

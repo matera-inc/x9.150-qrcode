@@ -52,14 +52,15 @@ the history of why we changed our minds — the part that is usually lost.
 | [0027](0027-crypto-in-go-x9150-jws-profile-pkix-with-crl-and-emv-by-hand.md) | **Crypto in Go** — own JWS verification path; CRL then OCSP, soft-fail; EMV by hand | Accepted |
 | [0028](0028-the-http-contract-is-frozen-and-equivalence-is-proved-by-a-differential-run.md) | **The HTTP contract is frozen, and equivalence is proved by a differential run** against Java; ETag fixed in both builds | Accepted |
 | [0029](0029-time-is-applied-on-read-and-retention-is-the-only-job.md) | **Time is applied on read; retention is the only job** — one timer; expiry is not deletion | Accepted |
-| [0030](0030-a-black-box-suite-defines-done-and-migration-writes-only-runtime-valid-rows.md) | **A black-box suite defines "done"; the cutover leaves only rows the runtime could have written** | Accepted |
-| [0031](0031-same-image-lighter-and-3-0-is-a-configuration-migration.md) | **Same Docker image, lighter; 3.0.0 is a configuration migration** with a converter; one instance; `java-final` | Accepted |
+| [0030](0030-a-black-box-suite-defines-done-and-migration-writes-only-runtime-valid-rows.md) | **A black-box suite defines "done"; the cutover leaves only rows the runtime could have written** | Accepted — amended by 0038: no data migration |
+| [0031](0031-same-image-lighter-and-3-0-is-a-configuration-migration.md) | **Same Docker image, lighter; 3.0.0 is a configuration migration**; one instance; `java-final` | Accepted — amended by 0038: no converter, no migrate image |
 | [0032](0032-x9150-can-live-in-the-banks-own-database.md) | **X9.150 can live in the bank's own database** — configurable schema, three roles, PgBouncer-safe, TLS, DBA-run SQL | Accepted |
 | [0033](0033-the-clock-can-be-moved-in-test-deployments-only.md) | **The clock can be moved in test deployments, and only there** — loopback listener, compiled-in fingerprint guard | Accepted |
 | [0034](0034-the-black-box-suite-is-python-in-this-repository-under-its-licence.md) | **The black-box suite is Python, in this repo, under its licence** | Accepted |
 | [0035](0035-one-event-builder-and-a-written-transition-map.md) | **One event builder, and a written transition map** | Accepted |
 | [0036](0036-pre-commit-on-every-rail-and-every-transaction-hash-is-recorded.md) | **Pre-commit on every rail, and every transaction hash is recorded** — the evidence decides the phase (keeps 0004); a contradictory message is the payer's fault but its hash is kept; a second hash signals a duplicate payment | Accepted — supersedes the no-`payer.info` fallback of 0021 |
 | [0037](0037-the-event-table-is-the-outbox-read-by-cdc-or-plain-sql.md) | **The event table is the outbox, read by CDC or by plain SQL** — X9.150 only inserts; Debezium, a read-status column for SQL readers, or the HTTP API; the columns become a public contract | Accepted |
+| [0038](0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md) | **No data migration from the Java build; a written mapping replaces the converter** — the Java build has no production users; `x9-migrate`, `x9-config-convert` and the migrate image are not built; [CONFIGURATION-FROM-JAVA.md](../CONFIGURATION-FROM-JAVA.md) maps every setting | Accepted — supersedes the migration parts of 0030 and 0031, which are marked amended by it |
 
 ## Writing a new one
 
