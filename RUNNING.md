@@ -273,6 +273,31 @@ the variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`.
   `X9_SERVER_SHUTDOWNDELAYSECONDS` (default 5) so load balancers see it leave, then stops accepting;
   requests in flight get up to 20 s to finish; the pools close; the process exits 0. A pod's
   `terminationGracePeriodSeconds` must be above the sum (30 s is enough).
+- **Retention, the one background job** ([ADR-0029](docs/adr/0029-time-is-applied-on-read-and-retention-is-the-only-job.md)).
+  Once the schema check passes, and then `X9_RETENTION_INTERVAL` (`retention.interval`, default
+  `PT1H`) after the end of each run, the service takes the business clock once and deletes, in
+  batches of 500 rows, one transaction each with a 100 ms pause between them:
+  1. the events older than `X9_EVENTS_RETENTION` (`events.retention`, default `P30D`);
+  2. then the QR Codes whose `validUntil` **and** last revision are both older than
+     `X9_QRCODE_RETENTION` (`qrcode.retention`, default `P400D`), in any status, with their audit
+     log and stored notifications.
+
+  Durations are ISO-8601 days, hours, minutes and seconds (`P30D`, `PT1H`). It never changes a
+  status, skips a QR Code a request is changing (the next run takes it), and stops on SIGTERM
+  before the pools close. The service refuses to start if `qrcode.retention` is shorter than
+  `events.retention`, naming both. **What shortening them gives up:** an expired QR Code is
+  readable, with its expiry reason, and can still be marked `PAID`, only until `qrcode.retention`;
+  after that it is a 404 like one that never existed. An event is in `GET /pub/api/v1/events` and
+  in `payment_event` only until `events.retention`, so a consumer must read within it.
+  **Sizing:** [BENCHMARK.md](BENCHMARK.md#database) measured about 15 KB of PostgreSQL per payment
+  (the QR Code ~1.4 KB, its signed notifications ~12.6 KB, events and indexes the rest), nearly all
+  of it kept for `qrcode.retention`: 10,000 payments a day at `P400D` is about 60 GB.
+  Each run logs one `x9-qrcode retention run` line (`INFO`) with its two cutoffs, the rows deleted
+  per table and `durationMs`; a failed run logs `ERROR` and is retried at the next tick.
+- **Metrics.** `GET /actuator/prometheus`, on the API port, serves the Prometheus text format:
+  `x9_retention_deleted_rows_total{table="…"}` (one series per table the job deletes from),
+  `x9_retention_runs_total` and `x9_retention_runs_failed_total`. The inventory of the Java build's
+  metrics comes with the image-and-deploy phase.
 - **The image.** A multi-stage [`Dockerfile`](Dockerfile): the pinned Go image cross-compiles a
   static binary (`CGO_ENABLED=0`, `-trimpath`, version and commit from `-ldflags`) onto
   `gcr.io/distroless/static-debian13:nonroot`, both pinned by digest. It runs as user 65532, has

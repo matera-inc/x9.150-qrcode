@@ -76,8 +76,10 @@ Since Story 10.8 the Go run is judged as the Java run is: **the whole suite, und
 test itself, never in a list beside it:
 
 - a `java_only` test is skipped on Go, and a `go_only` one on Java, with its reason;
-- `X9-TIME-015` (retention, ADR-0029) is a strict expected failure on Go naming **Epic 12**: the
-  day the retention job lands, it passes, the strict mark turns the run red, and the mark comes out;
+- `X9-TIME-015` (retention, ADR-0029) is `go_only` and passes on Go since Epic 12: the Go
+  deployment keeps the default retentions (`P30D`, `P400D`) and runs the job every 5 s, and
+  `X9_EVENTS_RETENTION_DAYS`, `X9_QRCODE_RETENTION_DAYS` and `X9_RETENTION_WAIT_SECONDS` describe
+  that to the suite (`docker-compose.go.yml` sets the service and the suite from the same values);
 - a behaviour where Go follows the standard or an ADR and Java does not is a `go_only` test, or a
   strict expected failure on Java (`X9-LOC-421`, BUG-004), listed in ADR-0028's "Known differences
   between the builds".
@@ -258,6 +260,8 @@ this truststore: it trusts keys anybody can download.
 | `X9_REQUIRE_ALL` | unset | `1` turns every "capability missing" skip into a failure. CI sets it. |
 | `X9_BUILD` | from `X9_DATABASE_URL`, else `java` | `java` or `go`: `go_only` tests skip on Java and `java_only` tests on Go, with the reason. Not a missing capability, so `X9_REQUIRE_ALL` does not fail them. A mark can also depend on it (`builds.under_test()`): `X9-LOC-421` is a strict expected failure on Java only. |
 | `X9_RECORD_DIR` | unset | Record every exchange of every test there, for the differential run (see "Differential run" above). `run-against-image.sh` copies the recording out of its container to this path. |
+| `X9_EVENTS_RETENTION_DAYS`, `X9_QRCODE_RETENTION_DAYS` | `30`, `400` | The Go deployment's `events.retention` and `qrcode.retention`, in days, for `X9-TIME-015`. They describe the deployment; they do not configure it. |
+| `X9_RETENTION_WAIT_SECONDS` | `90` | How long `X9-TIME-015` waits for a retention run: the deployment's `retention.interval` plus slack (`docker-compose.go.yml` runs the job every 5 s and sets 30). |
 | `X9_REQUIRED_KEYS` | unset | A list file of your own: only the tests it lists decide the exit code; every other one is informative. For a partial run while porting; no CI run sets it. |
 
 ## Layout

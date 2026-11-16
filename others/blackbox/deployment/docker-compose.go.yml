@@ -13,6 +13,11 @@
 #   blackbox    the suite, in x9-qrcode's network namespace, reading the database as the read-only
 #               role; that postgresql:// URL is what makes the suite take this run as the Go build
 #
+# Retention (ADR-0029, Story 12.1) keeps its default retentions here, P30D and P400D, but runs every
+# 5 s instead of every hour, so X9-TIME-015 sees the moved test clock acted on within its wait. The
+# same X9_*_RETENTION_DAYS values configure the service and describe it to the suite, so the two
+# cannot disagree.
+#
 # The run's verdict is the whole suite (S10.8-AC1), as for the Java build: any failure fails it.
 #
 # NON-PRODUCTION. The truststore trusts keys anybody can download; the database trusts everyone.
@@ -75,6 +80,9 @@ services:
       # TLS: the system CAs plus the test CA, for another bank's payload host served by the suite
       # over https (test_tolerant_reading.py).
       SSL_CERT_DIR: "/etc/ssl/certs:/x9-blackbox/ca"
+      X9_EVENTS_RETENTION: "P${X9_EVENTS_RETENTION_DAYS:-30}D"
+      X9_QRCODE_RETENTION: "P${X9_QRCODE_RETENTION_DAYS:-400}D"
+      X9_RETENTION_INTERVAL: "PT${X9_RETENTION_INTERVAL_SECONDS:-5}S"
 
   blackbox:
     image: "${X9_RUNNER_IMAGE:-x9-blackbox-runner:local}"
@@ -93,3 +101,8 @@ services:
       # caller sets X9_RECORD_DIR; empty means off.
       X9_RECORD_DIR: "${X9_RECORD_IN_CONTAINER:-}"
       X9_WAIT_SECONDS: "${X9_WAIT_SECONDS:-120}"
+      # The deployment's retention, as x9-qrcode above is configured (X9-TIME-015); the wait is the
+      # timer's interval plus slack for a run.
+      X9_EVENTS_RETENTION_DAYS: "${X9_EVENTS_RETENTION_DAYS:-30}"
+      X9_QRCODE_RETENTION_DAYS: "${X9_QRCODE_RETENTION_DAYS:-400}"
+      X9_RETENTION_WAIT_SECONDS: "${X9_RETENTION_WAIT_SECONDS:-30}"

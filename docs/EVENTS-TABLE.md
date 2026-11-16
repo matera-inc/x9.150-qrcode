@@ -276,7 +276,10 @@ More than one `payment.sent` for one QR Code is the signal of a duplicate paymen
 > on your own lag: the age of the oldest `PEND` row, or your CDC slot's lag, against the retention
 > period.
 
-The purge deletes in small paced batches. CDC readers filtering to inserts never see those deletes.
+The purge deletes in small paced batches (500 rows per transaction, 100 ms apart), every
+`retention.interval` (default one hour), with cutoffs computed from the service's clock. Set the
+period with `X9_EVENTS_RETENTION` (an ISO-8601 duration such as `P30D`); it may not exceed
+`X9_QRCODE_RETENTION`. CDC readers filtering to inserts never see those deletes.
 
 ---
 

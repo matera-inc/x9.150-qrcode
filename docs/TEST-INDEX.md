@@ -12,7 +12,7 @@ a difference between the builds no black-box case can drive, or a fix the differ
 the test's doc comment, and the "Where" cell names the `_test.go` file).
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
-(STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036 and ADR-0027's EMV and JWS verification rules), the
+(STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036, ADR-0027's EMV and JWS verification rules, ADR-0028 and ADR-0029), the
 tests that prove it and the acceptance criteria they cite, and the rules that have no test yet. A
 check in CI keeps it true (`docs/check/check_rule_coverage.py`).
 
@@ -915,7 +915,7 @@ judged within the 2 s before it; "1 ms after" is exact.
 | `X9-TIME-012` | T11, both builds: an hour past `validUntil` on the test clock, the payload is refused as expired and GET still works | `test_time_edges.py` |
 | `X9-TIME-013` | T11, Java only: MongoDB's TTL monitor deletes an expired QR Code on the real clock (waits real time) | `test_time_edges.py` |
 | `X9-TIME-014` | T11, Go only: an expired QR Code is kept and its location is releasable | `test_time_edges.py` |
-| `X9-TIME-015` | T12, Go only: retention purges events, then QR Codes, by the test clock, and nothing younger (a strict expected failure on Go until Epic 12 builds retention) | `test_time_edges.py` |
+| `X9-TIME-015` | T12, Go only: retention purges events, then QR Codes, by the test clock, and nothing younger | `test_time_edges.py` |
 | `X9-TIME-016` | S4.5-AC2: with the payee's clock ahead of the payer's, the payee's clock decides `validUntil` | `test_time_edges.py` |
 | `X9-TIME-017` | one instant: 1 ms past a method's `validUntil`, with `dateForPayment` that day, the expired method is absent and the other is priced one day late | `test_time_edges.py` |
 | `X9-TIME-020` | a past `dateForPayment` does not bring back an expired payment method; the methods shown are chosen at the instant the fee is computed | `PayloadPricingInstantApiTest.java` |

@@ -368,6 +368,23 @@ The rules both builds must agree on ("Certificate fetching" and "Revocation, par
 | `R-ADR0027-05` | A certificate a source reports as revoked is refused, by CRL or by OCSP. | `X9-SIG-053`, `X9-LOC-305`, `X9-LOC-306`, `X9-LOC-311` | `S4.3-AC1` |
 | `R-ADR0027-06` | These OCSP answers are refused, not soft-failed: an error status other than `tryLater` or `internalError`, a signature by an unauthorised responder, a delegated responder without `OCSPSigning`, an out-of-date answer, no answer for the certificate. | `X9-LOC-313`, `X9-LOC-314` | — |
 
+## ADR-0029: time on read, and retention
+
+ADR-0029 applies business time on read and makes retention the Go build's one background job
+(Epic 12). The job's Go tests are in `internal/retention` (against PostgreSQL, as the application
+role), `internal/config` and `cmd/x9-qrcode`; `X9-TIME-015` drives it through the black-box suite
+on the test clock.
+
+| Rule | What it says | Tests | Proves |
+|---|---|---|---|
+| `R-ADR0029-01` | No status is ever written because time passed: a lapse or an expiry is applied on read. | `X9-LIFE-112`, `X9-TIME-012` | — |
+| `R-ADR0029-02` | Expiry is not deletion: an expired QR Code stays readable, its payload answers with the expiry reason, and its location is releasable (Go). | `X9-TIME-014` | `S4.5-AC1`, `S4.5-AC3` |
+| `R-ADR0029-03` | Each retention run takes the business clock once, then deletes the events older than `events.retention` (default `P30D`), then the QR Codes whose `valid_until` and `revised_at` are both older than `qrcode.retention` (default `P400D`), in any status, with their audit-log and notification rows; nothing younger, nothing at the cutoff, and an event of a purged QR Code that is itself young is kept. | `X9-TIME-015`, `retention_postgres_test.go::testEventsThenQRCodes`, `retention_test.go::TestCutoffsComeFromTheBusinessClockOnce` | `S12.1-AC2`, `S12.1-AC5` |
+| `R-ADR0029-04` | The retentions and the interval (default one hour) are configurable, each with its variable, and the service refuses to start when `qrcode.retention` is shorter than `events.retention`, naming both. | `retention_config_test.go::TestRetentionDefaults`, `retention_config_test.go::TestQRCodeRetentionShorterThanEventsIsRefused`, `main_test.go::TestRunRefusesAQRCodeRetentionShorterThanTheEvents` | `S12.1-AC1` |
+| `R-ADR0029-05` | Each purge works in batches, one transaction per batch, with a pause between them; a QR Code a transition holds is skipped, never waited for; every statement can use an index. | `retention_postgres_test.go::testBatches`, `retention_postgres_test.go::testLockedRowIsSkipped`, `retention_postgres_test.go::testQueriesUseIndexes` | `S12.1-AC3` |
+| `R-ADR0029-06` | The job never changes a status; it stops on shutdown before the pools close; a failed run is logged, counted and retried at the next tick, never stopping the service. | `retention_postgres_test.go::testEventsThenQRCodes`, `retention_test.go::TestAFailedRunIsLoggedCountedAndRetried`, `retention_test.go::TestStopsOnShutdown`, `main_test.go::TestRunAgainstPostgres` | `S12.1-AC4` |
+| `R-ADR0029-07` | Each run logs one line with its cutoffs, the rows deleted per table and its duration, and `/actuator/prometheus` counts the rows deleted per table and the failed runs. | `main_test.go::TestRunAgainstPostgres`, `retention_test.go::TestAFailedRunIsLoggedCountedAndRetried`, `metrics_test.go::TestExposition` | `S12.2-AC1` |
+
 ## ADR-0035: the transition map
 
 One row per row of the map, with the same number as its black-box test. `R-ADR0035-NN` are the
