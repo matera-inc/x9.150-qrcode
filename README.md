@@ -6,6 +6,8 @@ This application is a backend implementation of the **ANSI X9.150-2026 Payment Q
 > **History.** The service was first written in Java on MongoDB, and has been rewritten in Go on
 > PostgreSQL. [HISTORY.md](HISTORY.md) says why; [BENCHMARK.md](BENCHMARK.md) has the measured
 > comparison of the two builds.
+> Moving a Java (2.x) deployment to the Go build (3.0.0)? [UPGRADING-TO-3.md](UPGRADING-TO-3.md)
+> says what changes.
 
 ## What this software does, and what it does not
 
@@ -103,6 +105,7 @@ was built for, and refuses to start otherwise.
 >   ([ADR-0038](docs/adr/0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md)).
 >   [docs/CONFIGURATION-FROM-JAVA.md](docs/CONFIGURATION-FROM-JAVA.md) maps every Java setting to
 >   its Go key.
+>   [UPGRADING-TO-3.md](UPGRADING-TO-3.md) is the operator's one page on the move.
 >
 > [HISTORY.md](HISTORY.md#whats-next) lists the remaining steps.
 
