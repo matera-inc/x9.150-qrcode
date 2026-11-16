@@ -603,6 +603,32 @@ func TestAPayloadThatDoesNotVerifyIsRefused(t *testing.T) {
 	}
 }
 
+// ADR-0028, known difference 22 (the black-box X9-DEC-510): a 3xx from the payee is not followed,
+// though where it points would serve a good payload. Its own body is checked as the payload's JWS,
+// and refused as an invalid signature.
+func TestARedirectIsNotFollowed(t *testing.T) {
+	for _, status := range []int{http.StatusFound, http.StatusTemporaryRedirect} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			f := serve(t)
+			good := f.payloadAnswer(foreignPayload)
+			f.bank.answerWith(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/redirected" {
+					good(w, r)
+					return
+				}
+				http.Redirect(w, r, "/redirected", status)
+			})
+
+			got := f.decode(map[string]any{"qrCode": f.bankCode()})
+
+			assertProblem(t, got, http.StatusBadRequest, httpapi.TypeBusinessRule, "Payload JWS signature is invalid.")
+			if n := len(f.bank.received()); n != 1 {
+				t.Errorf("%d payload requests: the redirect was followed", n)
+			}
+		})
+	}
+}
+
 // The answer signWithoutCorrelationID gives fails for its one defect: no correlationId, refused
 // whatever is expected, and not a broken signature.
 func TestAnAnswerWithoutACorrelationIDIsABadHeader(t *testing.T) {

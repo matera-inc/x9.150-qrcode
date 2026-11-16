@@ -365,6 +365,27 @@ func TestGenerateThenValidate(t *testing.T) {
 	}
 }
 
+// X9-SIG-534 (S11.4-AC1; ADR-0028, known difference 13): a number in the body is signed as it was
+// sent, exponent and trailing zeros included, where the Java build signs Jackson's spelling (1e2
+// becomes 100.0). Both are the same JSON number, so a token from either build verifies on the
+// other; what is pinned here is that Go does not rewrite it.
+func TestGenerateSignsANumberAsSent(t *testing.T) {
+	const payload = `{"a":1e2,"b":-2.50E+3,"c":1.0,"d":100,"e":0.1e-2}`
+	f := serve(t, demo(t), "PS512", jws.PublishChain)
+
+	a := f.generate(t, cid, "120", payload)
+
+	if a.status != http.StatusOK {
+		t.Fatalf("status %d: %s", a.status, a.body)
+	}
+	if got := string(segment(t, a.body, 1)); got != payload {
+		t.Errorf("payload = %s, want it as sent: %s", got, payload)
+	}
+	if v := f.validate(t, validateBody(a.body)); v.status != http.StatusOK {
+		t.Fatalf("validate: %d %s", v.status, v.body)
+	}
+}
+
 // S10.2-AC4: the headers are read, and refused, as Spring reads them; the checks run in Spring's
 // order (media type, Correlation-Id, TTL-Seconds, body, then the ttl's value).
 func TestGenerateRefusalsAreJavas(t *testing.T) {

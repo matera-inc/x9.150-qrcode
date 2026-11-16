@@ -247,3 +247,71 @@ def test_a_tampered_payload_under_another_correlation_id_is_a_bad_signature(deco
 
     _refused("tampered", response, words=INVALID)
     assert REFUSED not in response.text, response.body
+
+
+# ------------------------------------------------------------------ where the payload is fetched from
+
+@pytest.mark.go_only(reason="go_only: the Java build follows a redirect from the payee "
+                            "(ADR-0028, known difference 22)")
+@pytest.mark.parametrize("redirect", [302, 307])
+def test_a_redirect_from_the_payload_host_is_not_followed(api, other_bank, pki, business_now,
+                                                          redirect):
+    """X9-DEC-510 — the other bank answering the payload request with a 302 or 307 whose
+    ``Location`` would serve a good signed payload is not followed: one request, and the redirect's
+    own body is checked as the payload's JWS, refused "Payload JWS signature is invalid.".
+
+    S11.4-AC1.
+
+    Source: Ours. ADR-0028, known difference 22 (Story 10.7); ADR-0015 for the notification's
+      client, which the decoder's fetch shares.
+    Why: A payload is served where the QR Code says. A redirect could send the payer's signed
+      request, and take the payload, from any host, including one inside this deployment's
+      network that the QR Code's author could not name directly.
+    """
+    from x9client import peer as peer_module
+
+    signer = jws.Signer(pki["payee"], now_ms=business_now)
+    target = "https://" + other_bank.location("C" * 32)
+
+    def answer(question):
+        if len(other_bank.received) == 1:
+            return peer_module.Answer(redirect, b"", content_type=None,
+                                      headers={"Location": target})
+        return peer_module.Answer(200, signer.sign(FOREIGN, correlation_id=question.correlation_id))
+
+    other_bank.reset(answer)
+    qr_code = emv.with_location(api.create_qr_detailed().body["qrCode"],
+                                other_bank.location(LOCATION))
+
+    response = api.post("/api/v1/qrcode-emv-decoder", body={"qrCode": qr_code})
+
+    assert len(other_bank.received) == 1, \
+        f"the redirect was followed: {len(other_bank.received)} requests"
+    _refused(f"a {redirect}", response, words=INVALID)
+
+
+@pytest.mark.go_only(reason="go_only: java.net.URI accepts a non-numeric port, and the Java build "
+                            "goes on to fetch, or fails later (ADR-0028, known difference 21)")
+def test_a_location_url_with_a_non_numeric_port_is_refused_before_any_fetch(api, other_bank):
+    """X9-DEC-509 — a QR Code whose payload URL names the other bank's host with a non-numeric port
+    is refused 400 ``validation-error``, "Invalid URI syntax: " and the URL as written, and nothing
+    is fetched.
+
+    S11.4-AC1.
+
+    Source: Ours. ADR-0028, known difference 21 (Story 10.7); the words are the Java build's own for
+      a URL it cannot parse.
+    Why: A URL that cannot name one host and one port cannot say where the payload is; guessing
+      one (a default port, a lenient parse) would fetch from somewhere the QR Code did not name.
+    """
+    other_bank.reset()
+    host = other_bank.location(LOCATION).split(":", 1)[0]
+    location = f"{host}:abc/pub/api/v1/loc/{LOCATION}"
+    qr_code = emv.with_location(api.create_qr_detailed().body["qrCode"], location)
+
+    response = api.post("/api/v1/qrcode-emv-decoder", body={"qrCode": qr_code})
+
+    assert response.status == 400, response
+    assert response.body.get("type") == "https://x9.matera.com/api/validation-error", response.body
+    assert response.body.get("violations") == [f"Invalid URI syntax: {location}"], response.body
+    assert other_bank.received == [], "nothing may be fetched for it"
