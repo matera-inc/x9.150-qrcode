@@ -125,8 +125,9 @@ its index and the rest still pair. Before comparing it normalises both sides. No
 only what changes from one run of the *same* build to the next, never a difference between the
 builds; one rule is a decision rather than noise, and is written here so that nobody mistakes it
 for one: **`violations` are compared as a set**, because the Java build's order of violations
-changes from run to run (Bean Validation reports them from a hash set), so no order can be promised
-to a client today. The rules: JSON compared as
+changes from run to run (Bean Validation reports them from a hash set). The owner accepted this on
+2026-11-16, and openapi.yaml says it to clients: the order of `violations` is not significant, and
+an entry is matched by its field path and message, not its position. The rules: JSON compared as
 values (whitespace and key order ignored); server-minted ids, `correlationId`s, event ids, cursors,
 times and dates masked (keeping whether an offset is `Z` or numeric); a JWS compared as its decoded
 header minus `iat`, `correlationId`, `x5c` and the certificate thumbprint, and its decoded payload,
@@ -153,8 +154,9 @@ is not red on it, and every report prints it under **PENDING, NEEDS THE OWNER** 
 
 In CI the `blackbox` and `blackbox-go` jobs record, upload their recordings as the artifacts
 `recording-java` and `recording-go`, and the `differential` job diffs them and uploads
-`differences.json`. When `blackbox-go` found nothing to run (a pull request that touches neither the
-Go code, `db/` nor the suite), there is no Go recording, and `differential` says so and passes.
+`differences.json`. When `blackbox-go` found nothing to run (a pull request that touches neither
+build, `db/` nor the suite: a Java-only change does run it), there is no Go recording, and
+`differential` says so and passes.
 
 #### Reading a failing differential run
 

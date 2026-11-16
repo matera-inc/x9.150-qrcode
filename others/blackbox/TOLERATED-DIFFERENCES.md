@@ -17,6 +17,11 @@ builds were found to differ and one of them was wrong, the build was fixed inste
   fixed in Go (`X9-HOLD-506`).
 - Java wrote `signatureProblem: null`, `signatureDetail: null` and `body: null` in the payer-side
   pre-payment and post-payment answers: fixed in Java (`X9-SIG-130`, `X9-SIG-136`).
+- The decoder: Java added `bill.paymentTiming: immediate` to every bill another bank sent without
+  one, even beside an `invoice.dueDate`; Go presented none. Both now follow the owner's rule of
+  2026-11-16: `immediate` when there is neither `paymentTiming` nor a `dueDate` (ANSI X9.150-2026
+  §13.1 requires the member; our contract documents the default), nothing guessed beside a
+  `dueDate` (`X9-DEC-516`, `X9-DEC-027`, `X9-DEC-517`). This was entry 25; the number is retired.
 - Java answered a verified JWS that is not a notification (a payload request or response posted to
   `/pub/api/v1/payment-notification`) with a 500: fixed in Java, now Go's 400 naming `payment`
   (`X9-SIG-159`).
@@ -37,7 +42,7 @@ least one test (`docs/check/check_rule_coverage.py` checks that each key exists)
 
 A selector that matches nothing in a run is **stale** and fails the run: a difference that has gone
 away leaves the list. Numbers 1 to 22 are ADR-0028's; number 8 is retired (an unknown field in a
-bank rail: both builds refuse it in the same words since 2026-11-15).
+bank rail: both builds refuse it in the same words since 2026-11-15), and so is 25 (above).
 
 ## 1. Whitespace
 
@@ -151,7 +156,7 @@ on PATCH.
 
 **Reason:** the next conditional request can use it: the first PATCH can send `If-Match` without a
 GET first, and so can the one after a PATCH (ADR-0016). Story 9.6; the PATCH case was found by the
-first differential run (Story 11.1) and accepted with it.
+first differential run (Story 11.1); the owner accepted both on 2026-11-16.
 
 **Keys:** `X9-PATCH-521`, `X9-PATCH-522`, `X9-PATCH-501`
 
@@ -250,7 +255,8 @@ Story 10.6.
 
 **Reason:** GET shows the latest accepted notification; an accepted notification that goes
 unrecorded is a Java defect, not a contract (ADR-0036). Story 10.5. `X9-HOLD-504` is a strict
-expected failure on Java; `X9-MAP-043` shows the same thing from the transition map.
+expected failure on Java; `X9-MAP-043` shows the same thing from the transition map. Tolerated by the
+owner, 2026-11-16.
 
 **Keys:** `X9-HOLD-504`, `X9-MAP-043`
 
@@ -371,31 +377,15 @@ signature does not verify`). The fixed code, `signatureProblem`, is the same on 
 **Reason:** `signatureDetail` is free explanatory text, not frozen by ADR-0028: a client acts on
 `signatureProblem`, the closed list of codes, and reads `signatureDetail` only to understand it
 (openapi.yaml says so). `signatureProblem` is still compared: only the detail is tolerated, only in
-the pre-payment and post-payment answers, and only when both builds give one.
+the pre-payment and post-payment answers, and only when both builds give one. Accepted by the owner on
+2026-11-16: the Go build keeps its own words, which is less complexity and less risk than copying
+another verifier's.
 
 **Keys:** `X9-SIG-502`, `X9-SIG-506`
 
 ```json
 {"entry": 24, "differences": [
   {"test": ".", "request": "POST /api/v1/payment-notification/(pre|post)-payment", "field": "body\\.signatureDetail", "present": true}
-]}
-```
-
-## 25. The decoder shows another bank's payload as written
-
-**Java:** `POST /api/v1/qrcode-emv-decoder` adds `bill.paymentTiming: immediate` to a payload that
-did not carry it (its value object's default). **Go:** shows the payload as written, with no
-`paymentTiming`.
-
-**Reason:** strict to generate, tolerant to read (INTERPRETATION I-16): the decoder presents what
-the other bank published, and invents nothing it did not say. The default is this service's rule
-for what it generates, not a fact about another bank's QR Code.
-
-**Keys:** `X9-DEC-501`, `X9-DEC-502`
-
-```json
-{"entry": 25, "differences": [
-  {"test": "test_tolerant_reading\\.py::", "request": "POST /api/v1/qrcode-emv-decoder", "field": "body\\.bill\\.paymentTiming", "java": "immediate", "go": "<absent>"}
 ]}
 ```
 
@@ -408,7 +398,8 @@ for what it generates, not a fact about another bank's QR Code.
 not which. Tolerated only in that test, and only in the fields that name the winner: the status and
 signed answer of each racer's notification, the event's `payerInfo` and GET's
 `paymentNotification.data.payer.info`. Each selector may match nothing (the same racer can win on
-both).
+both). Tolerated by the owner, 2026-11-16: a race cannot be made
+deterministic.
 
 **Keys:** `X9-HOLD-406`
 
@@ -427,17 +418,18 @@ handed out) is an empty page, with no `nextCursor`. **Go:** the page from the st
 history, with a `nextCursor`, as ADR-0026 (owner, 2026-11-15) says: a ULID later than every
 migrated cursor resumes after the last migrated event, the start when nothing was migrated.
 
-**Reason:** the Go behaviour is the owner's written decision in ADR-0026, so it is not a Go bug;
-but ADR-0028 never listed it as a difference between the builds, so it is tolerated here only as
-**pending** until the owner confirms it belongs on this list. The first differential run found it
-through `X9-EVT-056`, which uses that cursor to mean "the end of the stream" (the 400s it checks are
-the same on both builds; only its `limit` 1 and 500 pages differ). Not to be confused with entry 3:
-a *decimal* cursor ahead of the log is a 409.
+**Reason:** tolerated by the owner on 2026-11-16. There are no real users of the Java build's event
+cursors yet, so a Java-era cursor later than every migrated one is not a situation to design for
+now; the Go build keeps ADR-0026's rule as amended. Not to be confused with entry 3: a *decimal*
+cursor ahead of the log is a 409.
 
-**Keys:** `X9-EVT-056`
+The first differential run found it through `X9-EVT-056`, which used that ULID to mean "the end of
+the stream". That test now takes the end from the stream itself on each build, so it means the same
+on both, and no black-box exchange shows this difference any more: the Go test of the translation
+proves it.
+
+**Keys:** `X9-EVT-506`
 
 ```json
-{"entry": 27, "status": "pending", "differences": [
-  {"test": "::test_a_limit_outside_1_to_500_is_refused\\[", "request": "GET /pub/api/v1/events\\?after=<cursor>&limit=(1|500)", "field": "body\\.nextCursor", "java": "<absent>", "go": "<cursor>"}
-]}
+{"entry": 27, "proof": "go-test"}
 ```

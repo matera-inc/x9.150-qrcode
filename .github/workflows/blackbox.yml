@@ -10,8 +10,8 @@ name: Black-box
 # (X9_REQUIRE_ALL) is red, never a green skip.
 #
 # The `blackbox-go` job (Story 9.1) runs the same suite against the Go image on PostgreSQL 16, with
-# db/changelog applied by Liquibase, on every pull request that touches the Go code, db/ or
-# others/blackbox/. Since Story 10.8 its verdict is the whole suite, as for Java: any failure fails
+# db/changelog applied by Liquibase, on every pull request that touches the Go code, the Java code
+# (so that `differential` sees a Java-only change too), db/ or others/blackbox/. Since Story 10.8 its verdict is the whole suite, as for Java: any failure fails
 # the job (java_only tests skip with their reason; X9-TIME-015 is a strict expected failure on Go
 # until Epic 12's retention lands). On any other pull request it checks out, finds nothing to run,
 # and passes.
@@ -81,7 +81,9 @@ jobs:
 
       # A job-level path filter, in plain git, so the Java job above keeps running on every pull
       # request: a workflow-level `paths` would filter both jobs.
-      - name: Does this pull request touch the Go code, db/ or the suite?
+      # The Java paths are in the filter too (as in pairings.yml): a Java-only change can add a
+      # difference between the builds, and only a Go run lets `differential` see it.
+      - name: Does this pull request touch either build, db/ or the suite?
         id: changes
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -89,11 +91,11 @@ jobs:
           changed="$(git diff --name-only "$BASE_SHA"...HEAD)"
           printf '%s\n' "$changed"
           if printf '%s\n' "$changed" | grep -Eq \
-              '(\.go$|^go\.(mod|sum)$|^cmd/|^internal/|^testdata/|^Dockerfile$|^\.dockerignore$|^Makefile$|^db/|^others/blackbox/|^\.github/workflows/blackbox\.yml$)'; then
+              '(\.go$|^go\.(mod|sum)$|^cmd/|^internal/|^testdata/|^Dockerfile$|^\.dockerignore$|^Makefile$|^db/|^others/blackbox/|^x9-qrcode-[a-z-]+/|^pom\.xml$|^mvnw|^\.mvn/|^\.github/workflows/blackbox\.yml$)'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "Nothing the Go run depends on changed: the Go black-box run is not needed."
+            echo "Neither build, db/ nor the suite changed: the Go black-box run is not needed."
           fi
 
       - name: Build the Go image (make go-image)

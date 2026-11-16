@@ -496,14 +496,20 @@ def test_a_limit_outside_1_to_500_is_refused(deployment, limit):
     Why: A consumer asking for 0 would page forever without moving its cursor; one asking for more
     than 500 would be served a page the deployment never sized for. Either is told so, by name,
     rather than silently clamped into a page size it did not ask for.
+
+    The cursor is the stream's end as each build gives it (``past_the_end``), not ``END`` on both:
+    on Go a ULID that late reads from the start of retained history (ADR-0026), so the same request
+    would mean "the end" on one build and "everything" on the other (TOLERATED-DIFFERENCES.md,
+    entry 27; owner, 2026-11-16).
     """
     api = deployment  # reads the stream only: no QR Code, no payer probe
-    response = api.get(f"{PATH}?after={END}&limit={limit}")
+    end = past_the_end(api)
+    response = api.get(f"{PATH}?after={end}&limit={limit}")
 
     assert response.status == 400, response
     assert "limit" in str(response.body), f"the refusal names `limit`: {response.body}"
     for edge in (1, 500):
-        assert api.get(f"{PATH}?after={END}&limit={edge}").status == 200, f"limit={edge} is valid"
+        assert api.get(f"{PATH}?after={end}&limit={edge}").status == 200, f"limit={edge} is valid"
 
 
 def test_without_limit_a_page_holds_at_most_100_events(api):
