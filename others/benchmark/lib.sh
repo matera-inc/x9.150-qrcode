@@ -72,9 +72,16 @@ preload_public_images() {
   load_images "${PUBLIC_IMAGES[@]}"
 }
 
+# image_size IMAGE sizeBytes|compressedSizeBytes: the image's unpacked or compressed size, read from
+# `docker save` (others/scripts/image-size.py). Never {{.Size}}: on Docker's containerd image store
+# it is the compressed content or the disk usage, depending on the version, not the unpacked layers.
+image_size() { python3 -I "$ROOT/others/scripts/image-size.py" "$1" --field "$2"; }
+
 image_json() {
+  local size
+  size="$(image_size "$1" sizeBytes)"
   docker image inspect "$1" --format \
-    '{"image":"{{index .RepoTags 0}}","id":"{{.Id}}","revision":"{{index .Config.Labels "org.opencontainers.image.revision"}}","version":"{{index .Config.Labels "org.opencontainers.image.version"}}","platform":"{{.Os}}/{{.Architecture}}","sizeBytes":{{.Size}}}'
+    '{"image":"{{index .RepoTags 0}}","id":"{{.Id}}","revision":"{{index .Config.Labels "org.opencontainers.image.revision"}}","version":"{{index .Config.Labels "org.opencontainers.image.version"}}","platform":"{{.Os}}/{{.Architecture}}","sizeBytes":'"$size"'}'
 }
 
 # ─── the namespace: one system under test at a time, an empty database volume each run ────────

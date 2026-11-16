@@ -297,15 +297,22 @@ the variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`.
   of it kept for `qrcode.retention`: 10,000 payments a day at `P400D` is about 60 GB.
   Each run logs one `x9-qrcode retention run` line (`INFO`) with its two cutoffs, the rows deleted
   per table and `durationMs`; a failed run logs `ERROR` and is retried at the next tick.
-- **Metrics.** `GET /actuator/prometheus`, on the API port, serves the Prometheus text format:
-  `x9_retention_deleted_rows_total{table="…"}` (one series per table the job deletes from),
-  `x9_retention_runs_total` and `x9_retention_runs_failed_total`. The inventory of the Java build's
-  metrics comes with the image-and-deploy phase.
+- **Metrics.** `GET /actuator/prometheus`, on the API port, serves the Prometheus text format.
+  The Java build's request timer (`http_server_requests_seconds`, labelled by route template),
+  process gauges and log-event counter keep their names, types and labels; the JVM, Tomcat and
+  MongoDB driver families are replaced by Go runtime and connection-pool families, or dropped. The
+  Go build adds the retention job's counters (`x9_retention_deleted_rows_total{table="…"}`,
+  `x9_retention_runs_total`, `x9_retention_runs_failed_total`). Every family, kept, replaced or
+  dropped, and why: [docs/METRICS.md](docs/METRICS.md).
+- **Info.** `GET /actuator/info` answers the version and commit the binary was stamped with:
+  `{"build":{"name":"x9-qrcode","version":"…"},"git":{"commit":{"id":"…"}}}`. Every other
+  actuator endpoint of the Java build is gone ([docs/METRICS.md](docs/METRICS.md#the-other-actuator-endpoints)).
 - **The image.** A multi-stage [`Dockerfile`](Dockerfile): the pinned Go image cross-compiles a
   static binary (`CGO_ENABLED=0`, `-trimpath`, version and commit from `-ldflags`) onto
   `gcr.io/distroless/static-debian13:nonroot`, both pinned by digest. It runs as user 65532, has
-  no shell, and is about 5 MB. CI builds it for amd64 and arm64 and records its size and cold
-  start in the `go image` job's summary. Without `docker buildx`, `make go-image` falls back to
+  no shell, and is about 16 MB unpacked, 5.5 MB compressed. CI builds it for amd64 and arm64 and
+  records its sizes (read from `docker save` by `others/scripts/image-size.py`) and cold start in
+  the `go image` job's summary. Without `docker buildx`, `make go-image` falls back to
   the legacy builder for this machine's architecture. The Java image (`make image`) is unchanged,
   and no Go image is published before the Go build ships.
 - **One clock.** Business time comes from `internal/clock` only

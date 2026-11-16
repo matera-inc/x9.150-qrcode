@@ -161,13 +161,13 @@ These keys are new; the Java build had none.
 | `ASYNC_LOGGING_FLUSH_TIME` (logback) | `ASYNC_LOGGING_FLUSH_TIME` | dropped | — | No asynchronous file appender. |
 | `management.endpoint.logfile.external-file` | — | dropped | — | No log file: standard output only. |
 | `x9.observability.rest.logger-filter.enabled`, `regex-rules.*` | — | dropped | — | One line per request, always; `/actuator/health` and `/actuator/prometheus` are not logged, as Java's default rules did. |
-| `management.endpoints.web.exposure.include` (`*`), `exclude` | — | dropped | — | Only `/actuator/health` (with `liveness` and `readiness`) and `/actuator/prometheus` are served ([ADR-0031](adr/0031-same-image-lighter-and-3-0-is-a-configuration-migration.md)). |
+| `management.endpoints.web.exposure.include` (`*`), `exclude` | — | dropped | — | Only `/actuator/health` (with `liveness` and `readiness`), `/actuator/prometheus` and `/actuator/info` are served ([ADR-0031](adr/0031-same-image-lighter-and-3-0-is-a-configuration-migration.md)); the other endpoints, and why each is gone, are in [METRICS.md](METRICS.md#the-other-actuator-endpoints). |
 | `management.endpoint.health.probes.enabled`, `show-details` | — | dropped | — | The probes are always on, in the Java build's JSON shape; no details are shown. |
 | `management.health.mail.enabled`, `management.health.rabbit.enabled`, `management.health.kubernetes.enabled` | — | dropped | — | Health is the database and the schema check only. |
-| `management.prometheus.*`, `management.endpoint.prometheus.enabled`, `management.endpoint.metrics.enabled` | — | dropped | — | `/actuator/prometheus` is always on. |
+| `management.prometheus.*`, `management.endpoint.prometheus.enabled`, `management.endpoint.metrics.enabled` | — | dropped | — | `/actuator/prometheus` is always on. Which of the Java build's metrics keep their names: [METRICS.md](METRICS.md). |
 | `management.endpoint.env.*`, `management.endpoint.configprops.*`, `management.endpoint.sbom.enabled` | — | dropped | — | Those endpoints are not served. |
 | `management.tracing.propagation.type` (`b3`) | — | dropped | — | Incoming `b3` and `traceparent` ids are logged with each request; nothing is exported. |
-| `info.app.*`, `info.tags.pod` | `HOSTNAME` | dropped | — | No `/actuator/info`; the version is printed by `x9-qrcode -version` and on the start-up log line. |
+| `info.app.*`, `info.tags.pod` | `HOSTNAME` | dropped | — | Not read. `/actuator/info` answers the version and commit stamped into the binary at build time, the same two `x9-qrcode -version` prints and the start-up log line carries ([METRICS.md](METRICS.md#actuatorinfo)). The Java build never showed these properties: its `/actuator/info` answered `{}`. |
 
 ## Spring, the JVM and Kubernetes
 

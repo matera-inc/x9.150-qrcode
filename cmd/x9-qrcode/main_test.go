@@ -300,6 +300,9 @@ func TestRunAgainstPostgres(t *testing.T) {
 		}
 	})
 
+	// X9-OPS-001: every family docs/METRICS.md keeps is served by the running service.
+	t.Run("exports every kept metric", func(t *testing.T) { testExportsEveryKeptMetric(t, db) })
+
 	// S7.2-AC2: current_schema() differs from the configured schema: the service refuses to start.
 	t.Run("refuses another schema", func(t *testing.T) {
 		env := append(dbEnv(db, freePort(t.Context(), t)), "DATABASE_SCHEMA=bank_x9")

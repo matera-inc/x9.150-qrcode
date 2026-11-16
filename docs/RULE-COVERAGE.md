@@ -385,6 +385,18 @@ on the test clock.
 | `R-ADR0029-06` | The job never changes a status; it stops on shutdown before the pools close; a failed run is logged, counted and retried at the next tick, never stopping the service. | `retention_postgres_test.go::testEventsThenQRCodes`, `retention_test.go::TestAFailedRunIsLoggedCountedAndRetried`, `retention_test.go::TestStopsOnShutdown`, `main_test.go::TestRunAgainstPostgres` | `S12.1-AC4` |
 | `R-ADR0029-07` | Each run logs one line with its cutoffs, the rows deleted per table and its duration, and `/actuator/prometheus` counts the rows deleted per table and the failed runs. | `main_test.go::TestRunAgainstPostgres`, `retention_test.go::TestAFailedRunIsLoggedCountedAndRetried`, `metrics_test.go::TestExposition` | `S12.2-AC1` |
 
+## ADR-0031: metrics and the actuator
+
+ADR-0031 keeps health, prometheus and info, and every metric the Java build exported kept under its
+name or listed as dropped; the inventory is [METRICS.md](METRICS.md) (Story 14.1). The health
+probes' rules are pinned by the black-box suite's health checks and are not repeated here.
+
+| Rule | What it says | Tests | Proves |
+|---|---|---|---|
+| `R-ADR0031-01` | Every metric family METRICS.md marks kept is served at `/actuator/prometheus` under the Java build's name, type and label names. | `X9-OPS-001`, `X9-OPS-004`, `X9-OPS-005` | `S14.1-AC1`, `S14.1-AC2` |
+| `R-ADR0031-02` | Every request is timed in `http_server_requests_seconds` and `http_server_requests_seconds_max`, its `uri` the route's template, never the raw path (`/**` for an unrouted 404, `UNKNOWN` otherwise); the maximum is a two-minute time window. | `X9-OPS-001`, `X9-OPS-002`, `X9-OPS-003` | `S14.1-AC2` |
+| `R-ADR0031-03` | `/actuator/info` answers the name, version and commit the binary was stamped with, and nothing else; ADR-0031 and CONFIGURATION-FROM-JAVA.md agree that it is served. | `X9-OPS-001`, `X9-OPS-006`, `X9-OPS-007` | `S14.1-AC3` |
+
 ## ADR-0035: the transition map
 
 One row per row of the map, with the same number as its black-box test. `R-ADR0035-NN` are the

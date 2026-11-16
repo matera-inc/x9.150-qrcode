@@ -19,7 +19,8 @@ is the **median of the 3 runs**, with the range (min–max) beside it.
 | Signed payload fetch (S2), median | 44.1 ms | 6.5 ms | 6.8× faster |
 | App memory, peak under full load (S2) | 688 MiB | 35 MiB | 20× less |
 | App memory at rest (S7) | 282 MiB | 4.0 MiB | 70× less |
-| Image size, uncompressed (S7) | 393 MB | 5.5 MB | 71× smaller |
+| Image size, uncompressed (S7) | 393 MB | 16.3 MB | 24× smaller |
+| Image size, compressed (S7) | 176 MB | 5.5 MB | 32× smaller |
 | Cold start to healthy (S7) | 2.64 s | 0.14 s | 20× faster |
 | Database connections held after S2 | 107 | 13 | 8× fewer |
 | Database on disk after S2, per 1,000 payments | 1.2 MB | 15.1 MB | **12.6× larger** |
@@ -130,10 +131,19 @@ Run on the VM's container engine after the cluster is torn down, with the same l
 
 | | Java | Go |
 |---|---|---|
-| Image, uncompressed | 392.8 MB | 5.5 MB |
+| Image, uncompressed | 392.8 MB | 16.3 MB (corrected, see below) |
 | Image, compressed | 176.1 MB | 5.5 MB |
 | Cold start to `/actuator/health` UP | 2,635 ms (2,616–2,697) | 135 ms (124–163) |
 | Memory at rest, after 5 idle minutes | 282 MiB (263–314) | 4.0 MiB (4.0–4.1) |
+
+**Correction (Story 14.1).** The campaign read the uncompressed size from `docker image inspect
+--format '{{.Size}}'`. On Docker's containerd image store, which the VM's engine uses, that field
+is the image's content size: the layer blobs as stored. The Java image's blobs are stored
+uncompressed, so its 392.8 MB is right; the Go image's are gzip-compressed, so the campaign recorded
+its compressed size, 5.5 MB, as uncompressed (it is still in the results' `sizeBytes`). The Go image
+rebuilt from the campaign's commit measures 16.3 MB unpacked and 5.5 MB compressed. S7 now reads
+both sizes from `docker save` with
+[`others/scripts/image-size.py`](others/scripts/image-size.py), the same on either store.
 
 ## Database
 

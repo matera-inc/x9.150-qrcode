@@ -27,6 +27,8 @@ on:
       - "others/scripts/ci-go.sh"
       - "others/scripts/check-go-lint-planted.sh"
       - "others/scripts/go-image-smoke.sh"
+      - "others/scripts/image-size.py"
+      - "docs/METRICS.md"
       - "Dockerfile"
       - ".dockerignore"
       - "Makefile"
@@ -50,6 +52,8 @@ on:
       - "others/scripts/ci-go.sh"
       - "others/scripts/check-go-lint-planted.sh"
       - "others/scripts/go-image-smoke.sh"
+      - "others/scripts/image-size.py"
+      - "docs/METRICS.md"
       - "Dockerfile"
       - ".dockerignore"
       - "Makefile"
@@ -134,30 +138,33 @@ jobs:
             docker buildx build --platform "linux/$arch" --load -t "x9-qrcode:go-$arch" \
               --build-arg VERSION="${GITHUB_SHA::7}" --build-arg REVISION="$GITHUB_SHA" .
             docker image inspect "x9-qrcode:go-$arch" \
-              --format "{{.Os}}/{{.Architecture}} user={{.Config.User}} size={{.Size}}"
+              --format "{{.Os}}/{{.Architecture}} user={{.Config.User}}"
             docker run --rm --platform "linux/$arch" "x9-qrcode:go-$arch" -version | grep -q "$GITHUB_SHA"
           done
 
       - name: Health UP against PostgreSQL, exit 0 on SIGTERM, footprint (amd64)
         run: others/scripts/go-image-smoke.sh x9-qrcode:go-amd64 go-ci-out
 
+      # Sizes from `docker save` (others/scripts/image-size.py), never {{.Size}}: its meaning
+      # depends on the image store (classic: unpacked layers; containerd: content or disk usage).
       - name: Record the image sizes (S7)
         run: |
           {
             echo "### Go image footprint (${GITHUB_SHA::7})"
             echo
-            echo "| Platform | Size (bytes) | User |"
+            echo "| Platform | Unpacked (bytes) | Compressed (bytes) |"
             echo "|---|---|---|"
             for arch in amd64 arm64; do
-              docker image inspect "x9-qrcode:go-$arch" --format "| {{.Os}}/{{.Architecture}} | {{.Size}} | {{.Config.User}} |"
+              sizes="$(python3 -I others/scripts/image-size.py "x9-qrcode:go-$arch")"
+              unpacked="$(printf '%s' "$sizes" | sed -nE 's/.*"sizeBytes": ([0-9]+).*/\1/p')"
+              compressed="$(printf '%s' "$sizes" | sed -nE 's/.*"compressedSizeBytes": ([0-9]+).*/\1/p')"
+              printf '{"platform":"linux/%s","sizeBytes":%s,"compressedSizeBytes":%s}\n' "$arch" "$unpacked" "$compressed" \
+                >> go-ci-out/go-image-sizes.jsonl
+              echo "| linux/$arch | $unpacked | $compressed |"
             done
             echo
             echo "Cold start to /actuator/health UP (amd64): $(sed -nE 's/.*"coldStartToHealthUpMs":([0-9]+).*/\1/p' go-ci-out/go-image.json) ms"
           } | tee -a "$GITHUB_STEP_SUMMARY"
-          for arch in amd64 arm64; do
-            docker image inspect "x9-qrcode:go-$arch" \
-              --format '{"platform":"{{.Os}}/{{.Architecture}}","sizeBytes":{{.Size}}}' >> go-ci-out/go-image-sizes.jsonl
-          done
 
       - name: Publish the footprint
         if: always()

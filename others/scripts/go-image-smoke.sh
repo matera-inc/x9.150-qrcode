@@ -9,7 +9,8 @@
 #   - against a throwaway PostgreSQL with the changelog applied (db/docker-compose.yml), it reaches
 #     /actuator/health UP; the time from `docker run` to that answer is the cold start;
 #   - SIGTERM (docker stop) ends it with exit code 0.
-# It writes <out>/go-image.json: image, architecture, size in bytes, cold start in ms.
+# It writes <out>/go-image.json: image, architecture, size in bytes (unpacked and compressed, read
+# by others/scripts/image-size.py), cold start in ms.
 #
 #   others/scripts/go-image-smoke.sh [image] [out-dir]     # defaults: x9-qrcode:go, ./go-ci-out
 #
@@ -36,9 +37,13 @@ fail() { echo "FAIL  $*"; docker logs "$APP" 2>&1 | tail -20 || true; exit 1; }
 mkdir -p "$OUT"
 user=$(docker image inspect "$IMAGE" --format '{{.Config.User}}')
 arch=$(docker image inspect "$IMAGE" --format '{{.Os}}/{{.Architecture}}')
-size=$(docker image inspect "$IMAGE" --format '{{.Size}}')
+# The image's size from what `docker save` writes, not {{.Size}}, which means the unpacked layers on
+# Docker's classic image store and the content size or the disk usage on its containerd store.
+sizes=$(python3 -I others/scripts/image-size.py "$IMAGE")
+size=$(printf '%s' "$sizes" | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["sizeBytes"])')
+compressed=$(printf '%s' "$sizes" | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["compressedSizeBytes"])')
 case "$user" in "" | 0 | 0:* | root | root:*) fail "the image runs as root (User=\"$user\")" ;; esac
-echo "ok  runs as $user ($arch, $size bytes)"
+echo "ok  runs as $user ($arch, $size bytes unpacked, $compressed compressed)"
 docker run --rm "$IMAGE" -version | tee /dev/stderr | grep -q '^x9-qrcode ' || fail "-version"
 
 echo "### a throwaway PostgreSQL with the changelog applied"
@@ -75,5 +80,5 @@ code=$(docker inspect -f '{{.State.ExitCode}}' "$APP")
 docker logs "$APP" 2>&1 | grep -q '"msg":"x9-qrcode stopped"' || fail "no clean stop in the log"
 echo "ok  exit code 0"
 
-printf '{"image":"%s","platform":"%s","sizeBytes":%s,"coldStartToHealthUpMs":%s}\n' \
-  "$IMAGE" "$arch" "$size" "$cold" | tee "$OUT/go-image.json"
+printf '{"image":"%s","platform":"%s","sizeBytes":%s,"compressedSizeBytes":%s,"coldStartToHealthUpMs":%s}\n' \
+  "$IMAGE" "$arch" "$size" "$compressed" "$cold" | tee "$OUT/go-image.json"

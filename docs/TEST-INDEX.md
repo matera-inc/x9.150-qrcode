@@ -6,13 +6,15 @@ at one and still mean the same thing after the method has been renamed.
 Each test's javadoc or docstring carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**939 tests documented** — every JUnit test and every black-box case, and the Go tests that prove
-a difference between the builds no black-box case can drive, or a fix the differential run found
-(ADR-0028, [TOLERATED-DIFFERENCES.md](../others/blackbox/TOLERATED-DIFFERENCES.md); their key starts
-the test's doc comment, and the "Where" cell names the `_test.go` file).
+**946 tests documented** — every JUnit test and every black-box case, and the Go tests that prove
+a difference between the builds no black-box case can drive, a fix the differential run found
+(ADR-0028, [TOLERATED-DIFFERENCES.md](../others/blackbox/TOLERATED-DIFFERENCES.md)), or what an
+operator's monitoring reads ([METRICS.md](METRICS.md)); their key starts the test's doc comment,
+and the "Where" cell names the `_test.go` file.
 
 **From a rule to its tests:** [RULE-COVERAGE.md](RULE-COVERAGE.md) lists every documented rule
-(STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036, ADR-0027's EMV and JWS verification rules, ADR-0028 and ADR-0029), the
+(STATE-MACHINE, ENDPOINTS, INTERPRETATION, ADRs 0004 to 0021, ADR-0035's map, ADR-0036, ADR-0027's
+EMV and JWS verification rules, ADR-0028, ADR-0029 and ADR-0031's metrics and actuator), the
 tests that prove it and the acceptance criteria they cite, and the rules that have no test yet. A
 check in CI keeps it true (`docs/check/check_rule_coverage.py`).
 
@@ -1031,6 +1033,22 @@ and against the running Java build.
 | `X9-TIP-504` | the bill plus a tip is accepted | `test_tip_offers.py` |
 | `X9-TIP-505` | a wrong tip is refused naming the tip, and reserves nothing | `test_tip_offers.py` |
 | `X9-TIP-506` | a tip matching no preset is accepted when no range is published | `test_tip_offers.py` |
+
+## Operations: metrics and the actuator (Story 14.1)
+
+Go tests of what an operator's monitoring reads ([METRICS.md](METRICS.md), ADR-0031). The black-box
+suite does not scrape `/actuator/prometheus` or `/actuator/info`: their values change on every run,
+and the Java build's info answer is `{}`.
+
+| Key | What it proves | Where |
+|---|---|---|
+| `X9-OPS-001` | Go: the running service serves every family METRICS.md marks kept, with its type and labels, its request timer by route template, the pool and runtime families, and `/actuator/info` | `actuator_test.go` |
+| `X9-OPS-002` | Go: a request is timed under the Java build's family and labels, `uri` the route template (`/**` for an unrouted 404, `UNKNOWN` for a 405), never a raw id | `requests_test.go` |
+| `X9-OPS-003` | Go: `http_server_requests_seconds_max` is Micrometer's two-minute time window | `requests_test.go` |
+| `X9-OPS-004` | Go: the process and Go runtime families are served, each with its type | `requests_test.go` |
+| `X9-OPS-005` | Go: every log line the level lets through is counted in `logback_events_total{level}`, the five levels present from the start | `requests_test.go` |
+| `X9-OPS-006` | Go: `/actuator/info` answers name, version and commit, in Spring's build and git shape, with the actuator's media type | `info_test.go` |
+| `X9-OPS-007` | Go: ADR-0031 and CONFIGURATION-FROM-JAVA.md agree on the actuator endpoints served, `/actuator/info` included | `config_test.go` |
 
 ## The black-box suite itself
 

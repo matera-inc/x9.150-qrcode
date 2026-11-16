@@ -85,7 +85,11 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	logger := httplog.NewLogger(stdout, cfg.Log.SlogLevel())
+	// The metrics registry comes first: every log line from here on is counted in it (S14.1-AC2).
+	registry := &metrics.Registry{}
+	registry.Process()
+	registry.GoRuntime()
+	logger := slog.New(registry.CountLogs(httplog.NewLogger(stdout, cfg.Log.SlogLevel()).Handler()))
 	slog.SetDefault(logger)
 	logger.Info("x9-qrcode starting", "version", version, "commit", commit, "database", cfg.Database,
 		"certificate", cfg.Certificate)
@@ -177,8 +181,10 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	// route takes, and request headers past 30 KB, as the Java build does (S9.2-AC1, S9.2-AC8).
 	api := httpapi.New(logger, businessClock.Now)
 	probes.Register(api.Mux())
-	// GET /actuator/prometheus: the retention job's counters (S12.2-AC1).
-	registry := &metrics.Registry{}
+	// GET /actuator/info: the version and commit stamped at build time (S14.1-AC3).
+	health.RegisterInfo(api.Mux(), version, commit)
+	// GET /actuator/prometheus: the families docs/METRICS.md lists (S12.2-AC1, S14.1-AC2).
+	registry.Collect(pools.Collect)
 	registry.Register(api.Mux())
 	st := store.New(pools.Write, pools.Read, businessClock)
 	events := eventstream.New(st)
@@ -199,7 +205,9 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	// transition map, and always answered signed.
 	notification.New(st, keyStore, signer, verifier,
 		domain.Settings{ReservationTTL: time.Duration(cfg.Reservation.TTLSeconds) * time.Second}, logger).Register(api)
-	srv := newServer(cfg.Server.Port, httplog.Middleware(logger, testclock.OffsetHeader(businessClock, api)))
+	// Every request is timed in http_server_requests_seconds, labelled by its route's template.
+	srv := newServer(cfg.Server.Port, httplog.Middleware(logger,
+		registry.Requests(api.Mux(), testclock.OffsetHeader(businessClock, api))))
 	// On SIGTERM, parked long-polls answer with their current page instead of holding the drain (ADR-0031).
 	srv.RegisterOnShutdown(events.Stop)
 	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", srv.Addr)
