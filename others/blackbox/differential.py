@@ -13,8 +13,8 @@ Standard library only.
 fixture's ``<session>::…``) and, inside one, by position. Positions are aligned on the request (the
 method and the masked path), so an exchange one build made and the other did not (a retry, a branch
 on the build) is reported by its index and the rest still pair. A run of identical polls of the
-event stream counts as one exchange, its last, because how often a poll is repeated is a matter of
-timing. A test that only one build recorded is reported by name, with why (a ``go_only`` or
+event stream counts as one exchange, its last, holding every event the run read (each once), because
+how often a poll is repeated, and which poll an event lands in, are a matter of timing. A test that only one build recorded is reported by name, with why (a ``go_only`` or
 ``java_only`` marker, a skip, or nothing recorded).
 
 **Normalising (S11.1-AC2).** Before comparing, both sides go through ``normalise``:
@@ -340,7 +340,18 @@ def prepare(exchanges):
                     "body": body}
         if poll and out and out[-1]["poll"] and out[-1]["key"][0] == key[0] \
                 and out[-1]["key"][1].split("?")[0] == key[1].split("?")[0]:
-            out[-1] = prepared                    # a run of polls is one exchange: its last
+            # A run of polls is one exchange: its last, holding every event the run read. A reader
+            # that moves its cursor between polls sees each event once, in whichever poll it
+            # happened to commit before, and that is timing: one build's run may read two events
+            # in one poll and the other in two.
+            earlier, later = out[-1]["body"], prepared["body"]
+            if isinstance(earlier, dict) and isinstance(later, dict) \
+                    and isinstance(earlier.get("events"), list) and isinstance(later.get("events"), list):
+                seen = {e.get("eventId") for e in later["events"]}
+                merged = [e for e in earlier["events"] if e.get("eventId") not in seen]
+                merged += later["events"]
+                prepared["body"] = dict(later, events=sorted(merged, key=lambda e: ids[_event_qr(e)]))
+            out[-1] = prepared
             continue
         out.append(prepared)
     return out
