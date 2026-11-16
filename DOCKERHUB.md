@@ -20,6 +20,11 @@ It can also play the **payer** side: `/api/v1/payment-notification/pre-payment` 
 compose, sign and deliver a notification to another deployment, so a PSP integrating here never
 builds a JWS or manages a keystore.
 
+> **3.0.0 will change the database and the configuration.** The Go build on PostgreSQL will replace
+> the Java build on MongoDB under this same image name; `latest` moves only after the cutover, and
+> the last Java build will stay available as `java-final`. Before you move, read
+> [UPGRADING-TO-3.md](https://github.com/matera-inc/x9.150-qrcode/blob/main/UPGRADING-TO-3.md).
+
 - **Rails:** the US bank rails the standard defines — **FedNow, RTP, ACH** — and **Solana**, on the
   embedding its Foundation published. Any other network is **refused at creation, by name**, rather
   than advertised on a QR Code nobody can pay.

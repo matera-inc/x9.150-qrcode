@@ -10,6 +10,7 @@ locally on the JVM, or as a container. For endpoint/URL configuration see
 > in this repository until it is frozen under `legacy/java/` ([HISTORY.md](HISTORY.md)). Its MongoDB
 > notes are in [Java build (legacy): MongoDB](#java-build-legacy-mongodb). The JWS clock skew and
 > the test clock apply to both builds.
+> Moving a Java deployment to the Go build: [UPGRADING-TO-3.md](UPGRADING-TO-3.md).
 
 ## Prerequisites
 
