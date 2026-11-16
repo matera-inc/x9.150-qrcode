@@ -2769,8 +2769,9 @@ business clock (ADR-0033), computed once per run.
 
 **S12.1-AC3.** **Given** many rows to delete
 **Then** each purge works in batches of a few hundred rows, one transaction per batch, with a pause
-between batches, so a payment never waits behind it; the queries use indexes added by a new
-changeset (applied changesets are never edited).
+between batches, so a payment never waits behind it; the queries use the indexes the schema
+already has (0001: `ix_payment_event_occurred_at`, `ix_qr_code_purge` and the child tables' keys);
+a new changeset is added only if one is missing (applied changesets are never edited).
 
 **S12.1-AC4.** **Given** the job
 **Then** it is one goroutine with one `time.Timer`, reset after each run; it never changes a status;

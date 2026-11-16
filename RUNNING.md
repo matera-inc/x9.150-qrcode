@@ -282,7 +282,8 @@ the variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`.
      `X9_QRCODE_RETENTION` (`qrcode.retention`, default `P400D`), in any status, with their audit
      log and stored notifications.
 
-  Durations are ISO-8601 days, hours, minutes and seconds (`P30D`, `PT1H`). It never changes a
+  The first run is at start, not one interval later, so a service restarted more often than the
+  interval still purges. Durations are ISO-8601 days, hours, minutes and seconds (`P30D`, `PT1H`). It never changes a
   status, skips a QR Code a request is changing (the next run takes it), and stops on SIGTERM
   before the pools close. The service refuses to start if `qrcode.retention` is shorter than
   `events.retention`, naming both. **What shortening them gives up:** an expired QR Code is
