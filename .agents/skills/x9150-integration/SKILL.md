@@ -155,9 +155,8 @@ Problem responses are RFC 9457 `application/problem+json` with `type`, `title`, 
 Run two instances against each other — one payee, one payer — and put a whole payment through:
 
 ```bash
-docker compose up -d mongo mongo-setup
-mvn -q package -DskipTests
-./others/demo/two-instance-payment-cycle.sh
+make image && make go-image
+./others/demo/two-instance-payment-cycle.sh      # Java→Java, Java→Go, Go→Java, Go→Go
 ```
 
 A single instance cannot tell you whether you are interoperable, only whether you are

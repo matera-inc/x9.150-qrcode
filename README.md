@@ -665,18 +665,20 @@ what to check before changing the tag, is in
 ### See a whole payment happen
 
 To watch an actual payment rather than a single booted service, run two instances against each
-other — one issues a QR Code, the other scans it, announces the payment, pays, and reports it:
+other — one issues a QR Code, the other scans it, announces the payment, pays, and reports it — in
+every pairing of the two builds (Java→Java, Java→Go, Go→Java, Go→Go, payer → payee):
 
 ```bash
-docker compose up -d mongo mongo-setup     # a replica set for both instances
-mvn -q package -DskipTests
-./others/demo/two-instance-payment-cycle.sh
+make image && make go-image                                  # x9-qrcode:latest and x9-qrcode:go
+./others/demo/two-instance-payment-cycle.sh                  # all four pairings
+PAIRINGS=go-java ./others/demo/two-instance-payment-cycle.sh # a Go payer paying a Java payee
 ```
 
-No Docker for the apps, no proxy and no network: Spring terminates TLS from a throwaway
-certificate the script generates. See [`others/demo/README.md`](others/demo/README.md) — which also
-explains why **two deployments cannot transact over plain HTTP**, and how to satisfy that with
-Spring's own TLS, an nginx in front, or a tunnel.
+Everything runs in containers: each instance with its own database (MongoDB for Java, PostgreSQL
+and the Liquibase changelog for Go), its own signing key and its own public host, behind an nginx
+that terminates HTTPS with a throwaway certificate. CI runs the four pairings (the `pairings` job).
+See [`others/demo/README.md`](others/demo/README.md) — which also explains why **two deployments
+cannot transact over plain HTTP**, and how to satisfy that.
 
 ### Pull the prebuilt image (Docker Hub)
 
