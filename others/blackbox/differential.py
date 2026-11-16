@@ -28,14 +28,19 @@ timing. A test that only one build recorded is reported by name, with why (a ``g
   (``<id>``): the QR Code and location ids of 32 hexadecimal characters (inside an EMV string too,
   where nothing separates the id from the next tag), ULIDs and UUIDs. So are date-times
   (``<time>``, keeping whether the offset is ``Z`` or numeric, which is a contract difference),
-  dates (``<date>``) and an event-stream cursor in a path (``<cursor>``).
+  dates (``<date>``), epoch milliseconds inside a text (``<millis>``) and an event-stream cursor in a path (``<cursor>``).
 - Members that are per run by their name are masked whatever they hold: ``correlationId``,
   ``eventId``, ``id`` (of a QR Code or an event), ``nextCursor``, ``seq``, ``iat``, ``x5c``,
-  and ``qrcodeId``. ``qrCodeB64`` is decoded and its EMV string compared, masked.
+  ``qrcodeId`` and a certificate thumbprint (``x5t``, ``x5t#S256``: the test payee's certificate
+  is issued per run). ``qrCodeB64`` is decoded and its EMV string compared, masked.
+- Two arrays are compared as sets: a JWS header's ``crit`` (RFC 7515 defines no order) and a
+  problem's ``violations`` (Java reports them in an order that changes from run to run). Their
+  content still counts, one by one.
 - An EMV string's CRC (``6304xxxx``) is masked, since the location id it covers is per run.
 - The event stream is read the way the suite reads it, for this test only: a page keeps only the
   events about the QR Codes this test created, so events of other tests, which arrive at their own
-  pace, never count.
+  pace, never count; they are grouped by QR Code in the order the test made them, each QR Code's
+  events kept in stream order (the order the contract promises is per QR Code).
 
 **Comparing.** Status, ``ETag``, ``Content-Type`` (case and spaces ignored), ``Location`` and the
 normalised body must match. A body difference is reported per JSON member (``body.violations[0]
@@ -92,7 +97,11 @@ _LOC = re.compile(r"(?<=/loc/)[0-9A-Za-z]{32}")
 _PATH_LOC = re.compile(r"(?<=/)[0-9A-Za-z]{32}(?=/|\?|$)")
 _TIME = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?")
 _DATE = re.compile(r"(?<![0-9-])\d{4}-\d{2}-\d{2}(?![0-9T:])")
-_CRC = re.compile(r"6304[0-9A-Fa-f]{4}$")
+# An instant in epoch milliseconds written into a text (a signature refusal names its iat): 13
+# digits, 2017 to 2033. Only text is touched; a number member keeps its value.
+_MILLIS = re.compile(r"(?<![0-9])1[5-9][0-9]{11}(?![0-9])")
+# The CRC closes an EMV string: at its end, or where a text quoting it goes on.
+_CRC = re.compile(r"6304[0-9A-Fa-f]{4}(?![0-9A-Za-z])")
 _CURSOR = re.compile(r"(?<=[?&]after=)[^&]*")
 _JWS = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*$")
 
@@ -109,11 +118,22 @@ MASKED_MEMBERS = {
     "seq": "<cursor>",
     "iat": "<iat>",
     "x5c": "<certificates>",
+    # The thumbprint of a certificate the suite issues at run time (the test payee's).
+    "x5t#S256": "<thumbprint>",
+    "x5t": "<thumbprint>",
 }
 # Members holding base64 of a value that is itself compared, decoded and masked.
 BASE64_MEMBERS = ("qrCodeB64",)
 # Members of a JWS header that are per run.
 JWS_HEADER_PER_RUN = ("iat", "correlationId", "x5c")
+# Arrays whose order carries no meaning, compared as sorted: a JWS header's ``crit`` (a set of
+# names, RFC 7515 §4.1.11) and a problem's ``violations``, which Java's Bean Validation reports in
+# an order that changes from run to run (a hash set), so order there is not behaviour.
+UNORDERED_MEMBERS = ("crit", "violations")
+
+
+def _sort_key(item):
+    return json.dumps(item, sort_keys=True, default=str)
 
 
 def _b64json(segment):
@@ -156,13 +176,25 @@ def _time_mask(match):
 
 def mask_text(text):
     """Server-minted ids, locations, times and dates in a string, masked."""
+    if "000201" not in text and len(text) >= 40:
+        # base64 of an EMV string quoted inside a text (a PATCH refusal names the stored value)
+        text = _BASE64_RUN.sub(_unbase64_emv, text)
     text = _LOC.sub("<id>", text)
     text = _ID.sub("<id>", text)
     text = _TIME.sub(_time_mask, text)
     text = _DATE.sub("<date>", text)
-    if text.startswith("000201"):
+    text = _MILLIS.sub("<millis>", text)
+    if "000201" in text:
         text = _CRC.sub("6304<crc>", text)
     return text
+
+
+_BASE64_RUN = re.compile(r"[A-Za-z0-9+/]{40,}={0,2}")
+
+
+def _unbase64_emv(match):
+    decoded = _unbase64(match.group(0))
+    return f"<base64 of {decoded}>" if decoded.startswith("000201") else match.group(0)
 
 
 def mask_path(path):
@@ -182,6 +214,8 @@ def normalise(value):
                 out[key] = MASKED_MEMBERS[key]
             elif key in BASE64_MEMBERS and isinstance(member, str):
                 out[key] = {"<base64>": normalise(_unbase64(member))}
+            elif key in UNORDERED_MEMBERS and isinstance(member, list):
+                out[key] = sorted((normalise(item) for item in member), key=_sort_key)
             else:
                 out[key] = normalise(member)
         return out
@@ -235,16 +269,16 @@ EVENTS_PATH = "/pub/api/v1/events"
 
 
 def _minted_qr_ids(exchanges):
-    """Every QR Code id this test's answers carried (a created QR Code's ``id``)."""
-    ids = set()
+    """Every QR Code id this test created (a created QR Code's ``id``) or named in a path, each
+    with the position it was first seen at: ``{id: rank}``."""
+    ids = {}
     for exchange in exchanges:
-        if exchange["request"]["method"] != "POST":
-            continue
-        body = parse_body(exchange["response"].get("body"))
-        if isinstance(body, dict) and isinstance(body.get("id"), str):
-            ids.add(body["id"])
-    for exchange in exchanges:                    # and every id a path of this test names
-        ids.update(re.findall(rf"{HEX_ID}|{ULID}", exchange["request"].get("rawPath") or ""))
+        if exchange["request"]["method"] == "POST":
+            body = parse_body(exchange["response"].get("body"))
+            if isinstance(body, dict) and isinstance(body.get("id"), str):
+                ids.setdefault(body["id"], len(ids))
+        for found in re.findall(rf"{HEX_ID}|{ULID}", exchange["request"].get("rawPath") or ""):
+            ids.setdefault(found, len(ids))
     return ids
 
 
@@ -268,8 +302,11 @@ def prepare(exchanges):
         body = parse_body(exchange["response"].get("body"))
         poll = key[1].startswith(EVENTS_PATH)
         if poll and isinstance(body, dict) and isinstance(body.get("events"), list):
-            body = dict(body, events=[e for e in body["events"]
-                                      if not isinstance(e, dict) or _event_qr(e) in ids])
+            # Only this test's QR Codes; grouped by QR Code in the order the test made them, each
+            # one's events in stream order. Order is a contract per QR Code; across QR Codes it is
+            # whichever transaction committed first, which is timing.
+            mine = [e for e in body["events"] if isinstance(e, dict) and _event_qr(e) in ids]
+            body = dict(body, events=sorted(mine, key=lambda e: ids[_event_qr(e)]))
         prepared = {"index": exchange["index"], "key": key, "poll": poll,
                     "status": exchange["response"]["status"],
                     "headers": exchange["response"].get("headers") or {},

@@ -161,7 +161,7 @@ def test_the_recorder_masks_minted_ids_in_a_path():
 def test_json_is_compared_as_values_not_text(tmp_path):
     """X9-SUITE-518 — JSON is re-serialised: whitespace and key order never count, and minted ids
     are masked wherever they appear (by shape in any string, by name for correlationId, eventId,
-    id, qrCodeId and the cursors).
+    id, qrCodeId and the cursors); violations are compared as a set, their content still counted.
 
     S11.1-AC2."""
     java = exchange(T, 0, body=f'{{\n  "id" : "{QR}",\n  "status" : "ACTIVE",\n'
@@ -170,17 +170,28 @@ def test_json_is_compared_as_values_not_text(tmp_path):
     go = exchange(T, 0, body=json.dumps({"nextCursor": "42", "correlationId": "else",
                                          "detail": f"QR Code {QR2} is closed",
                                          "status": "ACTIVE", "id": QR2}))
-    assert diff(tmp_path, [java], [go])["differences"] == []
+    assert diff(tmp_path / "a", [java], [go])["differences"] == []
+
+    # Violations are a set: their order changes from run to run in Java; their content counts.
+    one, two = {"field": "a", "message": "x"}, {"field": "b", "message": "y"}
+    assert diff(tmp_path / "b", [exchange(T, 0, body={"violations": [one, two]})],
+                [exchange(T, 0, body={"violations": [two, one]})])["differences"] == []
+    changed = diff(tmp_path / "c", [exchange(T, 0, body={"violations": [one, two]})],
+                   [exchange(T, 0, body={"violations": [one]})])
+    assert fields(changed) == [("body", "body.violations[1]", two, "<absent>")]
 
 
 def test_times_and_dates_are_masked_but_their_offset_style_is_not(tmp_path):
-    """X9-SUITE-519 — date-times and dates are masked, since every run has its own clock; whether
-    an offset is written Z or numeric is kept, since that is a contract difference.
+    """X9-SUITE-519 — date-times, dates and epoch milliseconds inside a text are masked, since
+    every run has its own clock (a number member keeps its value); whether an offset is written Z
+    or numeric is kept, since that is a contract difference.
 
     S11.1-AC2."""
     same = diff(tmp_path / "a",
-                [exchange(T, 0, body={"createdAt": "2026-11-16T02:39:37.083Z", "d": "2026-11-16"})],
-                [exchange(T, 0, body={"createdAt": "2026-11-17T09:00:00Z", "d": "2026-12-01"})])
+                [exchange(T, 0, body={"createdAt": "2026-11-16T02:39:37.083Z", "d": "2026-11-16",
+                                      "detail": "expired at 1790813101072", "amount": 1790813101072})],
+                [exchange(T, 0, body={"createdAt": "2026-11-17T09:00:00Z", "d": "2026-12-01",
+                                      "detail": "expired at 1794796413114", "amount": 1790813101072})])
     assert same["differences"] == []
 
     offset = diff(tmp_path / "b",
@@ -190,14 +201,17 @@ def test_times_and_dates_are_masked_but_their_offset_style_is_not(tmp_path):
 
 
 def test_a_signed_body_is_compared_on_its_decoded_header_and_payload(tmp_path):
-    """X9-SUITE-520 — a compact JWS is compared as its decoded header, minus iat, correlationId and
-    x5c, and its decoded payload; the signature is masked. A different payload or a different header
+    """X9-SUITE-520 — a compact JWS is compared as its decoded header, minus iat, correlationId,
+    x5c and the certificate thumbprint, with crit as a set, and its decoded payload; the signature
+    is masked. A different payload or a different header
     member is still caught.
 
     S11.1-AC2."""
     def signed(payload, *, iat, cid, typ="JOSE", sig="AAAA"):
+        crit = ["correlationId", "iat"] if iat % 2 else ["iat", "correlationId"]   # a set
         return jws({"alg": "PS512", "typ": typ, "iat": iat, "correlationId": cid,
-                    "x5c": [f"cert-{iat}"], "crit": ["correlationId", "iat"]}, payload, sig)
+                    "x5c": [f"cert-{iat}"], "x5t#S256": f"thumb-{iat}", "crit": crit},
+                   payload, sig)
 
     same = diff(tmp_path / "a",
                 [exchange(T, 0, body=signed({"statusCode": 200}, iat=1, cid="a", sig="AAAA"))],
@@ -236,6 +250,17 @@ def test_an_emv_string_is_compared_without_its_location_and_crc(tmp_path):
     city = diff(tmp_path / "b", [exchange(T, 0, body=body(QR, "1CB6"))],
                 [exchange(T, 0, body=body(QR2, "F7C7", city="Los Angelos"))])
     assert {f for _, f, _, _ in fields(city)} == {"body.qrCode", "body.qrCodeB64.<base64>"}
+
+    # Quoted inside a refusal's text, as an EMV string or as its base64, the same holds.
+    def refusal(loc, crc):
+        text = emv(loc, crc)
+        return {"violations": [f"qrCode: cannot be changed (stored {text})",
+                               f"qrCodeB64: cannot be changed (stored "
+                               f"{base64.b64encode(text.encode()).decode()})"]}
+
+    quoted = diff(tmp_path / "c", [exchange(T, 0, body=refusal(QR, "1CB6"))],
+                  [exchange(T, 0, body=refusal(QR2, "F7C7"))])
+    assert quoted["differences"] == []
 
 
 # ------------------------------------------------------------------------------------------ catching
@@ -321,6 +346,20 @@ def test_tests_and_exchanges_present_on_one_side_are_named_and_the_rest_stays_al
          "PUT /api/v1/payment-request/<id>/status-update"),
         ("body", 5, 4, "body.status", "PAID", "CANCELLED"),
     ]
+
+    # Two QR Codes: across them the stream's order is timing; for each one it is the contract.
+    a, b = "A" * 32, "B" * 32
+    ev = lambda qr, kind: {"qrCodeId": qr, "type": kind}  # noqa: E731
+    t2 = "tests/test_x.py::test_two"
+    java2 = [create(t2, 0, a), create(t2, 1, b),
+             page(t2, 2, [ev(a, "x"), ev(b, "x"), ev(a, "y"), ev(b, "y")], "1")]
+    across = [create(t2, 0, a), create(t2, 1, b),
+              page(t2, 2, [ev(b, "x"), ev(a, "x"), ev(b, "y"), ev(a, "y")], "1")]
+    within = [create(t2, 0, a), create(t2, 1, b),
+              page(t2, 2, [ev(a, "y"), ev(b, "x"), ev(a, "x"), ev(b, "y")], "1")]
+    assert diff(tmp_path / "across", java2, across)["differences"] == []
+    assert [r["field"] for r in diff(tmp_path / "within", java2, within)["differences"]] == \
+        ["body.events[0].type", "body.events[1].type"]
 
 
 def test_the_command_line_writes_a_json_report_and_exits_on_what_it_found(tmp_path, capsys):

@@ -1026,10 +1026,10 @@ prove nothing about the service; they prove the suite can be trusted to.
 | `X9-SUITE-515` | a whole pytest run under `X9_REQUIRED_KEYS` exits on the listed tests alone, prints the counts of each outcome, and refuses an entry that matches no test | `test_required_keys.py` |
 | `X9-SUITE-516` | with X9_RECORD_DIR set the suite's HTTP client writes each exchange of a test in order, with the headers that matter; unset, it writes nothing | `test_differential.py` |
 | `X9-SUITE-517` | a recorded path keeps its shape with every server-minted id masked | `test_differential.py` |
-| `X9-SUITE-518` | the differential run compares JSON as values: whitespace, key order and minted ids never count | `test_differential.py` |
+| `X9-SUITE-518` | the differential run compares JSON as values: whitespace, key order, minted ids and the order of violations never count | `test_differential.py` |
 | `X9-SUITE-519` | the differential run masks times and dates but keeps whether an offset is Z or numeric | `test_differential.py` |
-| `X9-SUITE-520` | the differential run compares a JWS on its decoded header, minus per-run members, and its decoded payload | `test_differential.py` |
-| `X9-SUITE-521` | the differential run masks an EMV string's location id and CRC, also inside qrCodeB64, and catches any other change | `test_differential.py` |
+| `X9-SUITE-520` | the differential run compares a JWS on its decoded header, minus per-run members and with `crit` as a set, and its decoded payload | `test_differential.py` |
+| `X9-SUITE-521` | the differential run masks an EMV string's location id and CRC, also inside qrCodeB64 and quoted in a text, and catches any other change | `test_differential.py` |
 | `X9-SUITE-522` | the differential run catches a changed status, violation text, ETag, Content-Type or Location, and a member added, dropped or retyped | `test_differential.py` |
-| `X9-SUITE-523` | the differential run names a test or an exchange only one build has, keeps the rest aligned, counts a run of polls once and reads only the test's own events | `test_differential.py` |
+| `X9-SUITE-523` | the differential run names a test or an exchange only one build has, keeps the rest aligned, counts a run of polls once and reads only the test's own events, in order per QR Code | `test_differential.py` |
 | `X9-SUITE-524` | the differential run's command line prints the report, writes the JSON one, and exits 1 on any difference | `test_differential.py` |
