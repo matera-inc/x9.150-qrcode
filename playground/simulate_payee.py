@@ -3,7 +3,7 @@
 Playground — the PAYEE (merchant) creating a QR Code.
 
 Lists the create requests in requests/qr-*-createqr.json, lets you pick one, POSTs it to the app
-(which stores the request in Mongo and generates the X9.150 QR), and writes the resulting EMV QR
+(which stores the request in PostgreSQL and generates the X9.150 QR), and writes the resulting EMV QR
 string to qr-<name>.emv — the input for simulate_payer.py.
 
 Note: a qr-*-createqr.json is the *create request*, NOT a full X9.150 payload — it may carry things

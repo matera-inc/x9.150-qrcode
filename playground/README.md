@@ -73,6 +73,7 @@ The only committed source: the create-request bodies. Edit them or add your own
 | `qr-lab-createqr.json` | Helix Diagnostics Lab, $312.00 | **invoice** with a due date |
 | `qr-parking-createqr.json` | Parking, $6.00 | tiny amount |
 | `qr-donation-createqr.json` | Charity | **editable amount** — the payer picks, within a published range |
+| `qr-cloudprovider-createqr.json` | Nimbus Cloud Services, $50.00 | **invoice** with an early-payment discount and a late fee, 3 bank rails |
 
 > A `qr-*-createqr.json` is the **create request** — the merchant's input to *make* a QR. It is
 > **not** a full X9.150 payload: it may carry a **late-fee formula** (the server computes the amount)
@@ -85,8 +86,9 @@ Committed: the two `simulate_*` scripts, `dumpjws.py`, `requests/qr-*-createqr.j
 
 ## 5. Ideas
 - **Edit a bill** in `requests/` — amount, tip, networks, adjustments. (They omit `locationId`, so the
-  server mints a fresh QR each run — no collisions.) Remember: this build interprets `fednow`, `rtp`
-  and `ach` and settles `USD`; anything else is refused at creation with a 400 naming it. Both lists
+  server mints a fresh QR each run — no collisions.) Remember: this build interprets `fednow`, `rtp`,
+  `ach` and `solana` and settles `USD`, `USDC` and `FRNT`; anything else is refused at creation with
+  a 400 naming it. Both lists
   are configuration — see [`../official-spec/INTERPRETATION.md`](../official-spec/INTERPRETATION.md).
 - **Decode any EMV**: `POST /api/v1/qrcode-emv-decoder` with `{"qrCode":"…"}`.
 - **Scan from a phone on 5G** — point `X9_PUBLICENDPOINTS_HOST` at a tunnel; see [`../ENDPOINTS.md`](../ENDPOINTS.md).
