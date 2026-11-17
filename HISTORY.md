@@ -19,7 +19,7 @@ There were four reasons.
    to patch, back up, monitor and review a second database engine for this one service.
 
 2. **Less memory and a lighter image.** One small Go binary replaces a JVM. The container image
-   went from about 393 MB (Java) to about 16 MB (Go) unpacked, and from 176 MB to 5.5 MB
+   went from about 418 MB (Java) to about 16 MB (Go) unpacked, and from 176 MB to 5.5 MB
    compressed. Memory, start time and throughput are measured by the benchmark; see
    [BENCHMARK.md](BENCHMARK.md).
 

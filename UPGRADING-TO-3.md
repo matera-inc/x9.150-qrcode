@@ -60,7 +60,7 @@ Go build starts on an empty schema. This means:
 - **Your Java deployment and its MongoDB are left as they are,** so you can go back.
 
 **Storage grows more than on MongoDB.** The Go build keeps every signed notification in full:
-about 15 KB per payment, about 12.6 times the Java build's figure
+about 15 KB per payment, about 12.5 times the Java build's figure
 ([BENCHMARK.md](BENCHMARK.md#database)). Retention is configurable: see `X9_QRCODE_RETENTION` and
 `X9_EVENTS_RETENTION` in [db/README.md](db/README.md#what-the-service-asks-of-your-database).
 
