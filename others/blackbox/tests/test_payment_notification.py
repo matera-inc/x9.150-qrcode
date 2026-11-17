@@ -132,6 +132,25 @@ class TestFixedAmount:
         extra = {"amount": 10 ** 18} if field == "amount" else {"amount": BILL, "tip": 10 ** 18}
         assert_refused(api.notify(qr, **extra), naming="should not exceed 18 digits")
 
+    @pytest.mark.parametrize("field", ["amount", "tipAmount"])
+    def test_a_fractional_amount_is_refused_naming_it(self, api, field):
+        """X9-AMT-426 — ADR-0005: a notified amount or tip amount of ``6.5`` is a signed 400
+        naming ``payment.amount`` or ``payment.tipAmount``; the QR Code stays ``ACTIVE``.
+
+        Source: ANSI X9.150-2026 §2.1 and §2.2 — amounts "Shall be a 64 bit integer". Conformance.
+
+        Why: Read as ``6``, a payer's fractional amount would be judged against the bill as an
+        amount it never sent.
+        """
+        qr = api.create_qr()
+        extra = {"amount": 6.5} if field == "amount" else {"amount": BILL, "tip": 6.5}
+        response = api.notify(qr, **extra)
+        assert response.text.count(".") == 2 and response.text.startswith("ey"), \
+            f"a refusal of a notification is signed: {response.text}"
+        assert_refused(response, status=400,
+                       naming=f"payment.{field}: monetary values should be whole numbers of minor units")
+        assert api.status_of(qr) == "ACTIVE"
+
     def test_the_exact_bill_is_accepted(self, api):
         """X9-AMT-003 — the exact bill is accepted.
 

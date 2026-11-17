@@ -22,8 +22,9 @@ import (
 // a PATCH tells "leave it" from "clear it" (ADR-0024) and how Bean Validation's @NotNull is read:
 // a member is null when it is absent or null.
 //
-// Each reads the JSON types Jackson reads into the Java field, with the same coercions, and fails
-// (malformed-json) where Jackson fails. Each writes back the value it holds, so the type decoded is
+// Each reads the JSON types Jackson reads into the Java field, with the same coercions but one (a
+// number with a fraction is never truncated into an integer: see Long), and fails (malformed-json)
+// where Jackson fails. Each writes back the value it holds, so the type decoded is
 // the type validated and stored.
 
 // errMalformed is any value Jackson would not bind; the reader answers it malformed-json.
@@ -77,12 +78,18 @@ func (s String) MarshalJSONTo(enc *jsontext.Encoder) error {
 	return enc.WriteToken(jsontext.String(s.Value))
 }
 
-// Long is a Java Long member (an int64 on the wire). Like Jackson: an integer within int64; a number
-// with a fraction or an exponent, truncated toward zero; a string holding an integer, trimmed, and ""
-// read as null. A boolean, an object, an array, or any number past int64 is malformed (X9-AMT-422).
+// Long is a Java Long member (an int64 on the wire): every one is an amount in minor units
+// (ADR-0005). An integer within int64 is read as written; a string holding an integer, trimmed, and
+// "" read as null, as Jackson reads them. A number written with a fraction or an exponent (6.5, but
+// also 6.0 and 6e2) is not truncated, as Jackson's ACCEPT_FLOAT_AS_INT would: it is kept in
+// NotInteger, Value stays 0, and the contract's checks refuse it naming the member. A boolean, an
+// object, an array, or an integer past int64 is malformed (X9-AMT-422).
 type Long struct {
 	presence
 	Value int64
+	// NotInteger is the number as sent when it was written with a fraction or an exponent; "" when
+	// the member holds an integer (or nothing).
+	NotInteger string
 }
 
 // Int64 is a Long holding v.
@@ -91,8 +98,8 @@ func Int64(v int64) Long { return Long{Present: true, Value: v} }
 // UnmarshalJSONFrom implements json.UnmarshalerFrom.
 func (l *Long) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	*l = Long{Present: true}
-	v, null, err := readInteger(dec, math.MinInt64, math.MaxInt64)
-	l.Value, l.Null = v, null
+	v, raw, null, err := readInteger(dec, math.MinInt64, math.MaxInt64)
+	l.Value, l.NotInteger, l.Null = v, raw, null
 	return err
 }
 
@@ -105,10 +112,12 @@ func (l Long) MarshalJSONTo(enc *jsontext.Encoder) error {
 }
 
 // Integer is a Java Integer member (openapi.yaml's `type: integer` without `format: int64`): Long's
-// rules within int32, so 2147483648 is malformed.
+// rules within int32, so 2147483648 is malformed, and 1.5 is kept in NotInteger and refused.
 type Integer struct {
 	presence
 	Value int32
+	// NotInteger is as Long's.
+	NotInteger string
 }
 
 // Int32 is an Integer holding v.
@@ -117,8 +126,8 @@ func Int32(v int32) Integer { return Integer{Present: true, Value: v} }
 // UnmarshalJSONFrom implements json.UnmarshalerFrom.
 func (i *Integer) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	*i = Integer{Present: true}
-	v, null, err := readInteger(dec, math.MinInt32, math.MaxInt32)
-	i.Value, i.Null = int32(v), null //nolint:gosec // readInteger bounded v to int32
+	v, raw, null, err := readInteger(dec, math.MinInt32, math.MaxInt32)
+	i.Value, i.NotInteger, i.Null = int32(v), raw, null //nolint:gosec // readInteger bounded v to int32
 	return err
 }
 
@@ -266,53 +275,39 @@ func (u URI) MarshalJSONTo(enc *jsontext.Encoder) error {
 	return enc.WriteToken(jsontext.String(u.Value))
 }
 
-// readInteger reads Jackson's Long or Integer from the next value.
-func readInteger(dec *jsontext.Decoder, lo, hi int64) (v int64, null bool, err error) {
+// readInteger reads Jackson's Long or Integer from the next value. A number written with a fraction
+// or an exponent is returned as raw, with v 0: the contract says integer, so it is refused by the
+// checks (naming the member), never truncated into another amount.
+func readInteger(dec *jsontext.Decoder, lo, hi int64) (v int64, raw string, null bool, err error) {
 	tok, err := dec.ReadToken()
 	if err != nil {
-		return 0, false, err
+		return 0, "", false, err
 	}
 	switch tok.Kind() { //nolint:exhaustive // every other JSON kind is the default: malformed
 	case 'n':
-		return 0, true, nil
+		return 0, "", true, nil
 	case '0':
-		v, err := integerFromNumber(tok.String(), lo, hi)
-		return v, false, err
+		if text := tok.String(); strings.ContainsAny(text, ".eE") {
+			return 0, text, false, nil
+		}
+		v, err := strconv.ParseInt(tok.String(), 10, 64)
+		if err != nil || v < lo || v > hi {
+			return 0, "", false, errMalformed
+		}
+		return v, "", false, nil
 	case '"':
 		text := strings.TrimSpace(tok.String())
 		if text == "" {
-			return 0, true, nil
+			return 0, "", true, nil
 		}
 		v, err := strconv.ParseInt(text, 10, 64)
 		if err != nil || v < lo || v > hi {
-			return 0, false, errMalformed
+			return 0, "", false, errMalformed
 		}
-		return v, false, nil
+		return v, "", false, nil
 	default:
-		return 0, false, errMalformed
+		return 0, "", false, errMalformed
 	}
-}
-
-// integerFromNumber reads a JSON number into an integer within [lo, hi]: exactly when it is written
-// as an integer, truncated toward zero when it has a fraction or an exponent (Jackson's
-// ACCEPT_FLOAT_AS_INT).
-func integerFromNumber(raw string, lo, hi int64) (int64, error) {
-	if !strings.ContainsAny(raw, ".eE") {
-		v, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil || v < lo || v > hi {
-			return 0, errMalformed
-		}
-		return v, nil
-	}
-	f, err := strconv.ParseFloat(raw, 64)
-	if err != nil || math.IsInf(f, 0) || math.IsNaN(f) {
-		return 0, errMalformed
-	}
-	f = math.Trunc(f)
-	if f < float64(lo) || f >= float64(hi)+1 {
-		return 0, errMalformed
-	}
-	return int64(f), nil
 }
 
 // scalarText reads the next value as Jackson's StringDeserializer does: a string's value, a number's

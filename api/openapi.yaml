@@ -1035,7 +1035,7 @@ components:
         kind:
           type: string
           enum: [DEFAULT, EXTERNAL]
-          description: "Type of payment notification endpoint. Usage of EXTERNAL kind requires a endpoint to be informed."
+          description: "Type of payment notification endpoint. Usage of EXTERNAL kind requires a endpoint to be informed. Matched exactly, in this case, on create and PATCH (INTERPRETATION I-16): another spelling is refused with 400 `malformed-json`."
           example: "EXTERNAL"
         endpoint:
           type: string
@@ -1391,7 +1391,9 @@ components:
           description: |-
             Optional on create; **defaults to `immediate`** when absent. An explicit `null` is
             refused. Always present in a payload response. (On PATCH, where the whole bill is
-            replaced, it is required.)
+            replaced, it is required.) Lowercase, exactly: `Immediate` or `DEFERRED` is refused
+            with 400 `malformed-json` on create and PATCH (INTERPRETATION I-16; the Java build
+            read it in any case).
         description:
           type: string
           pattern: ^[\x20-\x7E]*$
@@ -1645,7 +1647,7 @@ components:
           type: string
           enum:
             - FixedDiscountLateFeeLinearInterest
-          description: "Formula for calculating adjustments (e.g., discounts or late fees)."
+          description: "Formula for calculating adjustments (e.g., discounts or late fees). Matched exactly, in this case, on create and PATCH (INTERPRETATION I-16): another spelling is refused with 400 `malformed-json`."
           example: "FixedDiscountLateFeeLinearInterest"
         parameters:
           additionalProperties: false
@@ -1672,7 +1674,7 @@ components:
                     type: integer
                     format: int64
                     maximum: 999999999999999999
-                    description: "Discount amount as a positive integer in the smallest currency unit (minor units; the currency defines the decimals — e.g. cents for USD, none for JPY, micro-units for USDC)."
+                    description: "Discount amount as a positive integer in the smallest currency unit (minor units; the currency defines the decimals — e.g. cents for USD, none for JPY, micro-units for USDC). Sent with a fraction or an exponent (`6.5`, and also `6.0` or `6e2`), it is refused with 400 naming the field: an amount is never rounded or truncated."
                     example: "1000"
                   explanation:
                     type: string
@@ -1691,13 +1693,13 @@ components:
                   type: integer
                   format: int64
                   maximum: 999999999999999999
-                  description: "Fixed late fee amount as a positive integer in the smallest currency unit (minor units; decimals defined by the currency)."
+                  description: "Fixed late fee amount as a positive integer in the smallest currency unit (minor units; decimals defined by the currency). Sent with a fraction or an exponent (`6.5`, and also `6.0` or `6e2`), it is refused with 400 naming the field: an amount is never rounded or truncated."
                   example: "100"
                 perDay:
                   type: integer
                   format: int64
                   maximum: 999999999999999999
-                  description: "Per-day late fee amount as a positive integer in the smallest currency unit (minor units; decimals defined by the currency)."
+                  description: "Per-day late fee amount as a positive integer in the smallest currency unit (minor units; decimals defined by the currency). Sent with a fraction or an exponent (`6.5`, and also `6.0` or `6e2`), it is refused with 400 naming the field: an amount is never rounded or truncated."
                   example: "25"
                 explanation:
                   type: string
@@ -2160,9 +2162,11 @@ components:
         unpublished guess at its fields was wrong in both of them.
 
         **Key casing.** The normative JSON paths are lowercase, and that is what this service emits.
-        Input is accepted in any case (`fednow`, `FedNow`, `FEDNOW`), because the standard is not
-        self-consistent: §2.4 calls the notification's network value "all-uppercase" and then lists
-        `FedNow`, which is not — but that wording governs the notification's `$.payment.network` VALUE, a different field. This object key is spelled `fednow` throughout §14.5, with no contradiction, and that is the only spelling this API uses in either direction.
+        On create and PATCH the key must be spelled exactly so: `FedNow` or `FEDNOW` is an unknown
+        network and is refused by name (INTERPRETATION I-16). The standard's one casing
+        contradiction — §2.4 calls the notification's network value "all-uppercase" and then lists
+        `FedNow` — governs the notification's `$.payment.network` VALUE, a different field, which an
+        inbound notification matches in any case (I-1). This object key is spelled `fednow` throughout §14.5, with no contradiction, and that is the only spelling this API uses in either direction.
       properties:
         fednow:
           $ref: "#/components/schemas/FedNow"
@@ -2248,7 +2252,7 @@ components:
         - tokenized
         - encrypted
         - plaintext
-      description: "How the bank account number is protected for the bank rails (FedNow, RTP, ACH), per ANSI X9.150-2026 (Protection Type, §14.5.x): `tokenized`, `encrypted`, or `plaintext`. The payee sets it; this service stores the value sent and returns it as sent, from GET and in the signed payload (it neither tokenizes nor encrypts anything itself). Applies only to bank networks — not to card or blockchain payment methods."
+      description: "How the bank account number is protected for the bank rails (FedNow, RTP, ACH), per ANSI X9.150-2026 (Protection Type, §14.5.x): `tokenized`, `encrypted`, or `plaintext`. The payee sets it; this service stores the value sent and returns it as sent, from GET and in the signed payload (it neither tokenizes nor encrypts anything itself). Applies only to bank networks — not to card or blockchain payment methods. Matched exactly, in this case, on create and PATCH (INTERPRETATION I-16): another spelling is refused with 400 `malformed-json`."
       example: "tokenized"
 
     Solana:
@@ -2851,7 +2855,7 @@ components:
       type: integer
       format: int64
       maximum: 999999999999999999
-      description: "The monetary value is represented as an integer in the smallest unit of the currency (for example, cents in the case of USD). To interpret the value correctly, it is necessary to know the number of decimal places used by the currency. In this example, an amount of 100 USDC corresponds to one dollar, $1.00. At most 18 digits: ANSI X9.150-2026 gives every amount field a maximum length of 18 (§13.5.1, §14.3, §2.1, §2.2), one digit fewer than a 64-bit integer holds, so the largest amount is 999999999999999999 (ADR-0005)."
+      description: "The monetary value is represented as an integer in the smallest unit of the currency (for example, cents in the case of USD). To interpret the value correctly, it is necessary to know the number of decimal places used by the currency. In this example, an amount of 100 USDC corresponds to one dollar, $1.00. At most 18 digits: ANSI X9.150-2026 gives every amount field a maximum length of 18 (§13.5.1, §14.3, §2.1, §2.2), one digit fewer than a 64-bit integer holds, so the largest amount is 999999999999999999 (ADR-0005). Sent with a fraction or an exponent (`6.5`, and also `6.0` or `6e2`), it is refused with 400 naming the field: an amount is never rounded or truncated."
       example: 18834
 
     NetworkEnum:
@@ -3079,7 +3083,7 @@ components:
                 type: integer
                 format: int64
                 maximum: 999999999999999999
-                description: "Discount amount as a positive integer in the smallest currency unit (minor units; the currency defines the decimals — e.g. cents for USD, none for JPY, micro-units for USDC)."
+                description: "Discount amount as a positive integer in the smallest currency unit (minor units; the currency defines the decimals — e.g. cents for USD, none for JPY, micro-units for USDC). Sent with a fraction or an exponent (`6.5`, and also `6.0` or `6e2`), it is refused with 400 naming the field: an amount is never rounded or truncated."
                 example: "1000"
               explanation:
                 type: string
@@ -3099,13 +3103,13 @@ components:
               type: integer
               format: int64
               maximum: 999999999999999999
-              description: "Fixed late fee amount as a positive integer in the smallest currency unit (minor units; decimals defined by the currency)."
+              description: "Fixed late fee amount as a positive integer in the smallest currency unit (minor units; decimals defined by the currency). Sent with a fraction or an exponent (`6.5`, and also `6.0` or `6e2`), it is refused with 400 naming the field: an amount is never rounded or truncated."
               example: "100"
             perDay:
               type: integer
               format: int64
               maximum: 999999999999999999
-              description: "Per-day late fee amount as a positive integer in the smallest currency unit (minor units; decimals defined by the currency)."
+              description: "Per-day late fee amount as a positive integer in the smallest currency unit (minor units; decimals defined by the currency). Sent with a fraction or an exponent (`6.5`, and also `6.0` or `6e2`), it is refused with 400 naming the field: an amount is never rounded or truncated."
               example: "25"
             explanation:
               type: string
@@ -3123,7 +3127,7 @@ components:
           type: string
           enum:
             - FixedDiscountLateFeeLinearInterest
-          description: "Formula for calculating adjustments (e.g., discounts or late fees)."
+          description: "Formula for calculating adjustments (e.g., discounts or late fees). Matched exactly, in this case, on create and PATCH (INTERPRETATION I-16): another spelling is refused with 400 `malformed-json`."
           example: "FixedDiscountLateFeeLinearInterest"
         parameters:
           $ref: "#/components/schemas/PatchAdjustmentParameters"
@@ -3154,6 +3158,7 @@ components:
           enum:
             - deferred
             - immediate
+          description: "Required on PATCH. Lowercase, exactly: `Immediate` or `DEFERRED` is refused with 400 `malformed-json` (INTERPRETATION I-16)."
         description:
           type: string
           pattern: ^[\x20-\x7E]*$

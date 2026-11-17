@@ -123,13 +123,13 @@ func CheckBill(b Bill) error {
 	if err := checkAmountDue(b.AmountDue); err != nil {
 		return err
 	}
-	if b.PaymentTiming != "" && !paymentTimings[strings.ToLower(b.PaymentTiming)] {
+	if b.PaymentTiming != "" && !paymentTimings[b.PaymentTiming] {
 		return invalid("Unexpected value '" + b.PaymentTiming + "'")
 	}
 	if b.Invoice == nil && b.AmountDue.Adjustment != nil {
 		return invalid("Bill amount due adjustment can only be informed when invoice is not null.")
 	}
-	if b.Invoice == nil && strings.EqualFold(b.PaymentTiming, "deferred") {
+	if b.Invoice == nil && b.PaymentTiming == "deferred" {
 		return invalid("Bill invoice must be informed when DEFERRED payment timing.")
 	}
 	if adj := b.AmountDue.Adjustment; adj != nil {

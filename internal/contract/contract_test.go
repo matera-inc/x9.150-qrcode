@@ -47,10 +47,22 @@ func TestScalarsAreReadAsJacksonReadsThem(t *testing.T) {
 			check: func(r *CreateRequest) bool { return r.PaymentMethods.Items[0].Amount.Value == 1000 }},
 		{name: "an amount as a padded string", old: pmAmount, new: `"amount": " 1000", "editable"`,
 			check: func(r *CreateRequest) bool { return r.PaymentMethods.Items[0].Amount.Value == 1000 }},
-		{name: "a fractional amount is truncated", old: pmAmount, new: `"amount": 1000.7, "editable"`,
-			check: func(r *CreateRequest) bool { return r.PaymentMethods.Items[0].Amount.Value == 1000 }},
-		{name: "an amount with an exponent", old: pmAmount, new: `"amount": 1e3, "editable"`,
-			check: func(r *CreateRequest) bool { return r.PaymentMethods.Items[0].Amount.Value == 1000 }},
+		// ADR-0005: an amount is an integer in minor units. One sent with a fraction or an exponent is
+		// kept as sent, never truncated (Jackson made 1000.7 into 1000), for the checks to refuse.
+		{name: "a fractional amount is kept as sent, not truncated", old: pmAmount, new: `"amount": 1000.7, "editable"`,
+			check: func(r *CreateRequest) bool {
+				a := r.PaymentMethods.Items[0].Amount
+				return a.Value == 0 && a.NotInteger == "1000.7" && a.IsSet()
+			}},
+		{name: "an amount with an exponent is kept as sent", old: pmAmount, new: `"amount": 1e3, "editable"`,
+			check: func(r *CreateRequest) bool { return r.PaymentMethods.Items[0].Amount.NotInteger == "1e3" }},
+		{name: "an amount with a zero fraction is kept as sent", old: pmAmount, new: `"amount": 1000.0, "editable"`,
+			check: func(r *CreateRequest) bool { return r.PaymentMethods.Items[0].Amount.NotInteger == "1000.0" }},
+		{name: "an integer amount is read exactly", old: pmAmount, new: `"amount": 999999999999999999, "editable"`,
+			check: func(r *CreateRequest) bool {
+				a := r.PaymentMethods.Items[0].Amount
+				return a.Value == 999999999999999999 && a.NotInteger == ""
+			}},
 		{name: "an empty string amount is null", old: pmAmount, new: `"amount": "", "editable"`,
 			check: func(r *CreateRequest) bool { return r.PaymentMethods.Items[0].Amount.IsNull() }},
 		{name: "2^63-1 is read", old: pmAmount, new: `"amount": 9223372036854775807, "editable"`,
@@ -61,8 +73,8 @@ func TestScalarsAreReadAsJacksonReadsThem(t *testing.T) {
 		{name: "a boolean amount is malformed", old: pmAmount, new: `"amount": true, "editable"`, malformed: true},
 		{name: "an array amount is malformed", old: pmAmount, new: `"amount": [1000], "editable"`, malformed: true},
 		{name: "an int32 past its range is malformed", old: `"min": 0, "max": 25`, new: `"min": 2147483648, "max": 25`, malformed: true},
-		{name: "an int32 fraction is truncated", old: `"min": 0, "max": 25`, new: `"min": 1.5, "max": 25`,
-			check: func(r *CreateRequest) bool { return r.Bill.Value.Tip.Value.Range.Value.Min.Value == 1 }},
+		{name: "an int32 fraction is kept as sent, not truncated", old: `"min": 0, "max": 25`, new: `"min": 1.5, "max": 25`,
+			check: func(r *CreateRequest) bool { return r.Bill.Value.Tip.Value.Range.Value.Min.NotInteger == "1.5" }},
 		{name: "a number where a string is expected is its text", old: `"MCC": "4900"`, new: `"MCC": 4900`,
 			check: func(r *CreateRequest) bool { return r.Creditor.Value.MCC.Value == "4900" }},
 		{name: "a boolean where a string is expected is its name", old: `"unstructured": "blackbox"`, new: `"unstructured": true`,
@@ -91,8 +103,11 @@ func TestScalarsAreReadAsJacksonReadsThem(t *testing.T) {
 		{name: "a relative URI is read", old: `"https://payee.example.com/notify"`, new: `"abc"`,
 			check: func(r *CreateRequest) bool { return r.PaymentNotification.Value.Endpoint.Value == "abc" }},
 		{name: "an enum value in another case is malformed", old: `"kind": "DEFAULT"`, new: `"kind": "default"`, malformed: true},
-		{name: "paymentTiming is read in any case", old: `"paymentTiming": "immediate"`, new: `"paymentTiming": "DEFERRED"`,
-			check: func(r *CreateRequest) bool { return r.Bill.Value.PaymentTiming.Value == "deferred" }},
+		// I-16: strict to generate. Java read paymentTiming in any case; it is now exact, as every enum.
+		{name: "paymentTiming in another case is malformed (I-16)", old: `"paymentTiming": "immediate"`, new: `"paymentTiming": "Immediate"`, malformed: true},
+		{name: "paymentTiming in upper case is malformed (I-16)", old: `"paymentTiming": "immediate"`, new: `"paymentTiming": "DEFERRED"`, malformed: true},
+		{name: "protectionType in another case is malformed (I-16)", old: `"protectionType": "plaintext"`, new: `"protectionType": "Plaintext"`, malformed: true},
+		{name: "formula in another case is malformed (I-16)", old: `"formula": "FixedDiscountLateFeeLinearInterest"`, new: `"formula": "fixeddiscountlatefeelinearinterest"`, malformed: true},
 		{name: "paymentTiming outside its values is malformed", old: `"paymentTiming": "immediate"`, new: `"paymentTiming": "later"`, malformed: true},
 		{name: "paymentMethods as a bare object is malformed (I-5)", old: `"paymentMethods": [`, new: `"paymentMethods": {"x": [`, malformed: true},
 		// Keys match case-sensitively: a key in another case is an unknown key, ignored.
@@ -144,6 +159,15 @@ func TestViolationsAreJavas(t *testing.T) {
 			[]string{`creditor.address.country: must match "^[A-Z]{2}$"`, "creditor.address.country: size must be between 2 and 2"}},
 		{"amount", pmAmount, `"amount": 1000000000000000000, "editable"`,
 			[]string{"paymentMethods[0].amount: must be less than or equal to 999999999999999999"}},
+		// ADR-0005: a fractional amount is refused naming the field, never truncated; 6.0 and 6e2 too.
+		{"fractional amount (ADR-0005)", pmAmount, `"amount": 6.5, "editable"`,
+			[]string{"paymentMethods[0].amount: " + msgAmountNotInteger("6.5")}},
+		{"zero-fraction amount (ADR-0005)", pmAmount, `"amount": 6.0, "editable"`,
+			[]string{"paymentMethods[0].amount: " + msgAmountNotInteger("6.0")}},
+		{"exponent amount (ADR-0005)", pmAmount, `"amount": 6e2, "editable"`,
+			[]string{"paymentMethods[0].amount: " + msgAmountNotInteger("6e2")}},
+		{"fractional tip percentage", `"min": 0, "max": 25`, `"min": 1.5, "max": 25`,
+			[]string{"bill.tip.range.min: must be a whole number, written without a fraction or an exponent, but 1.5 was given"}},
 		{"tip range", `"min": 0, "max": 25`, `"min": -1, "max": 1000`,
 			[]string{"bill.tip.range.min: must be greater than or equal to 0", "bill.tip.range.max: must be less than or equal to 999"}},
 		{"presets", `"presets": [10, 15]`, `"presets": [0,1,2,3,4,5,6,7,8,9,1000]`,

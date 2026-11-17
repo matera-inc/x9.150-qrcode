@@ -16,6 +16,35 @@ None.
 
 ---
 
+## BUG-007 — A fractional amount was stored truncated
+
+- **Reported:** 2026-11-17, by running the service. **Fixed:** 3.0.0.
+- **Severity:** High — money correctness. `"amount": 6.5` on `bill.amountDue` answered 201 and was
+  stored as `6`: the QR Code asked for a debt nobody asked for. Both builds had it.
+- **Root cause:** the request reader copied Jackson's `ACCEPT_FLOAT_AS_INT`: a JSON number with a
+  fraction or an exponent was truncated toward zero (`internal/contract/scalar.go`,
+  `integerFromNumber`, called by `readInteger` for every `Long` and `Integer` member).
+- **Fix:** the reader keeps such a number as sent (`NotInteger`) and the contract checks refuse it,
+  400 naming the field: `bill.amountDue.amount: monetary values should be whole numbers of minor
+  units, written without a fraction or an exponent, but 6.5 was given.` `6.0` and `6e2` are refused
+  too. It holds for every amount of a create, a PATCH and a notification, inbound or outbound
+  (ADR-0005). **Pinned by:** `X9-AMT-424` to `X9-AMT-426`, `internal/contract/integer_test.go`.
+
+---
+
+## BUG-008 — `paymentTiming` was read in any case on create and PATCH
+
+- **Reported:** 2026-11-17, by running the service. **Fixed:** 3.0.0.
+- **Severity:** Low — `"Immediate"` was accepted and stored as `immediate`, where every other enum,
+  a network key (`FedNow`) and a currency (`usd`) are refused in another case.
+- **Root cause:** `internal/contract/enum.go` reproduced the Java build's case-insensitive reader for
+  `paymentTiming` alone (`TimingValues.AnyCase`).
+- **Fix:** every enum on create and PATCH is matched exactly (INTERPRETATION I-16): another case is
+  400 `malformed-json`, as a value off the list is. An inbound notification's rail and currency stay
+  case-insensitive (I-1). **Pinned by:** `X9-RAIL-510`, `X9-RAIL-511`.
+
+---
+
 ## BUG-004 — An expired `ACTIVE` QR Code does not give up its location to a rebind
 
 - **Reported:** 2026-11-14 (Story 4.2, S4.2-AC4)

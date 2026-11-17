@@ -142,9 +142,13 @@ list names the field.
   `recipient` (base58, 32–44 chars) and optional `memo` — no `walletAddress`
   (`official-spec/SOLANA-FIELDS.md`).
 - **Amounts are integer minor units** — `600` = $6.00, `19825` = $198.25 — at most **18 digits**
-  (`999999999999999999`, ADR-0005), including after a late fee grows the amount. Send integers only:
-  a fractional number is not refused today, it is truncated (`6.5` is stored as `6`).
-- **`paymentTiming`**: `immediate` (default) | `deferred`. `deferred` **requires** `bill.invoice`
+  (`999999999999999999`, ADR-0005), including after a late fee grows the amount. A number written
+  with a fraction or an exponent — `6.5`, but also `6.0` or `6e2` — is refused with 400 naming the
+  field (`bill.amountDue.amount: monetary values should be whole numbers of minor units, written
+  without a fraction or an exponent, but 6.5 was given.`); it is never truncated.
+- **`paymentTiming`**: `immediate` (default) | `deferred`, in lowercase exactly: `Immediate` is
+  refused with 400 `malformed-json`, as is every enum value (`protectionType`, `formula`, `kind`) in
+  another case. `deferred` **requires** `bill.invoice`
   with `number`, `date` (`YYYY-MM-DD`) and `dueDate` (`Bill invoice must be informed when DEFERRED
   payment timing.`).
 - **Timestamps** (`validUntil`, `dueDate`) are UTC ending in `Z`; an offset such as `-03:00` is a

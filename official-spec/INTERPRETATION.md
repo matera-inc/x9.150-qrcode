@@ -44,6 +44,11 @@ in the payment-notification work, not here.
 - **Inbound, on our own create/patch API:** the same spelling, exactly. `FedNow`, `FEDNOW` and
   `fedNow` are refused with a 400 naming both what was sent and what to send.
 - **Currency codes, on our own API:** likewise exact. `usd` is refused in favour of `USD`.
+- **Every enum, on our own create/patch API:** likewise exact. `paymentTiming`, `protectionType`,
+  `adjustments.formula` and `paymentNotification.kind` take their contract values in their case
+  only; `Immediate` or `Plaintext` is an unreadable body (400 `malformed-json`), as any value off
+  the list is. The Java build read `paymentTiming` in any case and stored it in lower case; the Go
+  build does not (3.0.0).
 
 **Why be strict on our own API?** Because we emit *one* form, and whatever we emit is what the caller
 reads back. Accepting `FedNow` and returning `fednow` hands them a round-trip mismatch on a field
