@@ -101,6 +101,7 @@ jobs:
           name: helm-renderings
           path: go-ci-out/helm/
           if-no-files-found: ignore
+          retention-days: 14
 
   helm-kind:
     name: helm on kind

@@ -117,6 +117,7 @@ jobs:
           name: go-sbom
           path: go-ci-out/*.sbom.json
           if-no-files-found: warn
+          retention-days: 14
 
   image:
     name: go image
@@ -178,3 +179,4 @@ jobs:
             go-ci-out/go-image.json
             go-ci-out/go-image-sizes.jsonl
           if-no-files-found: warn
+          retention-days: 14

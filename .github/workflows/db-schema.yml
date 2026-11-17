@@ -58,3 +58,4 @@ jobs:
             db-out/update-sql.sql
             db-out/server-version.txt
           if-no-files-found: warn
+          retention-days: 14
