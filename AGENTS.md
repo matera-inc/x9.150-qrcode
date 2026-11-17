@@ -14,15 +14,11 @@ codes, serves the signed Payment Payload a payer's app fetches, and receives pay
   ([db/README.md](db/README.md)). Decided in
   [ADR-0022](docs/adr/0022-rewrite-in-go-as-a-standalone-product.md); why, in
   [HISTORY.md](HISTORY.md).
-- **The Java build is still here.** Java 25, Spring Boot 3.5.x, MongoDB (replica set), Maven
-  (wrapper `./mvnw`), in the `x9-qrcode-*` modules. It stays until it is frozen under
-  `legacy/java/`, and the Docker Hub image is still built from it until the cutover. Where this
-  file names Java classes, Spring rules or MongoDB, it describes the Java build; the behaviour it
-  describes is the same in both builds unless ADR-0028's "Known differences between the builds"
-  says otherwise.
-- **Java architecture:** Clean / Hexagonal, three modules — `x9-qrcode-domain` (pure Java, no Spring),
-  `x9-qrcode-application` (use cases, depends only on domain), `x9-qrcode-infrastructure` (Spring,
-  web, persistence, config). Dependency direction is inward-only.
+- **The Java build is retired** (3.0.0,
+  [ADR-0039](docs/adr/0039-java-retired-at-3-0-0.md)). Java 25, Spring Boot and MongoDB are not on
+  `main`: the code is in git history under the tag `java-final`, and its last image is
+  `materainc/x9-qrcode:java-final`. ADRs, `known-bugs.md` and the black-box suite still mention it
+  as history; never add Java code, Maven files or MongoDB instructions back.
 - **API:** open / unauthenticated by design — secure it at the edge. Management endpoints under
   `/api/v1/...`; payer-facing endpoints under `/pub/...`.
 
@@ -32,11 +28,12 @@ The ANSI X9.150 standard text is **copyrighted and is not in this repository** (
 `official-spec/README.md`, a pointer, is tracked). When answering questions about "the spec" or the
 data model, ground your answers **only** in tracked sources:
 
-- **The OpenAPI contract:** `x9-qrcode-infrastructure/src/main/resources/apis/openapi.yaml` — the
-  authoritative, richly-annotated description of every field and rule as implemented.
-- **The domain code:** `x9-qrcode-domain/src/main/java/com/matera/x9qrcode/domain/` — value objects
-  (self-validating), `entity/QRCodeEntity.java` + `entity/validator/QRCodeEntityValidator.java`,
-  enums under `vo/enumerated/`, and policies under `service/`.
+- **The OpenAPI contract:** `api/openapi.yaml` — the authoritative, richly-annotated description
+  of every field and rule as implemented.
+- **The domain code:** `internal/domain/` (the lifecycle: every transition, every event, pure
+  functions), `internal/billing/` (what a payment request may hold: rails, currencies, amounts,
+  tips), `internal/notification/` (what a payment notification may hold) and `internal/contract/`
+  (the wire types).
 - **The tracked docs** listed below.
 
 ### Quoting the standard: short attributed fragments are allowed
@@ -61,11 +58,11 @@ documented below.)
 
 ## Data model conventions (as implemented)
 
-These describe how our software behaves; they're enforced in `openapi.yaml` + the domain code.
+These describe how our software behaves; they're enforced in `api/openapi.yaml` + the domain code.
 
 - **QR status** (lifecycle, server-assigned; UPPERCASE): `ACTIVE` → `PAYMENT_INITIATED` → `PAID`
-  or `CANCELLED`. `PAYMENT_INITIATED` may revert to `ACTIVE` (reactivate). Enum:
-  `domain/vo/enumerated/QRCodeStatusEnum.java`; transitions in `STATE-MACHINE.md`.
+  or `CANCELLED`. `PAYMENT_INITIATED` may revert to `ACTIVE` (reactivate). Statuses
+  and transitions: `internal/domain/` and `STATE-MACHINE.md`.
 - **`paymentTiming`** (lowercase): `immediate` = due when the QR is scanned; `deferred` = due at a
   future date — and `deferred` **requires** `bill.invoice` with a `dueDate`. Wire values are
   lowercase; input is accepted case-insensitively but always emitted lowercase.
@@ -75,21 +72,21 @@ These describe how our software behaves; they're enforced in `openapi.yaml` + th
   X9.150 requires: one fewer than int64 holds (ADR-0005). Non-money counters (tip %, revision) are plain integers.
 - **Currency** is an open string (ISO 4217 code or a digital-asset ticker like `USDC`/`BTC`), not an
   enum. Currencies on one QR must share a pegged group or be a single currency
-  (`pegged-currencies.json`; `domain/service/PeggedCurrencyMixPolicy.java`).
+  (`internal/billing/pegged-currencies.json`; `internal/billing/currency.go`).
 - **`protectionType`** (bank rails) is lowercase and always `tokenized`; **tips** are integer
   percentages `0–999`; **timestamps** are UTC, `Z`-terminated.
 - **Networks: X9.150 specifies the style and the root; the inner JSON belongs to the network's
   owner.** A network is interpreted only once its authority publishes how it embeds
   ([ADR-0010](docs/adr/0010-networks-are-interpreted-only-once-their-authority-publishes.md)).
-  **`NetworkEnum` holds four rails: `fednow`, `rtp`, `ach` (the standard's) and `solana` (the Solana
+  **Four rails are interpreted: `fednow`, `rtp`, `ach` (the standard's) and `solana` (the Solana
   Foundation's — `recipient` + optional `memo`, see official-spec/SOLANA-FIELDS.md).** Everything
   else is **refused at creation, by name**
   ([ADR-0012](docs/adr/0012-refuse-what-this-deployment-cannot-honour.md)).
-- **Every rail dispatch must be an exhaustive switch EXPRESSION.** Adding Solana reopened a
-  fall-through in `QRCodeEntityValidator` because that one was a switch *statement*: Solana
-  notifications were accepted with none of their validation running. `isBankRail()` and
-  `isInterpretedRail()` are also deliberately different — conflating them skipped the destination
-  check for Solana, which unlike a bank rail does name one.
+- **Every rail dispatch must handle every rail, and fail on an unknown one.** In the Java build,
+  adding Solana reopened a fall-through in a switch *statement*: Solana notifications were accepted
+  with none of their validation running. "Is a bank rail" and "is an interpreted rail" are also
+  deliberately different questions — conflating them skipped the destination check for Solana,
+  which unlike a bank rail does name one.
 - **Network keys are lower-case, always** (`fednow`, `rtp`, `ach` — §14.5's normative paths). The
   OpenAPI contract declares them that way, so a conformant caller binds to the generated properties
   and no casing logic is needed; anything else falls into `additionalProperties` and is refused by
@@ -103,26 +100,26 @@ These describe how our software behaves; they're enforced in `openapi.yaml` + th
   still leaves the QR Code untouched. See
   [official-spec/INTERPRETATION.md](official-spec/INTERPRETATION.md) I-1.
 - **A currency is never implied.** Every payment method, and every payment notification, states its
-  currency; a missing one is refused (`PaymentMethodVO`, and `required` in `openapi.yaml`). There is
+  currency; a missing one is refused (`internal/billing`, and `required` in `api/openapi.yaml`). There is
   no default currency.
 - **Currencies are gated by what the rails settle.** The payload format is currency-agnostic and
-  carries any code verbatim, but this deployment accepts only what `supported-currencies.json` lists.
+  carries any code verbatim, but this deployment accepts only what `supported-currencies.json`
+  (bundled in `internal/billing/`) lists.
   That file is an **allow-list, not a default**: it ships `USD`, `USDC` and `FRNT`, each in exactly
   that spelling, and an empty list disables the check. Separate from the peg-mixing rule, which asks
   whether currencies may appear *together*.
 
 - **JWS works with both RSA and EC, in both directions.** Verification reads `alg` from the header
   and picks the verifier (`RS*`/`PS*` → RSA, `ES*` → ECDSA). Signing follows the key this deployment
-  was issued, so an EC identity works — `x9.certificate.jwk-algorithm` must then be an `ES*` value,
+  was issued, so an EC identity works — `certificate.jwk-algorithm` must then be an `ES*` value,
   and a mismatch fails at startup naming both halves. X9.150 names no algorithm (it defers to the
   X9-approved suite SD-34) and its own examples use `ES256`, so assuming RSA anywhere is an
   interoperability bug rather than a policy.
 
-- **Transient transaction conflicts are retried** (`TransientTransactionRetry`, ADR-0013) — but only
-  when MongoDB labelled the failure `TransientTransactionError`, never by exception type: Spring
-  maps a write conflict and a duplicate key to the same `DataIntegrityViolationException`, and
-  retrying a duplicate key can only fail slowly. The advice orders OUTSIDE `@Transactional` so each
-  attempt gets a fresh transaction; that ordering is asserted by a test, not assumed.
+- **A transition that loses a concurrent write is re-run from a fresh read**
+  ([ADR-0025](docs/adr/0025-a-transition-is-one-transaction-and-its-event-is-in-it.md)): the
+  decision is a pure function in `internal/domain`, and the store re-runs it in a new transaction.
+  One that keeps losing answers 409 "busy" with the current status, never 500.
 
 - **Events leave by pull, and the consumer reconciles**
   ([ADR-0014](docs/adr/0014-we-transport-and-sequence-the-consumer-reconciles.md)). A post-commit
@@ -130,11 +127,12 @@ These describe how our software behaves; they're enforced in `openapi.yaml` + th
   earlier claim, while the consuming system compares against funds that actually arrived, and
   "9 instead of 10" may be gas, slippage, a tolerated shortfall or fraud. Every event therefore
   carries its own `amount`; do not hoist that onto a shared parent.
-- **One drainer only** (`PaymentEventDrainLock`). Two would skip events (cursors are stamped before
-  the write, so a later one can become visible first and strand an earlier row behind a consumer's
-  cursor) and relocate them (`append` upserts on event id). The lease enforces it, so `replicaCount`
-  is a capacity choice again. `payment_events` has a **30-day TTL** and is never emptied on
-  acknowledgement — the log belongs to its readers, who may rewind.
+- **The event table is the outbox**
+  ([ADR-0037](docs/adr/0037-the-event-table-is-the-outbox-read-by-cdc-or-plain-sql.md)): each
+  transition inserts its event into `payment_event` in the same transaction, and readers take it by
+  HTTP, change data capture or plain SQL. The log is never emptied on acknowledgement — it belongs
+  to its readers, who may rewind — and retention removes old rows by time
+  ([ADR-0029](docs/adr/0029-time-is-applied-on-read-and-retention-is-the-only-job.md)).
 
 - **X9.150 serves the payer too**
   ([ADR-0015](docs/adr/0015-x9150-signs-the-payers-notification-too.md)).
@@ -148,29 +146,26 @@ These describe how our software behaves; they're enforced in `openapi.yaml` + th
 
 ## Build / test / run
 
-The Go build (see README's "Running the Application" for the full sequence):
+```bash
+make up                     # PostgreSQL 16 + Liquibase + the service on :8080 (docker-compose.yml)
+make smoke                  # health check (curl /actuator/health + /pub/.well-known/jwks)
+make down                   # stop everything and throw the database away
+make test                   # the Go tests, as CI runs them (race, shuffled, leak-checked; needs Docker)
+others/scripts/ci-go.sh pin modules vet lint planted nilaway   # the linters the `go` CI job runs
+make image                  # the image, x9-qrcode:latest (never pushed)
+make blackbox-image         # the black-box suite against that image, in containers, as CI runs it
+```
+
+To run the binary on the host instead:
 
 ```bash
 docker compose -f db/docker-compose.yml up -d --build   # throwaway PostgreSQL 16 + Liquibase
 DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=postgres DATABASE_USER=x9_qrcode_app \
 DATABASE_PASSWORD=unused DATABASE_SSLMODE=disable go run ./cmd/x9-qrcode
-make go-test                # the Go tests, as CI runs them
-make go-image               # image x9-qrcode:go (never pushed)
 ```
 
-The Java build:
-
-```bash
-./mvnw clean install        # build + test all modules
-./mvnw test                 # full test suite
-make up                     # app on :8080 + MongoDB (1-node replica set) + mongo-express :9091
-make smoke                  # health check (curl /actuator/health + /pub/.well-known/jwks)
-make down                   # stop everything
-```
-
-Default port `8080` in both builds; health at `http://localhost:8080/actuator/health`. For the
-Java build, MongoDB **must** be a replica set (transactions) — Compose starts one automatically. See `RUNNING.md` for host-JVM runs
-(`make run-local`) and details.
+Default port `8080`; health at `http://localhost:8080/actuator/health`. Every setting is in
+`cmd/x9-qrcode/config.example.yaml`. See `RUNNING.md` for details.
 
 ## Generate a QR code (the first thing to try)
 
@@ -226,20 +221,22 @@ zbarimg --raw -q playground/qr-cloudprovider.png   # prints the exact EMV string
 
 Full walkthrough: the `x9-qrcode` skill and `playground/README.md`.
 
-## Architecture rules (mandatory, Java build)
+## Architecture rules (mandatory)
 
-- **No Spring in `domain` or `application`** — no `@Component`/`@Service`/`@Autowired` there. All
-  wiring lives in `infrastructure/configuration/` via `@Configuration` + `@Bean`.
-- Entities use factory methods (`create()` / `restore()`), never public constructors.
-- Value Objects validate in their constructor and throw `ValueObjectRuleException`.
-- Use cases extend `UseCase<INPUT, OUTPUT>` with a single `execute(...)`.
-- Ports (interfaces) in `application/`; adapters (controllers/persistence/services) in
-  `infrastructure/`.
+- One binary, `cmd/x9-qrcode`; one package per concern under `internal/`. `internal/domain` is
+  pure: no database, no HTTP, no clock — it takes the row as read and one "now", and returns what
+  to write, what to append and what to answer.
+- Every business "now" comes from `internal/clock`; the linter forbids `time.Now` elsewhere.
+- SQL is hand-written with `pgx/v5`; the schema changes only through a new Liquibase changeset in
+  `db/changelog/` (never edit one already on `main`; `db/check/check_changelog.py` enforces it).
+- Tests are table tests, race-checked, shuffled and leak-checked (`internal/leaktest`); a test that
+  proves a rule cites its acceptance criterion and is listed in `docs/RULE-COVERAGE.md`.
+- No new module dependency without an ADR; CGO stays off (static binary).
 
 ## Contribution workflow
 
-`main` is protected. Every change goes through a pull request that must pass **CI (`build`)** and the
-**DCO** check — sign commits with `git commit -s`. Squash-merge. See `CONTRIBUTING.md`.
+`main` is protected. Every change goes through a pull request that must pass the required checks
+(**`blackbox-go`** and the **DCO** check, among the CI jobs in `.github/workflows/`) — sign commits with `git commit -s`. Squash-merge. See `CONTRIBUTING.md`.
 
 ## Skills
 
@@ -247,7 +244,7 @@ Skills live in **two** places:
 
 | Location | Skill | Use it for |
 |---|---|---|
-| `.claude/skills/x9-qrcode/` | `x9-qrcode` | onboarding: running the app, generating QR codes, API/spec questions (from the sources above), configuring MongoDB, deploying via Docker/Kubernetes |
+| `.claude/skills/x9-qrcode/` | `x9-qrcode` | onboarding: running the app, generating QR codes, API/spec questions (from the sources above), configuring PostgreSQL, deploying via Docker/Kubernetes |
 | `.agents/skills/senior-developer/` | `senior-developer` | working on the code to this repository's conventions |
 | `.agents/skills/x9150-integration/` | `x9150-integration` | integrating with an X9.150 deployment from the outside |
 
@@ -258,12 +255,13 @@ Use `x9-qrcode` when helping someone get started.
 | Doc | Purpose |
 |---|---|
 | `README.md` | Project overview and structure |
-| `HISTORY.md` | Why the service moved from Java/MongoDB to Go/PostgreSQL, and what is next |
+| `HISTORY.md` | Why the service moved from Java/MongoDB to Go/PostgreSQL, and how the Java build was retired |
 | `db/README.md` | The PostgreSQL schema, its roles, and what the service asks of the database |
 | `RUNNING.md` | First-run guide (build, run, smoke-test) |
+| `UPGRADING-TO-3.md` | Moving a 2.x (Java) deployment to 3.0.0 |
 | `ENDPOINTS.md` | Endpoint reference + local scan testing |
 | `STATE-MACHINE.md` | QR lifecycle (ACTIVE → PAYMENT_INITIATED → PAID / CANCELLED) |
-| `HIGH-AVAILABILITY.md` | HA guidance; MongoDB replica set for the Java build |
+| `HIGH-AVAILABILITY.md` | HA guidance: one instance, and what the database must provide |
 | `others/helm/x9-qrcode/README.md` | Kubernetes / Helm deploy |
 | `playground/README.md` | Payee/payer simulation scripts (generate & fetch QRs) |
 | `CONTRIBUTING.md` / `SECURITY.md` | Contribution flow / vulnerability reporting |

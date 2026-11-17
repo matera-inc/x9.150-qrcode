@@ -8,7 +8,9 @@
 Every property and environment variable the Java build reads is listed below, with the Go key and
 the Go environment variable that replace it, or **dropped** and why. The Java side comes from
 `x9-qrcode-infrastructure/src/main/resources/application*.yml`, the classes that bind them, the
-Helm chart (`others/helm/x9-qrcode/chart/`), the Compose files and `secrets/`. The Go side comes
+2.x Helm chart (`others/helm/x9-qrcode/chart/`), the Compose files and `secrets/` — all of them
+as they were at the git tag `java-final`, since the Java build was removed from `main` at 3.0.0
+([ADR-0039](adr/0039-java-retired-at-3-0-0.md)). The Go side comes
 from [`internal/config/config.go`](../internal/config/config.go), and every key is shown with its
 comment in [`cmd/x9-qrcode/config.example.yaml`](../cmd/x9-qrcode/config.example.yaml).
 
@@ -185,11 +187,12 @@ These keys are new; the Java build had none.
 
 ## The Helm chart's values
 
-The chart under `others/helm/x9-qrcode/` deploys the Java build by default until the cutover;
-with `-f values-go.yaml` (`runtime: go`) it deploys the Go build, as its
-[README](../others/helm/x9-qrcode/README.md#the-go-build-values-goyaml) explains. This is what each
-of the Java values becomes in that rendering; the `application.x9.*` values feed both builds, and
-the Go-only values are under `go.*`.
+Up to 2.x the chart under `others/helm/x9-qrcode/` deployed the Java build by default, and the Go
+build with `-f values-go.yaml` (`runtime: go`). From 3.0.0 (chart 3.0.0) it deploys the Go build
+only, and refuses `runtime: java`; the `go.*` values keep their names, and values-go.yaml's
+defaults are now the chart's own ([README](../others/helm/x9-qrcode/README.md)). This is what each
+of the 2.x Java values becomes; the `application.x9.*` values feed the service, and the Go-only
+values are under `go.*`.
 
 | Chart value | Java setting it feeds | Go key | Go variable | Notes |
 |---|---|---|---|---|
@@ -212,11 +215,11 @@ the Go-only values are under `go.*`.
 | `deploymentStrategy.terminationGracePeriodSeconds`, `preStop.sleep` | — | `server.shutdown-delay-seconds` | `X9_SERVER_SHUTDOWNDELAYSECONDS` | Chart value `go.shutdownDelaySeconds`; the grace period must exceed this delay plus the 20 s drain. No `preStop` hook. |
 | `resources.limits.memory` | the JVM's heap | — | — | The Go runtime's own `GOMEMLIMIT` is set to `go.memLimitPercent` (80) percent of the limit, in bytes. |
 
-## The Compose files and `secrets/`
+## The Compose files and `secrets/` (2.x)
 
 | Where | Java setting | Go key | Go variable | Notes |
 |---|---|---|---|---|
-| `docker-compose.yml`, `docker-compose.prod.yml` | `SPRING_DATA_MONGODB_HOST`, `_PORT`, `_REPLICA_SET_NAME` | `database.host` | `DATABASE_HOST` | Refused at start; use the `DATABASE_*` variables. The Go stack is `docker-compose.go.yml` (`make go-up`): PostgreSQL 16, Liquibase, then the service. |
+| `docker-compose.yml`, `docker-compose.prod.yml` | `SPRING_DATA_MONGODB_HOST`, `_PORT`, `_REPLICA_SET_NAME` | `database.host` | `DATABASE_HOST` | Refused at start; use the `DATABASE_*` variables. The Go stack is `docker-compose.yml` from 3.0.0 (`make up`; `docker-compose.go.yml` in 2.x): PostgreSQL 16, Liquibase, then the service. |
 | `docker-compose.yml` | `SPRING_PROFILES_ACTIVE`, `SPRING_CONFIG_LOCATION` | `-config` flag | `X9_CONFIG_FILE` | Refused at start. |
 | `docker-compose.yml`, `docker-compose.prod.yml` | `X9_PUBLICENDPOINTS_HOST` | `public-endpoints.host` | `X9_PUBLICENDPOINTS_HOST` | Same. |
 | `docker-compose.prod.yml` | `X9_PUBLICENDPOINTS_BASEPATH` | dropped | — | Always `/pub`. |

@@ -1,5 +1,12 @@
 # Benchmark harness: Java + MongoDB vs Go + PostgreSQL
 
+> **Since 3.0.0 the Java build is retired** ([ADR-0039](../../docs/adr/0039-java-retired-at-3-0-0.md)).
+> The harness runs the Go build alone by default (`SEQUENCE="G G G"`). A comparison with Java still
+> works: put `J` in `SEQUENCE` and the Java turns run its last published image,
+> `materainc/x9-qrcode:java-final` (`JAVA_IMAGE`), pulled rather than built (its source is the git
+> tag `java-final`). The results of both campaigns of record stay in [`results/`](results/), and
+> [BENCHMARK.md](../../BENCHMARK.md) reads them.
+
 One harness that sends the same demand to either build, so the comparison is the same test run
 twice (Story 5.1, plan [§9](../../PLAN-GO-POSTGRES-REWRITE.md#9-benchmark-java--mongodb-vs-go--postgresql--benchmarkmd)).
 The scripts never ask which build is answering. The target is a URL, and the build is chosen by
@@ -14,11 +21,10 @@ an operator would run them. Signing and verification dominate the cost of a paym
 | **S2** | The full payment cycle per iteration: create → signed payload fetch → pre-commit → post-commit (Solana, with a `transactionId`) → status-update `PAID`. Same profile | [`k6/s2-cycle.js`](k6/s2-cycle.js) |
 | **S7** | Footprint: image size, cold start to `/actuator/health` UP, resting memory after 5 idle minutes | [`footprint.sh`](footprint.sh) |
 
-Today only Java serves the API. The Go build answers `/actuator/health` (Epic 7), so **S7 runs
-against both builds**. S1 and S2 run against Java only until `GO_SERVES_API=1` (Epics 9–10).
-Until then, each Go turn at S1 or S2 still deploys PostgreSQL, the Liquibase schema and the Go
-build, waits for them to become healthy, and records `durability.json` and `resources.json` beside
-a `NOT-RUN.txt`. That way the Go manifests are exercised on every campaign.
+The Go build serves the API, so every scenario runs against it (`GO_SERVES_API=1`, the default
+since 3.0.0). Before Epics 9–10 it answered only `/actuator/health`: with `GO_SERVES_API=0`, each
+Go turn at S1 or S2 still deploys PostgreSQL, the Liquibase schema and the Go build, waits for them
+to become healthy, and records `durability.json` and `resources.json` beside a `NOT-RUN.txt`.
 
 S1 sends the body of the load script the repository README used to carry (USD on FedNow), with two
 corrections. Today's API refuses `editable: {payerCanEdit: false}` and a FedNow method without a
@@ -60,7 +66,7 @@ others/benchmark/
 | Each build as shipped; the JVM's **2-minute warm-up is excluded** | `JAVA_WARMUP` (default: the `warmup` profile, 2 minutes); recorded in `warmup.json`; `GOMEMLIMIT` = 80% of the limit for Go |
 | Test clock **off** | `X9_TESTING_CLOCKCONTROL=false` in both builds |
 | Images by `git-<sha>` tag and OCI revision; k6 **v2.4.0** | `build-images.sh`; `images.json`, and the pods' image digests in `resources.json` |
-| **3 runs per build, interleaved J-G-J-G-J-G** | `SEQUENCE` (default `J G J G J G`) |
+| **3 runs per build, interleaved J-G-J-G-J-G** | `SEQUENCE` (`J G J G J G` for a comparison; the default since 3.0.0 is `G G G`) |
 
 ## Running a campaign
 
@@ -71,11 +77,11 @@ context `colima-bench`) running Kubernetes on the **docker** runtime, so the ima
 makes in that profile's Docker are the images the cluster runs, and nothing needs loading.
 
 ```bash
-others/benchmark/host.sh check            # tools (Homebrew line printed if any is missing), Java 25, the machine's size
+others/benchmark/host.sh check            # tools (Homebrew line printed if any is missing), the machine's size
 others/benchmark/host.sh up               # 8 vCPU / 10 GiB / 60 GiB disk by default; BENCH_CPUS, BENCH_MEMORY, BENCH_DISK
 eval "$(others/benchmark/host.sh env)"    # DOCKER_HOST, KUBE_CONTEXT, IMAGE_LOADER="", BENCH_VIRTUALISATION
-others/benchmark/build-images.sh
-SEQUENCE="J G J G J G" GO_SERVES_API=1 others/benchmark/collect.sh
+others/benchmark/build-images.sh          # the Go and Liquibase images; `build-images.sh java` pulls java-final
+SEQUENCE="J G J G J G" others/benchmark/collect.sh       # the comparison; omit SEQUENCE for Go alone
 others/benchmark/host.sh down             # stop the VM; `delete` removes it and its disk
 ```
 
@@ -127,9 +133,9 @@ others/benchmark/collect.sh
 ```
 
 `KUBE_CONTEXT` is required and is never defaulted or written into results. The defaults:
-`SEQUENCE="J G J G J G"`, `SCENARIOS="s1 s2 s7"`, `PROFILE=readme`, `JAVA_WARMUP=warmup`,
-`GO_WARMUP=none`, `IDLE_SECONDS=300`, `GO_SERVES_API=0`. Use `SEQUENCE="J J J"` for the Java
-baseline alone (Story 5.2). The rest are documented at the top of [`collect.sh`](collect.sh).
+`SEQUENCE="G G G"`, `SCENARIOS="s1 s2 s7"`, `PROFILE=readme`, `JAVA_WARMUP=warmup`,
+`GO_WARMUP=none`, `IDLE_SECONDS=300`, `GO_SERVES_API=1`. Use `SEQUENCE="J G J G J G"` to compare
+with the java-final image, and `SEQUENCE="J J J"` for the Java baseline alone (Story 5.2). The rest are documented at the top of [`collect.sh`](collect.sh).
 
 **The cluster needs room for all three at once:** app 2 vCPU / 2 GiB, database 2 vCPU / 2 GiB, k6
 2 vCPU / 2 GiB, and two 50 m / 64 MiB sidecars. That is 6 vCPU and about 6.2 GiB of allocatable
@@ -279,7 +285,7 @@ on a warm JVM. `warmup.json` records this.
 **S7 runs on the host's container engine, not in the cluster.** Kubernetes stamps container
 start times to the second, which is too coarse for a Go build that starts in well under one.
 footprint.sh times `docker run` to the first `/actuator/health` UP in milliseconds, the same
-method as `others/scripts/go-image-smoke.sh`. It applies the same cgroup limits as the manifests
+method as `others/scripts/image-smoke.sh`. It applies the same cgroup limits as the manifests
 (`--cpus 2 --memory 2g`) and runs only after the campaign's namespace is gone.
 
 **Never recorded (S5.1-AC6).** The host's name, the kube context's name or server, node names, and

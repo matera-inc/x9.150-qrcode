@@ -247,7 +247,7 @@ re-runs answers 409 "busy" with the current status, never 500.
 `PAYMENT_INITIATED` held by this payer; `ACTION_CONTRADICTS_HASH` when
 `blockchain.action = PAYMENT_INITIATED` carries a hash; `NOT_OFFERED_RAIL` and
 `NOT_OFFERED_CURRENCY` when a post-commit named a rail or currency no payment method
-offers, or a currency offered only on another rail (†). Absent when the payer followed the rules. The Java document keeps only the latest notification; every
+offers, or a currency offered only on another rail (†). Absent when the payer followed the rules. The retired Java build's document kept only the latest notification; every
 hash survives in the event log as its own `payment.sent`, and two hashes for one QR
 Code are the payment system's signal of a duplicate payment.
 
@@ -294,17 +294,15 @@ Trace Number for ACH, and the on-chain transaction hash for Solana.
 
 ## Source references
 
-- States: `x9-qrcode-domain/.../vo/enumerated/QRCodeStatusEnum.java`
-- Transitions: `x9-qrcode-domain/.../entity/QRCodeEntity.java` (`pay`, `cancel`, `reactivate`, `initiatePayment`, and the payer-notification block: `admitPreCommit`, `acceptPreCommit`, `registerPostCommit`, `releaseByPayer`)
-- Guards: `x9-qrcode-domain/.../entity/validator/QRCodeEntityValidator.java`
-- Notification dispatch: `x9-qrcode-application/.../usecase/paymentnotification/PaymentNotificationQRCodeUseCase.java`; the phase: `PaymentNotificationDataVO.phase`
+- `internal/domain` decides every transition of this page, with one `now` per decision and no
+  database or HTTP code: `EffectiveStatus`, `ETag`, `Create`, `Patch`, `UpdateStatus`, `Notify`
+  (`PreCommit`, `PostCommit`, `Release`), `ReleaseLocation`, and `BuildEvent`, the only code that
+  builds a payment event. Its table test has a case for every row of ADR-0035's map and every cell
+  of ADR-0036's matrix. Following ADR-0024, a QR Code whose `validUntil` has passed gives its
+  location up, whatever its status (the retired Java build did not: BUG-004).
 - Transaction ID field: ANSI X9.150-2026 §2.5
-- Go build: `internal/domain` decides every transition of this page, with one `now` per decision
-  and no database or HTTP code: `EffectiveStatus`, `ETag`, `Create`, `Patch`, `UpdateStatus`,
-  `Notify` (`PreCommit`, `PostCommit`, `Release`), `ReleaseLocation`, and `BuildEvent`, the only
-  code that builds a payment event. Its table test has a case for every row of ADR-0035's map and
-  every cell of ADR-0036's matrix. One difference from Java, following ADR-0024: a QR Code whose
-  `validUntil` has passed gives its location up, whatever its status (BUG-004).
+- The retired Java build's classes (`QRCodeEntity`, `QRCodeEntityValidator`,
+  `PaymentNotificationQRCodeUseCase`) are in the git history under the tag `java-final`.
 
 ---
 

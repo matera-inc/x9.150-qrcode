@@ -11,6 +11,11 @@ because the Java build has no production users. [CONFIGURATION-FROM-JAVA.md](../
 the Java build to its Go key and variable instead, and the start-up refusals name that document.
 Everything else here stands.
 
+**Amended 2026-11-17 by [0039](0039-java-retired-at-3-0-0.md):** at 3.0.0 the Java build is removed from `main`
+(not frozen under `legacy/java/`), the chart renders the Go build only (no `runtime: java`), and
+`docker-compose.yml` is the Go stack. `java-final` is both the last Java image and the git tag of the
+last commit that holds the Java build. `:latest` moves to the Go build with 3.0.0.
+
 ## Context
 
 The product reaches most people as `materainc/x9-qrcode` on Docker Hub. The owner's intent is that

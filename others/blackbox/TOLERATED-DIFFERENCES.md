@@ -1,5 +1,13 @@
 # Tolerated differences between the Java and the Go builds
 
+> **Historical record.** The differential run ended with the Java build's retirement at 3.0.0
+> ([ADR-0039](../../docs/adr/0039-java-retired-at-3-0-0.md)): there is no second build on `main`
+> to compare, and no CI job reads this file any more. It is kept, unchanged below, as the record of
+> how equivalence was proved and why each remaining difference was accepted. Some **Keys** name
+> tests that existed only in the Java build; they are in git history under the tag `java-final`.
+> The comparison can still be re-run against the `materainc/x9-qrcode:java-final` image (see the
+> suite's [README.md](README.md), "Differential run").
+
 ADR-0028 proves the two builds equivalent by a **differential run**: the black-box suite runs against
 each, every exchange is recorded, and `differential.py` compares the normalised answers. **A
 difference not on this list fails the build.** This file is that list (Story 11.2): every place the
@@ -27,7 +35,7 @@ builds were found to differ and one of them was wrong, the build was fixed inste
   (`X9-SIG-159`).
 
 **Entry format.** `## N. Title`, then the two answers, the reason and a `**Keys:**` line naming at
-least one test (`docs/check/check_rule_coverage.py` checks that each key exists), then one fenced
+least one test (until 3.0.0, `docs/check/check_rule_coverage.py` checked that each key exists), then one fenced
 `json` block, the matcher (its members are described in `differential.py`'s docstring):
 
 - `differences`: selectors matching rows of the report by `test` (a regular expression searched in

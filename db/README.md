@@ -1,8 +1,8 @@
 # The X9.150 database, for a DBA
 
-This directory is the PostgreSQL schema of the Go build of X9.150. That build is planned, not
-shipped ([ADR-0022](../docs/adr/0022-rewrite-in-go-as-a-standalone-product.md)); the Java build
-still runs on MongoDB. The schema is written so that a bank can host it **in one schema of a
+This directory is the PostgreSQL schema of X9.150, the Go build that replaced the Java build on
+MongoDB at 3.0.0 ([ADR-0022](../docs/adr/0022-rewrite-in-go-as-a-standalone-product.md),
+[ADR-0039](../docs/adr/0039-java-retired-at-3-0-0.md)). The schema is written so that a bank can host it **in one schema of a
 PostgreSQL it already runs** ([ADR-0032](../docs/adr/0032-x9150-can-live-in-the-banks-own-database.md)).
 You can review all of it, and run it yourself, before anything connects.
 
@@ -171,10 +171,10 @@ docker compose -f db/docker-compose.yml down -v                # throw it away
 ```
 
 The changelog is copied into the Liquibase image, not mounted, so rebuild (`--build`) after editing
-it. To run the service on it as well, use `docker-compose.go.yml` at the repository root
-(`make go-up`): the same three steps, then the Go build as the application role. On Kubernetes, the
-Helm chart's `values-go.yaml` runs the same Liquibase as an init container, against your database
-([others/helm/x9-qrcode/README.md](../others/helm/x9-qrcode/README.md#the-go-build-values-goyaml)). The full CI check runs the same way on a laptop, on any image:
+it. To run the service on it as well, use `docker-compose.yml` at the repository root
+(`make up`): the same three steps, then the service as the application role. On Kubernetes, the
+Helm chart runs the same Liquibase as an init container, against your database
+([others/helm/x9-qrcode/README.md](../others/helm/x9-qrcode/README.md)). The full CI check runs the same way on a laptop, on any image:
 
 ```bash
 db/ci/apply-and-check.sh postgres:16 db-out

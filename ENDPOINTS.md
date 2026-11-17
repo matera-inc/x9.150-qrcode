@@ -87,7 +87,7 @@ x9:
 > both. `others/demo/two-instance-payment-cycle.sh` runs one of each against the other.
 
 The authoritative contract is the OpenAPI spec:
-[`x9-qrcode-infrastructure/src/main/resources/apis/openapi.yaml`](x9-qrcode-infrastructure/src/main/resources/apis/openapi.yaml).
+[`api/openapi.yaml`](api/openapi.yaml).
 
 `/test/clock` is deliberately **not** on this port and not in the contract. It exists only in a test
 deployment, on a listener of its own — see "Moving the clock" in [RUNNING.md](RUNNING.md).
@@ -123,7 +123,7 @@ curl "https://x9.example.com/pub/api/v1/events?after=&limit=100&wait=25"
 |---|---|
 | `after` | The previous response's `nextCursor`. Omit or send empty to start at the beginning of retained history. |
 | `limit` | 1–500, default 100. |
-| `wait` | Seconds to hold the request open when there is nothing to return (0–30, default 0). An idle consumer costs one parked request instead of a poll loop; virtual threads make the hold nearly free. |
+| `wait` | Seconds to hold the request open when there is nothing to return (0–30, default 0). An idle consumer costs one parked request instead of a poll loop; a held request is one goroutine, nearly free. |
 
 **The five rules that decide whether your integration is correct:**
 
@@ -175,55 +175,50 @@ The loc URL is packed into the QR's EMV tag `26`. The EMV Merchant Account Infor
 caps the whole URL at `99 − 4 − 4 − len("org.x9")` = **85 characters**. The path and shortened id
 consume `/pub/api/v1/loc/` (16) + a 32-char id = 48, so:
 
-> **The host must be ≤ 37 characters.** Longer hosts are rejected at startup (`X9Properties`
-> validates the payload domain length).
+> **The host must be ≤ 37 characters.** Longer hosts are rejected at startup, naming
+> `X9_PUBLICENDPOINTS_HOST`.
 
 ## Configuring at launch (Docker Compose)
 
-Every setting is a Spring property, and Spring maps environment variables to properties via
-**relaxed binding** — so you can define the URLs (and anything else) at launch without editing YAML.
+Every setting is a key of one YAML file
+([`cmd/x9-qrcode/config.example.yaml`](cmd/x9-qrcode/config.example.yaml)) with an environment
+variable beside it, and the variable wins over the file — so you can define the URLs (and anything
+else) at launch without editing any file.
 
-> **Relaxed-binding rule:** uppercase the property and replace `.` / `-` with `_`, dropping the
-> dash inside kebab segments — `x9.public-endpoints.host` → `X9_PUBLICENDPOINTS_HOST`.
-
-`docker-compose.prod.yml` is built for this: all configuration is environment variables with
-sensible defaults. Override them three ways:
+[`docker-compose.yml`](docker-compose.yml) passes its settings as environment variables with
+defaults. Override them three ways:
 
 1. **`.env` file** (Compose auto-loads it) — copy the sample and edit:
    ```bash
    cp .env.sample .env          # then set X9_PUBLICENDPOINTS_HOST=x9.mydomain.dev, etc.
-   docker compose -f docker-compose.prod.yml up -d
+   make up
    ```
 2. **Shell, one launch:**
    ```bash
-   X9_PUBLICENDPOINTS_HOST=x9.mydomain.dev \
-     docker compose -f docker-compose.prod.yml up -d
+   X9_PUBLICENDPOINTS_HOST=x9.mydomain.dev make up
    ```
-3. **Edit the `environment:` block** in the compose file directly.
+3. **Edit the `environment:` block** of the `x9-qrcode` service in the compose file directly.
 
 Common knobs:
 
-| Env var | Property | Default |
-|---------|----------|---------|
-| `X9_PUBLICENDPOINTS_HOST` | `x9.public-endpoints.host` | `x9-150.example.com` |
-| `X9_PUBLICENDPOINTS_BASEPATH` | `x9.public-endpoints.base-path` | `/pub` |
-| `SPRING_DATA_MONGODB_HOST` | `spring.data.mongodb.host` | `mongo` (compose service) |
-| `X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION` | `x9.certificate.private-keystore.location` | bundled sample keystore |
-| `X9_CERTIFICATE_TRUSTSTORE_LOCATION` | `x9.certificate.truststore.location` | bundled sample truststore |
+| Env var | Key | Default |
+|---------|-----|---------|
+| `X9_PUBLICENDPOINTS_HOST` | `public-endpoints.host` | `x9-150.example.com` |
+| `X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION` | `certificate.private-keystore.location` | the bundled demo key (PEM or PKCS#12 file) |
+| `X9_CERTIFICATE_TRUSTSTORE_LOCATION` | `certificate.truststore.location` | the bundled demo truststore |
+| `DATABASE_HOST`, `DATABASE_NAME`, `DATABASE_USER`, `DATABASE_PASSWORD` (or `_FILE`), `DATABASE_SSLMODE` | `database.*` | none: required (Compose sets them for its own PostgreSQL) |
 
-The local `docker-compose.yml` path instead mounts `application-default.yml` as the config file,
-but you can still override any single value by adding an env var to its `environment:` block —
-env vars win over the mounted file (the public host is already wired this way).
+The public paths are fixed by the OpenAPI contract (`/pub/...`); only the host is configurable.
 
 ## Talking to another deployment (HTTPS required)
 
 A payer normalises any host that is not its own to **`https`** before fetching a payload, a JWK
 set or a certificate chain. A URL is its own only when the URL's host, port included, is
-`x9.public-endpoints.host` (case-insensitive): a URL that merely mentions that host, in its query,
+`X9_PUBLICENDPOINTS_HOST` (case-insensitive): a URL that merely mentions that host, in its query,
 its path or its user information, or as part of a longer host name, is another host's, and user
 information is dropped. So two instances cannot complete a payment over plain HTTP — see
 [`others/demo/README.md`](others/demo/README.md), which explains the rule, gives three ways to
-satisfy it (Spring's own TLS, an nginx in front, or a tunnel), and ships a script that plays a whole
+satisfy it (an nginx or other TLS proxy in front, or a tunnel), and ships a script that plays a whole
 payment between two instances.
 
 ## Testing a real scan: computer → phone on 5G (Cloudflare Tunnel)
@@ -248,8 +243,7 @@ Point the app's advertised host at the tunnel hostname so generated QR codes emb
 
 ```bash
 # no scheme, must be <= 37 chars
-X9_PUBLICENDPOINTS_HOST=random-words.trycloudflare.com \
-  mvn -pl x9-qrcode-infrastructure spring-boot:run
+X9_PUBLICENDPOINTS_HOST=x9.mydomain.dev make up     # or the same variable with make run-local
 ```
 
 Now create a QR code. Its embedded loc URL — `…trycloudflare.com/pub/api/v1/loc/{id}` — resolves
@@ -261,16 +255,16 @@ verification works end to end.
 - **An anonymous quick tunnel will not fit.** `cloudflared tunnel --url` invents a four-word name,
   and those run 40–50 characters before the domain is counted — a real one, measured:
   `acne-consists-positions-logs.trycloudflare.com` is 46 against a budget of 37. The app refuses to
-  start rather than emit a QR Code that cannot be scanned. There is no configuration around it:
-  `payload-path` shortens only the *advertised* URL, while the path actually served is fixed by the
-  OpenAPI contract, so a shorter one just 404s. Use a **named tunnel with your own domain** (e.g.
+  start rather than emit a QR Code that cannot be scanned. There is no configuration around it: the
+  path is fixed by the OpenAPI contract. Use a **named tunnel with your own domain** (e.g.
   `x9.mydomain.dev`), which also survives a restart.
 - A named tunnel takes its ingress from Cloudflare when the account has a remote configuration for
   it, and then **ignores `--url` and any local config file**. If the hostname 530s while the
   connector reports healthy connections, check `cloudflared`'s log for `Updated to new
   configuration` — that is the dashboard's ingress overriding yours.
 - The bundled keystore is **self-signed**, so a strict payment client may not trust the signature
-  chain — fine for scan/plumbing tests; supply real X9-issued keys via `secrets/` for full trust.
+  chain — fine for scan/plumbing tests; supply real X9-issued keys (PEM or PKCS#12, through
+  `X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION` and `X9_CERTIFICATE_TRUSTSTORE_LOCATION`) for full trust.
 - Any equivalent public-HTTPS tool works the same way: `ngrok http 8080`, Tailscale Funnel, etc.
   — just keep the resulting hostname ≤ 37 chars.
 

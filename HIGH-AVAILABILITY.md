@@ -2,7 +2,7 @@
 
 This document explains how High Availability (HA) can be achieved for X9 QRCode and how HA relates to the production-use limits in the [Matera Source License v1.0](LICENSE.md) (Annex A).
 
-> **Short answer:** Yes — you can run X9 QRCode in a highly available topology **without breaching the license**. MongoDB replica sets (database HA) are not restricted at all, and the license explicitly permits **standby / fast-failover** copies of the application. The only thing the license forbids is running **two application instances that serve production traffic at the same time** (active-active).
+> **Short answer:** Yes — you can run X9 QRCode in a highly available topology **without breaching the license**. PostgreSQL replication and failover (database HA) are not restricted at all, and the license explicitly permits **standby / fast-failover** copies of the application. The only thing the license forbids is running **two application instances that serve production traffic at the same time** (active-active).
 
 ---
 
@@ -12,7 +12,7 @@ HA for this system is achieved at two separate tiers. They are governed very dif
 
 | Tier | Component | HA mechanism | License treatment |
 |------|-----------|--------------|-------------------|
-| **Database** | MongoDB | Replica set (multiple `mongod` nodes) | **Not restricted.** MongoDB is third-party software (SSPL), not the "Licensed Work". |
+| **Database** | PostgreSQL | A primary with streaming-replication standbys and automatic failover | **Not restricted.** PostgreSQL is third-party software (the PostgreSQL License), not the "Licensed Work". |
 | **Application** | X9 QRCode | Active-passive failover (1 active + standby installs) | **Permitted** by Annex A §1(a), as long as only one instance actively serves traffic. |
 
 ### Why "Licensed Work" matters
@@ -20,33 +20,41 @@ The license defines:
 
 > *"Licensed Work" means the software, documentation, and any other materials made available under this License.*
 
-MongoDB is **not** made available under the Matera Source License — it is an independent datastore under its own license (SSPL). Therefore the production-use limits in Annex A apply to the **X9 QRCode application**, **not** to MongoDB. You may run a MongoDB replica set of any size.
+PostgreSQL is **not** made available under the Matera Source License — it is an independent database under its own license (the PostgreSQL License). Therefore the production-use limits in Annex A apply to the **X9 QRCode application**, **not** to PostgreSQL. You may run as many PostgreSQL replicas as you like.
 
 ---
 
-## 2. Database HA — MongoDB replica set
+## 2. Database HA — PostgreSQL primary and standbys
 
-A **replica set** is a group of MongoDB servers holding the same data, kept continuously in sync:
+The service connects to **one PostgreSQL primary** and does all its reads and writes there (two
+pools, both on the primary; see [db/README.md](db/README.md)). Database HA is the usual PostgreSQL
+arrangement, run by you or your provider:
 
-- One **PRIMARY** accepts all writes.
-- One or more **SECONDARY** nodes replicate the primary's operation log (**oplog**) in real time, so they are always up to date — not just "updated at failover time".
-- If the primary fails, the surviving members hold an **election** and promote an already-in-sync secondary to primary automatically. This is the failover.
+- One **primary** accepts all writes.
+- One or more **standbys** replay the primary's write-ahead log (**WAL**) by streaming replication,
+  so they are continuously up to date — not just "updated at failover time". Synchronous
+  replication makes a commit wait for a standby, so an acknowledged write survives losing the
+  primary.
+- On failure, a failover manager (a Kubernetes operator, or a managed service) promotes a
+  standby and moves the address the service connects to.
 
 ```
               writes
                 │
-            ┌───▼─────┐   oplog (continuous)   ┌───────────┐
-            │ PRIMARY │ ─────────────────────► │ SECONDARY │
-            └───┬─────┘                        └───────────┘
-                │             oplog (continuous)┌───────────┐
-                └─────────────────────────────► │ SECONDARY │
-                                                └───────────┘
-   primary fails ─► survivors elect a new primary ─► no data loss of acknowledged writes
+            ┌───▼─────┐   WAL (streaming)      ┌─────────┐
+            │ PRIMARY │ ─────────────────────► │ STANDBY │
+            └───┬─────┘                        └─────────┘
+                │             WAL (streaming)  ┌─────────┐
+                └────────────────────────────► │ STANDBY │
+                                               └─────────┘
+   primary fails ─► a standby is promoted ─► the service reconnects to the same address
 ```
 
-**Recommended production topology:** a 3-member replica set (1 primary + 2 secondaries) across separate failure domains (nodes / availability zones). Three members give a voting majority so an election can succeed when one node is lost.
-
-> Note: X9 QRCode already **requires** a replica set even for a single node, because it uses multi-document transactions (`MongoTransactionManager`), and MongoDB only allows transactions on a replica set. Local/dev setups use a **single-node** replica set (transactions enabled, no redundancy). Production simply grows that same replica set to 3 members for real HA — **no application code or configuration change** is needed, because the app already connects with `?replicaSet=...`.
+The service needs nothing special for this. While the database is unreachable its readiness is
+DOWN (503) and it keeps retrying; once the address answers again, it re-checks the schema and
+serves. Point `DATABASE_HOST` at the address that follows the primary (a service name, a virtual
+IP or the provider's endpoint), never at one node. A read-only standby is of no use to it: every
+query goes to the primary.
 
 This database-tier HA is fully compatible with the license and is not counted against any Annex A limit.
 
@@ -66,9 +74,9 @@ Interpretation for HA:
 ### Kubernetes / Helm implications
 The Helm chart defaults to a single instance, which is the compliant configuration:
 
-- `replicaCount: 1` — keep this at **1** for licensed production use.
-- `autoscaling.enabled: false` — leave disabled. Scaling to `maxReplicas > 1` would create multiple **actively serving** pods (active-active) and breach §1(a).
-- Failover is provided by Kubernetes itself: if the single pod dies, the Deployment reschedules it (a new active instance replaces the failed one — still only one active at a time). Rolling updates briefly overlap old/new pods only during deployment, which is standard operational churn rather than a sustained active-active topology.
+- **One replica, always.** The chart renders `replicas: 1` and refuses to render more, or a HorizontalPodAutoscaler, so it cannot be scaled into an active-active topology by mistake.
+- **Strategy `Recreate`.** An update stops the old pod before starting the new one, so two instances never serve at once, not even during a rollout.
+- Failover is provided by Kubernetes itself: if the single pod dies, the Deployment reschedules it (a new active instance replaces the failed one — still only one active at a time).
 
 For faster failover than a pod reschedule, a warm standby (a second install kept stopped/idle, or in another cluster) can be promoted on failure — still one active instance at any moment.
 
@@ -81,16 +89,16 @@ No. The remaining production limits are **global to the deployment**, independen
 - **§1(b)** — at most **2** payment rails/blockchains combined per 24-hour period (same set for all QR codes in that period).
 - **§1(c)** — at most **100,000** paid QR codes per calendar month.
 
-Running standby copies or a larger MongoDB replica set does **not** raise these ceilings, and (because standbys don't serve traffic) does not consume them either. They are measured across the single active production system.
+Running standby copies or more PostgreSQL replicas does **not** raise these ceilings, and (because standbys don't serve traffic) does not consume them either. They are measured across the single active production system.
 
 ---
 
 ## 5. Summary
 
-- **MongoDB replica set → yes, use it freely.** It is the recommended way to get database redundancy and automatic failover, and it is outside the license's scope entirely.
+- **PostgreSQL replication and failover → yes, use them freely.** They are the recommended way to get database redundancy and automatic failover, and they are outside the license's scope entirely.
 - **Application → active-passive only.** One serving instance plus standby/failover copies is permitted; two-or-more simultaneously serving instances is not.
-- **Failover is continuous-sync, not copy-on-failure.** Secondaries are always current; on failure an up-to-date node takes over.
-- **Keep `replicaCount: 1` and autoscaling disabled** in Helm for licensed production use.
+- **Failover is continuous-sync, not copy-on-failure.** Standbys are always current; on failure an up-to-date node takes over.
+- **One replica, no autoscaling**: the Helm chart enforces both.
 
 ---
 

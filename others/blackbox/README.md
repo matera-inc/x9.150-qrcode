@@ -3,10 +3,18 @@
 Systematic coverage of **every way a payment notification can be wrong**, driven through the
 published API of a running deployment. Nothing here imports the service.
 
-This complements the JUnit tests rather than replacing them. JUnit proves a rule in isolation and
-fast; this proves the rule survives serialisation, validation *order*, HTTP status mapping and the
-signature layer — which is where several of this repo's real defects lived, each of them invisible
-to a unit test that was passing at the time.
+This complements the Go tests rather than replacing them. A Go test proves a rule in isolation
+and fast; this proves the rule survives serialisation, validation *order*, HTTP status mapping and
+the signature layer — which is where several of this repo's real defects lived, each of them
+invisible to a unit test that was passing at the time.
+
+> **The Java build was retired at 3.0.0** ([ADR-0039](../../docs/adr/0039-java-retired-at-3-0-0.md)).
+> The suite was written against Java first, then ran against both builds, and the differential run
+> (below) diffed their answers on every pull request. That run ended with Java's retirement: the
+> suite now runs against the Go build only. `differential.py`, the recording code and
+> [TOLERATED-DIFFERENCES.md](TOLERATED-DIFFERENCES.md) stay as the record of how equivalence was
+> proved, and the comparison can still be re-run against the `materainc/x9-qrcode:java-final`
+> image with the suite of the git tag `java-final`, if a doubt ever needs it.
 
 ## Running it
 
@@ -19,8 +27,7 @@ X9_BASE_URL=http://localhost:8070 uv run others/blackbox/run.py -k signatures
 Two pinned dependencies (`requirements.txt`, and the same pins in `run.py`'s header): pytest,
 and `cryptography`, because the suite signs as independent payers and the standard library cannot
 make an RSA or EC signature (ADR-0034). HTTP stays on the standard library. `make blackbox-venv`
-builds `.blackbox-venv`; `requirements-db-mongo.txt` and `requirements-db-postgres.txt` add the
-optional database inspectors.
+builds `.blackbox-venv`; `requirements-db-postgres.txt` adds the optional database inspector.
 
 If nothing answers at `X9_BASE_URL`, the suite **skips with a reason** rather than failing —
 but the publish gate treats a suite that could not run as a refusal to publish.
@@ -33,59 +40,35 @@ X9_IMAGE=materainc/x9-qrcode:git-<sha> ./others/blackbox/deployment/run-against-
 ```
 
 `run-against-image.sh` runs the whole suite in containers (`deployment/docker-compose.yml`):
-MongoDB as a replica set; the image under test with the clock on and the black-box truststore
-copied in; and the suite in the service's network namespace, so the service reaches the suite's
-test payee and CRL server on `127.0.0.1`, and the suite reaches the clock, which never leaves the
-service's loopback. Nothing is bind-mounted, so it works on Colima. It sets `X9_REQUIRE_ALL=1` and
-`X9_DATABASE_URL`, so every test runs: a missing capability, a service that never comes up, or
-zero tests collected fails the run.
+PostgreSQL 16 on tmpfs; `db/local/bootstrap.sql` and then `db/changelog/` applied by the Liquibase
+one-shot as the migration role, before the service starts; the image under test connected as the
+application role, with the test clock on and the black-box truststore (`x9-blackbox-truststore.p12`)
+copied in; no public host, so it runs on its default `x9-150.example.com`, which the golden EMV set
+covers; and the suite in the service's network namespace, reading the database as the read-only
+role, so the service reaches the suite's test payee and CRL server on `127.0.0.1`, and the suite
+reaches the clock, which never leaves the service's loopback. Nothing is bind-mounted, so it works
+on Colima. It sets `X9_REQUIRE_ALL=1` and `X9_DATABASE_URL`, so every test runs: a missing
+capability, a service that never comes up, or zero tests collected fails the run. It refuses an
+image that is not the Go build (whose entrypoint is `/x9-qrcode`). `X9_PLATFORM=linux/amd64` (or
+`linux/arm64`) runs the service as that platform, the database and the suite staying native: the
+publish gate checks each architecture this way.
 
-Runs never share anything, so two can go at once (for example the Java image and the Go image
-side by side). Each run takes its own compose project name and tags its two images with it:
-`X9_BLACKBOX_PROJECT` if you set it (lowercase letters, digits, `-`, `_`), otherwise
-`x9-blackbox-` plus a random suffix, which the script prints first. On exit it tears down only
-that project and removes only those two tags; `X9_IMAGE` itself is never touched.
+Runs never share anything, so two can go at once. Each run takes its own compose project name and
+tags its images with it: `X9_BLACKBOX_PROJECT` if you set it (lowercase letters, digits, `-`,
+`_`), otherwise `x9-blackbox-` plus a random suffix, which the script prints first. On exit it
+tears down only that project and removes only those tags; `X9_IMAGE` itself is never touched.
 
-```bash
-X9_IMAGE=x9-qrcode:java ./others/blackbox/deployment/run-against-image.sh &
-X9_IMAGE=x9-qrcode:go   X9_BLACKBOX_PROJECT=x9-blackbox-go ./others/blackbox/deployment/run-against-image.sh
-```
+The verdict is **the whole suite, under `X9_REQUIRE_ALL=1`** (Story 10.8), and any failure fails
+it. `X9-TIME-015` (retention, ADR-0029): the deployment keeps the default retentions (`P30D`,
+`P400D`) and runs the job every 5 s, and `X9_EVENTS_RETENTION_DAYS`, `X9_QRCODE_RETENTION_DAYS`
+and `X9_RETENTION_WAIT_SECONDS` describe that to the suite (`deployment/docker-compose.yml` sets
+the service and the suite from the same values). It moves the test clock past both retentions, so
+the job purges every earlier test's events and short-lived QR Codes: it is marked `runs_last` and
+runs last in every session, whatever the file order (conftest.py; `X9-SUITE-531` checks it).
 
-The `blackbox` job (`.github/workflows/blackbox.yml`) builds the image with buildpacks on every
-pull request and runs exactly this. It is separate from the `build` job. The publish gate
-(`make publish`) still runs `make blackbox` against each architecture it is about to push.
-
-#### Against the Go image (Story 9.1)
-
-```bash
-make go-image && X9_IMAGE=x9-qrcode:go make blackbox-image
-```
-
-The script tells the builds apart by the image's entrypoint (`/x9-qrcode` is the Go binary;
-`X9_BUILD=java|go` overrides it) and runs a Go image on `deployment/docker-compose.go.yml`
-instead: PostgreSQL 16 on tmpfs; `db/local/bootstrap.sql` and then `db/changelog/` applied by the
-Liquibase one-shot as the migration role, before the service starts; the image connected as the
-application role, with the test clock on and the black-box truststore as **PKCS#12**
-(`x9-blackbox-truststore.p12`, the same two certificates: the Go build refuses JKS); no public
-host, so it runs on its default `x9-150.example.com`, which the golden EMV set covers; and the
-suite reading the database as the read-only role. That `postgresql://` URL is what makes the suite
-take the run as the Go build.
-
-Since Story 10.8 the Go run is judged as the Java run is: **the whole suite, under
-`X9_REQUIRE_ALL=1`**, and any failure fails it. The one exception on each side is decided in the
-test itself, never in a list beside it:
-
-- a `java_only` test is skipped on Go, and a `go_only` one on Java, with its reason;
-- `X9-TIME-015` (retention, ADR-0029) is `go_only` and passes on Go since Epic 12: the Go
-  deployment keeps the default retentions (`P30D`, `P400D`) and runs the job every 5 s, and
-  `X9_EVENTS_RETENTION_DAYS`, `X9_QRCODE_RETENTION_DAYS` and `X9_RETENTION_WAIT_SECONDS` describe
-  that to the suite (`docker-compose.go.yml` sets the service and the suite from the same values).
-  It moves the test clock past both retentions, so the job purges every earlier test's events and
-  short-lived QR Codes: it is marked `runs_last` and runs last in every session, on every build,
-  whatever the file order (conftest.py; `X9-SUITE-531` checks it);
-- a behaviour where Go follows the standard or an ADR and Java does not is a `go_only` test, or a
-  strict expected failure on Java (`X9-LOC-421`, BUG-004), listed in ADR-0028's "Known differences
-  between the builds".
+Until 3.0.0 some tests were marked `java_only` or `go_only`, and a few were strict expected
+failures on Java where Java broke the standard or an ADR (`X9-LOC-421`, BUG-004). With one build
+left, the markers are gone: every test runs, and asserts the standard.
 
 The required-keys list that Epics 9 and 10 grew while the Go build was being written
 (`deployment/go-required.txt`) is gone. `required_keys.py` stays as a tool for a partial run: point
@@ -95,14 +78,20 @@ excludes, an entry that matches nothing fails the run). No CI run sets it.
 
 Before any test, the `api` fixture creates a QR Code and has payer A send it one pre-commit: the
 **trust probe**, which turns a deployment that does not trust the test CA into one clear message
-instead of a failure in every payer test. Both builds take payer notifications (the Go build since
-Story 10.4), so the probe runs the same on each.
+instead of a failure in every payer test.
 
-The `blackbox-go` job, beside `blackbox`, builds the image with `make go-image` and runs exactly
-this on every pull request that touches the Go code, `db/` or `others/blackbox/`, and fails it on
-any failure; on any other pull request it passes without running.
+The `blackbox-go` job (`.github/workflows/blackbox.yml`) builds the image with `make image` and runs
+exactly this on every pull request that touches the code, `db/`, `api/` or `others/blackbox/`, and
+fails it on any failure; on any other pull request it passes without running. It is a required
+check. The publish gate (`make publish`) runs the same script against each architecture it is
+about to push.
 
 ### Differential run: what Java answered against what Go answered (Stories 11.1, 11.2)
+
+> **Ended at 3.0.0.** This section is the record of how the two builds were proved equivalent; the
+> `differential` CI job is gone with the Java build. To re-run the comparison, check out the tag
+> `java-final` (its `run-against-image.sh` still runs a Java image, on MongoDB) and record against
+> `materainc/x9-qrcode:java-final` and a Go image, as below.
 
 ADR-0028 proves the two builds equivalent by a diff, not a claim: the same suite against each, the
 answers recorded, normalised and compared.
@@ -158,11 +147,9 @@ its matcher was mistyped). It exits 2 on a list it cannot read, naming the entry
 `"status": "pending"` is a difference the owner has not ruled on: it is tolerated, so that the run
 is not red on it, and every report prints it under **PENDING, NEEDS THE OWNER** until it is decided.
 
-In CI the `blackbox` and `blackbox-go` jobs record, upload their recordings as the artifacts
-`recording-java` and `recording-go`, and the `differential` job diffs them and uploads
-`differences.json`. When `blackbox-go` found nothing to run (a pull request that touches neither
-build, `db/` nor the suite: a Java-only change does run it), there is no Go recording, and
-`differential` says so and passes.
+Until 3.0.0, in CI, the `blackbox` and `blackbox-go` jobs recorded and uploaded their recordings as
+the artifacts `recording-java` and `recording-go`, and the `differential` job diffed them and
+uploaded `differences.json`.
 
 #### Reading a failing differential run
 
@@ -209,8 +196,10 @@ Append to TOLERATED-DIFFERENCES.md, numbered after the last one (numbers are nev
 ```
 ````
 
-- **Keys** must be tests that exist (`docs/check/check_rule_coverage.py` checks every key the file
-  names). A Go test is keyed by the first words of its doc comment (`// X9-SIG-534 (...): ...`).
+- **Keys** name the tests that show the difference. A Go test is keyed by the first words of its
+  doc comment (`// X9-SIG-534 (...): ...`). Since 3.0.0 the file is a historical record and some
+  of its keys named tests that existed only in the Java build, so `check_rule_coverage.py` no
+  longer checks them.
 - A selector names its `test` (a regular expression searched in the pytest node id) and as little
   else as it needs, as narrowly as it can: `request` and `field` are regular expressions the whole
   value must match; `java` and `go` are the normalised values exactly (`"<absent>"` for a member one
@@ -228,19 +217,19 @@ payers, A (RSA, `PS512`) and B (EC, `ES256`), are issued at run time by the repo
 **test CA** (`x9-test-ca.p12`, non-production, its key is public), along with a revoked payer and
 one from a CA nobody trusts. So the deployment must:
 
-- **trust the test CA.** Start it with `others/blackbox/deployment/x9-blackbox-truststore.jks`,
+- **trust the test CA.** Start it with `others/blackbox/deployment/x9-blackbox-truststore.p12`,
   which holds the test CA and the shipped demo certificate (so the deployment, still signing with
   the demo key, can verify itself when its decoder fetches its own payloads):
 
   ```bash
-  X9_CERTIFICATE_TRUSTSTORE_LOCATION=file:$PWD/others/blackbox/deployment/x9-blackbox-truststore.jks
+  X9_CERTIFICATE_TRUSTSTORE_LOCATION=$PWD/others/blackbox/deployment/x9-blackbox-truststore.p12
   X9_CERTIFICATE_TRUSTSTORE_PASSWORD=x9test123
-  X9_CERTIFICATE_TRUSTSTORE_ALIAS=x9-test-ca
+  X9_CERTIFICATE_TRUSTSTORE_TYPE=PKCS12
   ```
 
-  The Go build refuses JKS: give it `x9-blackbox-truststore.p12`, the same two certificates as
-  PKCS#12 (same password, `X9_CERTIFICATE_TRUSTSTORE_TYPE=PKCS12`). `build-truststore.sh` writes
-  both.
+  `build-truststore.sh` writes it, and the same two certificates as JKS
+  (`x9-blackbox-truststore.jks`), which only the golden export uses, against the `java-final`
+  image: the service refuses JKS.
 
 - **reach the suite's CRL.** The service checks revocation of every CA-issued certificate, and a
   CRL it cannot fetch is not forgiven: the payer is refused as undeterminable. The suite serves the
@@ -259,12 +248,12 @@ this truststore: it trusts keys anybody can download.
 |---|---|---|
 | `X9_BASE_URL` | `http://localhost:8080` | The deployment's API. |
 | `X9_CLOCK_URL` | `http://127.0.0.1:8099` | Its test-clock listener ([RUNNING.md](../../RUNNING.md), "Moving the clock"). Time tests skip with "test clock not enabled" when nothing answers there. |
-| `X9_DATABASE_URL` | unset | Optional read-only database connection (`mongodb://…` for Java, `postgresql://…` for Go). Database checks skip, with the reason, when it is unset or the driver (`pymongo` / `psycopg`) is not installed. |
+| `X9_DATABASE_URL` | unset | Optional read-only database connection (`postgresql://…`). Database checks skip, with the reason, when it is unset or the driver (`psycopg`) is not installed. |
 | `X9_REQUIRE_ALL` | unset | `1` turns every "capability missing" skip into a failure. CI sets it. |
-| `X9_BUILD` | from `X9_DATABASE_URL`, else `java` | `java` or `go`: `go_only` tests skip on Java and `java_only` tests on Go, with the reason. Not a missing capability, so `X9_REQUIRE_ALL` does not fail them. A mark can also depend on it (`builds.under_test()`): `X9-LOC-421` is a strict expected failure on Java only. |
-| `X9_RECORD_DIR` | unset | Record every exchange of every test there, for the differential run (see "Differential run" above). `run-against-image.sh` copies the recording out of its container to this path. |
+| `X9_RECORD_DIR` | unset | Record every exchange of every test there (see "Differential run" above). `run-against-image.sh` copies the recording out of its container to this path. |
+| `X9_PLATFORM` | unset | `run-against-image.sh` only: run the service as this platform (`linux/amd64`, `linux/arm64`). |
 | `X9_EVENTS_RETENTION_DAYS`, `X9_QRCODE_RETENTION_DAYS` | `30`, `400` | The Go deployment's `events.retention` and `qrcode.retention`, in days, for `X9-TIME-015`. They describe the deployment; they do not configure it. |
-| `X9_RETENTION_WAIT_SECONDS` | `90` | How long `X9-TIME-015` waits for a retention run: the deployment's `retention.interval` plus slack (`docker-compose.go.yml` runs the job every 5 s and sets 30). |
+| `X9_RETENTION_WAIT_SECONDS` | `90` | How long `X9-TIME-015` waits for a retention run: the deployment's `retention.interval` plus slack (`deployment/docker-compose.yml` runs the job every 5 s and sets 30). |
 | `X9_REQUIRED_KEYS` | unset | A list file of your own: only the tests it lists decide the exit code; every other one is informative. For a partial run while porting; no CI run sets it. |
 
 ## Layout
@@ -279,23 +268,22 @@ others/blackbox/
 │   ├── jws.py         independent payers on the test CA, the tamperer, and the answer verifier
 │   ├── peer.py        a test payee that answers this service's outbound notifications right and wrong
 │   ├── ocsp.py        an OCSP responder for the test CA, and payers with any mix of revocation sources
-│   ├── db/            optional read-only inspectors: mongo.py (Java), postgres.py (Go)
+│   ├── db/            the optional read-only inspector: postgres.py
 │   ├── recording.py   with X9_RECORD_DIR, every exchange written down per test (differential run)
 │   ├── samples.py     request bodies a scenario starts from
 │   └── checks.py      assert_refused: refused, and for the right reason
 ├── tests/             the scenarios
 ├── contract.py        a refusal case per maxLength/minLength/pattern/required/maximum/minimum, and the edge of each bound
 ├── contract-known-gaps.yaml   constraints the service does not enforce today, each with its reason
-├── deployment/        the compose files (Java, Go), the truststore as JKS and PKCS#12
+├── deployment/        the compose file, run-against-image.sh, the truststore (PKCS#12; JKS for the golden export)
 ├── golden/            JWS and EMV fixtures exported from Java, with their verdicts (Story 4.7)
 ├── conftest.py        fixtures: deployment, api, events, clock, db, pki, payer_a, payer_b, tamperer
-├── builds.py          which build is under test (java or go), for marks decided at import
 ├── required_keys.py   an optional required-keys list for a partial run (X9_REQUIRED_KEYS)
 ├── recorder.py        tells the recorder which test (or shared fixture) is running
-├── differential.py    the diff of two recordings, Java against Go (Story 11.1), against the list
-├── TOLERATED-DIFFERENCES.md   every difference ADR-0028 accepts, with its matcher (Story 11.2)
+├── differential.py    the diff of two recordings, Java against Go (Story 11.1; ended at 3.0.0)
+├── TOLERATED-DIFFERENCES.md   every difference ADR-0028 accepted, with its matcher (Story 11.2; historical)
 ├── run.py             `uv run` entry point (PEP 723)
-└── pytest.ini         markers: serial, java_only, go_only
+└── pytest.ini         markers: serial, runs_last
 ```
 
 Tests read like scenarios: `api.notify(qr, amount=BILL + 1)`, `events.for_qr(qr)`,
@@ -332,12 +320,12 @@ marks.
 | Currency & rail | a currency not offered, a destination address never published, blockchain data on a bank rail |
 | Lifecycle | second pre-payment, payment on a CANCELLED code, post-payment with no pre-payment (reserves, flagged), and a refused notification leaving the QR Code ACTIVE |
 | **A payee's answers** (`test_payee_answers.py`) | the service notifies the test payee (`x9client.peer`), which captures the exact JWS and answers in each of the 17 ways of Story 3.5 (signed yes, wrong or missing `correlationId`, a replayed yes, empty, unsigned, not a JWS, altered, untrusted, revoked, expired or future `iat`, `alg: none`, unknown `crit`, a signed status that differs from the HTTP one, a plain or signed 400, no answer); each is reported as `signature` VERIFIED / ABSENT / INVALID with its fixed `signatureProblem`, and changes nothing here. Every tamperer defect is named by its code |
-| **The transition map** (`test_transition_map.py`) | one test per row of ADR-0035's map, keyed `X9-MAP-NNN` (the row-to-test table is in [the ADR](../../docs/adr/0035-one-event-builder-and-a-written-transition-map.md#verification-against-java-story-41-2026-11-14)): the resulting status, every event for the QR Code exactly and in order, what did not change, and each event body from the last stored notification, else the first payment method. Cells Java contradicts are strict expected failures carrying the row key. `test_every_map_row_has_a_test` checks the ADR's keys against the tests |
-| **Time edges** (`test_time_edges.py`, serial) | plan §4.2 T1–T12 on the test clock, keyed `X9-TIME-NNN`: each edge refused 1 ms after it (exact: the clock never reads earlier than it was set) and accepted just before it (within 2 s, proved by timing the request; a slow attempt is retried, never read either way); the discount and the late fee to the millisecond, exactly at E and at `dueDate` through `dateForPayment`; `validUntil` of the code and of one method; the reservation's lapse and its cap; JWS freshness; T11 per build (Java's TTL deletion waits real time, ~90 s); T12 retention `go_only`; and the payee's clock deciding when it runs ahead of the payer's |
+| **The transition map** (`test_transition_map.py`) | one test per row of ADR-0035's map, keyed `X9-MAP-NNN` (the row-to-test table is in [the ADR](../../docs/adr/0035-one-event-builder-and-a-written-transition-map.md#verification-against-java-story-41-2026-11-14)): the resulting status, every event for the QR Code exactly and in order, what did not change, and each event body from the last stored notification, else the first payment method. (Cells the Java build contradicted were strict expected failures until 3.0.0; none is left.) `test_every_map_row_has_a_test` checks the ADR's keys against the tests |
+| **Time edges** (`test_time_edges.py`, serial) | plan §4.2 T1–T12 on the test clock, keyed `X9-TIME-NNN`: each edge refused 1 ms after it (exact: the clock never reads earlier than it was set) and accepted just before it (within 2 s, proved by timing the request; a slow attempt is retried, never read either way); the discount and the late fee to the millisecond, exactly at E and at `dueDate` through `dateForPayment`; `validUntil` of the code and of one method; the reservation's lapse and its cap; JWS freshness; T11, an expired QR Code kept and its location releasable; T12 retention, run last; and the payee's clock deciding when it runs ahead of the payer's |
 | **Payment requests** (`test_payment_requests_pinned.py`) | Story 4.2, keys `X9-*-42N`: create refusals beyond `contract.py` (network and currency by name, peg groups, duplicates, `validUntil`/`dueDate` edges, contradictory tip offers, negative and 19-digit amounts, the tag-26 host limit); PATCH (fields never applied, no-ops, adding a currency, status moves keep the revision); the ETag and every `If-Match` form, stale revision and status, a lapsed reservation; location rebind by creditor and holder state, with no event from the release |
 | **Status update and the event stream** (`test_status_update_and_events.py`) | what the map does not reach (Story 4.4): `PAID` after `validUntil` and after a lapsed reservation, `CANCELLED` final through every door, a status-update reservation no payer can adopt (until it lapses), a stale `If-Match` by revision and by status; and the stream: exactly one event per transition in per-QR order, no gap across pages, `hasMore`, `wait` held and bounded, replay from an old cursor safe by `eventId`. Safe beside other tests writing events: each filters by its own QR Codes, and long polls wait past the end of any stream |
 | **Signatures** (`test_signatures.py`) | payers A and B on their own keys; wrong key, untrusted CA, revoked certificate, expired `iat + ttl`, `iat` in the future, missing or unknown `crit`, missing `x5c`, altered payload, `alg: none`, each a signed 401 naming its fixed `signatureProblem` code; B cannot take or release A's reservation; every answer verified against the payee's certificate, echoing the question's `correlationId` (fresh when the question could not be verified); the same signed question twice |
-| **Golden sets** (`test_golden.py`, Story 4.7) | the fixtures in [`golden/`](golden/README.md), exported from Java for the Go build's `internal/jws` and `internal/emv`: 79 JWS files (valid, tampered, expired, future, `crit`, `typ`, `x5c`, revoked, untrusted, RSA and EC, Java's signed yes and refusals) and 24 EMV strings under four hosts, one of 37 characters. Offline: the set is whole, holds no private key, and a second implementation agrees. Against Java: each case, with the clock moved to its `verifyAt`, gets the manifest's verdict and `signatureProblem`; each EMV string is read by Java and re-encoded to the same characters |
+| **Golden sets** (`test_golden.py`, Story 4.7) | the fixtures in [`golden/`](golden/README.md), exported from Java for the Go build's `internal/jws` and `internal/emv`: 79 JWS files (valid, tampered, expired, future, `crit`, `typ`, `x5c`, revoked, untrusted, RSA and EC, Java's signed yes and refusals) and 24 EMV strings under four hosts, one of 37 characters. Offline: the set is whole, holds no private key, and a second implementation agrees. Against the deployment: each case, with the clock moved to its `verifyAt`, gets the manifest's verdict and `signatureProblem`; each EMV string is read and re-encoded to the same characters (the `test_java_*` names are from when the deployment was Java) |
 | **Payers** (`test_payers.py`, Story 4.3) | the payload: unknown location, content not byte-equal, every signature defect, revoked by CRL and by OCSP (`x9client/ocsp.py`), unreachable revocation sources soft-failing, no source at all, an expired method dropped, PAID and CANCELLED. Notifications: rail and currency in another case echoed, no post-commit marks PAID, no `paymentNotification` or `kind: EXTERNAL`, every answer signed, 32 concurrent pre-commits reserving once. The payer-side endpoints: a payee's no reported as 200, an unreachable payee 502, a `transactionId` refused before sending. The module docstring maps the rest of plan groups C, E and H to the tests that already pinned them |
 
 ## One suite: `acceptance.py` was folded in
@@ -361,17 +349,15 @@ signed by independent payers:
 | 10. A patch names every currency, or none of them | `test_patch_currencies.py` |
 | 11. A location handed over goes to somebody | `test_location_handover.py` |
 
-The publish gate (`make publish`) runs `make blackbox` and nothing else.
+The publish gate (`make publish`) runs `run-against-image.sh` against each architecture, after the image smoke test.
 
 ### Against TLS and Kubernetes
 
 - **A self-signed certificate:** `SSL_CERT_FILE=/path/to/cert.pem make blackbox` with
   `X9_BASE_URL=https://host`. Python then trusts that certificate; TLS is still verified.
-- **On Kubernetes, `/actuator/health` may be DOWN for a reason unrelated to X9.150.**
-  `SPRING_CLOUD_KUBERNETES_ENABLED=false` does not unregister the Kubernetes health indicator; it
-  calls the API server without RBAC, fails, and drags the aggregate to DOWN while MongoDB and the
-  liveness and readiness states are UP. The suite falls back to `/actuator/health/readiness`; the
-  flag that removes the indicator is `MANAGEMENT_HEALTH_KUBERNETES_ENABLED=false`.
+- **On Kubernetes, the suite falls back to `/actuator/health/readiness`** when `/actuator/health`
+  is not 200. (The Java build's aggregate could be DOWN for a Kubernetes health indicator unrelated
+  to X9.150; the Go build has none, but the fallback stays.)
 
 ## The contract writes the boring tests
 
