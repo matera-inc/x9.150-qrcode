@@ -21,6 +21,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/matera-inc/x9.150-qrcode/internal/cpu"
 )
 
 // Kind is the header a certificate is fetched for.
@@ -168,6 +170,10 @@ func (f *Fetcher) Fetch(ctx context.Context, kind Kind, rawURL string, x5tS256 *
 		return nil, refuse(CertificateUnavailable, err, "the %s URL %q cannot be used", kind, rawURL)
 	}
 	body, err := f.get(ctx, kind, target)
+	if errors.Is(err, cpu.ErrGaveUp) {
+		// The request ended while it waited for its CPU slot again: it was not refused, it is gone.
+		return nil, fmt.Errorf("pki: the %s certificate was fetched, but not checked: %w", kind, err)
+	}
 	if err != nil {
 		return nil, refuse(CertificateUnavailable, err, "the signer's certificate could not be retrieved from %s", target.Redacted())
 	}
@@ -265,7 +271,18 @@ func (f *Fetcher) target(raw string) (*url.URL, error) {
 	return u, nil
 }
 
+// get fetches with the CPU slot ctx holds given back (cpu.Outside), and takes it again after.
 func (f *Fetcher) get(ctx context.Context, kind Kind, target *url.URL) ([]byte, error) {
+	var body []byte
+	err := cpu.Outside(ctx, func() error {
+		var err error
+		body, err = f.fetch(ctx, kind, target)
+		return err
+	})
+	return body, err
+}
+
+func (f *Fetcher) fetch(ctx context.Context, kind Kind, target *url.URL) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, f.timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)

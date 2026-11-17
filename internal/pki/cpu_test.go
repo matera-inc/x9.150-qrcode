@@ -17,57 +17,9 @@ import (
 	"github.com/matera-inc/x9.150-qrcode/internal/cpu"
 )
 
-// limitedVerifier is the fixture's verifier with a CPU limiter.
-func (f *fixture) limitedVerifier(t *testing.T, slots *cpu.Limiter) *Verifier {
-	t.Helper()
-	v, err := NewVerifier(Config{
-		Truststore: NewStaticTruststore(f.anchor),
-		Clock:      f.clock,
-		IssuerName: f.m.Verifier.IssuerNameMustContain,
-		Revocation: RevocationConfig{DialContext: f.net.dial},
-		CPU:        slots,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return v
-}
-
-// The chain's signatures are checked holding a CPU slot, before anything is fetched: with the only
-// slot taken, a verification whose request ends gives up without having dialled, and the error is
-// the request's, not a refusal of the certificate.
-func TestChainWaitsForACPUSlot(t *testing.T) {
-	f := newFixture(t)
-	slots := cpu.NewLimiter(1)
-	v := f.limitedVerifier(t, slots)
-	chain := f.signer(t, "rsa")
-
-	if err := slots.Acquire(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
-	defer cancel()
-	_, err := v.Verify(ctx, chain, thumb(chain[0]))
-	slots.Release()
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("Verify with the only slot held = %v, want the request's deadline", err)
-	}
-	if p, ok := ProblemOf(err); ok {
-		t.Fatalf("a request that ended is not a refusal of the certificate; got %s", p)
-	}
-	if n := f.net.totalDials(); n != 0 {
-		t.Fatalf("%d dials before the chain was checked", n)
-	}
-
-	if _, err := v.Verify(t.Context(), chain, thumb(chain[0])); err != nil {
-		t.Fatalf("Verify with the slot free: %v", err)
-	}
-}
-
 // slotFree wraps a handler: before answering, it takes the only CPU slot itself and gives it back,
-// so a verifier that fetched while holding it would stall the fetch and be reported.
-func slotFree(t *testing.T, slots *cpu.Limiter, held *atomic.Int64, h http.Handler) http.Handler {
-	t.Helper()
+// so a caller that fetched while holding the slot would stall the fetch and be counted in held.
+func slotFree(slots *cpu.Limiter, held *atomic.Int64, h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
@@ -80,9 +32,24 @@ func slotFree(t *testing.T, slots *cpu.Limiter, held *atomic.Int64, h http.Handl
 	})
 }
 
-// No CPU slot is held while a CRL or an OCSP answer is fetched.
-func TestRevocationFetchesHoldNoSlot(t *testing.T) {
-	for _, tc := range []struct {
+// stillHeld reports whether the only slot of slots is taken: an Acquire that cannot get it in a
+// moment.
+func stillHeld(t *testing.T, slots *cpu.Limiter) bool {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancel()
+	if slots.Acquire(ctx) != nil {
+		return true
+	}
+	slots.Release()
+	return false
+}
+
+func revocationCases() []struct {
+	name  string
+	chain func(t *testing.T, f *fixture) []*x509.Certificate
+} {
+	return []struct {
 		name  string
 		chain func(t *testing.T, f *fixture) []*x509.Certificate
 	}{
@@ -90,26 +57,85 @@ func TestRevocationFetchesHoldNoSlot(t *testing.T) {
 		{"OCSP", func(t *testing.T, f *fixture) []*x509.Certificate {
 			return []*x509.Certificate{f.ca.issue(t, "Payer OCSP slot", "", ocspURL, f.clock.Now().Add(-time.Hour))}
 		}},
-	} {
+	}
+}
+
+// A CRL or an OCSP answer is fetched with the caller's CPU slot given back, and the slot is held
+// again when the check returns.
+func TestRevocationFetchesGiveTheSlotBack(t *testing.T) {
+	for _, tc := range revocationCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t)
 			slots := cpu.NewLimiter(1)
 			var held atomic.Int64
-			crlSrv := server(t, slotFree(t, slots, &held, f.crls))
+			crlSrv := server(t, slotFree(slots, &held, f.crls))
 			f.net.route(crlHostPort, crlSrv)
 			f.net.route("crl.test-ca.example:80", crlSrv)
-			f.net.route("ocsp.test-ca.example:80", server(t, slotFree(t, slots, &held, f.ocsp)))
-			v := f.limitedVerifier(t, slots)
+			f.net.route("ocsp.test-ca.example:80", server(t, slotFree(slots, &held, f.ocsp)))
 
+			ctx, release, err := slots.Hold(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer release()
 			chain := tc.chain(t, f)
-			if _, err := v.Verify(t.Context(), chain, thumb(chain[0])); err != nil {
+			if _, err := f.verifier.Verify(ctx, chain, thumb(chain[0])); err != nil {
 				t.Fatal(err)
 			}
 			if f.net.totalDials() == 0 {
 				t.Fatal("nothing was fetched")
 			}
 			if n := held.Load(); n != 0 {
-				t.Fatalf("%d fetches ran while the verifier held the CPU slot", n)
+				t.Fatalf("%d fetches ran while the caller held the CPU slot", n)
+			}
+			if !stillHeld(t, slots) {
+				t.Fatal("the slot was not taken again after the fetch")
+			}
+		})
+	}
+}
+
+// A request that ends while it waits to take its slot again after a CRL or an OCSP fetch is
+// refused (FAILED, never forgiven as a soft failure) with ErrGaveUp, and holds no slot.
+func TestRevocationGivesUpWhenTheSlotCannotBeRetaken(t *testing.T) {
+	for _, tc := range revocationCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			slots := cpu.NewLimiter(1)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			// The source answers after another request took the slot, and this one ended.
+			var taken atomic.Bool
+			takeAndEnd := func(h http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if err := slots.Acquire(r.Context()); err == nil {
+						taken.Store(true)
+					}
+					cancel()
+					h.ServeHTTP(w, r)
+				})
+			}
+			crlSrv := server(t, takeAndEnd(f.crls))
+			f.net.route(crlHostPort, crlSrv)
+			f.net.route("crl.test-ca.example:80", crlSrv)
+			f.net.route("ocsp.test-ca.example:80", server(t, takeAndEnd(f.ocsp)))
+
+			held, release, err := slots.Hold(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			chain := tc.chain(t, f)
+			_, err = f.verifier.Verify(held, chain, thumb(chain[0]))
+			release()
+			if !taken.Load() {
+				t.Fatal("the source was not asked")
+			}
+			if err == nil || !errors.Is(err, cpu.ErrGaveUp) {
+				t.Fatalf("Verify = %v, want a refusal for ErrGaveUp", err)
+			}
+			slots.Release() // the other request's
+			if stillHeld(t, slots) {
+				t.Fatal("a slot is still held")
 			}
 		})
 	}

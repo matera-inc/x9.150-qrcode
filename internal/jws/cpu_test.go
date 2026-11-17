@@ -8,8 +8,12 @@ package jws
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -17,8 +21,8 @@ import (
 	"github.com/matera-inc/x9.150-qrcode/internal/pki"
 )
 
-// A signature computes holding a CPU slot: with the only slot taken, Sign waits, and finishes once
-// it is released.
+// A whole signature runs holding a CPU slot: with the only slot taken, Sign waits, and finishes
+// once it is released.
 func TestSignWaitsForACPUSlot(t *testing.T) {
 	key := keyFor(t, "RSA") // made outside the bubble: shared by the whole run
 	synctest.Test(t, func(t *testing.T) {
@@ -79,8 +83,8 @@ func TestSignGivesUpWhenItsContextEnds(t *testing.T) {
 	})
 }
 
-// Verification checks the chain and the signature holding a CPU slot: with the only slot taken,
-// Verify waits, and verifies once it is released.
+// A whole verification runs holding a CPU slot: with the only slot taken, Verify waits, and
+// verifies once it is released.
 func TestVerifyWaitsForACPUSlot(t *testing.T) {
 	key := keyFor(t, "RSA")
 	token, err := newSigner(t, Config{Algorithm: "PS512", Publication: PublishChain}, fixedClock{epoch}).
@@ -158,4 +162,135 @@ func TestVerifyGivesUpWhenItsContextEnds(t *testing.T) {
 			t.Fatalf("Verify = %v (%s), want UNVERIFIABLE for context.Canceled", err, ProblemOf(err))
 		}
 	})
+}
+
+// A signature or a verification run on a context that already holds the only slot (a verify that
+// also signs, say) takes no second slot, so it cannot deadlock.
+func TestNoNestedSlot(t *testing.T) {
+	key := keyFor(t, "RSA")
+	synctest.Test(t, func(t *testing.T) {
+		slots := cpu.NewLimiter(1)
+		s := newSigner(t, Config{Algorithm: "PS512", Publication: PublishChain, CPU: slots}, fixedClock{epoch})
+		v, err := newVerifier(VerifierConfig{
+			Truststore: pki.NewStaticTruststore(key.chain...),
+			IssuerName: pki.DefaultIssuerName,
+			CPU:        slots,
+		}, fixedClock{epoch}, fixedClock{epoch})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, release, err := slots.Hold(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer release()
+		// synctest reports a deadlock if either waits for the slot ctx holds.
+		token, err := s.Sign(ctx, key, Message{Payload: []byte(`{}`), CorrelationID: uuid.New()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := v.Verify(ctx, token, Expect{}); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+// The jku certificate is fetched with the verification's slot given back: with a limiter of 1,
+// the publisher can take the slot itself while it answers.
+func TestJKUFetchGivesTheSlotBack(t *testing.T) {
+	for _, pub := range []Publication{PublishJWKSet, PublishPEM} {
+		t.Run(string(pub), func(t *testing.T) {
+			key := keyFor(t, "RSA")
+			p := newPublisher(t, key, "PS512")
+			slots := cpu.NewLimiter(1)
+			var held atomic.Int64
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+				defer cancel()
+				if err := slots.Acquire(ctx); err != nil {
+					held.Add(1)
+				} else {
+					slots.Release()
+				}
+				p.srv.Config.Handler.ServeHTTP(w, r)
+			}))
+			t.Cleanup(srv.Close)
+			fetcher, err := pki.NewFetcher(pki.FetcherConfig{Clock: fixedClock{epoch}, OwnHost: testHost, OwnBaseURL: srv.URL})
+			if err != nil {
+				t.Fatal(err)
+			}
+			v, err := newVerifier(VerifierConfig{
+				Truststore: pki.NewStaticTruststore(key.chain...),
+				IssuerName: pki.DefaultIssuerName,
+				Fetcher:    fetcher,
+				CPU:        slots,
+			}, fixedClock{epoch}, fixedClock{epoch})
+			if err != nil {
+				t.Fatal(err)
+			}
+			s := newSigner(t, Config{Algorithm: "PS512", Publication: pub, Host: testHost, CPU: slots}, fixedClock{epoch})
+			token, err := s.Sign(t.Context(), key, Message{Payload: []byte(`{}`), CorrelationID: uuid.New()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := v.Verify(t.Context(), token, Expect{}); err != nil {
+				t.Fatal(err)
+			}
+			if p.fetched.Load() == 0 {
+				t.Fatal("the certificate was not fetched")
+			}
+			if n := held.Load(); n != 0 {
+				t.Fatalf("%d fetches ran while the verification held the CPU slot", n)
+			}
+			if err := slots.Acquire(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			slots.Release()
+		})
+	}
+}
+
+// A request that ends while it waits to take its slot again after the jku fetch is UNVERIFIABLE,
+// not a refusal of the certificate, and holds no slot.
+func TestVerifyGivesUpAfterTheFetch(t *testing.T) {
+	key := keyFor(t, "RSA")
+	p := newPublisher(t, key, "PS512")
+	slots := cpu.NewLimiter(1)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := slots.Acquire(r.Context()); err != nil { // another request takes the slot
+			t.Error(err)
+		}
+		cancel()
+		p.srv.Config.Handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	fetcher, err := pki.NewFetcher(pki.FetcherConfig{Clock: fixedClock{epoch}, OwnHost: testHost, OwnBaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := newVerifier(VerifierConfig{
+		Truststore: pki.NewStaticTruststore(key.chain...),
+		IssuerName: pki.DefaultIssuerName,
+		Fetcher:    fetcher,
+		CPU:        slots,
+	}, fixedClock{epoch}, fixedClock{epoch})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := newSigner(t, Config{Algorithm: "PS512", Publication: PublishJWKSet, Host: testHost}, fixedClock{epoch}).
+		Sign(t.Context(), key, Message{Payload: []byte(`{}`), CorrelationID: uuid.New()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = v.Verify(ctx, token, Expect{})
+	if ProblemOf(err) != Unverifiable || !errors.Is(err, cpu.ErrGaveUp) {
+		t.Fatalf("Verify = %v (%s), want UNVERIFIABLE for ErrGaveUp", err, ProblemOf(err))
+	}
+	slots.Release() // the other request's
+	if err := slots.Acquire(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	slots.Release()
 }

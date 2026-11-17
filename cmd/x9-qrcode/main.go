@@ -160,9 +160,10 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	// so a reload is followed without a restart. Signatures carry the business clock's iat, and a
 	// received iat and ttl are judged on it; certificate validity, CRLs and the fetch cache run on
 	// clock.New(), never moved. A jku or x5u on this deployment's own host is read from this process
-	// over localhost, as the Java build reads it; any other is fetched over HTTPS only. Signing and
-	// signature checks share one limiter of GOMAXPROCS slots, so RSA never crowds the processors
-	// out from under the goroutines that hold database connections (internal/cpu explains why).
+	// over localhost, as the Java build reads it; any other is fetched over HTTPS only. Every
+	// signature and every verification runs holding one of GOMAXPROCS slots, given back while a
+	// certificate, CRL or OCSP answer is fetched, so JWS work never crowds the processors out from
+	// under the goroutines that hold database connections (internal/cpu explains why).
 	cryptoSlots := cpu.NewLimiter(runtime.GOMAXPROCS(0))
 	signer, verifier, err := signing(cfg, keyStore, businessClock, cryptoSlots, logger)
 	if err != nil {

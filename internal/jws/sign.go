@@ -112,8 +112,9 @@ type Config struct {
 	Host string
 	// TTL is the ttl of a message that does not set its own. Zero is DefaultTTL.
 	TTL time.Duration
-	// CPU bounds how many signatures compute at once (internal/cpu explains why). A slot is held
-	// only while the key signs. Nil is unbounded.
+	// CPU bounds how many signatures run at once (internal/cpu explains why). One slot is held for
+	// a whole signature: the header, the payload's encoding and the key's arithmetic. Nil is
+	// unbounded.
 	CPU *cpu.Limiter
 }
 
@@ -289,9 +290,15 @@ func esFor(c elliptic.Curve) string {
 // answer to a question whose own could not be verified.
 func NewCorrelationID() uuid.UUID { return uuid.New() }
 
-// Sign signs m with key and returns the compact JWS. The key signs holding a CPU slot; ctx ending
-// while it waits for one fails the signature.
+// Sign signs m with key and returns the compact JWS. It runs holding one CPU slot (none more when
+// ctx already holds one); ctx ending while it waits for the slot fails the signature. Nothing in
+// it waits on the network.
 func (s *Signer) Sign(ctx context.Context, key Key, m Message) (string, error) {
+	_, release, err := s.cpu.Hold(ctx)
+	if err != nil {
+		return "", fmt.Errorf("jws: signing: %w", err)
+	}
+	defer release()
 	if err := s.Check(key); err != nil {
 		return "", err
 	}
@@ -334,7 +341,7 @@ func (s *Signer) Sign(ctx context.Context, key Key, m Message) (string, error) {
 		opts.WithHeader(HeaderX5C, x5c)
 	}
 
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: s.alg, Key: opaque{ctx: ctx, cpu: s.cpu, key: key, alg: s.alg, hash: s.hash}}, opts)
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: s.alg, Key: opaque{key: key, alg: s.alg, hash: s.hash}}, opts)
 	if err != nil {
 		return "", fmt.Errorf("jws: building the signer: %w", err)
 	}
@@ -370,11 +377,7 @@ func Thumbprint(c *x509.Certificate) string {
 // opaque lets go-jose sign with a crypto.Signer it does not know: go-jose writes the header and
 // serialises, the key signs the digest. An ECDSA signature is turned from ASN.1 into JOSE's fixed
 // R || S (RFC 7518 §3.4); a PSS salt is as long as the hash, as go-jose and the Java build use.
-// The key signs holding a slot of cpu, waited for under ctx: go-jose's interface takes no context,
-// so the one Sign was given travels here, for that one call.
 type opaque struct {
-	ctx  context.Context
-	cpu  *cpu.Limiter
 	key  Key
 	alg  jose.SignatureAlgorithm
 	hash crypto.Hash
@@ -395,15 +398,15 @@ func (o opaque) SignPayload(payload []byte, alg jose.SignatureAlgorithm) ([]byte
 	digest := h.Sum(nil)
 	switch string(alg)[:2] {
 	case "RS":
-		return o.sign(digest, o.hash)
+		return o.key.Sign(rand.Reader, digest, o.hash)
 	case "PS":
-		return o.sign(digest, &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash, Hash: o.hash})
+		return o.key.Sign(rand.Reader, digest, &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash, Hash: o.hash})
 	case "ES":
 		curve, ok := curves[alg]
 		if !ok {
 			return nil, fmt.Errorf("%w algorithm %s", errUnsupported, alg)
 		}
-		der, err := o.sign(digest, o.hash)
+		der, err := o.key.Sign(rand.Reader, digest, o.hash)
 		if err != nil {
 			return nil, err
 		}
@@ -411,15 +414,6 @@ func (o opaque) SignPayload(payload []byte, alg jose.SignatureAlgorithm) ([]byte
 	default:
 		return nil, fmt.Errorf("%w algorithm %s", errUnsupported, alg)
 	}
-}
-
-// sign is the key's signature, computed holding a CPU slot.
-func (o opaque) sign(digest []byte, opts crypto.SignerOpts) ([]byte, error) {
-	if err := o.cpu.Acquire(o.ctx); err != nil {
-		return nil, err
-	}
-	defer o.cpu.Release()
-	return o.key.Sign(rand.Reader, digest, opts)
 }
 
 // rawECDSA turns an ASN.1 ECDSA signature into R || S, each as long as the curve's order.
