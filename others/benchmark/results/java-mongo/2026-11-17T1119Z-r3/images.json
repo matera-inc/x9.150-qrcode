@@ -1,0 +1,20 @@
+{
+ "build": "java-mongo",
+ "campaign": "2026-11-17T1119Z",
+ "run": 3,
+ "sequence": "J G J G J G",
+ "position": 5,
+ "app": {
+  "image": "x9-qrcode:git-a943630",
+  "id": "sha256:0b04634c5427d9a9283feb9e03e666cdc4890e104160c2d7452d5fe9647ae75a",
+  "revision": "a943630b35398ff55807422d70aa930dd512b938",
+  "version": "git-a943630",
+  "platform": "linux/arm64",
+  "sizeBytes": 418136064
+ },
+ "liquibase": null,
+ "harnessRevision": "a943630b35398ff55807422d70aa930dd512b938",
+ "profile": "readme",
+ "stages": "",
+ "overlay": "none"
+}
