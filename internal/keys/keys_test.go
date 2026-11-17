@@ -6,7 +6,6 @@
 package keys
 
 import (
-	"bytes"
 	"context"
 	"crypto"
 	"crypto/ed25519"
@@ -15,7 +14,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"io"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -29,9 +27,8 @@ import (
 func TestMain(m *testing.M) { leaktest.Main(m) }
 
 const (
-	javaResources = "../../x9-qrcode-infrastructure/src/main/resources/certificate/"
-	javaTestPKI   = "../../x9-qrcode-infrastructure/src/test/resources/certificate/"
-	goldenPKI     = "../../others/blackbox/golden/pki/"
+	testPKI   = "../../testdata/pki/"
+	goldenPKI = "../../others/blackbox/golden/pki/"
 )
 
 func quiet() *logBuffer { return &logBuffer{} }
@@ -68,24 +65,16 @@ func TestBundledDemoIdentity(t *testing.T) {
 	}
 }
 
-// S8.2-AC4: the bundled files are Java's demo files, byte for byte (they are PKCS#12 despite their
-// .jks names), so both builds sign with the same key and trust the same certificate.
-func TestBundledDemoIsJavasDemo(t *testing.T) {
-	for bundled, java := range map[string][]byte{"x9-demo.jks": bundledKeystore, "x9-demo-truststore.jks": bundledTruststore} {
-		want, err := os.ReadFile(javaResources + bundled) //nolint:gosec // G304: a fixed path in this repository.
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(java, want) {
-			t.Errorf("the bundled copy of %s differs from Java's; run others/scripts/convert-demo-keystores.sh", bundled)
-		}
-	}
+// S8.2-AC4: the bundled truststore trusts the bundled demo certificate and nothing else. (Until
+// 3.0.0 the two files were also checked byte for byte against the Java build's demo files; the Java
+// build is retired, and these are now the only copies.)
+func TestBundledTruststoreHoldsTheDemoCertificate(t *testing.T) {
 	s, err := Load(config.Certificate{}, newLogger(io.Discard))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if trusted := s.Current().Truststore.Certificates(); len(trusted) != 1 || !trusted[0].Equal(s.Current().Identity.Certificate()) {
-		t.Fatal("the bundled truststore does not hold the bundled demo certificate alone, as Java's does")
+		t.Fatal("the bundled truststore does not hold the bundled demo certificate alone")
 	}
 }
 
@@ -221,7 +210,7 @@ func TestJKSIsRefusedWithItsConversion(t *testing.T) {
 			[]string{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION", "JKS", config.MappingDoc, "keytool -importkeystore", "ADR-0031"}},
 		{"JCEKS keystore", config.Certificate{PrivateKeystore: config.PrivateKeystore{Location: jceks}},
 			[]string{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION", "JKS", config.MappingDoc}},
-		{"Java's JKS test truststore", config.Certificate{Truststore: config.Truststore{Location: javaTestPKI + "x9-test-truststore.jks"}},
+		{"the JKS test truststore", config.Certificate{Truststore: config.Truststore{Location: testPKI + "x9-test-truststore.jks"}},
 			[]string{"X9_CERTIFICATE_TRUSTSTORE_LOCATION", "JKS", config.MappingDoc, "keytool -importkeystore"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -262,8 +251,8 @@ func TestPKCS12DecoderSeam(t *testing.T) {
 	key := newECKey(t)
 	fake := &fakePKCS12{key: key, certs: []*x509.Certificate{ca.issue(t, "p12.example.com", key), ca.cert}}
 	cfg := config.Certificate{
-		PrivateKeystore: config.PrivateKeystore{Location: javaTestPKI + "x9-test-payer.p12", Password: "store-pw", EnforcedAlias: "x9-test-payer"},
-		Truststore:      config.Truststore{Location: javaTestPKI + "x9-test-ca.p12", Password: "trust-pw"},
+		PrivateKeystore: config.PrivateKeystore{Location: testPKI + "x9-test-payer.p12", Password: "store-pw", EnforcedAlias: "x9-test-payer"},
+		Truststore:      config.Truststore{Location: testPKI + "x9-test-ca.p12", Password: "trust-pw"},
 	}
 	s, err := Load(cfg, newLogger(io.Discard), WithPKCS12(fake))
 	if err != nil {

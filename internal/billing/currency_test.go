@@ -6,7 +6,6 @@
 package billing
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,24 +13,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 )
-
-const javaResources = "../../x9-qrcode-infrastructure/src/main/resources/"
-
-// S9.4-AC4: Go ships Java's two files, byte for byte.
-func TestTheBundledFilesAreJavas(t *testing.T) {
-	for name, bundled := range map[string][]byte{
-		"supported-currencies.json": bundledSupported,
-		"pegged-currencies.json":    bundledPegged,
-	} {
-		java, err := os.ReadFile(javaResources + name) //nolint:gosec // G304: a fixed file of this repository.
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(java, bundled) {
-			t.Errorf("internal/billing/%s differs from the Java build's; copy it again", name)
-		}
-	}
-}
 
 // S9.4-AC4: the bundled configuration is USD, USDC and FRNT, all in the dollar group.
 func TestBundledCurrencies(t *testing.T) {

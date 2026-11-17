@@ -280,8 +280,6 @@ def test_a_tampered_payload_under_another_correlation_id_is_a_bad_signature(deco
 
 # ------------------------------------------------------------------ where the payload is fetched from
 
-@pytest.mark.go_only(reason="go_only: the Java build follows a redirect from the payee "
-                            "(ADR-0028, known difference 22)")
 @pytest.mark.parametrize("redirect", [302, 307])
 def test_a_redirect_from_the_payload_host_is_not_followed(api, other_bank, pki, business_now,
                                                           redirect):
@@ -319,8 +317,6 @@ def test_a_redirect_from_the_payload_host_is_not_followed(api, other_bank, pki, 
     _refused(f"a {redirect}", response, words=INVALID)
 
 
-@pytest.mark.go_only(reason="go_only: java.net.URI accepts a non-numeric port, and the Java build "
-                            "goes on to fetch, or fails later (ADR-0028, known difference 21)")
 def test_a_location_url_with_a_non_numeric_port_is_refused_before_any_fetch(api, other_bank):
     """X9-DEC-509 — a QR Code whose payload URL names the other bank's host with a non-numeric port
     is refused 400 ``validation-error``, "Invalid URI syntax: " and the URL as written, and nothing

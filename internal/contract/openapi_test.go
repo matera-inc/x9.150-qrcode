@@ -32,7 +32,7 @@ import (
 	"github.com/matera-inc/x9.150-qrcode/internal/httpapi"
 )
 
-var openapiPath = filepath.Join("..", "..", "x9-qrcode-infrastructure", "src", "main", "resources", "apis", "openapi.yaml")
+var openapiPath = filepath.Join("..", "..", "api", "openapi.yaml")
 
 // validator is a request type: read by httpapi.Unmarshal, checked by Validate.
 type validator interface{ Validate() []string }

@@ -33,7 +33,6 @@ import time
 
 import pytest
 
-import builds
 from test_transition_map import (
     CANCELLED_EVT, CLEARED, HOLDER, INITIATED, LAPSED_MS, OTHER, assert_events,
     assert_from_first_method, assert_from_notification, assert_from_status_update, assert_kept,
@@ -49,11 +48,9 @@ END = "7ZZZZZZZZZZZZZZZZZZZZZZZZZ"
 
 
 def past_the_end(api):
-    """A cursor after which nothing stands: ``END`` on Java; on Go, where a ULID addresses only the
-    migrated events, the stream's end as it stands now."""
-    if builds.under_test() == "go":
-        return EventReader(api).mark()
-    return END
+    """A cursor after which nothing stands: the stream's end as it stands now, since a ULID
+    addresses only the migrated events (``END`` was this answer on the retired Java build)."""
+    return EventReader(api).mark()
 
 E2E = "E2E-BLACKBOX-S44"
 
@@ -594,8 +591,6 @@ def test_replay_from_an_old_cursor_is_safe_by_event_id(api, cursor):
     assert list(applied.values()) == first, "deduplicated by eventId, each event applies once"
 
 
-@pytest.mark.go_only(reason="go_only: the Java build has no 'cursor ahead of log' answer; a recorded "
-                            "difference for Epic 11 (ADR-0031)")
 def test_a_cursor_ahead_of_the_log_is_a_conflict(deployment):
     """X9-EVT-058 — a decimal cursor after the last event is refused 409 "cursor ahead of log",
     carrying the log's current ``lastSeq``; the cursor of the last event itself reads an empty page.

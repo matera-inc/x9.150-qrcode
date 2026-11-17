@@ -40,7 +40,7 @@ import (
 // private keys are public. Nothing is copied: the files are read where they live.
 const (
 	goldenDir   = "../../others/blackbox/golden"
-	testCADir   = "../../x9-qrcode-infrastructure/src/test/resources/certificate"
+	testCADir   = "../../testdata/pki"
 	testCAPass  = "x9test123"
 	crlHostPort = "127.0.0.1:18081" // the distribution point the test CA's leaves name
 )

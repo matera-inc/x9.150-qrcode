@@ -607,31 +607,6 @@ def test_t11_an_expired_qr_code_stays_readable_on_the_test_clock(api, clock):
     assert read.status == 200 and read.body.get("status") == "ACTIVE", read
 
 
-@pytest.mark.java_only(reason="java_only: MongoDB's TTL monitor deletes an expired QR Code on the "
-                              "real clock (validUntil + 30 s, swept every 60 s); Go keeps it "
-                              "(ADR-0029, X9-TIME-014)")
-def test_t11_java_deletes_an_expired_qr_code_on_the_real_clock(api, clock):
-    """X9-TIME-013 — T11, Java: a QR Code a few seconds from expiry is gone (404) once MongoDB's TTL
-    monitor has run, which takes real time, about 30–95 s; never driven by the test clock
-    (S4.5-AC1).
-
-    Source: Mechanism. The ``ttl`` index on ``qrcodes`` (``expireAfter = 30S`` on ``validUntil``);
-    plan §4.2 T11; tolerated difference 2 (ADR-0028).
-    Why: pins the behaviour the Go build deliberately drops, so the difference stays a known one.
-    """
-    valid_until = whole_seconds_from_now(datetime.timedelta(seconds=3))
-    qr = created(api, valid_until=iso(valid_until))["id"]
-    assert api.qr(qr).status == 200
-
-    deadline = time.monotonic() + 180
-    while time.monotonic() < deadline and api.qr(qr).status == 200:
-        time.sleep(3)
-
-    assert api.qr(qr).status == 404, "MongoDB's TTL monitor deleted the expired QR Code"
-
-
-@pytest.mark.go_only(reason="go_only: the Go build keeps an expired QR Code and releases its "
-                            "location (ADR-0029); it first runs in Epics 11-12")
 def test_t11_go_keeps_an_expired_qr_code_and_releases_its_location(api, clock):
     """X9-TIME-014 — T11, Go: an hour past ``validUntil`` the code is still readable, its payload
     answers with the expiry reason, and its location can be handed to another QR Code
@@ -666,8 +641,6 @@ def _duration_ms(name, default_days):
     return int(float(os.environ.get(name, default_days)) * 86_400_000)
 
 
-@pytest.mark.go_only(reason="go_only: retention is the Go build's one background job (ADR-0029); "
-                            "the Java build has MongoDB's TTL index instead (X9-TIME-013)")
 @pytest.mark.runs_last
 def test_t12_retention_purges_events_then_qr_codes_by_the_test_clock(api, clock, events):
     """X9-TIME-015 — T12: past the events' retention, an old QR Code's events are purged and the

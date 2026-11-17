@@ -8,6 +8,8 @@ package keys
 import (
 	"crypto/x509"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -31,7 +33,7 @@ func TestJavaPKCS12Keystores(t *testing.T) {
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			cfg := config.Certificate{
-				PrivateKeystore: config.PrivateKeystore{Location: javaTestPKI + tc.file, Password: javaTestPassword},
+				PrivateKeystore: config.PrivateKeystore{Location: testPKI + tc.file, Password: javaTestPassword},
 				Truststore:      config.Truststore{Location: goldenPKI + "x9-test-ca.pem"},
 			}
 			s, err := Load(cfg, newLogger(io.Discard))
@@ -54,12 +56,18 @@ func TestJavaPKCS12Keystores(t *testing.T) {
 	}
 }
 
-// S8.2-AC1: Java's demo files (PKCS#12 under .jks names) load as keystore and truststore; the
-// content decides the format, not the name.
+// S8.2-AC1: Java's demo files (PKCS#12 under .jks names, as a 2.x deployment may still hold them)
+// load as keystore and truststore; the content decides the format, not the name.
 func TestJavaDemoFilesLoadByContent(t *testing.T) {
+	dir := t.TempDir()
+	for name, data := range map[string][]byte{"x9-demo.jks": bundledKeystore, "x9-demo-truststore.jks": bundledTruststore} {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	cfg := config.Certificate{
-		PrivateKeystore: config.PrivateKeystore{Location: javaResources + "x9-demo.jks", Password: demoPassword, Type: "JKS"},
-		Truststore:      config.Truststore{Location: javaResources + "x9-demo-truststore.jks", Password: demoPassword},
+		PrivateKeystore: config.PrivateKeystore{Location: filepath.Join(dir, "x9-demo.jks"), Password: demoPassword, Type: "JKS"},
+		Truststore:      config.Truststore{Location: filepath.Join(dir, "x9-demo-truststore.jks"), Password: demoPassword},
 	}
 	s, err := Load(cfg, newLogger(io.Discard))
 	if err != nil {

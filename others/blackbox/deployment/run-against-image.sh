@@ -5,29 +5,28 @@
 #   X9_IMAGE=x9-qrcode:latest ./others/blackbox/deployment/run-against-image.sh
 #   make blackbox-image                       # the same, after `make image`
 #
-# CI runs exactly this. It builds two local images from staged copies (nothing is bind-mounted,
+# CI runs exactly this. It builds four local images from staged copies (nothing is bind-mounted,
 # so it works on Colima, which cannot mount paths under /Volumes):
 #
-#   x9-qrcode-under-test:<run>   $X9_IMAGE plus the black-box truststore
-#   x9-blackbox-runner:<run>     the suite, the bundled test CA, openapi.yaml, ADR-0035
+#   x9-qrcode-under-test:<run>     $X9_IMAGE plus the black-box truststore (PKCS#12)
+#   x9-blackbox-runner:<run>       the suite, the bundled test CA, openapi.yaml, ADR-0035
+#   x9-blackbox-bootstrap:<run>    db/local: the DBA's one-time step
+#   x9-blackbox-liquibase:<run>    db/local: the changelog, applied by the Liquibase one-shot
 #
-# then starts docker-compose.yml and exits with the suite's own exit code.
+# then applies db/changelog on PostgreSQL 16, starts docker-compose.yml and exits with the suite's
+# own exit code (Story 9.1, Story 10.8: the verdict is the whole suite).
 #
-# A Go image (Story 9.1) runs on PostgreSQL instead: docker-compose.go.yml, two more local images
-# (x9-blackbox-bootstrap:<run> and x9-blackbox-liquibase:<run>, db/local), the changelog applied by
-# the Liquibase one-shot before the service starts, and the truststore as PKCS#12. Its verdict is the
-# whole suite, as for Java (Story 10.8).
+# The image must be the Go build (its entrypoint is /x9-qrcode). The Java build was retired at 3.0.0
+# (ADR-0039); its black-box run, on MongoDB, is in the history under the git tag java-final.
 #
 # With X9_RECORD_DIR set, the suite records every exchange (others/blackbox/x9client/recording.py)
-# and the recording is copied there when it ends, for others/blackbox/differential.py (Story 11.1). The build is the image's entrypoint (/x9-qrcode is the Go
-# binary); X9_BUILD=java|go overrides it.
+# and the recording is copied there when it ends (Story 11.1), for others/blackbox/differential.py.
 #
 # Every run is its own: the compose project is $X9_BLACKBOX_PROJECT if set, otherwise
-# x9-blackbox-<random suffix>, and the two images are tagged with that same name. Two runs at once
-# (say, one against the Java image and one against the Go image) never share a container, a
-# network or an image tag, and each one removes only its own project and its own tags. A suite that could not
-# run fails: the service never healthy, zero tests collected (pytest exit 5), or any capability
-# missing (X9_REQUIRE_ALL), never a green skip.
+# x9-blackbox-<random suffix>, and the images are tagged with that same name. Two runs at once never
+# share a container, a network or an image tag, and each one removes only its own project and its
+# own tags. A suite that could not run fails: the service never healthy, zero tests collected
+# (pytest exit 5), or any capability missing (X9_REQUIRE_ALL), never a green skip.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -40,20 +39,14 @@ if ! printf '%s' "$PROJECT" | grep -Eq '^[a-z0-9][a-z0-9_-]*$'; then
     exit 2
 fi
 docker image inspect "$X9_IMAGE" >/dev/null 2>&1 || docker pull -q "$X9_IMAGE" >/dev/null
-BUILD="${X9_BUILD:-}"
-if [ -z "$BUILD" ]; then
-    case "$(docker image inspect "$X9_IMAGE" --format '{{json .Config.Entrypoint}}')" in
-        '["/x9-qrcode"]') BUILD=go ;;
-        *) BUILD=java ;;
-    esac
+if [ "$(docker image inspect "$X9_IMAGE" --format '{{json .Config.Entrypoint}}')" != '["/x9-qrcode"]' ]; then
+    echo "$X9_IMAGE is not the Go build (its entrypoint is not /x9-qrcode). The Java build was retired" >&2
+    echo "at 3.0.0; run its suite from the git tag java-final." >&2
+    exit 2
 fi
-case "$BUILD" in
-    java) COMPOSE_FILE="$HERE/docker-compose.yml"; TRUSTSTORE=x9-blackbox-truststore.jks
-          DB_EXTRA=mongo; SERVICES=(blackbox x9-qrcode mongo) ;;
-    go)   COMPOSE_FILE="$HERE/docker-compose.go.yml"; TRUSTSTORE=x9-blackbox-truststore.p12
-          DB_EXTRA=postgres; SERVICES=(blackbox x9-qrcode) ;;
-    *)    echo "X9_BUILD must be java or go: '$BUILD'" >&2; exit 2 ;;
-esac
+COMPOSE_FILE="$HERE/docker-compose.yml"
+TRUSTSTORE=x9-blackbox-truststore.p12
+SERVICES=(blackbox x9-qrcode)
 export X9_UNDER_TEST_IMAGE="x9-qrcode-under-test:$PROJECT"
 export X9_RUNNER_IMAGE="x9-blackbox-runner:$PROJECT"
 export X9_BOOTSTRAP_IMAGE="x9-blackbox-bootstrap:$PROJECT"
@@ -70,16 +63,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "== project $PROJECT ($BUILD build)"
+echo "== project $PROJECT"
 echo "== staging the suite"
-mkdir -p "$STAGE/runner/others" "$STAGE/runner/x9-qrcode-infrastructure/src/test/resources" \
-         "$STAGE/runner/x9-qrcode-infrastructure/src/main/resources/apis" "$STAGE/under-test"
+mkdir -p "$STAGE/runner/others" "$STAGE/runner/testdata" "$STAGE/runner/api" "$STAGE/under-test"
 rsync -a --exclude '__pycache__' --exclude '.pytest_cache' \
       "$ROOT/others/blackbox" "$STAGE/runner/others/"
-cp -R "$ROOT/x9-qrcode-infrastructure/src/test/resources/certificate" \
-      "$STAGE/runner/x9-qrcode-infrastructure/src/test/resources/"
-cp "$ROOT/x9-qrcode-infrastructure/src/main/resources/apis/openapi.yaml" \
-   "$STAGE/runner/x9-qrcode-infrastructure/src/main/resources/apis/"
+cp -R "$ROOT/testdata/pki" "$STAGE/runner/testdata/"
+cp "$ROOT/api/openapi.yaml" "$STAGE/runner/api/"
 # ADR-0035, so test_transition_map.py can check every row of its map has a test (Story 4.1).
 mkdir -p "$STAGE/runner/docs/adr"
 cp "$ROOT"/docs/adr/0035-*.md "$STAGE/runner/docs/adr/"
@@ -90,24 +80,22 @@ echo "== building $X9_UNDER_TEST_IMAGE from $X9_IMAGE"
 docker build -q -t "$X9_UNDER_TEST_IMAGE" --build-arg "X9_IMAGE=$X9_IMAGE" \
     -f "$HERE/under-test.Dockerfile" "$STAGE/under-test" >/dev/null
 echo "== building $X9_RUNNER_IMAGE"
-docker build -q -t "$X9_RUNNER_IMAGE" --build-arg "X9_DB_EXTRA=$DB_EXTRA" \
+docker build -q -t "$X9_RUNNER_IMAGE" \
     -f "$HERE/runner.Dockerfile" "$STAGE/runner" >/dev/null
 
-if [ "$BUILD" = go ]; then
-    echo "== building $X9_BOOTSTRAP_IMAGE and $X9_LIQUIBASE_IMAGE from db/"
-    docker build -q -t "$X9_BOOTSTRAP_IMAGE" -f "$ROOT/db/local/bootstrap.Dockerfile" "$ROOT/db" >/dev/null
-    docker build -q -t "$X9_LIQUIBASE_IMAGE" -f "$ROOT/db/local/liquibase.Dockerfile" "$ROOT/db" >/dev/null
-    # The schema first, on its own: a one-shot exiting would end an --abort-on-container-exit run.
-    echo "== applying db/changelog (Liquibase, as the migration role)"
-    if ! "${COMPOSE[@]}" run --rm --quiet-pull liquibase >"$STAGE/liquibase.log" 2>&1; then
-        echo "== the changelog did not apply:"
-        cat "$STAGE/liquibase.log"
-        exit 1
-    fi
-    grep -E 'Run:|Liquibase command .* was executed successfully' "$STAGE/liquibase.log" || true
-    # PostgreSQL keeps running; the service and the suite start without re-running the one-shots.
-    UP_FLAGS=(--no-deps)
+echo "== building $X9_BOOTSTRAP_IMAGE and $X9_LIQUIBASE_IMAGE from db/"
+docker build -q -t "$X9_BOOTSTRAP_IMAGE" -f "$ROOT/db/local/bootstrap.Dockerfile" "$ROOT/db" >/dev/null
+docker build -q -t "$X9_LIQUIBASE_IMAGE" -f "$ROOT/db/local/liquibase.Dockerfile" "$ROOT/db" >/dev/null
+# The schema first, on its own: a one-shot exiting would end an --abort-on-container-exit run.
+echo "== applying db/changelog (Liquibase, as the migration role)"
+if ! "${COMPOSE[@]}" run --rm --quiet-pull liquibase >"$STAGE/liquibase.log" 2>&1; then
+    echo "== the changelog did not apply:"
+    cat "$STAGE/liquibase.log"
+    exit 1
 fi
+grep -E 'Run:|Liquibase command .* was executed successfully' "$STAGE/liquibase.log" || true
+# PostgreSQL keeps running; the service and the suite start without re-running the one-shots.
+UP_FLAGS=(--no-deps)
 
 # Recording for the differential run (Story 11.1): the suite writes inside its container, and the
 # files are copied out to $X9_RECORD_DIR once it has finished.

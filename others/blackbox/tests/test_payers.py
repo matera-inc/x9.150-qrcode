@@ -40,7 +40,6 @@ import uuid
 import pytest
 from cryptography.hazmat.primitives import serialization
 
-import builds
 from x9client import emv as emv_module
 from x9client import jws, ocsp, samples
 from x9client import peer as peer_module
@@ -593,10 +592,6 @@ class TestNotifications:
             assert "payment.cleared" not in seen, seen
             assert api.status_of(qr) == "PAYMENT_INITIATED"
 
-    @pytest.mark.xfail(builds.under_test() == "java", strict=True,
-                       reason="ADR-0028, known difference 16; ADR-0036: the Java build accepts the "
-                              "holder's NOT_SENT once a hash is registered but does not record it, "
-                              "so GET still shows the SENT")
     def test_get_shows_the_holders_not_sent_after_a_hash_is_registered(
             self, api, payee_certificate, business_now):
         """X9-HOLD-504 — the holder's ``NOT_SENT``, accepted once a hash is registered, is what GET

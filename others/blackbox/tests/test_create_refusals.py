@@ -171,8 +171,6 @@ STRICT_JSON = [
 ]
 
 
-@pytest.mark.go_only(reason="go_only: Jackson reads a lone surrogate escape and a date written as an "
-                            "array; the Go build's decoder refuses both (ADR-0028, known difference 7)")
 @pytest.mark.parametrize("name, path, edge, control", STRICT_JSON,
                          ids=[case[0] for case in STRICT_JSON])
 def test_a_json_edge_case_jackson_reads_is_malformed(api, name, path, edge, control):
