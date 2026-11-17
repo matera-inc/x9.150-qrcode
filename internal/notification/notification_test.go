@@ -523,6 +523,11 @@ func TestRefusedByName(t *testing.T) {
 		{name: "amount past a long", request: solanaQR("", "", notifyDefault),
 			raw:    []byte(`{"payment":{"qrcodeId":"%ID%","amount":99999999999999999999,"currency":"USDC","network":"Solana"}}`),
 			status: 400, naming: msgUnreadable},
+		// R-ADR0028-06: a verified JWS that is not a payment notification (a payload request, say)
+		// is the caller's 400 naming payment, never a 500.
+		{name: "no payment at all", request: solanaQR("", "", notifyDefault),
+			raw:    []byte(`{"qrCodeContent":"%ID%"}`),
+			status: 400, naming: `"payment: must not be null"`},
 		{name: "a negative amount", request: solanaQR("", "", notifyDefault),
 			edits: []func(map[string]any){payment("amount", -1)}, status: 400, naming: "should not be negative"},
 		{name: "a negative tip", request: solanaQR("", "", notifyDefault),

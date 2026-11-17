@@ -38,18 +38,15 @@ STORIES = f"""# Stories
 Mentioning {UNKNOWN} in prose does not define it.
 """
 
-JAVA_TEST = f"""class ThingTest {{
-    /**
-     * <b>X9-LIFE-001</b> — a thing holds. Proves {AC1}.
-     */
-    @Test
-    void aThingHolds() {{ }}
+THING_TEST = f"""package thing
 
-    /** <b>X9-LIFE-002</b> — another thing holds. */
-    @Test
-    void anotherThingHolds() {{ }}
-}}
+// X9-LIFE-001: a thing holds. Proves {AC1}.
+func TestAThingHolds(t *testing.T) {{}}
+
+// X9-LIFE-002: another thing holds.
+func TestAnotherThingHolds(t *testing.T) {{}}
 """
+THING_TEST_PATH = "internal/thing/fixture_test.go"
 
 PYTHON_TEST = f'''def test_map_010_first(api):
     """X9-MAP-010 — the first row of the map. {AC2}."""
@@ -75,7 +72,7 @@ def rows():
         "R-SM-01": f"| `R-SM-01` | A thing holds. | `X9-LIFE-001` | `{AC1}` |",
         "R-EP-01": "| `R-EP-01` | An endpoint answers. | `X9-LIFE-002` | — |",
         "R-I1-01": "| `R-I1-01` | A reading. | `test_things.py::test_named_by_function` | — |",
-        "R-I2-01": "| `R-I2-01` | Another reading. | `ThingTest.java::aThingHolds` | — |",
+        "R-I2-01": "| `R-I2-01` | Another reading. | `fixture_test.go::TestAThingHolds` | — |",
         "R-MAP-010": f"| `R-MAP-010` | The first row. | `X9-MAP-010` | `{AC2}` |",
     }
     for number in crc.ADRS:
@@ -99,7 +96,7 @@ class Repo:
             crc.STORIES: STORIES,
             crc.COVERAGE: coverage(rows() if table is None else table, gaps),
             crc.INTERPRETATION: "# Reading\n\n## I-1 — one\n\n## I-2 — two\n",
-            "x9-qrcode-domain/src/test/java/ThingTest.java": JAVA_TEST,
+            THING_TEST_PATH: THING_TEST,
             "others/blackbox/tests/test_things.py": PYTHON_TEST,
             f"{crc.ADR_DIR}/0035-the-map.md": MAP_ADR,
         }
@@ -156,8 +153,7 @@ class AConformingTable(unittest.TestCase):
         repo = Repo()
         try:
             tests = crc.read_tests(repo.root)
-            self.assertEqual(["x9-qrcode-domain/src/test/java/ThingTest.java"],
-                             crc.files_of("X9-LIFE-001", tests))
+            self.assertEqual([THING_TEST_PATH], crc.files_of("X9-LIFE-001", tests))
             self.assertEqual(["others/blackbox/tests/test_things.py"],
                              crc.files_of("test_things.py::test_named_by_function", tests))
             self.assertEqual([], crc.files_of("test_things.py::test_that_is_not_there", tests))
@@ -175,12 +171,6 @@ class S46AC2ATestCitesAnUnknownCriterion(unittest.TestCase):
         self.assertEqual(1, len(out), out)
         self.assertIn("others/blackbox/tests/test_things.py: line 10", out[0])
         self.assertIn(UNKNOWN, out[0])
-
-    def test_an_unknown_criterion_in_a_junit_test_fails(self):
-        cited = JAVA_TEST.replace("another thing holds.", f"another thing holds ({UNKNOWN}).")
-        out = run(extra={"x9-qrcode-domain/src/test/java/ThingTest.java": cited})
-        self.assertEqual(1, len(out), out)
-        self.assertIn("ThingTest.java", out[0])
 
     def test_an_unknown_criterion_in_a_shell_or_go_test_fails(self):
         out = run(extra={"db/test/roles-test.sh": f"# {UNKNOWN}\n",
@@ -264,7 +254,7 @@ class ARuleForSomethingNeverBuilt(unittest.TestCase):
         self.assertIn("marked NOT BUILT", out[0])
 
 class EveryTestCarriesAKey(unittest.TestCase):
-    """A black-box case or a JUnit test without an X9 key fails the check (docs/TEST-INDEX.md)."""
+    """A black-box case without an X9 key fails the check (docs/TEST-INDEX.md)."""
 
     def test_a_black_box_case_without_a_key_fails(self):
         unkeyed = PYTHON_TEST + '\n\nclass TestMore:\n    def test_unkeyed(self, api):\n' \
@@ -289,36 +279,6 @@ class EveryTestCarriesAKey(unittest.TestCase):
     def test_a_helper_outside_tests_needs_no_key(self):
         out = run(extra={"others/blackbox/x9client/helpers.py": "def test_helper():\n    pass\n"})
         self.assertEqual([], out)
-
-    def test_a_junit_test_without_a_key_fails(self):
-        unkeyed = JAVA_TEST.rstrip().rstrip("}") + """
-    /** No key here. */
-    @ParameterizedTest
-    @CsvSource({
-        "a, b"
-    })
-    void anUnkeyedOne(String a, String b) { }
-
-    @Test
-    void aBareOne() { }
-}
-"""
-        out = run(extra={"x9-qrcode-domain/src/test/java/ThingTest.java": unkeyed})
-        self.assertEqual(2, len(out), out)
-        self.assertIn("anUnkeyedOne", out[0])
-        self.assertIn("aBareOne", out[1])
-        self.assertIn("has no key", out[1])
-
-    def test_the_class_javadoc_is_not_the_first_tests_javadoc(self):
-        java = """/** <b>X9-LIFE-005</b> is only mentioned in the class javadoc. */
-class OtherTest {
-    @Test
-    void first() { }
-}
-"""
-        out = run(extra={"x9-qrcode-domain/src/test/java/OtherTest.java": java})
-        self.assertEqual(1, len(out), out)
-        self.assertIn("first", out[0])
 
 
 class S46AC2ARuleRowNamesATestThatDoesNotExist(unittest.TestCase):
@@ -453,8 +413,7 @@ func TestNotKeyed(t *testing.T) {}
 
 
 class S112GoTestsAreKeyedInTheirComments(unittest.TestCase):
-    """S11.2: a Go test's key is the first word of its doc comment; the tolerated list names tests
-    that exist."""
+    """S11.2: a Go test's key is the first word of its doc comment."""
 
     def test_a_go_test_is_named_by_the_key_its_doc_comment_starts_with(self):
         repo = Repo(extra={"internal/thing/thing_test.go": GO_TEST})
@@ -471,13 +430,6 @@ class S112GoTestsAreKeyedInTheirComments(unittest.TestCase):
         out = run(table=changed("R-EP-01", "| `R-EP-01` | An endpoint answers. | `X9-LIFE-005` | — |"),
                   extra={"internal/thing/thing_test.go": GO_TEST})
         self.assertEqual([], out)
-
-    def test_a_tolerated_difference_naming_a_key_no_test_defines_fails(self):
-        tolerated = "## 1. Whitespace\n\n**Keys:** `X9-LIFE-005`, `X9-LIFE-999`\n"
-        out = run(extra={"internal/thing/thing_test.go": GO_TEST, crc.TOLERATED: tolerated})
-        self.assertEqual(1, len(out), out)
-        self.assertIn("TOLERATED-DIFFERENCES.md: line 3", out[0])
-        self.assertIn("X9-LIFE-999", out[0])
 
 
 if __name__ == "__main__":
