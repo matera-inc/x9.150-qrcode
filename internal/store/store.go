@@ -228,6 +228,11 @@ func (s *Store) Run(ctx context.Context, script Script) (Result, error) {
 
 // attempt runs the script once, in one READ COMMITTED transaction. seen is the effective status of
 // the row the script decided on, for the busy answer.
+//
+// PERFORMANCE: the transaction holds a write-pool connection across every round trip below, so
+// keep CPU-heavy work (JWS signing or verification, large JSON) out of script and do it before or
+// after Run. Under load, time spent here on the CPU, or waiting for it, is time the small write
+// pool is blocked for every other request (internal/cpu, measured 2026-11-17).
 func (s *Store) attempt(ctx context.Context, n int, script Script) (res Result, seen domain.Status, err error) {
 	err = pgx.BeginTxFunc(ctx, s.write, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		if err := setStatementTimeout(ctx, tx); err != nil {

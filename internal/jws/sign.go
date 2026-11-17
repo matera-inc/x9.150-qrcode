@@ -293,6 +293,14 @@ func NewCorrelationID() uuid.UUID { return uuid.New() }
 // Sign signs m with key and returns the compact JWS. It runs holding one CPU slot (none more when
 // ctx already holds one); ctx ending while it waits for the slot fails the signature. Nothing in
 // it waits on the network.
+//
+// PERFORMANCE: keep the slot here, around the whole signature (JSON, signing input and the key's
+// Sign). It fixes a measured regression (2026-11-17): with the app at 2 vCPU and 500 users on the
+// full payment cycle, Go fell to 779 req/s and a 91 ms median, because write transactions waited
+// for the CPU behind JWS work while holding a database connection. A slot around the signature
+// arithmetic alone did not help (781 req/s, 97 ms); a slot around the whole signature and the
+// whole verification did (812 req/s, 64 ms). Do not narrow it, move it inward or remove it without
+// the same A/B on the benchmark machine; internal/cpu explains why.
 func (s *Signer) Sign(ctx context.Context, key Key, m Message) (string, error) {
 	_, release, err := s.cpu.Hold(ctx)
 	if err != nil {
