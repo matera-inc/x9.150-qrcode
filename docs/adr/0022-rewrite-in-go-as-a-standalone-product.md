@@ -81,6 +81,10 @@ A contributor learns a rule when CI refuses a change.
 **Same repository, Java kept for history.** The Java modules move unchanged to `legacy/java/` with
 `git mv`. They are frozen, excluded from CI, and nothing is deleted.
 
+*(Superseded 2026-11-17 by [0039](0039-java-retired-at-3-0-0.md): the Java build is removed from `main` at 3.0.0 instead
+of frozen under `legacy/java/`. It is kept in git history, under the tag `java-final`, and as the
+`materainc/x9-qrcode:java-final` image.)*
+
 **Behaviour as built, not as planned.** ADRs 0003, 0006, 0007 and 0011 were accepted but never
 implemented, and are not ported. The table below ratifies ADRs 0001–0021.
 

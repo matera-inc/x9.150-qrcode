@@ -5,10 +5,10 @@
 > the configuration, the secrets, the logs and the number of instances all change. This page says
 > what, and links the details.
 >
-> **3.0.0 is not published yet.** The image on Docker Hub is still the Java build until the
-> cutover ([HISTORY.md](HISTORY.md#whats-next)). Where this page says "will", it describes a tag or
-> a step that does not exist yet. Today you can build and run the Go build from this repository
-> ([RUNNING.md](RUNNING.md#the-go-build)).
+> **From 3.0.0 the repository and the image are the Go build only.** The Java build is retired
+> ([ADR-0039](docs/adr/0039-java-retired-at-3-0-0.md)): its code is in git history under the tag
+> `java-final`, and its last image is `materainc/x9-qrcode:java-final`, the way back. How to run
+> the Go build: [RUNNING.md](RUNNING.md).
 
 Why 3.0.0, and what is kept on purpose:
 [ADR-0031](docs/adr/0031-same-image-lighter-and-3-0-is-a-configuration-migration.md). Why there is
@@ -133,8 +133,8 @@ no log file. One line is the exception: if the service cannot start, it writes t
 
 - **One level** for the whole service: `X9_LOG_LEVEL` (`debug`, `info`, `warn`, `error`).
 - **Health and metrics scrapes are not logged,** as in the Java build.
-- Sources: [`internal/httplog/httplog.go`](internal/httplog/httplog.go) and
-  `x9-qrcode-infrastructure/src/main/resources/logback-spring.xml`.
+- Sources: [`internal/httplog/httplog.go`](internal/httplog/httplog.go), and the Java build's
+  `x9-qrcode-infrastructure/src/main/resources/logback-spring.xml` at the tag `java-final`.
 
 ## One instance
 
@@ -152,46 +152,49 @@ memory, and its image is much smaller.
 
 | Tag | Meaning |
 |---|---|
-| `3.0.0` (and later `3.x`) | Will be the Go build |
-| `git-<sha>` | Pinned to a source commit, as today; Go builds will be tagged the same way |
-| `latest` | Will move to the Go build only after a real cutover has succeeded |
-| `java-final` | Will be the last Java build, immutable: the way back |
+| `3.0.0`, `3.0`, `3` (and later `3.x`) | The Go build: a release, and the newest of its minor and major line |
+| `git-<sha>` | Pinned to a source commit, as before |
+| `latest` | The newest release: the Go build from 3.0.0 |
+| `java-final` | The last Java build, immutable: the way back. It receives no more fixes |
 
-**Pin a tag.** If you pull `latest` and are not ready to move, pin `java-final` once it is
-published, or a `git-<sha>` of the Java build today.
+**Pin a tag.** If you pull `latest` and are not ready to move, pin `java-final`, or the
+`git-<sha>` of the Java build you run.
 
 The Go image is distroless: it has no shell and runs as user 65532. Use `x9-qrcode -version` or
 `/actuator/info` for its version, and the OCI `revision` label for its commit.
 
 ## Compose and Helm
 
-**Compose.** The Java files (`docker-compose.yml`, `docker-compose.prod.yml`) are unchanged. The Go
-stack is [`docker-compose.go.yml`](docker-compose.go.yml): PostgreSQL 16, the DBA's one-time step,
-Liquibase, then the service as the application role.
+**Compose.** [`docker-compose.yml`](docker-compose.yml) is now the Go stack (it was
+`docker-compose.go.yml` beside the Java files until 3.0.0; the Java `docker-compose.yml` and
+`docker-compose.prod.yml` are gone): PostgreSQL 16, the DBA's one-time step, Liquibase, then the
+service as the application role.
 
 ```bash
-make go-up      # build, start, wait for health UP
-make go-down    # stop and throw the database away
+make up         # build, start, wait for health UP
+make down       # stop and throw the database away
 ```
 
 It is for local use only: its database trusts every connection.
 
-**Helm.** The same chart deploys the Go build with one more values file:
+**Helm.** The chart (3.0.0) deploys the Go build only; `runtime: java` and the Java templates are
+gone, and a release that still sets `runtime: java` is refused. 2.x values written for
+`values-go.yaml` carry over: the `go.*` keys keep their names.
 
 ```bash
 helm upgrade --install x9-qrcode others/helm/x9-qrcode/chart \
-  -n <namespace> -f others/helm/x9-qrcode/chart/values-go.yaml -f <your-values>.yaml
+  -n <namespace> -f <your-values>.yaml
 ```
 
-`values-go.yaml` sets `runtime: go`. It renders one instance with `Recreate` and no HPA, Liquibase
-4.33.0 as an init container, probes on the API port, and `GOMEMLIMIT`. It ships no PostgreSQL:
-point `go.database.*` at yours. It takes no password as a value: create a Secret and name it in
-`go.existingSecret`. Details: [the chart's README](others/helm/x9-qrcode/README.md#the-go-build-values-goyaml).
+It renders one instance with `Recreate` and no HPA, Liquibase 4.33.0 as an init container, probes on
+the API port, and `GOMEMLIMIT`. It ships no PostgreSQL: point `go.database.*` at yours. It takes no
+password as a value: create a Secret and name it in `go.existingSecret`. Details:
+[the chart's README](others/helm/x9-qrcode/README.md).
 
 ## API differences
 
-The black-box suite runs against both builds and compares every answer. The differences it allows
-are listed, with reasons, in
+Until 3.0.0 the black-box suite ran against both builds and compared every answer. The
+differences it allowed are listed, with reasons, in
 [TOLERATED-DIFFERENCES.md](others/blackbox/TOLERATED-DIFFERENCES.md). The ones an integrator is
 most likely to notice:
 

@@ -1,5 +1,10 @@
 # Golden JWS and EMV sets, exported from Java
 
+> **The Java build is retired** (3.0.0, [ADR-0039](../../../docs/adr/0039-java-retired-at-3-0-0.md)).
+> The set stays: it is a fixed record of what Java produced, and the suite now checks the Go build
+> against it. It can only be re-exported from the last Java image,
+> `materainc/x9-qrcode:java-final`, which `export.sh` uses by default.
+
 What the Java build signed and encoded, kept as files, with a manifest saying what each one is, at
 what instant it is judged, and what the verdict is (Story 4.7,
 [ADR-0027](../../../docs/adr/0027-crypto-in-go-x9150-jws-profile-pkix-with-crl-and-emv-by-hand.md)).
@@ -10,7 +15,7 @@ the verdict in `manifest.json`, and the Go EMV code must decode and re-encode ev
 here needs a network, a running service or a private key.
 
 > **NON-PRODUCTION.** Every certificate here belongs to the repository's bundled test PKI
-> (`x9-qrcode-infrastructure/src/test/resources/certificate`), whose private keys are public. No
+> (`testdata/pki`), whose private keys are public. No
 > private key is in this directory; the export signs with those bundled keystores.
 
 ## What is here
@@ -128,19 +133,18 @@ amount as `0` whatever the request says.
   it holds no private key and only bundled test certificates; the shipped PKI is valid at every
   `verifyAt`; a second implementation (`x9client.jws`, `x9client.emv`) accepts what Java accepts,
   refuses the bad signatures, and decodes every EMV string to the manifest's fields;
-- **against the running Java build**: for every case, the clock is moved to `verifyAt` and the
-  token is given to Java, which must return the manifest's verdict. A notification answer is
-  judged where Java judges answers (as a payee's reply to a notification it sent); everything else
-  is sent to the notification endpoint, whose signed 401 names the `signatureProblem`. Java also
-  reads the location out of every EMV string, and encodes each request of its own host again to
-  the same characters.
+- **against the running deployment** (the Java build until 3.0.0, the Go build since): for every
+  case, the clock is moved to `verifyAt` and the token is given to the service, which must return
+  the manifest's verdict. A notification answer is judged where the service judges answers (as a
+  payee's reply to a notification it sent); everything else is sent to the notification endpoint,
+  whose signed 401 names the `signatureProblem`. The service also reads the location out of every
+  EMV string, and encodes each request of its own host again to the same characters.
 
 ## Regenerating
 
 ```bash
-./mvnw -B -ntp -Pdocker -DskipTests package -Dbuild.image.name=x9-qrcode:golden
-X9_IMAGE=x9-qrcode:golden ./others/blackbox/golden/export.sh                  # make golden-export
-X9_IMAGE=x9-qrcode:golden ./others/blackbox/deployment/run-against-image.sh   # make blackbox-image
+./others/blackbox/golden/export.sh     # make golden-export; X9_IMAGE defaults to materainc/x9-qrcode:java-final
+make image && make blackbox-image      # the Go build against the new set
 ```
 
 `export.sh` needs Docker and nothing else (no bind mounts, so it works on Colima). It starts the
@@ -149,11 +153,11 @@ the chain published in `x5c` and the clock moved to the epoch, and has `export.p
 Java signs. A few minutes. Every export makes **new** tokens (new `correlationId`s, new
 signatures, new locations), so the set is replaced as a whole: commit all of `manifest.json`,
 `jws/` and `pki/` together, and never edit a file by hand. The expected verdicts are written by
-`export.py`; an export is finished only when the suite has passed against the same image.
+`export.py`; an export is finished only when the suite has passed against the Go build with the
+new set.
 
 Regenerate when:
 
-- the Java build changes how it signs, verifies or encodes (the suite fails and says which case);
 - the bundled test PKI is regenerated (`generate-test-ca.sh`): the certificates in the tokens
   would no longer be the bundled ones;
 - **before 2046-09-22**, when the bundled test certificates and CRLs expire (`regenerateBefore` in

@@ -155,8 +155,8 @@ Problem responses are RFC 9457 `application/problem+json` with `type`, `title`, 
 Run two instances against each other — one payee, one payer — and put a whole payment through:
 
 ```bash
-make image && make go-image
-./others/demo/two-instance-payment-cycle.sh      # Java→Java, Java→Go, Go→Java, Go→Go
+make image
+./others/demo/two-instance-payment-cycle.sh      # a payer instance pays a payee instance, over HTTPS
 ```
 
 A single instance cannot tell you whether you are interoperable, only whether you are
@@ -167,7 +167,7 @@ both ends still round-trips. The first run of that script found three defects no
 
 | Question | Source |
 |---|---|
-| exact request/response shapes | `x9-qrcode-infrastructure/src/main/resources/apis/openapi.yaml` |
+| exact request/response shapes | [`api/openapi.yaml`](../../../api/openapi.yaml) |
 | endpoints, event stream, HTTPS rules | [`ENDPOINTS.md`](../../../ENDPOINTS.md) |
 | why a decision is the way it is | [`docs/adr/`](../../../docs/adr/) |
 | how we read the standard | `official-spec/INTERPRETATION.md` |

@@ -12,26 +12,19 @@ certificates. Run the commands below **from the repository root** unless noted.
 ---
 
 ## 0. Prerequisites
-- **JDK 25** (`java -version`). Maven is bundled — use `./mvnw`.
-- **Docker** (Docker Desktop or **Colima**).
+- **Docker** (Docker Desktop or **Colima**), with `docker compose` v2.
 - **Python 3** (standard library only — nothing to `pip install`).
 
-## 1. Build the image
+## 1. Build and run it
 ```bash
-make image           # native arch  → x9-qrcode:latest        (arm64 on Apple Silicon)
-make image-amd64     # amd64 / intel → x9-qrcode:latest-amd64  (uses Rosetta on Apple Silicon)
-```
-> amd64 on Apple Silicon needs **Rosetta**: `docker run --rm --platform=linux/amd64 alpine uname -m` → `x86_64`.
-
-## 2. Run it
-```bash
-make up          # app (:8080) + MongoDB + mongo-express (:9091)
+make up          # builds x9-qrcode:latest, then PostgreSQL 16 + Liquibase + the app (:8080)
 make smoke       # quick health check
-make down        # stop everything
+make down        # stop everything (the database is thrown away)
 ```
-- App: <http://localhost:8080> (open, unauthenticated API) · mongo-express: <http://localhost:9091> (`admin`/`admin`)
+- App: <http://localhost:8080> (open, unauthenticated API). To look at the data:
+  `docker compose exec postgres psql -U x9_qrcode_readonly postgres`.
 
-## 3. Play — merchant → payer
+## 2. Play — merchant → payer
 
 From inside `playground/`:
 
@@ -40,7 +33,7 @@ From inside `playground/`:
 python3 simulate_payee.py            # menu of requests/qr-*-createqr.json
 python3 simulate_payee.py burger     # or pick by name / number
 ```
-POSTs the chosen create request, the app stores it (Mongo) and generates the QR, and the script
+POSTs the chosen create request, the app stores it (PostgreSQL) and generates the QR, and the script
 writes **`qr-<name>.emv`** — the EMV string a QR image would encode.
 
 ### b) 📲 Payer — fetch the payload
@@ -68,7 +61,7 @@ Pretty-prints the header (`alg`, `kid`, `x5t#S256`, `correlationId`, …) and pa
 handles base64url + missing padding (which plain `base64 -d` doesn't) and needs nothing installed. It
 inspects, it does not verify the signature.
 
-## 4. The create requests (`requests/`)
+## 3. The create requests (`requests/`)
 
 The only committed source: the create-request bodies. Edit them or add your own
 `qr-<name>-createqr.json` (it shows up in the menu automatically).
@@ -86,17 +79,17 @@ The only committed source: the create-request bodies. Edit them or add your own
 > and it has **no digitally-signed QR content**. The signed, fully-resolved payload is what the payer
 > fetches in step (b).
 
-## 5. Files
+## 4. Files
 Committed: the two `simulate_*` scripts, `dumpjws.py`, `requests/qr-*-createqr.json`, this README. **Generated** and git-ignored
 (regenerate any time): `qr-<name>.emv`, `<name>-payload.json`, `<name>-call.jws`, `<name>-response.jws`.
 
-## 6. Ideas
+## 5. Ideas
 - **Edit a bill** in `requests/` — amount, tip, networks, adjustments. (They omit `locationId`, so the
   server mints a fresh QR each run — no collisions.) Remember: this build interprets `fednow`, `rtp`
   and `ach` and settles `USD`; anything else is refused at creation with a 400 naming it. Both lists
   are configuration — see [`../official-spec/INTERPRETATION.md`](../official-spec/INTERPRETATION.md).
 - **Decode any EMV**: `POST /api/v1/qrcode-emv-decoder` with `{"qrCode":"…"}`.
-- **Scan from a phone on 5G** — point `x9.public-endpoints.host` at a tunnel; see [`../ENDPOINTS.md`](../ENDPOINTS.md).
+- **Scan from a phone on 5G** — point `X9_PUBLICENDPOINTS_HOST` at a tunnel; see [`../ENDPOINTS.md`](../ENDPOINTS.md).
 - **Point the scripts elsewhere:** `X9_BASE_URL=http://host:port python3 simulate_payer.py`.
 
 Break things, read the errors (field-level RFC-7807 problems), and enjoy. 🛝

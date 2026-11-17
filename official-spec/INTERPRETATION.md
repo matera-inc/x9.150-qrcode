@@ -316,7 +316,7 @@ Nothing caught it because every test signed by calling our own signing endpoint,
 demo key. A round trip through one's own implementation cannot detect a disagreement with anybody
 else's — which is the only kind of bug interoperability testing exists to find.
 
-The fixtures under `x9-qrcode-infrastructure/src/test/resources/certificate/` now sign as a third
+The fixtures under `testdata/pki/` (until 3.0.0 under the Java build's test resources) now sign as a third
 party with both key types, issued by a test CA. Their README explains the two PKIX subtleties that
 make that possible.
 
@@ -656,7 +656,7 @@ notification naming a rail or currency the QR Code never offered; this is our re
 - The header also carries `statusCode` and names it in `crit`, as our other responses do.
 
 - **Every answer from the endpoint is signed**, including those the controller never writes: a
-  request Spring refuses before reading it (an empty or unreadable body is a signed `400`, a wrong
+  request refused before it is read (an empty or unreadable body is a signed `400`, a wrong
   `Content-Type` a signed `415`) and an exception nothing maps (a signed `500` that says nothing
   about its cause). These go out under a fresh `correlationId`, except a `500` raised after the
   question verified, which echoes it. Only a failure to sign leaves an answer unsigned.
@@ -958,7 +958,7 @@ their bug, and in either case not a payment anyone should make.
 **Where this is visible in the code.** `openapi.yaml` declares every object of a create, a PATCH
 and an outbound notification `additionalProperties: false` (except `networks`), and the payload side
 (`PaymentPayloadResponse`, the `Payload*` schemas, `PaymentNotificationData`) declares none. In the
-Java build, `ClosedRequestFields` notes every unknown field of those request types while the body is
+retired Java build, `ClosedRequestFields` notes every unknown field of those request types while the body is
 read and `ClosedRequestFieldsValidator` adds each to the 400 beside the other violations; the
 payload-side types are other classes and are never checked (X9-RAIL-058, -059, -065; tolerant
 reading X9-DEC-017 to -021). In the Go build, `internal/contract` reads every request object keeping
@@ -995,9 +995,9 @@ its clock reads earlier than the last revision.
 - **A PATCH never compares `sentAt`.** A PATCH may carry the whole GET answer (I-16), and its
   `sentAt` is the instant of that earlier answer, so it is ignored, never refused.
 
-Tests: X9-PATCH-046, X9-TIME-022, X9-TIME-023 (Java), `view_test.go::TestSentAtIsNowButNeverBeforeRevisedAt`
-(Go), and X9-TIME-024 (black-box, both builds). The Go payload follows the same rule with Story
-10.3.
+Tests: `view_test.go::TestSentAtIsNowButNeverBeforeRevisedAt` (Go) and X9-TIME-024 (black-box).
+X9-PATCH-046, X9-TIME-022 and X9-TIME-023 pinned it in the Java build until 3.0.0. The payload
+follows the same rule (Story 10.3).
 
 ## Reporting
 

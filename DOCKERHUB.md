@@ -20,10 +20,13 @@ It can also play the **payer** side: `/api/v1/payment-notification/pre-payment` 
 compose, sign and deliver a notification to another deployment, so a PSP integrating here never
 builds a JWS or manages a keystore.
 
-> **3.0.0 will change the database and the configuration.** The Go build on PostgreSQL will replace
-> the Java build on MongoDB under this same image name; `latest` moves only after the cutover, and
-> the last Java build will stay available as `java-final`. Before you move, read
+> **3.0.0 changed the database and the configuration.** From 3.0.0 this image is the Go build on
+> **PostgreSQL**; up to 2.x it was the Java build on MongoDB. The HTTP contract is the same, but the
+> database, the configuration, the secrets and the logs are not: a 2.x deployment does not start on
+> 3.0.0 unchanged. Before you move, read
 > [UPGRADING-TO-3.md](https://github.com/matera-inc/x9.150-qrcode/blob/main/UPGRADING-TO-3.md).
+> The last Java build stays available as **`java-final`**: that is the way back, and it receives no
+> more fixes.
 
 - **Rails:** the US bank rails the standard defines — **FedNow, RTP, ACH** — and **Solana**, on the
   embedding its Foundation published. Any other network is **refused at creation, by name**, rather
@@ -32,39 +35,51 @@ builds a JWS or manages a keystore.
   a deployment accepts only what its rails settle. This image ships with **USD, USDC and FRNT**
   (`supported-currencies.json`); anything else is refused at creation. Add a currency there when you
   add a rail that settles it.
-- **Stack:** Java 25, Spring Boot 3.5.x, MongoDB. Clean / Hexagonal architecture.
-- **Multi-arch:** `linux/amd64` + `linux/arm64`.
+- **Stack:** Go, a static cgo-free binary on a distroless image, running as non-root; PostgreSQL
+  16 or newer, its schema applied by Liquibase before the service starts.
+- **Multi-arch:** `linux/amd64` + `linux/arm64`, one manifest per tag.
 
 ## Tags
 
 | Tag | Meaning |
 |-----|---------|
-| `latest` | Newest build; auto-selects your architecture |
+| `3.0.0`, `3.0`, `3` | A release, and the newest release of its minor and major line |
+| `latest` | Newest release; auto-selects your architecture |
 | `git-<short-sha>` | Immutable — pinned to a source commit (e.g. `git-a9cb57e`) |
-| `latest-arm64` / `latest-amd64` | Explicit per-architecture images |
+| `git-<short-sha>-amd64` / `-arm64` | The per-architecture images that tag is made of |
+| `java-final` | The last Java build (2.x, MongoDB). Frozen; no more fixes |
 
 ## Pull
 
 ```bash
-docker pull materainc/x9-qrcode:latest
+docker pull materainc/x9-qrcode:3
 ```
 
 ## Run
 
-The image is the application only — it needs a **MongoDB replica set** (for multi-document
-transactions). Point the container at your MongoDB:
+The image is the service only. It needs a **PostgreSQL 16+** database whose schema has been
+applied with Liquibase from the repository's `db/changelog`, by a migration role; the service
+connects as the application role and never runs DDL. See
+[db/README.md](https://github.com/matera-inc/x9.150-qrcode/blob/main/db/README.md).
 
 ```bash
 docker run -p 8080:8080 \
-  -e SPRING_DATA_MONGODB_HOST=your-mongo-host \
-  -e SPRING_DATA_MONGODB_PORT=27017 \
-  -e SPRING_DATA_MONGODB_REPLICA_SET_NAME=your-rs \
-  materainc/x9-qrcode:latest
+  -e DATABASE_HOST=your-postgres-host \
+  -e DATABASE_NAME=your-database \
+  -e DATABASE_USER=x9_qrcode_app \
+  -v "$PWD/db-password:/run/secrets/x9-qrcode-db-password:ro" \
+  -e DATABASE_PASSWORD_FILE=/run/secrets/x9-qrcode-db-password \
+  -e DATABASE_SSLMODE=verify-full \
+  -e X9_PUBLICENDPOINTS_HOST=x9.example.com \
+  materainc/x9-qrcode:3
 ```
 
-For an all-in-one local run (app + a single-node Mongo replica set), use the Docker Compose setup
-in the source repo. Health check: `GET /actuator/health`. The API is open/unauthenticated by
-design — secure it at your edge.
+Every setting is in
+[`config.example.yaml`](https://github.com/matera-inc/x9.150-qrcode/blob/main/cmd/x9-qrcode/config.example.yaml).
+For an all-in-one local run (PostgreSQL, Liquibase and the service), use `docker compose up` with
+the `docker-compose.yml` of the source repository. Health check: `GET /actuator/health`. The image
+starts with a bundled NON-PRODUCTION demo signing identity; supply your own keystore for anything
+real. The API is open/unauthenticated by design — secure it at your edge.
 
 ## Provenance
 
@@ -72,8 +87,10 @@ Every image records the exact source commit it was built from:
 
 ```bash
 docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' \
-  materainc/x9-qrcode:latest
+  materainc/x9-qrcode:3
 ```
+
+`docker run --rm materainc/x9-qrcode:3 -version` prints the version and the commit too.
 
 ## Source & license
 

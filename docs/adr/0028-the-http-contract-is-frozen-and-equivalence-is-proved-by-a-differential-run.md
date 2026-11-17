@@ -6,6 +6,12 @@ Date: 2026-11-13
 
 Accepted 2026-11-13. Part of [0022](0022-rewrite-in-go-as-a-standalone-product.md).
 
+**Amended 2026-11-17 by [0039](0039-java-retired-at-3-0-0.md):** the Java build is retired at 3.0.0, so the
+differential run no longer runs in CI; there is no second build on `main` to compare. The
+contract stays frozen as this ADR describes. `others/blackbox/differential.py` and
+[TOLERATED-DIFFERENCES.md](../../others/blackbox/TOLERATED-DIFFERENCES.md) stay as the record of how
+equivalence was proved, and the comparison can be re-run against the `java-final` image.
+
 ## Context
 
 `openapi.yaml` (contract `0.6.0-rc`) is consumed by payer PSPs (`/pub`), billers (`/api/v1`) and

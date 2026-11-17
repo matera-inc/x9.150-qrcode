@@ -1,8 +1,9 @@
 # Metrics and actuator endpoints
 
-What the Go build serves at `/actuator/prometheus` and `/actuator/info`, and what became of every
-metric family and actuator endpoint the Java build exposed (Story 14.1). If you have dashboards or
-alerts on the Java build, this page tells you which keep working and what to change.
+What the service serves at `/actuator/prometheus` and `/actuator/info`, and what became of every
+metric family and actuator endpoint the Java build exposed until it was retired at 3.0.0 (Story
+14.1, [ADR-0039](adr/0039-java-retired-at-3-0-0.md)). If you have dashboards or alerts written for
+the Java build, this page tells you which keep working and what to change.
 
 Both endpoints answer on the API port (`8080`), as `/actuator/health` does
 ([ADR-0031](adr/0031-same-image-lighter-and-3-0-is-a-configuration-migration.md): only health,
@@ -11,7 +12,7 @@ off the public edge.
 
 ## How the inventory was made
 
-The Java image was built from this repository (`./mvnw -Pdocker -DskipTests package`), started
+The Java image was built from this repository before 3.0.0 (the `java-final` tag), started
 with a MongoDB 7.0 replica set, and given a short load covering every kind of route: creates (201
 and 400), a GET (200, 404, 400), a PATCH, a status update, a payload fetch, a payment notification,
 the event stream, the JWK set and a certificate, `signature/generate`, an unknown path (404), a

@@ -1,8 +1,8 @@
 # History: from Java on MongoDB to Go on PostgreSQL
 
 This service was first written in Java 25 on Spring Boot, with MongoDB as its database. It has been
-rewritten in Go, on PostgreSQL. This page says why, how the change was kept safe, and what is still
-to come. The decision itself is
+rewritten in Go, on PostgreSQL, and from 3.0.0 the Go build is the only one on `main`. This page
+says why, how the change was kept safe, and how it ended. The decision itself is
 [ADR-0022](docs/adr/0022-rewrite-in-go-as-a-standalone-product.md); the plan is
 [PLAN-GO-POSTGRES-REWRITE.md](PLAN-GO-POSTGRES-REWRITE.md).
 
@@ -37,8 +37,8 @@ numbers. [BENCHMARK.md](BENCHMARK.md) publishes every number as measured, whiche
 
 ## How the change was made safe
 
-- **Same product.** The Go build lives in this repository, serves the same HTTP contract, and will
-  ship under the same image name, `materainc/x9-qrcode`
+- **Same product.** The Go build lives in this repository, serves the same HTTP contract, and
+  ships under the same image name, `materainc/x9-qrcode`
   ([ADR-0022](docs/adr/0022-rewrite-in-go-as-a-standalone-product.md),
   [ADR-0031](docs/adr/0031-same-image-lighter-and-3-0-is-a-configuration-migration.md)). API
   consumers should notice nothing.
@@ -60,10 +60,12 @@ numbers. [BENCHMARK.md](BENCHMARK.md) publishes every number as measured, whiche
 - **A black-box suite defines "done".** The suite under [`others/blackbox/`](others/blackbox/README.md)
   tests the service only through its HTTP API and its database, so it does not care which language
   answers ([ADR-0030](docs/adr/0030-a-black-box-suite-defines-done-and-migration-writes-only-runtime-valid-rows.md)).
-  It was written and made green against Java first. It now runs in full against both builds: about
-  300 black-box cases, out of about 900 tests listed in [docs/TEST-INDEX.md](docs/TEST-INDEX.md).
-- **Differences are written down.** Where the two builds still answer differently on purpose, the
-  difference is listed in ADR-0028's "Known differences between the builds", with the reason.
+  It was written and made green against Java first, then ran in full against both builds until
+  Java's retirement; it now runs against the Go build on every pull request.
+- **Differences are written down.** Where the two builds answered differently on purpose, the
+  difference is listed in ADR-0028's "Known differences between the builds" and in
+  [TOLERATED-DIFFERENCES.md](others/blackbox/TOLERATED-DIFFERENCES.md), with the reason. A
+  differential run diffed every answer of the two builds on every pull request until 3.0.0.
 - **One schema, one changelog.** The database is one PostgreSQL schema, built by a Liquibase
   changelog that runs before the binary
   ([ADR-0023](docs/adr/0023-postgresql-one-schema-portable-sql.md), [db/README.md](db/README.md)).
@@ -88,27 +90,32 @@ numbers. [BENCHMARK.md](BENCHMARK.md) publishes every number as measured, whiche
 | 2026-11-15 | Billers create, read, edit and settle QR Codes on Go (Epic 9) |
 | 2026-11-15 | Payers fetch, notify and are evented on Go; the whole suite is required against Go (Epic 10) |
 | 2026-11-16 | ADR-0038: no data migration from the Java build; a written configuration mapping instead (Epic 13) |
+| 2026-11-17 | The benchmark of record ([BENCHMARK.md](BENCHMARK.md)) |
+| 2026-11-17 | 3.0.0: the Java build is retired from `main`, kept in git history (tag `java-final`) and as the `java-final` image ([ADR-0039](docs/adr/0039-java-retired-at-3-0-0.md)) |
 
-## What's next
+## How it ended
 
-The remaining epics are listed in
-[docs/rewrite/EPICS-AND-STORIES.md](docs/rewrite/EPICS-AND-STORIES.md):
+Every epic in [docs/rewrite/EPICS-AND-STORIES.md](docs/rewrite/EPICS-AND-STORIES.md) is done:
 
-- **Epic 11:** prove the builds equivalent with a differential run, Java against Go.
+- **Epic 11:** the differential run proved the builds equivalent, Java against Go, with every
+  remaining difference tolerated and written down.
 - **Epic 12:** retention and housekeeping of old rows.
-- **Epic 13:** no data migration: the Java build has no production users, so the Go build starts
+- **Epic 13:** no data migration: the Java build had no production users, so the Go build starts
   on an empty database ([ADR-0038](docs/adr/0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md)).
   Every Java setting is mapped to its Go key in
   [docs/CONFIGURATION-FROM-JAVA.md](docs/CONFIGURATION-FROM-JAVA.md); no migration tool is built.
 - **Epic 14:** the lighter image ships.
-- **Epic 15:** [BENCHMARK.md](BENCHMARK.md) is re-run for the release.
-- **Epic 16:** the cutover.
-- **Epic 17:** the Java build is frozen, unchanged, in `legacy/java/`. Nothing is deleted.
-
-The Go build will be released as **3.0.0**, once its tests and benchmarks are done
-([ADR-0031](docs/adr/0031-same-image-lighter-and-3-0-is-a-configuration-migration.md)). It changes
-the database and the configuration, so it is a new major version. The last Java build will be
-tagged **`java-final`**, and stays available for anyone not ready to move.
+- **Epic 15:** [BENCHMARK.md](BENCHMARK.md) is the benchmark of record; the raw k6 output of each
+  campaign is attached to its GitHub release.
+- **Epics 16 and 17:** the cutover is the release of **3.0.0**, a new major version because it
+  changes the database and the configuration
+  ([ADR-0031](docs/adr/0031-same-image-lighter-and-3-0-is-a-configuration-migration.md),
+  [UPGRADING-TO-3.md](UPGRADING-TO-3.md)). The Java build was not frozen under `legacy/java/`, as
+  first planned: it is **retired**, removed from `main`
+  ([ADR-0039](docs/adr/0039-java-retired-at-3-0-0.md)). Its code is in git history under the tag
+  **`java-final`**, and its last image is `materainc/x9-qrcode:java-final`, for anyone not ready to
+  move. The ADRs, the tolerated differences, the golden sets Java produced and both benchmark
+  campaigns stay, as the record of how the change was made.
 
 ---
 

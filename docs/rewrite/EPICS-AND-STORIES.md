@@ -2980,6 +2980,17 @@ Detailed in a later run of this workflow.
 | 16 | 11 | Cutover; `make` targets renamed (FR31) |
 | 17 | 12 | Java frozen in `legacy/java/` (FR32) |
 
+**Epics 16 and 17: done another way (owner, 2026-11-17;
+[ADR-0039](../adr/0039-java-retired-at-3-0-0.md)).** They were never detailed into stories. The
+Java build had no production deployment to cut over (ADR-0038), so the cutover is the release of
+**3.0.0**: the Go image is published as `3.0.0`, `3.0`, `3` and `latest` by
+`others/scripts/publish-image.sh`, and the last Java image is `java-final`. The `make` targets are
+renamed (`build`, `test`, `image`, `up`, `down`, `blackbox-image`, …; the `go-*` names stay as
+aliases) and `docker-compose.go.yml` became `docker-compose.yml`. Java is **not frozen under
+`legacy/java/`**: it is removed from `main` and kept in git history under the tag `java-final`. The
+`build`, `blackbox` (Java), `differential` and Java pairing CI jobs are gone; `blackbox-go` stays
+required. The Java-era criteria above stay as written: they record what was done.
+
 ---
 
 <sub>Copyright © 2026 Matera Systems, Inc. Licensed under the Matera Source License v1.0 (source-available; not open source) — see LICENSE.md at the repository root. Creating a Derivative Work from this document — by AI/ML generation or by manual re-implementation based on it — is governed by that license (see the "Derivative Work" definition and Annex A).</sub>

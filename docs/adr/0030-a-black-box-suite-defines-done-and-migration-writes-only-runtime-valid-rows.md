@@ -11,6 +11,10 @@ the migrate image are **not built**. The migration rules and the cutover steps b
 the record of what was worked out, should a production user of the Java build appear before the
 cutover. The black-box suite and the definition of "done" are unchanged.
 
+**Amended 2026-11-17 by [0039](0039-java-retired-at-3-0-0.md):** the Java build is retired at 3.0.0 and removed from
+`main`; it is not frozen under `legacy/java/`. Its integration tests are in git history under the
+tag `java-final`. The black-box suite runs against the Go build only.
+
 ## Context
 
 Most of the Java build's 293 test methods are Spring integration tests that cannot run against a Go

@@ -1,18 +1,24 @@
 # Plan — Rewrite in Go on PostgreSQL
 
-Status: **Design accepted 2026-11-13** (ADRs 0022–0035); execution not started
+Status: **Done.** Design accepted 2026-11-13 (ADRs 0022–0035); shipped as **3.0.0** on
+2026-11-17, when the Java build was retired from `main` ([ADR-0039](docs/adr/0039-java-retired-at-3-0-0.md)).
+This plan is kept as the record of how the work was laid out; where it says "will", read "did",
+and where it disagrees with an ADR, the ADR wins.
 Work breakdown: [docs/rewrite/EPICS-AND-STORIES.md](docs/rewrite/EPICS-AND-STORIES.md) — epics, stories
 and acceptance criteria with IDs the tests cite
 Decisions: [ADR-0022](docs/adr/0022-rewrite-in-go-as-a-standalone-product.md) –
 [ADR-0035](docs/adr/0035-one-event-builder-and-a-written-transition-map.md)
 Owner's intent: same repository, Java kept frozen in `legacy/java/` for history, and the same Docker
-Hub image (`materainc/x9-qrcode`) becomes lighter while behaving as before.
+Hub image (`materainc/x9-qrcode`) becomes lighter while behaving as before. *(2026-11-17: Java is
+not frozen in `legacy/java/` but removed from `main`, kept in git history under the tag
+`java-final` and as the `java-final` image; [ADR-0039](docs/adr/0039-java-retired-at-3-0-0.md).)*
 Precedence ([ADR-0022](docs/adr/0022-rewrite-in-go-as-a-standalone-product.md)): **the ANSI X9.150
 standard** > **this product's published contract and accepted ADRs** > **Matera's internal Go and
 PostgreSQL engineering standards**. The internal standards are not copied here; they show only
 through the code, the lint configuration, the CI Go job and the Liquibase changelog conventions.
 
-This plan is the execution document. It is deleted when the work ships. The decisions live in the
+This plan was the execution document. It was to be deleted when the work shipped; the owner kept
+it, with this status, as history. The decisions live in the
 ADRs, and where the two disagree the ADR wins.
 
 ---
@@ -102,7 +108,7 @@ understood: 21 ADRs, a state machine and an interpretation document.
 ```
 x9.150-qrcode/
 ├── cmd/x9-qrcode/main.go          wiring only: slog, config, two pgxpools (write/read), mux, retention timer, Ready()
-├── legacy/java/                   the Maven modules, moved with git mv, frozen, not built in CI (ADR-0022)
+├── legacy/java/                   (not done: Java is removed from main, tag java-final, ADR-0039)
 ├── internal/
 │   ├── paymentrequest/            create, get, patch, status-update — handler, service, store
 │   ├── payload/                   POST /pub/api/v1/loc/{id} — formula, quote assembly, signing
@@ -196,7 +202,7 @@ from phase 7 on the **differential run** compares Java and Go.
 | 10 | **Image & deploy** | Per ADR-0031: multi-stage `Dockerfile` built with `docker buildx` (amd64 + arm64), `Makefile` targets kept as thin wrappers over `go`/`docker`; distroless service image carrying `x9-qrcode` + the demo identity as PKCS#12 (no Mongo driver); same ports, health paths and JSON shape, documented env var names, OCI labels; multi-arch; start-up refusal on Spring-style or MongoDB configuration, naming the mapping document (ADR-0038); actuator exposes **only health, prometheus and info**; incoming `b3`/`traceparent` ids logged per request, no exporter; **metric inventory**: every metric Java exports is kept under its name or listed as dropped; upgrade notes (dropped actuator endpoints, log field mapping, configuration migration); compose with PostgreSQL + Liquibase `4.33.0` (Apache-2.0) one-shot; Helm with Liquibase init container, `strategy: Recreate`, **no HPA**, `GOMEMLIMIT`; tag the last Java build `java-final`; Go line tagged `3.x` | `docker run` with only the demo identity serves `/actuator/health` UP and the black-box suite passes; compose `up` works on a clean machine; `helm template` smoke check in CI |
 | 10b | **Benchmark & `BENCHMARK.md`** | §9 campaign — **S1, S2, S7** (owner decision D6) — Java and Go interleaved on the same machine; `BENCHMARK.md` published with method, environment, results and raw data | Every number in `BENCHMARK.md` traces to a committed raw file; the Docker Hub "lighter" claim cites it |
 | 11 | **Cutover** | Per deployment, with no data migration (ADR-0038): (1) announce the window; (2) stop Java, leaving its MongoDB untouched; (3) Liquibase on the empty schema; (4) configure Go from `docs/CONFIGURATION-FROM-JAVA.md`; (5) start Go; (6) event consumers start over from the Go log. **Rollback** (stop Go, start Java on the untouched MongoDB) is rehearsed once and is allowed **only until Go accepts its first write of any kind** (create, PATCH, notification, status-update); after that, forward-fix only — the runbook checks the event count since start. **Then** move `:latest` to Go, tag `3.0.0`, push DOCKERHUB.md stating the database and configuration change in its first paragraph and linking the upgrade guide | Go serves on an empty schema with the operator's configuration, and the black-box suite passes against it |
-| 12 | **Freeze Java** | `git mv` the Maven modules, `x9-qrcode-build-init` and the vendored jar into `legacy/java/` with a README (frozen, last tag `java-final`, how to build it if ever needed); drop them from CI; keep the Mongo compose file there; mark ADR-0002 and ADR-0013 *Superseded*; rewrite AGENTS.md, CLAUDE.md, README, RUNNING, HIGH-AVAILABILITY, ENDPOINTS for Go/PostgreSQL; delete this plan | Root builds only Go; `legacy/java/` untouched afterwards |
+| 12 | **Freeze Java** *(done another way, 2026-11-17, [ADR-0039](docs/adr/0039-java-retired-at-3-0-0.md): Java removed from `main`, kept under the git tag `java-final`; CI, Compose, the chart and the image Go-only; this plan kept)* | `git mv` the Maven modules, `x9-qrcode-build-init` and the vendored jar into `legacy/java/` with a README (frozen, last tag `java-final`, how to build it if ever needed); drop them from CI; keep the Mongo compose file there; mark ADR-0002 and ADR-0013 *Superseded*; rewrite AGENTS.md, CLAUDE.md, README, RUNNING, HIGH-AVAILABILITY, ENDPOINTS for Go/PostgreSQL; delete this plan | Root builds only Go; `legacy/java/` untouched afterwards |
 
 Phases 4 and 5 can run in parallel once phase 3 lands. Phase 8 can run any time after phase 6.
 Phase 9 is a decision and a document (ADR-0038); its mapping changes with every Go configuration key.

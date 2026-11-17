@@ -1,7 +1,13 @@
 # Plan — Non-USD-Pegged Currencies (request-time FX & per-currency `validUntil`)
 
 Status: **Proposed** (design/plan only — not yet implemented)
-Scope: `x9-qrcode-application` (new output port + use-case wiring), `x9-qrcode-infrastructure` (FX adapter), OpenAPI docs.
+Scope: the payload's pricing (`internal/billing`, `internal/paymentrequest`), a new FX adapter, OpenAPI docs.
+
+> **Written against the Java build**, which was retired at 3.0.0
+> ([ADR-0039](docs/adr/0039-java-retired-at-3-0-0.md)). The design (sections 1–4, 7 and 8) stands; the
+> baseline, class names, Spring and MongoDB references (sections 5, 6, 9 and 10) describe where
+> it would have gone in Java, and are to be re-read as Go packages and PostgreSQL tests when it is
+> built. This deployment accepts only 1:1 dollar currencies today (`supported-currencies.json`).
 
 ## 1. Problem
 

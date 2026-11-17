@@ -1,6 +1,10 @@
 # Plan — Payment-Notification Hardening (atomic initiation, embedded outbox, pull-based events)
 
-Status: **Proposed** (design/plan only — not yet implemented)
+Status: **Historical.** Written for the Java build, which was retired at 3.0.0
+([ADR-0039](docs/adr/0039-java-retired-at-3-0-0.md)). Its decisions live on in the ADRs it names
+(0001–0021, then 0025, 0035, 0036 and 0037 for the Go build on PostgreSQL); the MongoDB outbox
+drain, conditional Mongo updates and Java module scope below are history, not instructions.
+Originally: **Proposed** (design/plan only)
 Branch: `supporting-payment-notifications`
 Scope: `x9-qrcode-domain` (events, transition guards), `x9-qrcode-application` (new ports, use cases),
 `x9-qrcode-infrastructure` (conditional Mongo updates, outbox drain, events API, dynamic public host),

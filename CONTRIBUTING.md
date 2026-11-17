@@ -11,7 +11,8 @@ under the terms below.
 1. **Fork** the repository (or create a branch if you have write access).
 2. Create a topic branch: `git checkout -b my-change`.
 3. Make your change — keep it focused; one logical change per PR.
-4. Make sure the build and tests pass: `./mvnw test` (or `make test`).
+4. Make sure the build and tests pass: `make test`, and `others/scripts/ci-go.sh` for every check
+   CI's `go` job runs (lint included).
 5. **Sign off** every commit — see [DCO](#developer-certificate-of-origin-dco) below: `git commit -s`.
 6. Push your branch and open a **pull request** against `main`.
 7. A maintainer reviews and approves. PRs require **1 approval** and are **squash-merged**.
@@ -48,9 +49,10 @@ provided under the **Matera Source License v1.0**. Use your real name and a reac
 - Contributions are licensed under the [Matera Source License v1.0](LICENSE.md). Don't add code you
   cannot license under those terms, and don't paste in third-party code with incompatible licensing.
 - Keep PRs small and focused, with a clear description of **what** changed and **why**.
-- Match the existing architecture — Clean / Hexagonal: the `domain` module has no framework
-  dependencies; Spring wiring lives in `infrastructure`.
-- Add or update tests for behavior changes; the full suite must be green.
+- Match the existing layout — one package per concern under `internal/`, its handler, rules and SQL
+  together; wiring in `cmd/x9-qrcode`; business time only from `internal/clock`
+  ([AGENTS.md](AGENTS.md) has the conventions).
+- Add or update tests for behavior changes; the Go tests and the black-box suite must be green.
 - Never commit secrets, real keystores, or the copyrighted ANSI standard (see `.gitignore`).
 
 ## Security issues

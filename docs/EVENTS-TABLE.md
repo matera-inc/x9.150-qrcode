@@ -1,9 +1,10 @@
 # The event table, for payment-system integrators
 
-> **Applies to the Go/PostgreSQL build**, which is planned, not shipped
+> **Applies to the service from 3.0.0, on PostgreSQL**
 > ([ADR-0022](adr/0022-rewrite-in-go-as-a-standalone-product.md)). Its schema is in
-> [`db/`](../db/README.md). The Java build serves the same events over HTTP only
-> ([ENDPOINTS.md](../ENDPOINTS.md#consuming-the-payment-event-stream)).
+> [`db/`](../db/README.md). The same events are also served over HTTP
+> ([ENDPOINTS.md](../ENDPOINTS.md#consuming-the-payment-event-stream)); the retired Java build
+> served them over HTTP only.
 
 X9.150 tells your payment system what happened to a QR Code: a payer reserved it, a payer reported a
 transaction hash, it was marked paid, it was cancelled. This page is everything you need to read
@@ -109,7 +110,7 @@ Pick one per consumer.
 |---|---|---|
 | **CDC** (Debezium, expected) | Stream the inserts on `payment_event` | You already run Kafka Connect, or want events on a bus |
 | **Plain SQL** | Claim pending rows, process them, mark them `DONE` | One payment system reading with its own code |
-| **HTTP** | `GET /pub/api/v1/events?after=…` | No database access, or code written for the Java build |
+| **HTTP** | `GET /pub/api/v1/events?after=…` | No database access, or code written against 2.x |
 
 ### 1. CDC with Debezium: take inserts only
 
@@ -210,7 +211,7 @@ COMMIT;
 
 ### 3. HTTP
 
-`GET /pub/api/v1/events?after=<cursor>&limit=100&wait=25`, the long-polling API both builds serve
+`GET /pub/api/v1/events?after=<cursor>&limit=100&wait=25`, the long-polling API
 ([ADR-0001](adr/0001-events-leave-by-pull-not-push.md)). The cursor is `seq` as a decimal string, and
 a cursor the Java build handed out keeps working ([ADR-0026](adr/0026-identifiers-and-the-event-cursor.md)).
 Its rules are in [ENDPOINTS.md](../ENDPOINTS.md#consuming-the-payment-event-stream): dedupe by

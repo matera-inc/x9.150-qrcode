@@ -2,19 +2,29 @@
 
 Tracked, reproducible defects. Each entry lists how to reproduce, expected vs. actual behavior, and
 the root cause as currently understood. Defects that are not yet fixed are listed under **Open**;
-fixed ones stay under **Fixed**, for the record.
+fixed ones stay under **Fixed**, for the record. The Java build was retired at 3.0.0
+([ADR-0039](docs/adr/0039-java-retired-at-3-0-0.md)): the Java classes and tests the older entries
+name are in the git history under the tag `java-final`.
 
 ## Open
+
+---
+
+None.
+
+## Fixed
 
 ---
 
 ## BUG-004 — An expired `ACTIVE` QR Code does not give up its location to a rebind
 
 - **Reported:** 2026-11-14 (Story 4.2, S4.2-AC4)
-- **Severity:** Low — a biller re-pointing an expired printed code gets a 400 until MongoDB's TTL
-  monitor deletes the holder, normally within about a minute of its `validUntil`.
+- **Fixed:** 3.0.0 — the Go build never had it, and the Java build that did is retired
+  ([ADR-0039](docs/adr/0039-java-retired-at-3-0-0.md)).
+- **Severity:** Low — on the Java build, a biller re-pointing an expired printed code got a 400
+  until MongoDB's TTL monitor deleted the holder, normally within about a minute of its `validUntil`.
 - **Pinned by:** `others/blackbox/tests/test_payment_requests_pinned.py::test_an_expired_active_holder_of_the_same_creditor_gives_up_its_location`
-  (`X9-LOC-421`), a strict expected failure on Java and an ordinary test on Go.
+  (`X9-LOC-421`), an ordinary test since 3.0.0 (until then a strict expected failure on Java).
 - **Area:** `QRCodeEntity.releaseLocation` (domain)
 - **Go build:** fixed. A create (Story 9.6) releases an expired `ACTIVE` holder of the same
   creditor (`domain.HolderIsLive` checks `valid_until`); `internal/paymentrequest`'s
@@ -43,12 +53,9 @@ random location without an event.
 Java got away with it because the TTL index deletes an expired QR Code, after which the location is
 simply free. ADR-0024 names this "the gap closed" for the Go build, whose rows are retained.
 
-### Suggested direction
+### Resolution
 
-Leave the frozen Java build as it is and let the Go build close the gap, as ADR-0024 decides; or, if
-Java is to agree with the suite, make `releaseLocation` also accept `isExpired()`.
-
-## Fixed
+The Go build closes the gap, as ADR-0024 decides. The Java build was left as it was and is retired.
 
 ---
 
