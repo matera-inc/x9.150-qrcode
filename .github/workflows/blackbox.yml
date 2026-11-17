@@ -1,28 +1,19 @@
 name: Black-box
 
-# Runs the black-box suite (others/blackbox) against the Java build on every pull request to main
-# (Story 3.6, FR13): the image as the publish gate builds it, a MongoDB replica set, the movable
-# clock on, and the black-box truststore, with the suite inside the service's network namespace so
-# the service can reach the suite's test payee and CRL server.
+# Runs the black-box suite (others/blackbox) against the image, on PostgreSQL 16 with db/changelog
+# applied by Liquibase (Story 9.1), on every pull request to main that touches the code, db/, the
+# contract or the suite: the image as `make image` builds it, the movable clock on, and the
+# black-box truststore, with the suite inside the service's network namespace so the service can
+# reach the suite's test payee and CRL server. The verdict is the whole suite (Story 10.8): a suite
+# that could not run fails this job (the service never healthy, zero tests collected, or any
+# capability missing with X9_REQUIRE_ALL), never a green skip.
 #
-# Separate from the `build` job in ci.yml, which it leaves unchanged. A suite that could not run
-# fails this job: the service never healthy, zero tests collected, or any capability missing
-# (X9_REQUIRE_ALL) is red, never a green skip.
+# A job-level path filter, in plain git, so the check always reports (it is required): on any other
+# pull request it checks out, finds nothing to run, and passes.
 #
-# The `blackbox-go` job (Story 9.1) runs the same suite against the Go image on PostgreSQL 16, with
-# db/changelog applied by Liquibase, on every pull request that touches the Go code, the Java code
-# (so that `differential` sees a Java-only change too), db/ or others/blackbox/. Since Story 10.8 its verdict is the whole suite, as for Java: any failure fails
-# the job (java_only tests skip with their reason; X9-TIME-015 is a strict expected failure on Go
-# until Epic 12's retention lands). On any other pull request it checks out, finds nothing to run,
-# and passes.
-#
-# The `differential` job (Story 11.2, ADR-0028) diffs what the two builds answered: both jobs above
-# record every exchange (X9_RECORD_DIR) and upload the recording as an artifact, and `differential`
-# downloads both and runs others/blackbox/differential.py with others/blackbox/TOLERATED-DIFFERENCES.md.
-# It fails on any difference no tolerated entry matches, on a test only one build recorded that no
-# entry names, and on an entry that matched nothing (stale). When `blackbox-go` found nothing to run,
-# there is no Go recording: `differential` says so and passes without diffing, so the check always
-# reports. It runs even when a suite failed, since the diff of a failing run is part of its story.
+# Until 3.0.0 this workflow also ran the suite against the Java build (`blackbox`) and diffed the
+# two builds' answers (`differential`, ADR-0028). Both ended with Java's retirement (ADR-0039); the
+# comparison can still be re-run against the java-final image (others/blackbox/README.md).
 
 on:
   pull_request:
@@ -33,57 +24,16 @@ permissions:
   contents: read
 
 jobs:
-  blackbox:
-    name: blackbox
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK 25
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "25"
-          cache: maven
-
-      - name: Build the image (buildpacks, as `make image` does)
-        run: |
-          chmod +x mvnw
-          ./mvnw -B -ntp -Pdocker -DskipTests package -Dbuild.image.name=x9-qrcode:ci \
-            -Doci.revision="$GITHUB_SHA" -Doci.version="${GITHUB_SHA::7}"
-
-      - name: Run the black-box suite against it
-        env:
-          X9_IMAGE: x9-qrcode:ci
-          X9_RECORD_DIR: ${{ runner.temp }}/recording-java
-        run: ./others/blackbox/deployment/run-against-image.sh
-
-      - name: Keep the recording for the differential run
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: recording-java
-          path: ${{ runner.temp }}/recording-java
-          if-no-files-found: warn
-          retention-days: 7
-
   blackbox-go:
     name: blackbox-go
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    outputs:
-      ran: ${{ steps.changes.outputs.run }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # A job-level path filter, in plain git, so the Java job above keeps running on every pull
-      # request: a workflow-level `paths` would filter both jobs.
-      # The Java paths are in the filter too (as in pairings.yml): a Java-only change can add a
-      # difference between the builds, and only a Go run lets `differential` see it.
-      - name: Does this pull request touch either build, db/ or the suite?
+      - name: Does this pull request touch the code, db/, the contract or the suite?
         id: changes
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -91,87 +41,19 @@ jobs:
           changed="$(git diff --name-only "$BASE_SHA"...HEAD)"
           printf '%s\n' "$changed"
           if printf '%s\n' "$changed" | grep -Eq \
-              '(\.go$|^go\.(mod|sum)$|^cmd/|^internal/|^testdata/|^Dockerfile$|^\.dockerignore$|^Makefile$|^db/|^others/blackbox/|^x9-qrcode-[a-z-]+/|^pom\.xml$|^mvnw|^\.mvn/|^\.github/workflows/blackbox\.yml$)'; then
+              '(\.go$|^go\.(mod|sum)$|^cmd/|^internal/|^testdata/|^api/|^Dockerfile$|^\.dockerignore$|^Makefile$|^db/|^others/blackbox/|^\.github/workflows/blackbox\.yml$)'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "Neither build, db/ nor the suite changed: the Go black-box run is not needed."
+            echo "Neither the code, db/, the contract nor the suite changed: the black-box run is not needed."
           fi
 
-      - name: Build the Go image (make go-image)
+      - name: Build the image (make image)
         if: steps.changes.outputs.run == 'true'
-        run: make go-image GO_IMAGE=x9-qrcode:go
+        run: make image IMAGE=x9-qrcode:ci
 
       - name: Run the whole black-box suite against it (PostgreSQL 16, Liquibase)
         if: steps.changes.outputs.run == 'true'
         env:
-          X9_IMAGE: x9-qrcode:go
-          X9_RECORD_DIR: ${{ runner.temp }}/recording-go
+          X9_IMAGE: x9-qrcode:ci
         run: ./others/blackbox/deployment/run-against-image.sh
-
-      - name: Keep the recording for the differential run
-        if: ${{ !cancelled() && steps.changes.outputs.run == 'true' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: recording-go
-          path: ${{ runner.temp }}/recording-go
-          if-no-files-found: warn
-          retention-days: 7
-
-  differential:
-    name: differential
-    needs: [blackbox, blackbox-go]
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Was there a Go run to compare?
-        id: go
-        env:
-          RAN: ${{ needs.blackbox-go.outputs.ran }}
-        run: |
-          if [ "$RAN" = "true" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "blackbox-go found nothing to run on this pull request, so there is no Go recording:"
-            echo "the differential run is not needed and passes without diffing."
-          fi
-
-      - uses: actions/checkout@v4
-        if: steps.go.outputs.run == 'true'
-
-      - uses: actions/setup-python@v5
-        if: steps.go.outputs.run == 'true'
-        with:
-          python-version: "3.12"
-
-      - name: Download both recordings
-        if: steps.go.outputs.run == 'true'
-        uses: actions/download-artifact@v4
-        with:
-          pattern: recording-*
-          path: ${{ runner.temp }}/recordings
-
-      - name: Diff Java against Go, against the tolerated list
-        if: steps.go.outputs.run == 'true'
-        env:
-          RECORDINGS: ${{ runner.temp }}/recordings
-        run: |
-          for build in java go; do
-            if [ ! -f "$RECORDINGS/recording-$build/_tests.main.jsonl" ]; then
-              echo "No $build recording: its suite did not run to the end, so there is nothing to diff."
-              exit 1
-            fi
-          done
-          python others/blackbox/differential.py "$RECORDINGS/recording-java" "$RECORDINGS/recording-go" \
-            --json "$RECORDINGS/differences.json" --top 40
-
-      - name: Keep the report
-        if: ${{ !cancelled() && steps.go.outputs.run == 'true' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: differences
-          path: ${{ runner.temp }}/recordings/differences.json
-          if-no-files-found: ignore
-          retention-days: 14

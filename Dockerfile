@@ -4,10 +4,11 @@
 # Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
 # based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
 #
-# The Go build's image (ADR-0031): a static, cgo-free binary on distroless, running as non-root.
-# The Java build's image is still built with buildpacks (`make image`); this one is `make go-image`.
+# The image (ADR-0031): a static, cgo-free binary on distroless, running as non-root. Built by
+# `make image` (this machine's architecture) and published for amd64 and arm64 by
+# others/scripts/publish-image.sh.
 #
-#   docker build -t x9-qrcode:go --build-arg VERSION=… --build-arg REVISION=$(git rev-parse HEAD) .
+#   docker build -t x9-qrcode:latest --build-arg VERSION=… --build-arg REVISION=$(git rev-parse HEAD) .
 #   docker buildx build --platform linux/amd64,linux/arm64 .        # both architectures
 #
 # Stage 1 runs on the builder's own platform and cross-compiles for the target, so building the
@@ -43,7 +44,7 @@ FROM ${RUNTIME_IMAGE}
 ARG VERSION=dev
 ARG REVISION=unknown
 LABEL org.opencontainers.image.title="x9-qrcode" \
-      org.opencontainers.image.description="ANSI X9.150 Payment QR Code service (Go build)" \
+      org.opencontainers.image.description="ANSI X9.150 Payment QR Code service" \
       org.opencontainers.image.source="https://github.com/matera-inc/x9.150-qrcode" \
       org.opencontainers.image.vendor="Matera Systems, Inc." \
       org.opencontainers.image.licenses="LicenseRef-Matera-Source-License-1.0" \

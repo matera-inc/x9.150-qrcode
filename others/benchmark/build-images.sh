@@ -7,11 +7,14 @@
 # Builds the images a campaign runs, tagged git-<sha> of the checked-out commit, into this
 # machine's Docker. Never pushes, never tags :latest.
 #
-#   others/benchmark/build-images.sh [java] [go] [liquibase]     # default: all three
+#   others/benchmark/build-images.sh [go] [liquibase]     # default: both
 #
-#   x9-qrcode:git-<sha>            the Java build (buildpacks, ./mvnw -Pdocker), OCI revision set
 #   x9-qrcode-go:git-<sha>         the Go build (Dockerfile at the root), OCI revision set
 #   x9-qrcode-liquibase:git-<sha>  Liquibase 4.33.0 with db/changelog (db/local/liquibase.Dockerfile)
+#
+# The Java build was retired at 3.0.0 (ADR-0039) and cannot be built from this tree. A campaign that
+# runs it (J in SEQUENCE) uses its last published image, materainc/x9-qrcode:java-final, which
+# lib.sh takes as JAVA_IMAGE by default; `build-images.sh java` pulls it.
 #
 # A tree with uncommitted changes is refused (its git-<sha> would name code it is not); set
 # ALLOW_DIRTY=1 for a harness check, never for a measurement.
@@ -21,7 +24,7 @@ cd "$(dirname "$0")/../.."
 SHA="$(git rev-parse --short HEAD)"
 REVISION="$(git rev-parse HEAD)"
 WHAT=("$@")
-[ ${#WHAT[@]} -gt 0 ] || WHAT=(java go liquibase)
+[ ${#WHAT[@]} -gt 0 ] || WHAT=(go liquibase)
 
 if [ -n "$(git status --porcelain --untracked-files=no)" ] && [ "${ALLOW_DIRTY:-0}" != 1 ]; then
   echo "refusing: the working tree has uncommitted changes, so git-$SHA would not name this code" >&2
@@ -31,9 +34,9 @@ fi
 for what in "${WHAT[@]}"; do
   case "$what" in
     java)
-      ./mvnw -B -ntp -Pdocker -DskipTests package -Dbuild.image.name="x9-qrcode:git-$SHA" \
-        -Doci.revision="$REVISION" -Doci.version="git-$SHA"
-      image="x9-qrcode:git-$SHA" ;;
+      # Not built: pulled. The source is the git tag java-final.
+      image="${JAVA_IMAGE:-materainc/x9-qrcode:java-final}"
+      docker pull -q "$image" >/dev/null ;;
     go)
       image="x9-qrcode-go:git-$SHA"
       if docker buildx version >/dev/null 2>&1; then

@@ -1,43 +1,100 @@
-# Makefile — convenience wrapper around Maven (./mvnw) and Docker Compose.
-# Run `make help` to list targets. Requires a Java 25 JDK. Maven itself is
-# bundled via the wrapper (./mvnw), so you do not need Maven pre-installed.
+# Makefile — convenience wrapper around the Go toolchain and Docker Compose.
+# Run `make help` to list targets. Needs Go (the toolchain go.mod pins) and Docker.
 # Full first-run walkthrough: RUNNING.md
+#
+# The Java build was retired at 3.0.0 (ADR-0039): it is in the git history under the tag
+# java-final, and on Docker Hub as materainc/x9-qrcode:java-final.
 
-MVNW    ?= ./mvnw
 COMPOSE ?= docker compose
 IMAGE   ?= x9-qrcode:latest
+PLATFORMS ?= linux/amd64,linux/arm64
 
 .DEFAULT_GOAL := help
-.PHONY: help build test run-local image image-amd64 publish up up-prod down clean smoke \
-	go-build go-test go-image go-image-multiarch go-image-smoke go-up go-down go-compose-smoke helm-check
+.PHONY: help build test run-local image image-multiarch image-smoke up down compose-smoke smoke \
+	helm-check blackbox blackbox-image blackbox-venv golden-export publish publish-dry-run \
+	publish-keep-latest publish-unverified-arch dockerhub-overview dockerhub-overview-dry-run clean
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
-		awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
+		awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-26s\033[0m %s\n", $$1, $$2}'
 
-build: ## Compile, test and install all modules (./mvnw clean install)
-	$(MVNW) clean install
-
-test: ## Run the full test suite
-	$(MVNW) test
-
-run-local: ## Run the app on the host JVM (needs a MongoDB replica set — see RUNNING.md)
-	$(MVNW) -pl x9-qrcode-infrastructure spring-boot:run
-
-# Provenance, passed to the buildpack as BP_OCI_*. DOCKERHUB.md tells adopters to read
-# org.opencontainers.image.revision to learn which commit they are running, so a build that omits
-# these produces an image nobody can attribute — which matters most to whoever pins a git-<sha> tag.
+# Provenance. DOCKERHUB.md tells adopters to read org.opencontainers.image.revision to learn which
+# commit they are running, so a build that omits these produces an image nobody can attribute —
+# which matters most to whoever pins a git-<sha> tag.
 OCI_REVISION := $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 OCI_VERSION  := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
-OCI_FLAGS     = -Doci.revision=$(OCI_REVISION) -Doci.version=$(OCI_VERSION)
+LDFLAGS       = -X main.version=$(OCI_VERSION) -X main.commit=$(OCI_REVISION)
+IMAGE_ARGS    = --build-arg VERSION=$(OCI_VERSION) --build-arg REVISION=$(OCI_REVISION)
 
-image: ## Build the container image (x9-qrcode:latest) with buildpacks (no Dockerfile)
-	$(MVNW) -Pdocker -DskipTests clean package $(OCI_FLAGS)
+build: ## Build the binary into bin/x9-qrcode (static, cgo-free)
+	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/x9-qrcode ./cmd/x9-qrcode
 
-image-amd64: ## Build an amd64/intel image locally (x9-qrcode:latest-amd64) — uses Rosetta on Apple Silicon
-	$(MVNW) -Pdocker -DskipTests clean package $(OCI_FLAGS) \
-		-Dbuild.image.name=x9-qrcode:latest-amd64 \
-		-Dspring-boot.build-image.imagePlatform=linux/amd64
+test: ## Run the Go tests (race, shuffled, leak-checked; the database tests need Docker)
+	others/scripts/ci-go.sh test
+
+run-local: build ## Run the binary on the host (needs PostgreSQL with db/changelog applied — see RUNNING.md)
+	./bin/x9-qrcode
+
+image: ## Build the image for this machine's architecture (x9-qrcode:latest); never pushed
+	@if docker buildx version >/dev/null 2>&1; then \
+		docker buildx build --load -t $(IMAGE) $(IMAGE_ARGS) . ; \
+	else \
+		docker build -t $(IMAGE) $(IMAGE_ARGS) \
+			--build-arg BUILDPLATFORM=linux/$$(docker version -f '{{.Server.Arch}}') . ; \
+	fi
+	@docker image inspect $(IMAGE) --format 'built $(IMAGE): {{.Os}}/{{.Architecture}}, {{.Size}} bytes, user {{.Config.User}}'
+
+image-multiarch: ## Build the image for amd64 and arm64 with docker buildx (no push, no load)
+	docker buildx build --platform $(PLATFORMS) $(IMAGE_ARGS) .
+
+image-smoke: ## Check the image: non-root, health UP against PostgreSQL, exit 0 on SIGTERM; records size
+	others/scripts/image-smoke.sh $(IMAGE)
+
+# docker-compose.yml (Story 14.2). X9_IMAGE runs an image you already have instead of building one.
+# Without X9_IMAGE the image is built by `make image` (which also works without buildx), not by Compose.
+up: ## Start the service with PostgreSQL 16 and Liquibase (docker-compose.yml); waits for health UP
+	$(if $(X9_IMAGE),,$(MAKE) image)
+	$(COMPOSE) build bootstrap liquibase
+	X9_IMAGE=$(or $(X9_IMAGE),$(IMAGE)) $(COMPOSE) up -d --no-build --wait --wait-timeout 180
+
+down: ## Stop the stack and throw its database away (docker-compose.yml)
+	$(COMPOSE) down -v
+
+compose-smoke: ## Bring docker-compose.yml up on its own project, check health and one create, take it down
+	others/scripts/compose-smoke.sh
+
+smoke: ## Liveness check against a running service on :8080 (health + public JWKS)
+	@curl -fsS http://localhost:8080/actuator/health && echo "  <- health OK"
+	@curl -fsS http://localhost:8080/pub/.well-known/jwks >/dev/null && echo "public JWKS OK"
+
+helm-check: ## helm lint and template the chart; the rendering holds no Java-only variable
+	others/scripts/helm-check.sh
+
+blackbox: ## Run the black-box suite (X9_BASE_URL, default http://localhost:8080; see others/blackbox/README.md)
+	@.blackbox-venv/bin/python -c 'import pytest, cryptography, yaml' 2>/dev/null || $(MAKE) blackbox-venv
+	@.blackbox-venv/bin/pytest others/blackbox -q
+
+blackbox-image: ## Run the black-box suite against an image, all in containers, as CI does (X9_IMAGE, default x9-qrcode:latest)
+	X9_IMAGE=$(or $(X9_IMAGE),$(IMAGE)) ./others/blackbox/deployment/run-against-image.sh
+
+blackbox-venv: ## Create .blackbox-venv with the suite's pinned dependencies (pytest, cryptography, pyyaml)
+	python3 -m venv .blackbox-venv
+	.blackbox-venv/bin/pip install -q -r others/blackbox/requirements.txt
+
+golden-export: ## Re-export the golden JWS and EMV sets from the java-final image (see others/blackbox/golden/README.md)
+	./others/blackbox/golden/export.sh
+
+publish: ## Build both architectures, verify each, publish git-<sha> (+ VERSION tags) and latest
+	./others/scripts/publish-image.sh
+
+publish-dry-run: ## Everything publish does, except the push — works from any branch
+	./others/scripts/publish-image.sh --dry-run
+
+publish-keep-latest: ## Publish git-<sha> (+ VERSION tags) but leave `latest` where it is
+	./others/scripts/publish-image.sh --no-latest
+
+publish-unverified-arch: ## Publish even if an architecture cannot be run here (say why in the PR)
+	./others/scripts/publish-image.sh --allow-unverified-arch
 
 dockerhub-overview: ## Push DOCKERHUB.md to the Docker Hub repository Overview
 	./others/scripts/push-dockerhub-overview.sh
@@ -45,90 +102,20 @@ dockerhub-overview: ## Push DOCKERHUB.md to the Docker Hub repository Overview
 dockerhub-overview-dry-run: ## Show what the Overview push would change, without writing
 	./others/scripts/push-dockerhub-overview.sh --dry-run
 
-blackbox: ## Run the black-box suite (X9_BASE_URL, default http://localhost:8080; see others/blackbox/README.md)
-	@.blackbox-venv/bin/python -c 'import pytest, cryptography, yaml' 2>/dev/null || $(MAKE) blackbox-venv
-	@.blackbox-venv/bin/pytest others/blackbox -q
+clean: ## Remove build output (bin/, go-ci-out/)
+	rm -rf bin go-ci-out
 
-blackbox-image: ## Run the black-box suite against an image, all in containers, as CI does (X9_IMAGE, default x9-qrcode:latest; a Go image, e.g. x9-qrcode:go, runs on PostgreSQL)
-	./others/blackbox/deployment/run-against-image.sh
-
-golden-export: ## Re-export the golden JWS and EMV sets from an image (X9_IMAGE; see others/blackbox/golden/README.md), then run blackbox-image
-	./others/blackbox/golden/export.sh
-
-blackbox-venv: ## Create .blackbox-venv with the suite's pinned dependencies (pytest, cryptography, pyyaml)
-	python3 -m venv .blackbox-venv
-	.blackbox-venv/bin/pip install -q -r others/blackbox/requirements.txt
-
-publish: ## Build, verify BOTH architectures, and publish (git-<sha> + latest)
-	./others/scripts/publish-image.sh
-
-publish-dry-run: ## Everything publish does, except the push — works from any branch
-	./others/scripts/publish-image.sh --dry-run
-
-publish-keep-latest: ## Publish git-<sha> but leave `latest` where it is
-	./others/scripts/publish-image.sh --no-latest
-
-publish-unverified-arch: ## Publish even if an architecture cannot be run here (say why in the PR)
-	./others/scripts/publish-image.sh --allow-unverified-arch
-
-up: ## Start app + single-node MongoDB replica set locally (docker-compose.yml)
-	$(COMPOSE) up -d
-
-up-prod: ## Start via docker-compose.prod.yml (env-driven config; see .env.sample)
-	$(COMPOSE) -f docker-compose.prod.yml up -d
-
-down: ## Stop and remove containers from both compose files
-	-$(COMPOSE) down
-	-$(COMPOSE) -f docker-compose.prod.yml down
-
-smoke: ## Liveness check against a running app on :8080 (health + public JWKS)
-	@curl -fsS http://localhost:8080/actuator/health && echo "  <- health OK"
-	@curl -fsS http://localhost:8080/pub/.well-known/jwks >/dev/null && echo "public JWKS OK"
-
-# ── The Go build (ADR-0022), alongside Java until the cutover renames these targets ──────────────
-GO_IMAGE      ?= x9-qrcode:go
-GO_PLATFORMS  ?= linux/amd64,linux/arm64
-GO_LDFLAGS     = -X main.version=$(OCI_VERSION) -X main.commit=$(OCI_REVISION)
-GO_IMAGE_ARGS  = --build-arg VERSION=$(OCI_VERSION) --build-arg REVISION=$(OCI_REVISION)
-
-go-build: ## Build the Go binary into bin/x9-qrcode (static, cgo-free)
-	CGO_ENABLED=0 go build -trimpath -ldflags "$(GO_LDFLAGS)" -o bin/x9-qrcode ./cmd/x9-qrcode
-
-go-test: ## Run the Go tests (race, shuffled, leak-checked; the database tests need Docker)
-	others/scripts/ci-go.sh test
-
-go-image: ## Build the Go image for this machine's architecture (x9-qrcode:go); never pushed
-	@if docker buildx version >/dev/null 2>&1; then \
-		docker buildx build --load -t $(GO_IMAGE) $(GO_IMAGE_ARGS) . ; \
-	else \
-		docker build -t $(GO_IMAGE) $(GO_IMAGE_ARGS) \
-			--build-arg BUILDPLATFORM=linux/$$(docker version -f '{{.Server.Arch}}') . ; \
-	fi
-	@docker image inspect $(GO_IMAGE) --format 'built $(GO_IMAGE): {{.Os}}/{{.Architecture}}, {{.Size}} bytes, user {{.Config.User}}'
-
-go-image-multiarch: ## Build the Go image for amd64 and arm64 with docker buildx (no push, no load)
-	docker buildx build --platform $(GO_PLATFORMS) $(GO_IMAGE_ARGS) .
-
-go-image-smoke: ## Check the Go image: non-root, health UP against PostgreSQL, exit 0 on SIGTERM; records size
-	others/scripts/go-image-smoke.sh $(GO_IMAGE)
-
-# docker-compose.go.yml (Story 14.2). X9_IMAGE runs an image you already have instead of building one.
-GO_COMPOSE = $(COMPOSE) -f docker-compose.go.yml
-
-# Without X9_IMAGE the Go image is built by go-image (which also works without buildx), not by Compose.
-go-up: ## Start the Go build with PostgreSQL 16 and Liquibase (docker-compose.go.yml); waits for health UP
-	$(if $(X9_IMAGE),,$(MAKE) go-image)
-	$(GO_COMPOSE) build bootstrap liquibase
-	X9_IMAGE=$(or $(X9_IMAGE),$(GO_IMAGE)) $(GO_COMPOSE) up -d --no-build --wait --wait-timeout 180
-
-go-down: ## Stop the Go stack and throw its database away (docker-compose.go.yml)
-	$(GO_COMPOSE) down -v
-
-go-compose-smoke: ## Bring docker-compose.go.yml up on its own project, check health and one create, take it down
-	others/scripts/compose-go-smoke.sh
-
-helm-check: ## helm lint and template the chart for Java (default) and Go (values-go.yaml); Go renders no refused variable
-	others/scripts/helm-check.sh
-
-clean: ## Remove build output (target/)
-	$(MVNW) clean
+# The 2.x names of the Go targets, kept as thin aliases so scripts written before 3.0.0 still run.
+# GO_IMAGE, the 2.x image variable, still works through IMAGE. Not listed by `make help`.
+ifdef GO_IMAGE
+IMAGE := $(GO_IMAGE)
+endif
+.PHONY: go-build go-test go-image go-image-multiarch go-image-smoke go-up go-down go-compose-smoke
+go-build: build
+go-test: test
+go-image: image
+go-image-multiarch: image-multiarch
+go-image-smoke: image-smoke
+go-up: up
+go-down: down
+go-compose-smoke: compose-smoke

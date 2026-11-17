@@ -46,17 +46,14 @@ die() { say "FAIL  $*"; exit 1; }
 check() {
   [ "$(uname -s)" = Darwin ] || die "this script sets up Colima on macOS; on Linux use any Kubernetes 1.29+ (README)"
   local missing=() tool
-  for tool in colima docker kubectl python3 openssl keytool java mvn curl gzip git; do
+  for tool in colima docker kubectl python3 openssl keytool curl gzip git; do
     command -v "$tool" >/dev/null || missing+=("$tool")
   done
   if [ ${#missing[@]} -gt 0 ]; then
     say "missing: ${missing[*]}"
-    say "install with Homebrew: brew install colima docker kubectl python openssl git maven && brew install --cask temurin@25"
+    say "install with Homebrew: brew install colima docker kubectl python openssl git && brew install --cask temurin (for keytool)"
     exit 1
   fi
-  local jv
-  jv="$(java -version 2>&1 | sed -n 's/.*version "\([0-9]*\).*/\1/p' | head -1)"
-  [ "${jv:-0}" -ge 25 ] || die "Java 25 or later is needed to build the Java image (found ${jv:-none})"
   local cpus mem_gib
   cpus="$(sysctl -n hw.ncpu)"; mem_gib=$(( $(sysctl -n hw.memsize) / 1073741824 ))
   say "machine: $(sysctl -n machdep.cpu.brand_string), $cpus logical CPUs, $mem_gib GiB; colima $(colima version | head -1 | awk '{print $3}')"

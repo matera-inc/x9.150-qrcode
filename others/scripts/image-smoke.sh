@@ -4,7 +4,7 @@
 # Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
 # based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
 #
-# Checks a built Go image (Story 7.6) and records its footprint for S7 (Epic 5):
+# Checks a built image (Story 7.6) and records its footprint for S7 (Epic 5):
 #   - it runs as non-root, and -version prints the stamped version and commit;
 #   - against a throwaway PostgreSQL with the changelog applied (db/docker-compose.yml), it reaches
 #     /actuator/health UP; the time from `docker run` to that answer is the cold start;
@@ -12,15 +12,19 @@
 # It writes <out>/go-image.json: image, architecture, size in bytes (unpacked and compressed, read
 # by others/scripts/image-size.py), cold start in ms.
 #
-#   others/scripts/go-image-smoke.sh [image] [out-dir]     # defaults: x9-qrcode:go, ./go-ci-out
+#   others/scripts/image-smoke.sh [image] [out-dir]        # defaults: x9-qrcode:latest, ./go-ci-out
+#   X9_PLATFORM=linux/amd64 others/scripts/image-smoke.sh …   # run the image as that platform
 #
 # Nothing is pushed anywhere.
 
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-IMAGE="${1:-x9-qrcode:go}"
+IMAGE="${1:-x9-qrcode:latest}"
 OUT="${2:-go-ci-out}"
+# The platform to run the image as (publish-image.sh checks each architecture by its own tag).
+PLATFORM=()
+if [ -n "${X9_PLATFORM:-}" ]; then PLATFORM=(--platform "$X9_PLATFORM"); fi
 P="x9goimg$$"
 APP="$P-app"
 PORT="${X9_SMOKE_PORT:-18080}"
@@ -44,7 +48,7 @@ size=$(printf '%s' "$sizes" | python3 -I -c 'import json, sys; print(json.load(s
 compressed=$(printf '%s' "$sizes" | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["compressedSizeBytes"])')
 case "$user" in "" | 0 | 0:* | root | root:*) fail "the image runs as root (User=\"$user\")" ;; esac
 echo "ok  runs as $user ($arch, $size bytes unpacked, $compressed compressed)"
-docker run --rm "$IMAGE" -version | tee /dev/stderr | grep -q '^x9-qrcode ' || fail "-version"
+docker run --rm ${PLATFORM[@]+"${PLATFORM[@]}"} "$IMAGE" -version | tee /dev/stderr | grep -q '^x9-qrcode ' || fail "-version"
 
 echo "### a throwaway PostgreSQL with the changelog applied"
 X9_DB_PORT=0 docker compose -f db/docker-compose.yml -p "$P" up -d --build --quiet-pull >/dev/null 2>&1 ||
@@ -58,7 +62,7 @@ done
 
 echo "### cold start to /actuator/health UP"
 start=$(now_ms)
-docker run -d --name "$APP" --network "${P}_default" -p "127.0.0.1:$PORT:8080" \
+docker run -d ${PLATFORM[@]+"${PLATFORM[@]}"} --name "$APP" --network "${P}_default" -p "127.0.0.1:$PORT:8080" \
   -e DATABASE_HOST=postgres -e DATABASE_NAME=postgres -e DATABASE_USER=x9_qrcode_app \
   -e DATABASE_PASSWORD=unused -e DATABASE_SSLMODE=disable -e X9_SERVER_SHUTDOWNDELAYSECONDS=1 \
   "$IMAGE" >/dev/null

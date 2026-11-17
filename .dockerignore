@@ -1,5 +1,5 @@
-# The Go image's build context (Dockerfile): only what the binary is built from. Everything else,
-# the Java modules and their target/ directories included, stays out.
+# The image's build context (Dockerfile): only what the binary is built from. Everything else
+# stays out.
 *
 !go.mod
 !go.sum
