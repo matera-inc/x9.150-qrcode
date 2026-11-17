@@ -24,6 +24,7 @@ func TestGate(t *testing.T) {
 	adjusted := due + `,"amountDue":{"amount":1000,"currency":"USDC","adjustments":{"formula":"FixedDiscountLateFeeLinearInterest",` +
 		`"parameters":{"discounts":[{"daysBefore":5,"discount":100,"explanation":"early"}],"lateFees":{"fixed":50,"perDay":10,"explanation":"late"}}}}`
 	tip := `,"tip":{"allowed":true,"range":{"min":10,"max":20}}`
+	usdBill := `,"amountDue":{"amount":10,"currency":"USD"}`
 	dueAt := time.Date(2029, 6, 1, 0, 0, 0, 0, time.UTC)
 
 	cases := []struct {
@@ -44,6 +45,11 @@ func TestGate(t *testing.T) {
 		{name: "a tip one unit past the range", bill: tip, amount: 1201, tip: 201},
 		{name: "a tip two units past the range", bill: tip, amount: 1202, tip: 202, field: fieldTipAmount},
 		{name: "a tip larger than the total", bill: tip, amount: 100, tip: 200, field: fieldTipAmount, saying: "larger than"},
+		// R-I10-08: the percentages are taken in the notified currency (the method's 1000 USDC
+		// units), not the bill's (10 USD cents): 15% of the method is accepted, 20% of the bill is
+		// not.
+		{name: "a tip in range of the notified currency, not the bill's", bill: usdBill + tip, amount: 1150, tip: 150},
+		{name: "a tip in range of the bill's currency only", bill: usdBill + tip, amount: 1002, tip: 2, field: fieldTipAmount},
 		{name: "editable within range", method: `,"editable":{"range":{"min":500,"max":2000}}`, amount: 700},
 		{name: "editable out of range", method: `,"editable":{"range":{"min":500,"max":2000}}`, amount: 2001, field: fieldAmount},
 		{name: "discounted at its edge", bill: adjusted, at: dueAt.Add(-5 * 24 * time.Hour), amount: 900},

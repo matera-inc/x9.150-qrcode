@@ -592,6 +592,30 @@ class TestNotifications:
             assert "payment.cleared" not in seen, seen
             assert api.status_of(qr) == "PAYMENT_INITIATED"
 
+    def test_every_hash_is_published_as_its_own_payment_sent(self, api, events, payee_certificate,
+                                                              business_now):
+        """X9-HOLD-408 — two post-commits from the holder, with two transaction hashes, are two
+        ``payment.sent`` events, each carrying its own hash: neither is merged into the other,
+        overwritten or dropped.
+
+        Source: Ours. ADR-0036: every transaction hash is recorded; each one is published as its
+          own ``payment.sent``.
+        Why: A payer may report a second transfer (a retry that also landed, a split payment).
+          The payee reconciles money on chain by hash; a hash that only survives in a merged event,
+          or not at all, is money nobody can match.
+        """
+        qr = api.create_qr()
+        signed(api.notify(qr), payee_certificate, business_now, 200)
+        for tx in (TX_HASH, TX_2):
+            signed(api.notify(qr, action="SENT", transaction_id=tx), payee_certificate,
+                   business_now, 200)
+
+        sent = [e for e in events.for_qr(qr, timeout=60, until=lambda es: sum(
+            e.get("type") == "payment.sent" for e in es) >= 2) if e.get("type") == "payment.sent"]
+        assert [e.get("transactionId") for e in sent] == [TX_HASH, TX_2], sent
+        assert len({e["eventId"] for e in sent}) == 2, sent
+        assert api.status_of(qr) == "PAYMENT_INITIATED"
+
     def test_get_shows_the_holders_not_sent_after_a_hash_is_registered(
             self, api, payee_certificate, business_now):
         """X9-HOLD-504 — the holder's ``NOT_SENT``, accepted once a hash is registered, is what GET
