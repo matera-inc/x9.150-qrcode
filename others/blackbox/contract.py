@@ -36,7 +36,7 @@ import yaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OPENAPI = os.environ.get("X9_OPENAPI") or os.path.normpath(os.path.join(
-    HERE, "..", "..", "x9-qrcode-infrastructure", "src", "main", "resources", "apis", "openapi.yaml"))
+    HERE, "..", "..", "api", "openapi.yaml"))
 KNOWN_GAPS = os.path.join(HERE, "contract-known-gaps.yaml")
 
 KINDS = ("maxLength", "minLength", "pattern", "required", "maximum", "minimum", "closed")

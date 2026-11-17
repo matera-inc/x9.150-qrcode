@@ -42,7 +42,7 @@ STOREPASS = b"x9test123"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CERT_DIR = os.path.normpath(os.path.join(
-    HERE, "..", "..", "..", "x9-qrcode-infrastructure", "src", "test", "resources", "certificate"))
+    HERE, "..", "..", "..", "testdata", "pki"))
 
 
 # ------------------------------------------------------------------------------- encoding

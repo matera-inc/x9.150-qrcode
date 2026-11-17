@@ -16,7 +16,7 @@
 #                   black-box JKS (Java) and as PEM (Go reads PKCS#12 or PEM, never JKS)
 #
 # NON-PRODUCTION. Every key read here is committed to this public repository (see
-# x9-qrcode-infrastructure/src/test/resources/certificate/README.md). The script refuses any other
+# testdata/pki/README.md). The script refuses any other
 # source: it reads only those fixed paths.
 #
 # Needs openssl, keytool (any JDK) and python3.
@@ -24,8 +24,8 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-TEST_PKI="$ROOT/x9-qrcode-infrastructure/src/test/resources/certificate"
-DEMO_TRUSTSTORE="$ROOT/x9-qrcode-infrastructure/src/main/resources/certificate/x9-demo-truststore.jks"
+TEST_PKI="$ROOT/testdata/pki"
+DEMO_TRUSTSTORE="$ROOT/internal/keys/bundled/x9-demo-truststore.p12"
 BLACKBOX_TRUSTSTORE="$ROOT/others/blackbox/deployment/x9-blackbox-truststore.jks"
 OUT="${BENCH_BUILD_DIR:-$HERE/build}"
 PASS="x9test123"

@@ -2,15 +2,13 @@
 # Licensed under the Matera Source License v1.0 (source-available; not open source). See LICENSE.md.
 """The tests a run requires, and every other one reported as informative (Story 9.1, S9.1-AC3).
 
-Inert unless ``X9_REQUIRED_KEYS`` names a list file. No CI run sets it: since Story 10.8 both the
-Java and the Go runs are judged on the whole suite, and the Go run's ``go-required.txt`` is gone.
+Inert unless ``X9_REQUIRED_KEYS`` names a list file. No CI run sets it: since Story 10.8 the run
+is judged on the whole suite, and the Go run's ``go-required.txt`` is gone.
 It stays as a tool for a partial run, such as a build being ported one story at a time.
 
 When it is set, the run's exit code is decided by the listed tests alone:
 
-- a listed test that fails, errors, is an expected failure, is skipped, or never ran fails the run.
-  A skip by the build markers (``java_only`` on Go, ``go_only`` on Java) is the one exception: that
-  test does not belong to this build;
+- a listed test that fails, errors, is an expected failure, is skipped, or never ran fails the run;
 - every other test is informative: its outcome is counted and printed, and never fails the run;
 - an entry that matches no collected test fails the run before any test runs, so a typo or a
   renamed test cannot make a list pass by requiring nothing.
@@ -32,16 +30,14 @@ import re
 
 import pytest
 
-import builds
-
 ENV = "X9_REQUIRED_KEYS"
 KEY = re.compile(r"X9-[A-Z0-9]+-\d+")
 _KEY_ENTRY = re.compile(r"^X9-[A-Z0-9]+-\d+$")
 
 # The outcomes a test can end in, in the order they are printed.
-OUTCOMES = ("passed", "failed", "error", "skipped", "xfailed", "xpassed", "build-skipped", "not run")
+OUTCOMES = ("passed", "failed", "error", "skipped", "xfailed", "xpassed", "not run")
 # What a listed test may end in without failing the run.
-ACCEPTED = ("passed", "xpassed", "build-skipped")
+ACCEPTED = ("passed", "xpassed")
 
 
 def parse(text):
@@ -84,7 +80,7 @@ def select(includes, excludes, tests):
     return required, unmatched
 
 
-def outcome_of(reports, build_skipped):
+def outcome_of(reports):
     """One outcome from a test's setup, call and teardown reports (``pytest.TestReport``)."""
     if not reports:
         return "not run"
@@ -95,7 +91,7 @@ def outcome_of(reports, build_skipped):
         if report.skipped:
             if hasattr(report, "wasxfail"):
                 return "xfailed"
-            return "build-skipped" if build_skipped else "skipped"
+            return "skipped"
     call = next((r for r in reports if r.when == "call"), None)
     if call is not None and hasattr(call, "wasxfail"):
         return "xpassed"
@@ -117,13 +113,6 @@ def verdict(outcomes, required):
 
 def _format(counts):
     return ", ".join(f"{n} {name}" for name, n in counts.items() if n) or "none"
-
-
-def _build_skipped(item):
-    """Whether this item is skipped by a build marker on this build (conftest.py)."""
-    build = builds.under_test()
-    return ((item.get_closest_marker("java_only") is not None and build != "java")
-            or (item.get_closest_marker("go_only") is not None and build != "go"))
 
 
 class RequiredKeys:
@@ -164,8 +153,8 @@ class RequiredKeys:
         session.exitstatus = pytest.ExitCode.TESTS_FAILED if self.result[2] else pytest.ExitCode.OK
 
     def _outcomes(self):
-        return {nodeid: outcome_of(self.reports.get(nodeid, []), _build_skipped(item))
-                for nodeid, item in self.items.items()}
+        return {nodeid: outcome_of(self.reports.get(nodeid, []))
+                for nodeid in self.items}
 
     def pytest_terminal_summary(self, terminalreporter):
         result = getattr(self, "result", None)

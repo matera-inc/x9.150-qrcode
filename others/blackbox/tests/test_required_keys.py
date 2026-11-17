@@ -69,19 +69,16 @@ def test_listed_tests_must_pass_and_the_others_are_informative():
     assert required == {"tests/test_a.py::test_two[x]", "tests/test_a.py::test_two[y]"}
     assert unmatched == ["X9-NONE-001"]
 
-    assert outcome_of([], False) == "not run"
+    assert outcome_of([]) == "not run"
     assert outcome_of([_report("setup", "passed"), _report("call", "passed"),
-                       _report("teardown", "passed")], False) == "passed"
-    assert outcome_of([_report("setup", "failed")], False) == "error"
+                       _report("teardown", "passed")]) == "passed"
+    assert outcome_of([_report("setup", "failed")]) == "error"
     assert outcome_of([_report("setup", "passed"), _report("call", "passed"),
-                       _report("teardown", "failed")], False) == "error"
-    assert outcome_of([_report("setup", "passed"), _report("call", "failed")], False) == "failed"
-    assert outcome_of([_report("setup", "skipped")], False) == "skipped"
-    assert outcome_of([_report("setup", "skipped")], True) == "build-skipped"
-    assert outcome_of([_report("setup", "passed"), _report("call", "skipped", xfail=True)],
-                      False) == "xfailed"
-    assert outcome_of([_report("setup", "passed"), _report("call", "passed", xfail=True)],
-                      False) == "xpassed"
+                       _report("teardown", "failed")]) == "error"
+    assert outcome_of([_report("setup", "passed"), _report("call", "failed")]) == "failed"
+    assert outcome_of([_report("setup", "skipped")]) == "skipped"
+    assert outcome_of([_report("setup", "passed"), _report("call", "skipped", xfail=True)]) == "xfailed"
+    assert outcome_of([_report("setup", "passed"), _report("call", "passed", xfail=True)]) == "xpassed"
 
     outcomes = {f"r{n}": outcome for n, outcome in enumerate(required_keys.OUTCOMES)}
     outcomes.update({f"i{n}": outcome for n, outcome in enumerate(required_keys.OUTCOMES)})
@@ -96,15 +93,13 @@ def test_listed_tests_must_pass_and_the_others_are_informative():
     ("X9-DEMO-001\n", 0, "the listed tests pass"),
     ("X9-DEMO-002\n", 1, "REQUIRED FAILED"),
     ("tests/test_demo.py::test_skipped\n", 1, "REQUIRED SKIPPED"),
-    ("tests/test_demo.py::test_java_only\n", 0, "1 build-skipped"),
     ("", 0, "0 tests required"),
     ("X9-DEMO-404\n", 4, "match no collected test"),
-], ids=["listed-pass", "listed-fail", "listed-skip", "java-only", "empty", "stale-entry"])
+], ids=["listed-pass", "listed-fail", "listed-skip", "empty", "stale-entry"])
 def test_a_run_exits_on_the_listed_tests_alone(tmp_path, listed, exit_code, says):
     """X9-SUITE-515 — S9.1-AC3: a whole pytest run under ``X9_REQUIRED_KEYS`` exits 0 when every
-    listed test passes although an unlisted one fails, 1 when a listed one fails or is skipped,
-    0 for a ``java_only`` skip on Go, and refuses an entry that matches no test; it prints the
-    counts of each outcome.
+    listed test passes although an unlisted one fails, 1 when a listed one fails or is skipped, and
+    refuses an entry that matches no test; it prints the counts of each outcome.
 
     Source: Ours (Story 9.1).
     Why: The CI job's verdict is pytest's exit code; the functions above are only right if the
@@ -112,13 +107,9 @@ def test_a_run_exits_on_the_listed_tests_alone(tmp_path, listed, exit_code, says
     """
     (tmp_path / "tests").mkdir()
     (tmp_path / "conftest.py").write_text(textwrap.dedent("""\
-        import builds, pytest
         pytest_plugins = ["required_keys"]
-        def pytest_runtest_setup(item):
-            if item.get_closest_marker("java_only") and builds.under_test() != "java":
-                pytest.skip("java_only")
         """))
-    (tmp_path / "pytest.ini").write_text("[pytest]\nmarkers =\n    java_only: x\n")
+    (tmp_path / "pytest.ini").write_text("[pytest]\n")
     (tmp_path / "tests" / "test_demo.py").write_text(textwrap.dedent('''\
         import pytest
         def test_passes():
@@ -129,12 +120,9 @@ def test_a_run_exits_on_the_listed_tests_alone(tmp_path, listed, exit_code, says
         def test_skipped():
             """X9-DEMO-003 — skipped."""
             pytest.skip("no capability")
-        @pytest.mark.java_only
-        def test_java_only():
-            """X9-DEMO-004 — Java only."""
         '''))
     (tmp_path / "required.txt").write_text(listed)
-    env = dict(os.environ, X9_REQUIRED_KEYS=str(tmp_path / "required.txt"), X9_BUILD="go",
+    env = dict(os.environ, X9_REQUIRED_KEYS=str(tmp_path / "required.txt"),
                PYTHONPATH=HERE, PYTHONDONTWRITEBYTECODE="1")
     run = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
                           "--rootdir", str(tmp_path), str(tmp_path / "tests")],

@@ -22,8 +22,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 ROOT="../../.."
-DEMO="$ROOT/x9-qrcode-infrastructure/src/main/resources/certificate/x9-demo-truststore.jks"
-TEST="$ROOT/x9-qrcode-infrastructure/src/test/resources/certificate/x9-test-truststore.jks"
+DEMO="$ROOT/internal/keys/bundled/x9-demo-truststore.p12"
+TEST="$ROOT/testdata/pki/x9-test-truststore.jks"
 OUT="x9-blackbox-truststore.jks"
 OUT_P12="x9-blackbox-truststore.p12"
 STOREPASS="x9test123"

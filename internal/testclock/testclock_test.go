@@ -23,13 +23,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	gopkcs12 "software.sslmate.com/src/go-pkcs12"
 
 	"github.com/matera-inc/x9.150-qrcode/internal/clock"
 	"github.com/matera-inc/x9.150-qrcode/internal/config"
@@ -132,30 +133,41 @@ func TestBundledCertificatesPassTheGuard(t *testing.T) {
 	}
 }
 
-// S8.6-AC2: every fingerprint the Java build accepts is accepted here too, and nothing else, so a
-// deployment starts on Java exactly when it starts on Go.
-func TestJavaFingerprintsAreBundled(t *testing.T) {
-	path := filepath.Join(repoRoot,
-		"x9-qrcode-infrastructure/src/main/java/com/matera/x9qrcode/infrastructure/testclock/TestClockCertificateGuard.java")
-	src, err := os.ReadFile(path) //nolint:gosec // G304: a source file of this repository
+// S8.6-AC2: the guard accepts exactly the demo identity and the test PKI committed under
+// testdata/pki (each keystore's own certificate, and each PEM), and nothing else: a certificate
+// added there without its fingerprint, or a fingerprint left behind for one that is gone, fails.
+func TestTheTestPKIIsBundled(t *testing.T) {
+	want := map[string]string{Fingerprint(demoCertificate(t)): "the demo identity"}
+	stores, err := filepath.Glob(filepath.Join(repoRoot, "testdata/pki/*.p12"))
+	if err != nil || len(stores) == 0 {
+		t.Fatalf("no test keystores: %v", err)
+	}
+	for _, path := range stores {
+		data, err := os.ReadFile(path) //nolint:gosec // G304: a fixed file of this repository
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, cert, _, err := gopkcs12.DecodeChain(data, "x9test123")
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		want[Fingerprint(cert)] = path
+	}
+	pems, err := filepath.Glob(filepath.Join(repoRoot, "testdata/pki/*.pem"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := regexp.MustCompile(`"([0-9a-f]{64})"`).FindAllStringSubmatch(string(src), -1)
-	if len(found) < 7 {
-		t.Fatalf("found only %d fingerprints in %s", len(found), path)
+	for _, path := range pems {
+		want[Fingerprint(readCertPEM(t, path))] = path
 	}
-	java := make(map[string]bool, len(found))
-	for _, m := range found {
-		java[m[1]] = true
-		if !IsBundled(m[1]) {
-			t.Errorf("Java accepts %s, Go does not", m[1])
+	for fp, path := range want {
+		if !IsBundled(fp) {
+			t.Errorf("%s (%s) is not bundled", path, fp)
 		}
 	}
-	// The two lists are identical: Go accepts nothing Java refuses either.
 	for fp, what := range bundledFingerprints {
-		if !java[fp] {
-			t.Errorf("Go accepts %s (%s), Java does not", fp, what)
+		if _, ok := want[fp]; !ok {
+			t.Errorf("the guard accepts %s (%s), which no committed certificate has", fp, what)
 		}
 	}
 }

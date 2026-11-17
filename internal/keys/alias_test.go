@@ -21,7 +21,7 @@ func TestEnforcedAliasIsWarnedAbout(t *testing.T) {
 		logs := quiet()
 		cfg := config.Certificate{
 			PrivateKeystore: config.PrivateKeystore{
-				Location: javaTestPKI + "x9-test-payer.p12", Password: javaTestPassword, EnforcedAlias: alias,
+				Location: testPKI + "x9-test-payer.p12", Password: javaTestPassword, EnforcedAlias: alias,
 			},
 			Truststore: config.Truststore{Location: goldenPKI + "x9-test-ca.pem"},
 		}

@@ -20,18 +20,17 @@ Environment:
 - ``X9_RECORD_DIR``: record every exchange of every test there, one JSON-lines file per test,
   for the differential run (``x9client.recording``, ``differential.py``). Off when unset.
 - ``X9_TEST_CA_DIR``: where the bundled test CA lives (default: the repository's
-  ``x9-qrcode-infrastructure/src/test/resources/certificate``).
+  ``testdata/pki``).
 
 The deployment must trust the bundled test CA: start it with
-``X9_CERTIFICATE_TRUSTSTORE_LOCATION`` pointing at ``x9-test-truststore.jks`` (password
-``x9test123``, alias ``x9-test-ca``). Payers are never signed for by the service under test.
+``X9_CERTIFICATE_TRUSTSTORE_LOCATION`` pointing at
+``others/blackbox/deployment/x9-blackbox-truststore.p12`` (password ``x9test123``). Payers are never signed for by the service under test.
 """
 import os
 import time
 
 import pytest
 
-import builds
 from x9client import clock as clock_module
 from x9client import db as db_module
 from x9client import jws
@@ -167,7 +166,7 @@ def api(payer_a, pki):
         unavailable(
             f"the deployment at {base_url} refused a payer signed by the bundled test CA (401). "
             f"Start it with the black-box truststore (others/blackbox/deployment/"
-            f"x9-blackbox-truststore.jks) and let it reach this suite's CRL at {pki['crl'].url} "
+            f"x9-blackbox-truststore.p12) and let it reach this suite's CRL at {pki['crl'].url} "
             f"(set X9_SUITE_HOST to this machine's address as the service sees it)")
     assert probe.status == 200, f"the trust probe was refused for another reason: {probe}"
     return client
@@ -273,12 +272,6 @@ def db():
     return inspector
 
 
-def build_under_test():
-    """``"java"`` or ``"go"`` (``builds.under_test``: ``X9_BUILD``, else the kind of
-    ``X9_DATABASE_URL``)."""
-    return builds.under_test()
-
-
 @pytest.hookimpl(trylast=True)
 def pytest_collection_modifyitems(items):
     """Tests marked ``runs_last`` run after every other test, in their collected order, whatever
@@ -288,14 +281,3 @@ def pytest_collection_modifyitems(items):
     last = [item for item in items if item.get_closest_marker("runs_last") is not None]
     if last:
         items[:] = [item for item in items if item.get_closest_marker("runs_last") is None] + last
-
-
-def pytest_runtest_setup(item):
-    """``go_only`` skips on Java and ``java_only`` on Go, with the reason (S4.5-AC3). Not a
-    missing capability, so ``X9_REQUIRE_ALL`` does not turn it into a failure."""
-    build = build_under_test()
-    for marker, runs_on in (("go_only", "go"), ("java_only", "java")):
-        found = item.get_closest_marker(marker)
-        if found is not None and build != runs_on:
-            reason = found.kwargs.get("reason") or f"{marker}: pins the {runs_on} build"
-            pytest.skip(f"{reason} (this run is against the {build} build; X9_BUILD overrides)")

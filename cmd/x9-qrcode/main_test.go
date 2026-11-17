@@ -208,7 +208,7 @@ func TestRunRefusesAJKSTruststore(t *testing.T) {
 	env := []string{
 		"DATABASE_HOST=127.0.0.1", "DATABASE_PORT=1", "DATABASE_NAME=bank", "DATABASE_USER=app", "DATABASE_PASSWORD=pw",
 		"DATABASE_SSLMODE=disable",
-		"X9_CERTIFICATE_TRUSTSTORE_LOCATION=file:../../x9-qrcode-infrastructure/src/test/resources/certificate/x9-test-truststore.jks",
+		"X9_CERTIFICATE_TRUSTSTORE_LOCATION=file:../../testdata/pki/x9-test-truststore.jks",
 	}
 	err := run(t.Context(), nil, env, io.Discard)
 	if err == nil || !errors.Is(err, keys.ErrUnsupportedFormat) || !strings.Contains(err.Error(), "docs/CONFIGURATION-FROM-JAVA.md") {

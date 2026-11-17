@@ -237,8 +237,6 @@ def test_a_payee_answering_after_the_timeout_is_502(api, peer, events):
     assert_untouched(api, events, qr)
 
 
-@pytest.mark.go_only(reason="go_only: the Java build reads the payee's answer whatever its size "
-                            "(ADR-0028, known difference 15)")
 def test_a_payee_answer_over_1_mib_is_502(api, peer, events):
     """X9-SIG-533 — a payee answering with more than 1 MiB is 502, as if it had not answered, and
     nothing changes here.

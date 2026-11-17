@@ -3,8 +3,11 @@
 # Exports the golden JWS and EMV sets from one image of the Java build (Story 4.7, ADR-0027),
 # replacing others/blackbox/golden/{manifest.json,jws,pki}.
 #
-#   ./mvnw -B -ntp -Pdocker -DskipTests package -Dbuild.image.name=x9-qrcode:golden
-#   X9_IMAGE=x9-qrcode:golden ./others/blackbox/golden/export.sh
+#   ./others/blackbox/golden/export.sh          # X9_IMAGE defaults to materainc/x9-qrcode:java-final
+#
+# The Java build was retired at 3.0.0 (ADR-0039): its last image is published as java-final, and its
+# source is the git tag java-final. The set is a record of what Java produced; re-export it only if
+# the bundled test PKI (testdata/pki) has to be regenerated, and only from that image.
 #
 # It starts the image four times, each time signing with another of the repository's bundled TEST
 # keystores and answering under another public host, and has export.py capture what Java signs and
@@ -18,14 +21,14 @@
 #
 # Containers only, nothing bind-mounted (Colima cannot mount paths under /Volumes). Every export
 # makes NEW tokens (new correlationIds, new signatures), so the set is replaced as a whole and
-# committed as a whole. The export is not finished until the suite has proved the manifest against
-# Java: run-against-image.sh (tests/test_golden.py), which CI also runs.
+# committed as a whole. The export is not finished until the suite has passed against the Go build
+# with the new set (make blackbox-image; tests/test_golden.py), which CI also runs.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 HERE="$ROOT/others/blackbox/golden"
-CERTS="$ROOT/x9-qrcode-infrastructure/src/test/resources/certificate"
-X9_IMAGE="${X9_IMAGE:-x9-qrcode:latest}"
+CERTS="$ROOT/testdata/pki"
+X9_IMAGE="${X9_IMAGE:-materainc/x9-qrcode:java-final}"
 COMPOSE=(docker compose -p x9-golden -f "$HERE/docker-compose.yml")
 
 export GOLDEN_IMAGE="$X9_IMAGE"
@@ -41,11 +44,10 @@ cleanup() {
 trap cleanup EXIT
 
 echo "== staging"
-mkdir -p "$STAGE/runner/others" "$STAGE/runner/x9-qrcode-infrastructure/src/test/resources" \
-         "$STAGE/signer" "$STAGE/out"
+mkdir -p "$STAGE/runner/others" "$STAGE/runner/testdata" "$STAGE/signer" "$STAGE/out"
 rsync -a --exclude '__pycache__' --exclude '.pytest_cache' \
       "$ROOT/others/blackbox" "$STAGE/runner/others/"
-cp -R "$CERTS" "$STAGE/runner/x9-qrcode-infrastructure/src/test/resources/"
+cp -R "$CERTS" "$STAGE/runner/testdata/"
 cp "$ROOT/others/blackbox/deployment/x9-blackbox-truststore.jks" "$CERTS"/x9-test-payer.p12 \
    "$CERTS"/x9-test-payer-ec.p12 "$CERTS"/x9-test-payer-revoked.p12 \
    "$CERTS"/x9-test-untrusted-payer.p12 "$STAGE/signer/"

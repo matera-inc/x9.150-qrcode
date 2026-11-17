@@ -20,12 +20,12 @@ import (
 //
 //	openssl pkcs12 -in <file> -passin pass:x9test123 -nokeys -clcerts | openssl x509 -outform DER | sha256sum
 //
-// The list is the Java build's (TestClockCertificateGuard), entry for entry;
-// TestJavaFingerprintsAreBundled keeps the two identical.
+// The list was the Java build's (TestClockCertificateGuard), entry for entry; TestTheTestPKIIsBundled
+// keeps it equal to the certificates committed under testdata/pki.
 var bundledFingerprints = map[string]string{
 	// The demo identity: x9-demo.jks, bundled byte for byte as internal/keys/bundled/x9-demo.p12.
 	"67e9eae59581e99c81d3744fe086042f7363e13c2d15e05113011d2d76e5ed1b": "x9-demo (CN=x9.matera.com, OU=Demo NonProduction)",
-	// x9-qrcode-infrastructure/src/test/resources/certificate/:
+	// testdata/pki/:
 	"795ff346e9689636e9ba68917fe9f12db9e5e3a43a0b9fe2a39026275859292a": "x9-test-ca.p12, the test root CA",
 	"e08b164ebd84a0a03701d20071bfdd4d7cd8f3185958201c577e6015d51e671a": "x9-test-payer.p12, RSA leaf of the test CA",
 	"19241b109b737421705d65e7d6cfc2fca7bc9425f0f263fe04643daa70bcf518": "x9-test-payer-ec.p12, EC leaf of the test CA",
