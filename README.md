@@ -311,6 +311,7 @@ Architecture, standard-alignment, and integration design notes:
 - [The event table](docs/EVENTS-TABLE.md) — reading `payment_event` by change data capture or plain SQL
 - [Metrics and actuator endpoints](docs/METRICS.md) — every metric the service exports, and what became of the Java build's; `/actuator/info`
 - [Architecture decisions](docs/adr/README.md) — every ADR, including the rewrite's (0022 onwards)
+- [Architecture spine](docs/rewrite/ARCHITECTURE-SPINE.md) — the Go design on one page: its paradigm, the 15 decisions of the rewrite and the package layout, as planned on 2026-11-13 (the ADRs are the authority)
 - [Plan: Go + PostgreSQL rewrite](PLAN-GO-POSTGRES-REWRITE.md) — the rewrite's evaluation, phases and benchmark method
 - [Endpoints & Local Scan Testing](ENDPOINTS.md) — public/management endpoints, the single-origin URL model, and Cloudflare-tunnel setup for phone-scan testing
 - [Two-Instance Payment Cycle](others/demo/README.md) — a whole payment played between two deployments, why HTTPS is mandatory between them, and three ways to provide it
