@@ -1,0 +1,37 @@
+# SIGNING=es256 (collect.sh): both builds sign their answers with an EC P-256 key (ES256) instead of
+# the shipped demo key (RSA, PS512). Everything else is the build's own manifest, unchanged; lib.sh's
+# render() adds this component to java-mongo or go-postgres (and to their small overlays).
+#
+# The key is the test CA's EC leaf, testdata/pki/x9-test-payer-ec.p12 (NON-PRODUCTION: its key is
+# public), which prepare.sh copies to build/signing/x9-bench-signing.p12 and collect.sh puts in the
+# ConfigMap x9-bench-signing. Its issuer, the test CA, is already in both builds' truststore, and the
+# `crl` sidecar already serves the CRL its certificate names.
+#
+# The same variables configure both builds: they are the Java build's settings, and the Go build
+# reads them under the same names (docs/CONFIGURATION-FROM-JAVA.md). Java needs the type, since its
+# default is JKS; for Go the type and the alias are informative. The key password equals the store
+# password: a PKCS#12 file has one password.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+patches:
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata: {name: x9-qrcode}
+      spec:
+        template:
+          spec:
+            containers:
+              - name: app
+                env:
+                  - {name: X9_CERTIFICATE_JWKALGORITHM, value: ES256}
+                  - {name: X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION, value: "file:/x9-bench/signing/x9-bench-signing.p12"}
+                  - {name: X9_CERTIFICATE_PRIVATEKEYSTORE_TYPE, value: PKCS12}
+                  - {name: X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD, value: "x9test123"}
+                  - {name: X9_CERTIFICATE_PRIVATEKEYSTORE_PRIVATEKEYPASSWORD, value: "x9test123"}
+                  - {name: X9_CERTIFICATE_PRIVATEKEYSTORE_ALIAS, value: x9-test-payer-ec}
+                volumeMounts:
+                  - {name: signing, mountPath: /x9-bench/signing, readOnly: true}
+            volumes:
+              - name: signing
+                configMap: {name: x9-bench-signing}

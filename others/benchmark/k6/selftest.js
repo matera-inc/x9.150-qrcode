@@ -64,6 +64,13 @@ export default async function () {
       { statusCode: 200, crit: ["correlationId", "iat", "ttl", "statusCode"], x5c: undefined, jku: "https://payee.example.com/pub/.well-known/jwks" });
     expect(`${payer.alg} key by jku`,
       await verifyAnswer(byReference.token, Object.assign({}, ok, { correlationId: byReference.correlationId })), "VERIFIED");
+    // The campaign's SIGNING setting: verified when the answer's alg is the expected one, refused
+    // when the service signed with the other one.
+    expect(`${payer.alg} the expected alg`,
+      await verifyAnswer(answer.token, Object.assign({}, ok, { alg: payer.alg })), "VERIFIED");
+    expect(`${payer.alg} another alg than expected`,
+      await verifyAnswer(answer.token, Object.assign({}, ok, { alg: payer.alg === "ES256" ? "PS512" : "ES256" })),
+      "UNEXPECTED_ALG");
     expect(`${payer.alg} not a JWS`, await verifyAnswer("not-a-jws", ok), "NOT_JWS");
   }
   if (failures > 0) exec.test.abort(`${failures} self-test case(s) failed`);
