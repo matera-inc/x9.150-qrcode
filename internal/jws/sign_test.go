@@ -228,7 +228,7 @@ func TestHeaderProfile(t *testing.T) {
 	} {
 		t.Run(string(tc.publication), func(t *testing.T) {
 			s := newSigner(t, Config{Publication: tc.publication}, fixedClock{at})
-			token, err := s.Sign(key, Message{Payload: []byte(`{"qrCodeContent":"MDA="}`), CorrelationID: id})
+			token, err := s.Sign(t.Context(), key, Message{Payload: []byte(`{"qrCodeContent":"MDA="}`), CorrelationID: id})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -289,7 +289,7 @@ func TestEveryAlgorithmSigns(t *testing.T) {
 		t.Run(alg, func(t *testing.T) {
 			key := keyForAlg(t, alg)
 			s := newSigner(t, Config{Algorithm: alg, Publication: PublishChain}, fixedClock{epoch})
-			token, err := s.Sign(key, Message{Payload: []byte(`{}`), CorrelationID: NewCorrelationID()})
+			token, err := s.Sign(t.Context(), key, Message{Payload: []byte(`{}`), CorrelationID: NewCorrelationID()})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -326,7 +326,7 @@ func TestKeyThatCannotSignIsRefused(t *testing.T) {
 			if !errors.Is(err, ErrKey) || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("Check = %v, want ErrKey containing %q", err, tc.want)
 			}
-			if _, err := s.Sign(tc.key, Message{Payload: []byte(`{}`), CorrelationID: NewCorrelationID()}); !errors.Is(err, ErrKey) {
+			if _, err := s.Sign(t.Context(), tc.key, Message{Payload: []byte(`{}`), CorrelationID: NewCorrelationID()}); !errors.Is(err, ErrKey) {
 				t.Fatalf("Sign = %v, want ErrKey", err)
 			}
 		})
@@ -392,7 +392,7 @@ func TestInvalidMessageIsRefused(t *testing.T) {
 		{"ttl under a millisecond", Message{Payload: []byte(`{}`), CorrelationID: NewCorrelationID(), TTL: time.Microsecond}, "not a positive number of milliseconds"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := s.Sign(key, tc.m)
+			_, err := s.Sign(t.Context(), key, tc.m)
 			if !errors.Is(err, ErrMessage) || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("Sign = %v, want ErrMessage containing %q", err, tc.want)
 			}
@@ -409,7 +409,7 @@ func TestTTLIsMilliseconds(t *testing.T) {
 		ttl  time.Duration
 		want int64
 	}{{0, 45000}, {30 * time.Second, 30000}, {1500 * time.Millisecond, 1500}} {
-		token, err := s.Sign(key, Message{Payload: []byte(`{}`), CorrelationID: NewCorrelationID(), TTL: tc.ttl})
+		token, err := s.Sign(t.Context(), key, Message{Payload: []byte(`{}`), CorrelationID: NewCorrelationID(), TTL: tc.ttl})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -427,7 +427,7 @@ func TestIATIsTheBusinessClock(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := newSigner(t, Config{}, clk)
-	token, err := s.Sign(keyFor(t, "RSA"), Message{Payload: []byte(`{}`), CorrelationID: NewCorrelationID()})
+	token, err := s.Sign(t.Context(), keyFor(t, "RSA"), Message{Payload: []byte(`{}`), CorrelationID: NewCorrelationID()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -445,7 +445,7 @@ func TestSignedAnswer(t *testing.T) {
 	s := newSigner(t, Config{Publication: PublishChain}, fixedClock{epoch})
 	id := uuid.MustParse("5e9188da-d7da-4e4e-b0e8-1897386ba738")
 	for _, status := range []int{200, 400, 401, 404, 409, 500} {
-		token, err := s.SignAnswer(key, id, status)
+		token, err := s.SignAnswer(t.Context(), key, id, status)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -465,7 +465,7 @@ func TestSignedAnswer(t *testing.T) {
 		verifyStdlib(t, d, key.Public())
 	}
 	for _, status := range []int{0, 99, 600} {
-		if _, err := s.SignAnswer(key, id, status); !errors.Is(err, ErrMessage) {
+		if _, err := s.SignAnswer(t.Context(), key, id, status); !errors.Is(err, ErrMessage) {
 			t.Errorf("SignAnswer(%d) = %v, want ErrMessage", status, err)
 		}
 	}
@@ -493,7 +493,7 @@ func TestConfigFromDefaults(t *testing.T) {
 	}
 	s := newSigner(t, got, fixedClock{epoch})
 	id := store.Current().Identity
-	token, err := s.Sign(id, Message{Payload: []byte(`{}`), CorrelationID: NewCorrelationID()})
+	token, err := s.Sign(t.Context(), id, Message{Payload: []byte(`{}`), CorrelationID: NewCorrelationID()})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -412,7 +412,7 @@ func (s *Service) answer(w http.ResponseWriter, r *http.Request, x *exchange, p 
 	if p != nil {
 		status, body = p.Status, httpapi.AnswerBody(p)
 	}
-	token, err := s.signer.Sign(s.keys.Current().Identity, jws.Message{
+	token, err := s.signer.Sign(r.Context(), s.keys.Current().Identity, jws.Message{
 		Payload: body, CorrelationID: x.correlationID, StatusCode: status,
 	})
 	if err != nil {

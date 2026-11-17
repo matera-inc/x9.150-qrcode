@@ -16,6 +16,7 @@
 package jws
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -36,6 +37,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/matera-inc/x9.150-qrcode/internal/config"
+	"github.com/matera-inc/x9.150-qrcode/internal/cpu"
 )
 
 // The header parameters X9.150 adds to a JWS, every one of them named in crit.
@@ -110,6 +112,9 @@ type Config struct {
 	Host string
 	// TTL is the ttl of a message that does not set its own. Zero is DefaultTTL.
 	TTL time.Duration
+	// CPU bounds how many signatures compute at once (internal/cpu explains why). A slot is held
+	// only while the key signs. Nil is unbounded.
+	CPU *cpu.Limiter
 }
 
 // ConfigFrom reads the signing settings of the service's configuration.
@@ -152,6 +157,7 @@ type Signer struct {
 	url         string // jku or x5u; empty for x5c
 	ttl         time.Duration
 	clock       Clock
+	cpu         *cpu.Limiter
 }
 
 // algorithms are the algorithms this service signs with (ADR-0027), with their hash.
@@ -190,7 +196,7 @@ func New(cfg Config, clock Clock) (*Signer, error) {
 	if clock == nil {
 		return nil, fmt.Errorf("%w: no clock", ErrConfig)
 	}
-	s := &Signer{alg: alg, hash: hash, publication: cfg.Publication, ttl: cfg.TTL, clock: clock}
+	s := &Signer{alg: alg, hash: hash, publication: cfg.Publication, ttl: cfg.TTL, clock: clock, cpu: cfg.CPU}
 	switch cfg.Publication {
 	case PublishJWKSet:
 		s.url = publicURL(cfg.Host, JWKSetPath)
@@ -283,8 +289,9 @@ func esFor(c elliptic.Curve) string {
 // answer to a question whose own could not be verified.
 func NewCorrelationID() uuid.UUID { return uuid.New() }
 
-// Sign signs m with key and returns the compact JWS.
-func (s *Signer) Sign(key Key, m Message) (string, error) {
+// Sign signs m with key and returns the compact JWS. The key signs holding a CPU slot; ctx ending
+// while it waits for one fails the signature.
+func (s *Signer) Sign(ctx context.Context, key Key, m Message) (string, error) {
 	if err := s.Check(key); err != nil {
 		return "", err
 	}
@@ -327,7 +334,7 @@ func (s *Signer) Sign(key Key, m Message) (string, error) {
 		opts.WithHeader(HeaderX5C, x5c)
 	}
 
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: s.alg, Key: opaque{key: key, alg: s.alg, hash: s.hash}}, opts)
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: s.alg, Key: opaque{ctx: ctx, cpu: s.cpu, key: key, alg: s.alg, hash: s.hash}}, opts)
 	if err != nil {
 		return "", fmt.Errorf("jws: building the signer: %w", err)
 	}
@@ -347,11 +354,11 @@ func AnswerBody(statusCode int) []byte {
 // SignAnswer signs the answer to a payment notification (Story 2.3): body {"statusCode":n}, the
 // header carrying statusCode too and naming it in crit, and correlationId echoing the
 // notification's (a fresh one when the notification could not be verified).
-func (s *Signer) SignAnswer(key Key, correlationID uuid.UUID, statusCode int) (string, error) {
+func (s *Signer) SignAnswer(ctx context.Context, key Key, correlationID uuid.UUID, statusCode int) (string, error) {
 	if statusCode < 100 || statusCode > 599 {
 		return "", fmt.Errorf("%w: status code %d is not an HTTP status", ErrMessage, statusCode)
 	}
-	return s.Sign(key, Message{Payload: AnswerBody(statusCode), CorrelationID: correlationID, StatusCode: statusCode})
+	return s.Sign(ctx, key, Message{Payload: AnswerBody(statusCode), CorrelationID: correlationID, StatusCode: statusCode})
 }
 
 // Thumbprint is x5t#S256: the base64url SHA-256 of the certificate's DER.
@@ -363,7 +370,11 @@ func Thumbprint(c *x509.Certificate) string {
 // opaque lets go-jose sign with a crypto.Signer it does not know: go-jose writes the header and
 // serialises, the key signs the digest. An ECDSA signature is turned from ASN.1 into JOSE's fixed
 // R || S (RFC 7518 §3.4); a PSS salt is as long as the hash, as go-jose and the Java build use.
+// The key signs holding a slot of cpu, waited for under ctx: go-jose's interface takes no context,
+// so the one Sign was given travels here, for that one call.
 type opaque struct {
+	ctx  context.Context
+	cpu  *cpu.Limiter
 	key  Key
 	alg  jose.SignatureAlgorithm
 	hash crypto.Hash
@@ -384,15 +395,15 @@ func (o opaque) SignPayload(payload []byte, alg jose.SignatureAlgorithm) ([]byte
 	digest := h.Sum(nil)
 	switch string(alg)[:2] {
 	case "RS":
-		return o.key.Sign(rand.Reader, digest, o.hash)
+		return o.sign(digest, o.hash)
 	case "PS":
-		return o.key.Sign(rand.Reader, digest, &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash, Hash: o.hash})
+		return o.sign(digest, &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash, Hash: o.hash})
 	case "ES":
 		curve, ok := curves[alg]
 		if !ok {
 			return nil, fmt.Errorf("%w algorithm %s", errUnsupported, alg)
 		}
-		der, err := o.key.Sign(rand.Reader, digest, o.hash)
+		der, err := o.sign(digest, o.hash)
 		if err != nil {
 			return nil, err
 		}
@@ -400,6 +411,15 @@ func (o opaque) SignPayload(payload []byte, alg jose.SignatureAlgorithm) ([]byte
 	default:
 		return nil, fmt.Errorf("%w algorithm %s", errUnsupported, alg)
 	}
+}
+
+// sign is the key's signature, computed holding a CPU slot.
+func (o opaque) sign(digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	if err := o.cpu.Acquire(o.ctx); err != nil {
+		return nil, err
+	}
+	defer o.cpu.Release()
+	return o.key.Sign(rand.Reader, digest, opts)
 }
 
 // rawECDSA turns an ASN.1 ECDSA signature into R || S, each as long as the curve's order.

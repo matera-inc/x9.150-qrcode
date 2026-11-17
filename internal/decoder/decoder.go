@@ -174,7 +174,7 @@ func (s *Service) decode(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return fmt.Errorf("composing the payload request: %w", err)
 	}
-	token, err := s.signer.Sign(s.keys.Current().Identity, jws.Message{Payload: payload, CorrelationID: correlationID})
+	token, err := s.signer.Sign(r.Context(), s.keys.Current().Identity, jws.Message{Payload: payload, CorrelationID: correlationID})
 	if err != nil {
 		return fmt.Errorf("signing the payload request: %w", err)
 	}

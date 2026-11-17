@@ -165,11 +165,11 @@ func (f *fixture) signedAnswer(w http.ResponseWriter, r *http.Request, status in
 		http.Error(w, "the test payee could not read the notification", http.StatusInternalServerError)
 		return
 	}
-	f.answerWith(w, v.Header.CorrelationID, status, status)
+	f.answerWith(r.Context(), w, v.Header.CorrelationID, status, status)
 }
 
-func (f *fixture) answerWith(w http.ResponseWriter, correlationID uuid.UUID, signed, httpStatus int) {
-	token, err := f.signer.SignAnswer(f.store.Current().Identity, correlationID, signed)
+func (f *fixture) answerWith(ctx context.Context, w http.ResponseWriter, correlationID uuid.UUID, signed, httpStatus int) {
+	token, err := f.signer.SignAnswer(ctx, f.store.Current().Identity, correlationID, signed)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -304,7 +304,7 @@ func TestTheWireNotificationCarriesWhatWasSent(t *testing.T) {
 	if got.status != http.StatusOK {
 		t.Fatalf("status %d: %s", got.status, got.raw)
 	}
-	v, err := f.verifier.Verify(t.Context(), f.payee.received()[0].body, jws.Expect{})
+	v, err := f.verifier.Verify(f.t.Context(), f.payee.received()[0].body, jws.Expect{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -625,7 +625,9 @@ func TestTheAnswerIsReported(t *testing.T) {
 			return func(w http.ResponseWriter, r *http.Request) { f.signedAnswer(w, r, http.StatusOK) }
 		}, map[string]any{"statusCode": 200.0, "accepted": true, "signature": "VERIFIED"}, true, true},
 		{"a signed yes sent with a 400", func(f *fixture) http.HandlerFunc {
-			return func(w http.ResponseWriter, _ *http.Request) { f.answerWith(w, uuid.MustParse(cid), 200, 400) }
+			return func(w http.ResponseWriter, r *http.Request) {
+				f.answerWith(r.Context(), w, uuid.MustParse(cid), 200, 400)
+			}
 		}, map[string]any{"statusCode": 400.0, "accepted": false, "signature": "INVALID", "signatureProblem": "STATUS_MISMATCH"}, true, false},
 	}
 	for _, tc := range cases {

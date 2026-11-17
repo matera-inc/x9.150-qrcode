@@ -6,6 +6,7 @@
 package decoder
 
 import (
+	"context"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -146,7 +147,7 @@ func serve(t *testing.T) *fixture {
 func (f *fixture) payloadAnswer(payload string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		got := f.received(r)
-		f.sign(w, payload, got.Header.CorrelationID)
+		f.sign(r.Context(), w, payload, got.Header.CorrelationID)
 	}
 }
 
@@ -166,8 +167,8 @@ func (f *fixture) received(r *http.Request) *jws.Verified {
 	return v
 }
 
-func (f *fixture) sign(w http.ResponseWriter, payload string, correlationID uuid.UUID) {
-	token, err := f.signer.Sign(f.store.Current().Identity, jws.Message{
+func (f *fixture) sign(ctx context.Context, w http.ResponseWriter, payload string, correlationID uuid.UUID) {
+	token, err := f.signer.Sign(ctx, f.store.Current().Identity, jws.Message{
 		Payload: []byte(payload), CorrelationID: correlationID, StatusCode: http.StatusOK,
 	})
 	if err != nil {
@@ -180,8 +181,8 @@ func (f *fixture) sign(w http.ResponseWriter, payload string, correlationID uuid
 
 // signWithoutCorrelationID answers with payload signed by the demo key under a header that names
 // no correlationId, in crit or out of it: a signature that verifies, on an answer to nobody.
-func (f *fixture) signWithoutCorrelationID(w http.ResponseWriter, payload string) {
-	token, err := f.signer.Sign(f.store.Current().Identity, jws.Message{
+func (f *fixture) signWithoutCorrelationID(ctx context.Context, w http.ResponseWriter, payload string) {
+	token, err := f.signer.Sign(ctx, f.store.Current().Identity, jws.Message{
 		Payload: []byte(payload), CorrelationID: uuid.New(), StatusCode: http.StatusOK,
 	})
 	if err != nil {
@@ -561,7 +562,7 @@ func TestAPayloadThatDoesNotVerifyIsRefused(t *testing.T) {
 	altered := func(f *fixture, correlationID func(r *http.Request) uuid.UUID) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			rec := httptest.NewRecorder()
-			f.sign(rec, foreignPayload, correlationID(r))
+			f.sign(r.Context(), rec, foreignPayload, correlationID(r))
 			parts := strings.Split(rec.Body.String(), ".")
 			parts[1] = base64.RawURLEncoding.EncodeToString([]byte(strings.Replace(foreignPayload, "1250", "1", 1)))
 			_, _ = io.WriteString(w, strings.Join(parts, "."))
@@ -583,16 +584,20 @@ func TestAPayloadThatDoesNotVerifyIsRefused(t *testing.T) {
 			return func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, foreignPayload) }
 		}, nil, invalid},
 		{"another correlationID than the caller's", func(f *fixture) http.HandlerFunc {
-			return func(w http.ResponseWriter, _ *http.Request) { f.sign(w, foreignPayload, uuid.New()) }
+			return func(w http.ResponseWriter, r *http.Request) { f.sign(r.Context(), w, foreignPayload, uuid.New()) }
 		}, map[string]any{"correlationID": cid}, badID},
 		{"another correlationID than the one generated", func(f *fixture) http.HandlerFunc {
-			return func(w http.ResponseWriter, _ *http.Request) { f.sign(w, foreignPayload, uuid.New()) }
+			return func(w http.ResponseWriter, r *http.Request) { f.sign(r.Context(), w, foreignPayload, uuid.New()) }
 		}, nil, badID},
 		{"no correlationID, none given", func(f *fixture) http.HandlerFunc {
-			return func(w http.ResponseWriter, _ *http.Request) { f.signWithoutCorrelationID(w, foreignPayload) }
+			return func(w http.ResponseWriter, r *http.Request) {
+				f.signWithoutCorrelationID(r.Context(), w, foreignPayload)
+			}
 		}, nil, badID},
 		{"no correlationID, the caller's given", func(f *fixture) http.HandlerFunc {
-			return func(w http.ResponseWriter, _ *http.Request) { f.signWithoutCorrelationID(w, foreignPayload) }
+			return func(w http.ResponseWriter, r *http.Request) {
+				f.signWithoutCorrelationID(r.Context(), w, foreignPayload)
+			}
 		}, map[string]any{"correlationID": cid}, badID},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -640,7 +645,7 @@ func TestARedirectIsNotFollowed(t *testing.T) {
 func TestAnAnswerWithoutACorrelationIDIsABadHeader(t *testing.T) {
 	f := serve(t)
 	rec := httptest.NewRecorder()
-	f.signWithoutCorrelationID(rec, foreignPayload)
+	f.signWithoutCorrelationID(t.Context(), rec, foreignPayload)
 	_, err := f.verifier.Verify(t.Context(), rec.Body.String(), jws.Expect{})
 	if got := jws.ProblemOf(err); got != jws.BadHeader {
 		t.Fatalf("problem %q, want %q: %v", got, jws.BadHeader, err)
