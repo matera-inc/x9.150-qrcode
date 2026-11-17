@@ -588,6 +588,11 @@ func (c *revocationChecker) post(ctx context.Context, uri string, body []byte) (
 // exchange sends one request with the CPU slot ctx holds given back (cpu.Outside): a slot is never
 // held while a CRL or an OCSP answer is fetched. The slot is taken again under ctx, not under the
 // request's own timeout, so a source that times out still soft-fails as it did.
+//
+// PERFORMANCE: the fetch must stay inside cpu.Outside. A CPU slot held while waiting on the network
+// keeps a processor's turn from the goroutines that hold database connections, which is the
+// starvation internal/cpu was added to prevent (measured 2026-11-17). Never hold a slot across
+// network or database I/O.
 func (c *revocationChecker) exchange(ctx context.Context, method, uri string, body []byte, limit int64) ([]byte, error) {
 	if err := httpURL(uri); err != nil {
 		return nil, err

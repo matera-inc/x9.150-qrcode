@@ -264,6 +264,15 @@ func (v *Verifier) Verify(ctx context.Context, token string, want Expect) (*Veri
 func (v *Verifier) verify(ctx context.Context, token string, want Expect) (*Verified, *pki.Document, *Refusal) {
 	// One CPU slot for the whole verification. internal/pki gives it back around every fetch
 	// (cpu.Outside) and takes it again after; a request that ends while it waits is UNVERIFIABLE.
+	//
+	// PERFORMANCE: keep the slot here, at the top, around the whole verification (split, decode,
+	// x5c parsing, chain and signature). It fixes a measured regression (2026-11-17): with the app at
+	// 2 vCPU and 500 users on the full payment cycle, Go fell to 779 req/s and a 91 ms median,
+	// because write transactions waited for the CPU behind JWS work while holding a database
+	// connection. A slot around the signature arithmetic alone did not help (781 req/s, 97 ms); a
+	// slot around the whole verification and the whole signature did (812 req/s, 64 ms). Do not
+	// narrow it, move it inward or remove it without the same A/B on the benchmark machine;
+	// internal/cpu explains why.
 	ctx, release, err := v.cpu.Hold(ctx)
 	if err != nil {
 		return nil, nil, refusal(Unverifiable, err, "the JWS was not checked")

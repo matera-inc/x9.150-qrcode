@@ -272,6 +272,11 @@ func (f *Fetcher) target(raw string) (*url.URL, error) {
 }
 
 // get fetches with the CPU slot ctx holds given back (cpu.Outside), and takes it again after.
+//
+// PERFORMANCE: the fetch must stay inside cpu.Outside. A CPU slot held while waiting on the network
+// keeps a processor's turn from the goroutines that hold database connections, which is the
+// starvation internal/cpu was added to prevent (measured 2026-11-17). Never hold a slot across
+// network or database I/O.
 func (f *Fetcher) get(ctx context.Context, kind Kind, target *url.URL) ([]byte, error) {
 	var body []byte
 	err := cpu.Outside(ctx, func() error {
