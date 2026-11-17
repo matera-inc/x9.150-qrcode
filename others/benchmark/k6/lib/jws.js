@@ -162,13 +162,13 @@ function refused(problem, detail, header, payload) {
 }
 
 // Verifies a payee's signed answer as a payer must, in the X9.150 profile:
-//   a compact JWS; alg PS512 or ES256; crit names correlationId, iat, ttl (and statusCode when
+//   a compact JWS; alg PS512 or ES256, and `expected.alg` when given; crit names correlationId, iat, ttl (and statusCode when
 //   `expected.statusCode` is given), each present; the signing certificate (x5c[0], or the one
 //   x5t#S256 names when the key is given by jku/x5u) is one of `expected.payeeCertificates`;
 //   x5t#S256 names it; the signature verifies with its key; iat <= now + skew and now < iat + ttl;
 //   correlationId is the request's; statusCode in the header and in the body is the expected one.
 // `problem` uses the service's own SignatureProblem codes where one fits, plus
-// CORRELATION_ID_MISMATCH, STATUS_MISMATCH and UNEXPECTED_PAYEE.
+// CORRELATION_ID_MISMATCH, STATUS_MISMATCH, UNEXPECTED_ALG and UNEXPECTED_PAYEE.
 export async function verifyAnswer(token, expected) {
   if (typeof token !== "string" || token.split(".").length !== 3) {
     return refused("NOT_JWS", `not a compact JWS: ${String(token).slice(0, 80)}`);
@@ -185,6 +185,11 @@ export async function verifyAnswer(token, expected) {
 
   if (!header.alg || header.alg === "none") return refused("ALG_NONE", "unsecured", header, payload);
   if (!ALGS[header.alg]) return refused("BAD_HEADER", `alg ${header.alg}`, header, payload);
+  // The campaign's signing setting (prepare.sh's payeeAlg): an answer signed with any other
+  // algorithm means the service is not running with the identity the campaign says it is.
+  if (expected.alg !== undefined && header.alg !== expected.alg) {
+    return refused("UNEXPECTED_ALG", `alg ${header.alg}, expected ${expected.alg}`, header, payload);
+  }
   const crit = Array.isArray(header.crit) ? header.crit : [];
   const required = expected.statusCode === undefined ? CRIT : CRIT.concat(["statusCode"]);
   for (const name of required) {

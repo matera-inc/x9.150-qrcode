@@ -27,6 +27,11 @@
 #   GO_WARMUP          the same for Go: default "none" (the plan warms up the JVM only)
 #   IDLE_SECONDS       S7's idle period before resting memory, default 300
 #   OVERLAY            "" (default, the plan §9.2 limits) or "small" (SMOKE ONLY: see k8s/overlays)
+#   SIGNING            ps512 (default): both builds sign their answers with the shipped demo key
+#                      (RSA, PS512). es256: both sign with the test CA's EC P-256 leaf (ES256),
+#                      mounted from prepare.sh's build/signing/ (k8s/components/signing-es256), and
+#                      k6 pins that certificate and refuses an answer signed with anything else.
+#                      Recorded in every run's images.json ("signing").
 #   CAMPAIGN           the campaign id, default the UTC start time (2026-11-15T1200Z)
 #   IMAGE_LOADER       a command that imports a `docker save` tar from stdin into the cluster's
 #                      runtime; empty when the cluster already sees this Docker's images (README)
@@ -88,13 +93,14 @@ for build in "${builds[@]}"; do
   record_environment "$run_dir/environment.json"
   liquibase_json=null
   [ "$build" = go-postgres ] && liquibase_json="$(image_json "$LIQUIBASE_IMAGE")"
-  python3 -I - "$run_dir/images.json" <<PY
+  python3 -I - "$run_dir/images.json" "$BENCH/build/signing.json" <<PY
 import json, sys
 json.dump({"build": "$build", "campaign": "$CAMPAIGN", "run": $run, "sequence": "$SEQUENCE",
            "position": $position, "app": json.loads('''$(image_json "$(image_of "$build")")'''),
            "liquibase": json.loads('''$liquibase_json'''),
            "harnessRevision": "$(git -C "$ROOT" rev-parse HEAD)",
-           "profile": "$PROFILE", "stages": "$STAGES", "overlay": "${OVERLAY:-none}"},
+           "profile": "$PROFILE", "stages": "$STAGES", "overlay": "${OVERLAY:-none}",
+           "signing": json.load(open(sys.argv[2]))},
           open(sys.argv[1], "w"), indent=1)
 PY
 

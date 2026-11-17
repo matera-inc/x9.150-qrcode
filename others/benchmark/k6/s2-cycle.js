@@ -17,7 +17,7 @@
 // the distribution point the certificates name, which the deployment serves beside the service.
 //
 // Every signed answer is checked as a payer must check it (lib/jws.js verifyAnswer): the payee's
-// certificate, x5t#S256, the signature, iat/ttl, the request's correlationId, the statusCode. A
+// certificate and the algorithm the campaign signs with (prepare.sh, SIGNING), x5t#S256, the signature, iat/ttl, the request's correlationId, the statusCode. A
 // failed check is an error, counted in s2_errors{step,reason} and s2_signature_failures, and the
 // cycle stops there. Same profile as S1 unless PROFILE/STAGES say otherwise.
 //
@@ -37,6 +37,8 @@ const material = JSON.parse(open(__ENV.PAYERS_PATH || "../build/payers.json"));
 const wanted = (__ENV.PAYERS || "ec,rsa").split(",").map((name) => name.trim());
 const PAYERS = material.payers.filter((payer) => wanted.includes(payer.name));
 const PAYEE_CERTIFICATES = material.payeeCertificates;
+// The algorithm every answer must be signed with (SIGNING: PS512 by default, ES256 with es256).
+const PAYEE_ALG = material.payeeAlg;
 if (PAYERS.length === 0) throw new Error(`no payer among ${wanted} in payers.json`);
 
 const STEPS = ["create", "payload", "pre_commit", "post_commit", "status_update"];
@@ -86,6 +88,7 @@ async function signedAnswer(step, response, correlationId, bodyStatusCode) {
   }
   const verdict = await verifyAnswer(response.body, {
     payeeCertificates: PAYEE_CERTIFICATES,
+    alg: PAYEE_ALG,
     correlationId: correlationId,
     statusCode: 200,
     bodyStatusCode: bodyStatusCode,
