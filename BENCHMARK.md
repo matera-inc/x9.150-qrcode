@@ -213,6 +213,10 @@ The first campaign (`2026-11-15T2347Z`, commit `66d113c`) is kept in
   release `bench-2026-11-17T1119Z`.
 - The harness, the manifests and the steps to run a campaign on any Mac:
   [`others/benchmark/README.md`](others/benchmark/README.md).
+- Since 3.0.0 the Java build is not on `main`
+  ([ADR-0039](docs/adr/0039-java-retired-at-3-0-0.md)). The harness runs the Go build alone by
+  default; to repeat this comparison, run `SEQUENCE="J G J G J G"`, whose Java turns use the
+  `materainc/x9-qrcode:java-final` image.
 
 ---
 
