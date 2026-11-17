@@ -38,7 +38,8 @@ APP="$P-app"
 DB="$P-db"
 
 cleanup() {
-  docker rm -f "$APP" "$DB" >/dev/null 2>&1 || true
+  # -v: MongoDB's image declares anonymous volumes, which would otherwise outlive every S7 run.
+  docker rm -f -v "$APP" "$DB" >/dev/null 2>&1 || true
   docker compose -f "$ROOT/db/docker-compose.yml" -p "$P" down -v >/dev/null 2>&1 || true
   docker network rm "$NET" >/dev/null 2>&1 || true
 }
