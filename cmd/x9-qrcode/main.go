@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -28,6 +29,7 @@ import (
 	"github.com/matera-inc/x9.150-qrcode/internal/billing"
 	"github.com/matera-inc/x9.150-qrcode/internal/clock"
 	"github.com/matera-inc/x9.150-qrcode/internal/config"
+	"github.com/matera-inc/x9.150-qrcode/internal/cpu"
 	"github.com/matera-inc/x9.150-qrcode/internal/database"
 	"github.com/matera-inc/x9.150-qrcode/internal/decoder"
 	"github.com/matera-inc/x9.150-qrcode/internal/domain"
@@ -158,8 +160,11 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	// so a reload is followed without a restart. Signatures carry the business clock's iat, and a
 	// received iat and ttl are judged on it; certificate validity, CRLs and the fetch cache run on
 	// clock.New(), never moved. A jku or x5u on this deployment's own host is read from this process
-	// over localhost, as the Java build reads it; any other is fetched over HTTPS only.
-	signer, verifier, err := signing(cfg, keyStore, businessClock, logger)
+	// over localhost, as the Java build reads it; any other is fetched over HTTPS only. Signing and
+	// signature checks share one limiter of GOMAXPROCS slots, so RSA never crowds the processors
+	// out from under the goroutines that hold database connections (internal/cpu explains why).
+	cryptoSlots := cpu.NewLimiter(runtime.GOMAXPROCS(0))
+	signer, verifier, err := signing(cfg, keyStore, businessClock, cryptoSlots, logger)
 	if err != nil {
 		return err
 	}
@@ -319,8 +324,10 @@ func shutdown(ctx context.Context, logger *slog.Logger, srv *http.Server, served
 }
 
 // signing builds the deployment's signer and verifier from the configuration (S10.2-AC1).
-func signing(cfg config.Config, keyStore *keys.Store, business *clock.Clock, logger *slog.Logger) (*jws.Signer, *jws.Verifier, error) {
-	signer, err := jws.New(jws.ConfigFrom(cfg), business)
+func signing(cfg config.Config, keyStore *keys.Store, business *clock.Clock, cryptoSlots *cpu.Limiter, logger *slog.Logger) (*jws.Signer, *jws.Verifier, error) {
+	signCfg := jws.ConfigFrom(cfg)
+	signCfg.CPU = cryptoSlots
+	signer, err := jws.New(signCfg, business)
 	if err != nil {
 		return nil, nil, fmt.Errorf("the signer: %w", err)
 	}
@@ -342,6 +349,7 @@ func signing(cfg config.Config, keyStore *keys.Store, business *clock.Clock, log
 		ClockSkew:  cfg.PublicEndpoints.JWSClockSkew(),
 		Fetcher:    fetcher,
 		Logger:     logger,
+		CPU:        cryptoSlots,
 	}, business)
 	if err != nil {
 		return nil, nil, fmt.Errorf("the verifier: %w", err)

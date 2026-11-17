@@ -245,7 +245,7 @@ func (f *fixture) sign(body any, correlationID uuid.UUID) string {
 			f.t.Fatal(err)
 		}
 	}
-	token, err := f.payer.Sign(f.keys.Current().Identity, jws.Message{Payload: payload, CorrelationID: correlationID})
+	token, err := f.payer.Sign(f.t.Context(), f.keys.Current().Identity, jws.Message{Payload: payload, CorrelationID: correlationID})
 	if err != nil {
 		f.t.Fatal(err)
 	}

@@ -68,7 +68,7 @@ func (p *payer) request(t *testing.T, content string, correlationID uuid.UUID) s
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, err := p.signer.Sign(p.keys.Current().Identity, jws.Message{Payload: body, CorrelationID: correlationID})
+	token, err := p.signer.Sign(t.Context(), p.keys.Current().Identity, jws.Message{Payload: body, CorrelationID: correlationID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -495,7 +495,7 @@ func withCRC(t *testing.T, s string) string {
 
 func signedJSON(t *testing.T, p *payer, payload string) string {
 	t.Helper()
-	token, err := p.signer.Sign(p.keys.Current().Identity, jws.Message{Payload: []byte(payload), CorrelationID: uuid.New()})
+	token, err := p.signer.Sign(t.Context(), p.keys.Current().Identity, jws.Message{Payload: []byte(payload), CorrelationID: uuid.New()})
 	if err != nil {
 		t.Fatal(err)
 	}

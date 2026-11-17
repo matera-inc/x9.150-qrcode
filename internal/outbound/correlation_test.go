@@ -39,14 +39,14 @@ func sequence(answers ...http.HandlerFunc) http.HandlerFunc {
 
 // underAnotherID answers a signed yes under a correlationId that is not the one sent.
 func (f *fixture) underAnotherID() http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) { f.answerWith(w, uuid.New(), 200, 200) }
+	return func(w http.ResponseWriter, r *http.Request) { f.answerWith(r.Context(), w, uuid.New(), 200, 200) }
 }
 
 // alteredUnderAnotherID answers a signed yes under another correlationId, its body altered after
 // signing: the signature fails first.
 func (f *fixture) alteredUnderAnotherID() http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
-		token, err := f.signer.SignAnswer(f.store.Current().Identity, uuid.New(), 200)
+	return func(w http.ResponseWriter, r *http.Request) {
+		token, err := f.signer.SignAnswer(r.Context(), f.store.Current().Identity, uuid.New(), 200)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

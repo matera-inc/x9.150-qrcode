@@ -131,11 +131,11 @@ func goTwin(t *testing.T, g goldenFile, golden decoded) (string, testKey, decode
 	status, hasStatus := integer(golden.header["statusCode"])
 	switch {
 	case g.Kind == "notification-answer":
-		token, err = s.SignAnswer(key, id, int(status))
+		token, err = s.SignAnswer(t.Context(), key, id, int(status))
 	case hasStatus:
-		token, err = s.Sign(key, Message{Payload: golden.payload, CorrelationID: id, TTL: time.Duration(ttl) * time.Millisecond, StatusCode: int(status)})
+		token, err = s.Sign(t.Context(), key, Message{Payload: golden.payload, CorrelationID: id, TTL: time.Duration(ttl) * time.Millisecond, StatusCode: int(status)})
 	default:
-		token, err = s.Sign(key, Message{Payload: golden.payload, CorrelationID: id, TTL: time.Duration(ttl) * time.Millisecond})
+		token, err = s.Sign(t.Context(), key, Message{Payload: golden.payload, CorrelationID: id, TTL: time.Duration(ttl) * time.Millisecond})
 	}
 	if err != nil {
 		t.Fatal(err)
@@ -228,12 +228,12 @@ func TestIndependentVerifierAcceptsGoTokens(t *testing.T) {
 			key := keyForAlg(t, alg)
 			s := newSigner(t, Config{Algorithm: alg, Publication: pub}, fixedClock{epoch})
 			id := NewCorrelationID()
-			token, err := s.Sign(key, Message{Payload: []byte(`{"qrCodeContent":"MDA="}`), CorrelationID: id})
+			token, err := s.Sign(t.Context(), key, Message{Payload: []byte(`{"qrCodeContent":"MDA="}`), CorrelationID: id})
 			if err != nil {
 				t.Fatal(err)
 			}
 			add(alg+"-"+string(pub)+"-question", token, key, epoch, id, 0, false)
-			token, err = s.SignAnswer(key, id, 409)
+			token, err = s.SignAnswer(t.Context(), key, id, 409)
 			if err != nil {
 				t.Fatal(err)
 			}

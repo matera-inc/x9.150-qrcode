@@ -155,7 +155,7 @@ func (p *Payloads) fetch(w http.ResponseWriter, r *http.Request) error {
 		p.logger.ErrorContext(r.Context(), "x9-qrcode payload could not be composed", "location", raw, "err", err)
 		return httpapi.BusinessRule("", msgUnreadable)
 	}
-	token, err := p.signer.Sign(p.keys.Current().Identity, jws.Message{
+	token, err := p.signer.Sign(r.Context(), p.keys.Current().Identity, jws.Message{
 		Payload:       payload,
 		CorrelationID: verified.Header.CorrelationID,
 		StatusCode:    http.StatusOK,

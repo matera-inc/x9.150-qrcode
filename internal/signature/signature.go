@@ -152,7 +152,7 @@ func (s *Service) generate(w http.ResponseWriter, r *http.Request) error {
 		// it as Java refuses a correlationId it does not have.
 		return httpapi.BusinessRule("correlationId", violationGenCID)
 	}
-	token, err := s.signer.Sign(s.keys.Current().Identity, jws.Message{
+	token, err := s.signer.Sign(r.Context(), s.keys.Current().Identity, jws.Message{
 		Payload:       payload,
 		CorrelationID: correlationID,
 		TTL:           time.Duration(ttlSeconds) * time.Second,

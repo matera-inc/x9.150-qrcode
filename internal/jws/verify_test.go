@@ -115,7 +115,7 @@ func TestRoundTrip(t *testing.T) {
 				s := newSigner(t, Config{Algorithm: string(alg), Publication: pub, Host: testHost}, fixedClock{epoch})
 				id := uuid.New()
 				payload := []byte(`{"amount":{"value":1790812800357}}`)
-				token, err := s.Sign(key, Message{Payload: payload, CorrelationID: id, TTL: 30 * time.Second})
+				token, err := s.Sign(t.Context(), key, Message{Payload: payload, CorrelationID: id, TTL: 30 * time.Second})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -149,15 +149,15 @@ func TestCheckAnswer(t *testing.T) {
 	s := newSigner(t, Config{Publication: PublishChain}, fixedClock{epoch})
 	v := newTestVerifier(t, epoch, nil, key)
 	sent := uuid.New()
-	yes, err := s.SignAnswer(key, sent, 200)
+	yes, err := s.SignAnswer(t.Context(), key, sent, 200)
 	if err != nil {
 		t.Fatal(err)
 	}
-	noStatus, err := s.Sign(key, Message{Payload: []byte(`{"ok":true}`), CorrelationID: sent, StatusCode: 200})
+	noStatus, err := s.Sign(t.Context(), key, Message{Payload: []byte(`{"ok":true}`), CorrelationID: sent, StatusCode: 200})
 	if err != nil {
 		t.Fatal(err)
 	}
-	fraction, err := s.Sign(key, Message{Payload: []byte(`{"statusCode":200.5}`), CorrelationID: sent, StatusCode: 200})
+	fraction, err := s.Sign(t.Context(), key, Message{Payload: []byte(`{"statusCode":200.5}`), CorrelationID: sent, StatusCode: 200})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestCheckAnswerSaysWhyTheCertificateWasRefused(t *testing.T) {
 	s := newSigner(t, Config{Algorithm: "ES256", Publication: PublishChain}, fixedClock{epoch})
 	v := newTestVerifier(t, epoch, nil, key)
 	sent := uuid.New()
-	answer, err := s.SignAnswer(stranger, sent, 200)
+	answer, err := s.SignAnswer(t.Context(), stranger, sent, 200)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestRefusedTokenNeverFillsTheCache(t *testing.T) {
 			p := newPublisher(t, key, "ES256")
 			s := newSigner(t, Config{Algorithm: "ES256", Publication: pub, Host: testHost}, fixedClock{epoch})
 			v := newTestVerifier(t, epoch, p.fetcher(t), key)
-			good, err := s.Sign(key, Message{Payload: []byte(`{}`), CorrelationID: uuid.New()})
+			good, err := s.Sign(t.Context(), key, Message{Payload: []byte(`{}`), CorrelationID: uuid.New()})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -262,7 +262,7 @@ func TestJWKSet(t *testing.T) {
 	key := keyFor(t, "RSA")
 	p := newPublisher(t, key, "PS512")
 	s := newSigner(t, Config{Algorithm: "PS512", Publication: PublishJWKSet, Host: testHost}, fixedClock{epoch})
-	token, err := s.Sign(key, Message{Payload: []byte(`{}`), CorrelationID: uuid.New()})
+	token, err := s.Sign(t.Context(), key, Message{Payload: []byte(`{}`), CorrelationID: uuid.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ func TestCertificatesAreJudgedOnTheRealClock(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := newSigner(t, Config{Algorithm: "ES256", Publication: PublishChain}, business)
-	token, err := s.Sign(shortLived, Message{Payload: []byte(`{}`), CorrelationID: uuid.New()})
+	token, err := s.Sign(t.Context(), shortLived, Message{Payload: []byte(`{}`), CorrelationID: uuid.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +333,7 @@ func TestCertificatesAreJudgedOnTheRealClock(t *testing.T) {
 func TestTimeWindow(t *testing.T) {
 	key := keyFor(t, "P-256")
 	s := newSigner(t, Config{Algorithm: "ES256", Publication: PublishChain}, fixedClock{epoch})
-	token, err := s.Sign(key, Message{Payload: []byte(`{}`), CorrelationID: uuid.New(), TTL: time.Minute})
+	token, err := s.Sign(t.Context(), key, Message{Payload: []byte(`{}`), CorrelationID: uuid.New(), TTL: time.Minute})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -271,6 +271,15 @@ the variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`.
   which ([`db/README.md`](db/README.md)). While the database is unreachable it keeps retrying.
   `go test ./...` starts PostgreSQL 16, Liquibase 4.33.0 and PgBouncer 1.21 with Docker
   (testcontainers); `go test -short ./...` skips those tests.
+- **Signing and verifying take turns on the CPU.** At most `GOMAXPROCS` goroutines compute a
+  signature or check one (the JWS's, the certificate chain's, a CRL's or an OCSP answer's) at a
+  time; the others wait their turn, and a request that ends while waiting gives up. Nothing is
+  held while a certificate, CRL or OCSP answer is fetched. Without the bound, hundreds of RSA
+  computations crowd out the goroutines that hold a write connection between round trips, and the
+  8-connection write pool, not the CPU, becomes the bottleneck: at 500 virtual users on 2 vCPU the
+  bound took the full payment cycle from 779 to 806 req/s and its median from 93 to 68 ms. Go reads
+  the container's CPU limit into `GOMAXPROCS`; set the `GOMAXPROCS` variable only to override it.
+  Why, in detail: [`internal/cpu`](internal/cpu/cpu.go).
 - **Health, as before.** `/actuator/health`, `/actuator/health/liveness` and
   `/actuator/health/readiness` answer on the API port in the Java build's JSON shape
   (`{"status":"UP"}`; the aggregate adds `"groups":["liveness","readiness"]`). Liveness is UP while

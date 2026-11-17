@@ -26,6 +26,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ocsp"
+
+	"github.com/matera-inc/x9.150-qrcode/internal/cpu"
 )
 
 // This file is the revocation half of Java's PKIX validation: a PKIXRevocationChecker with
@@ -126,6 +128,7 @@ type revocationChecker struct {
 	maxCRL         int64
 	maxOCSP        int64
 	log            *slog.Logger
+	cpu            *cpu.Limiter // held while a CRL or an OCSP answer is verified, never while fetched
 
 	mu        sync.Mutex
 	crls      map[string]cachedCRL
@@ -137,7 +140,7 @@ type cachedCRL struct {
 	expires time.Time
 }
 
-func newRevocationChecker(cfg RevocationConfig, logger *slog.Logger) *revocationChecker {
+func newRevocationChecker(cfg RevocationConfig, logger *slog.Logger, limiter *cpu.Limiter) *revocationChecker {
 	c := &revocationChecker{
 		connectTimeout: orDuration(cfg.ConnectTimeout, defaultRevocationConnectTimeout),
 		readTimeout:    orDuration(cfg.ReadTimeout, defaultRevocationReadTimeout),
@@ -145,6 +148,7 @@ func newRevocationChecker(cfg RevocationConfig, logger *slog.Logger) *revocation
 		maxOCSP:        orInt64(cfg.MaxOCSPBytes, defaultMaxOCSPBytes),
 		cacheSize:      int(orInt64(int64(cfg.CRLCacheEntries), defaultCRLCacheEntries)),
 		log:            logger,
+		cpu:            limiter,
 		crls:           map[string]cachedCRL{},
 	}
 	c.client = &http.Client{
@@ -267,7 +271,11 @@ var (
 func (c *revocationChecker) crl(ctx context.Context, uri string, leaf, issuer *x509.Certificate, now time.Time) (*crl, *revocationError) {
 	if cached := c.cached(uri, now); cached != nil {
 		// The cache skips the fetch, never the checks.
-		if usable := approveCRL(cached, leaf, issuer, now) == nil; usable {
+		reason, rerr := c.approve(ctx, uri, cached, leaf, issuer, now)
+		if rerr != nil {
+			return nil, rerr
+		}
+		if reason == "" {
 			return cached, nil
 		}
 		return nil, nil
@@ -287,12 +295,30 @@ func (c *revocationChecker) crl(ctx context.Context, uri string, leaf, issuer *x
 		// 2026-11-15). The JDK refuses here (a CRLException); this is a deliberate difference.
 		return nil, revocationErr(undetermined, err, "the CRL at %s cannot be read", uri)
 	}
-	if err := approveCRL(list, leaf, issuer, now); err != nil {
-		c.log.WarnContext(ctx, "a CRL was ignored", slog.String("url", uri), slog.String("reason", err.Error()))
+	reason, rerr := c.approve(ctx, uri, list, leaf, issuer, now)
+	if rerr != nil {
+		return nil, rerr
+	}
+	if reason != "" {
+		c.log.WarnContext(ctx, "a CRL was ignored", slog.String("url", uri), slog.String("reason", reason))
 		return nil, nil
 	}
 	c.remember(uri, list, now)
 	return list, nil
+}
+
+// approve runs approveCRL holding a CPU slot and returns why the CRL cannot be used, or "" when it
+// can. When ctx ends before a slot is free it is FAILED: the request is gone, and nothing is
+// forgiven for that.
+func (c *revocationChecker) approve(ctx context.Context, uri string, list *crl, leaf, issuer *x509.Certificate, now time.Time) (string, *revocationError) {
+	if err := c.cpu.Acquire(ctx); err != nil {
+		return "", revocationErr(failed, err, "the CRL at %s was not checked", uri)
+	}
+	defer c.cpu.Release()
+	if err := approveCRL(list, leaf, issuer, now); err != nil {
+		return err.Error(), nil
+	}
+	return "", nil
 }
 
 // crl is a parsed CRL, version 1 or 2. x509.ParseRevocationList reads only version 2, and keytool
@@ -438,6 +464,19 @@ func (c *revocationChecker) checkOCSP(ctx context.Context, leaf, issuer *x509.Ce
 	if err != nil {
 		return revocationErr(undetermined, err, "the OCSP responder at %s could not be reached", responder)
 	}
+
+	return c.judgeOCSP(ctx, body, responder, leaf, issuer, now)
+}
+
+// judgeOCSP is the CPU half of checkOCSP, run holding a slot once the answer is in: it is parsed,
+// its signer found, its signature checked, then its dates and status read. It does no I/O. When
+// ctx ends before a slot is free it is FAILED: the request is gone, and nothing is forgiven for
+// that.
+func (c *revocationChecker) judgeOCSP(ctx context.Context, body []byte, responder string, leaf, issuer *x509.Certificate, now time.Time) *revocationError {
+	if err := c.cpu.Acquire(ctx); err != nil {
+		return revocationErr(failed, err, "the OCSP answer from %s was not checked", responder)
+	}
+	defer c.cpu.Release()
 
 	resp, err := ocsp.ParseResponseForCert(body, leaf, nil)
 	if err != nil {

@@ -236,7 +236,7 @@ func (o outcome) badCorrelationID() bool { return jws.NotEchoed(o.check.Problem,
 // exchange signs payload under correlationID, posts it, and checks the answer. No whole answer is
 // the 502 notification-undeliverable.
 func (s *Service) exchange(ctx context.Context, endpoint *url.URL, payload []byte, correlationID uuid.UUID) (outcome, error) {
-	token, err := s.signer.Sign(s.keys.Current().Identity, jws.Message{Payload: payload, CorrelationID: correlationID})
+	token, err := s.signer.Sign(ctx, s.keys.Current().Identity, jws.Message{Payload: payload, CorrelationID: correlationID})
 	if err != nil {
 		return outcome{}, fmt.Errorf("signing the notification: %w", err)
 	}

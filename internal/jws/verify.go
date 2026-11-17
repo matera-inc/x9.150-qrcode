@@ -25,6 +25,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/matera-inc/x9.150-qrcode/internal/clock"
+	"github.com/matera-inc/x9.150-qrcode/internal/cpu"
 	"github.com/matera-inc/x9.150-qrcode/internal/emv"
 	"github.com/matera-inc/x9.150-qrcode/internal/pki"
 )
@@ -121,6 +122,10 @@ type VerifierConfig struct {
 	Fetcher *pki.Fetcher
 	// Logger receives the warnings the certificate checks log. Nil discards them.
 	Logger *slog.Logger
+	// CPU bounds how many signature checks compute at once (internal/cpu explains why): the JWS
+	// signature and, in internal/pki, the certificate chain's. A slot is never held while a
+	// certificate, CRL or OCSP answer is fetched. Nil is unbounded.
+	CPU *cpu.Limiter
 }
 
 // Verifier verifies X9.150 messages (ADR-0027, "Verification is our own sequence"). It is safe
@@ -130,6 +135,7 @@ type Verifier struct {
 	chains   *pki.Verifier
 	fetcher  *pki.Fetcher
 	skew     time.Duration
+	cpu      *cpu.Limiter
 }
 
 // NewVerifier returns a Verifier. business is the business clock, which judges iat and ttl and
@@ -150,6 +156,7 @@ func newVerifier(cfg VerifierConfig, business, certificates Clock) (*Verifier, e
 		IssuerName: cfg.IssuerName,
 		Revocation: cfg.Revocation,
 		Logger:     cfg.Logger,
+		CPU:        cfg.CPU,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("jws: %w", err)
@@ -161,7 +168,7 @@ func newVerifier(cfg VerifierConfig, business, certificates Clock) (*Verifier, e
 	case skew < 0:
 		skew = 0
 	}
-	return &Verifier{business: business, chains: chains, fetcher: cfg.Fetcher, skew: skew}, nil
+	return &Verifier{business: business, chains: chains, fetcher: cfg.Fetcher, skew: skew, cpu: cfg.CPU}, nil
 }
 
 // Expect is what a caller knows of the JWS it is about to verify.
@@ -313,9 +320,15 @@ func (v *Verifier) verify(ctx context.Context, token string, want Expect) (*Veri
 		return nil, nil, refusal(BadHeader, nil, "the header's alg %s is not the algorithm of the signer's key (%q)", h.alg, jwk.Algorithm)
 	}
 
-	// Step 6.
-	if r := verifySignature(alg, signer.Certificate.PublicKey, []byte(c.input), c.signature); r != nil {
-		return nil, nil, r
+	// Step 6, holding a CPU slot: nothing in it waits on the network.
+	var bad *Refusal
+	if err := v.cpu.Do(ctx, func() {
+		bad = verifySignature(alg, signer.Certificate.PublicKey, []byte(c.input), c.signature)
+	}); err != nil {
+		return nil, nil, refusal(Unverifiable, err, "the signature was not checked")
+	}
+	if bad != nil {
+		return nil, nil, bad
 	}
 
 	if want.CorrelationID != uuid.Nil && want.CorrelationID != p.correlationID {

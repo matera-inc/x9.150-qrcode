@@ -44,6 +44,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/matera-inc/x9.150-qrcode/internal/cpu"
 )
 
 // Problem is the signatureProblem code a refusal maps to (the OpenAPI's SignatureProblem).
@@ -139,6 +141,10 @@ type Config struct {
 	// Logger receives the warnings Java logs (a skipped or soft-failed revocation check). Nil
 	// discards them.
 	Logger *slog.Logger
+	// CPU bounds how many goroutines check signatures at once (internal/cpu explains why): the
+	// chain's, a CRL's and an OCSP answer's. A slot is held only while they compute, never while
+	// a CRL or an OCSP answer is fetched. Nil is unbounded.
+	CPU *cpu.Limiter
 }
 
 // Verifier checks certificate chains. It is safe for concurrent use.
@@ -148,6 +154,7 @@ type Verifier struct {
 	issuerName string
 	revocation *revocationChecker
 	log        *slog.Logger
+	cpu        *cpu.Limiter
 }
 
 // NewVerifier returns a Verifier.
@@ -166,8 +173,9 @@ func NewVerifier(cfg Config) (*Verifier, error) {
 		trust:      cfg.Truststore,
 		clock:      cfg.Clock,
 		issuerName: cfg.IssuerName,
-		revocation: newRevocationChecker(cfg.Revocation, logger),
+		revocation: newRevocationChecker(cfg.Revocation, logger, cfg.CPU),
 		log:        logger,
+		cpu:        cfg.CPU,
 	}, nil
 }
 
@@ -212,23 +220,48 @@ func (v *Verifier) Verify(ctx context.Context, chain []*x509.Certificate, x5tS25
 }
 
 // validateChain is Java's PKIX validation of the path as given, with revocation of the end entity
-// only, and returns the trust anchor.
+// only, and returns the trust anchor. The path's signatures are checked holding a CPU slot, which
+// is given back before revocation fetches anything.
 func (v *Verifier) validateChain(ctx context.Context, chain []*x509.Certificate, now time.Time) (*x509.Certificate, error) {
+	verified, leafSelfSigned, err := v.checkPath(ctx, chain, now)
+	if err != nil {
+		return nil, err
+	}
+	if err := v.revocationOf(ctx, verified, leafSelfSigned, now); err != nil {
+		return nil, err
+	}
+	return verified[len(verified)-1], nil
+}
+
+// checkPath is buildPath holding a CPU slot. A request that ends while it waits for one gets its
+// context's error, which is no refusal of the certificate.
+func (v *Verifier) checkPath(ctx context.Context, chain []*x509.Certificate, now time.Time) ([]*x509.Certificate, bool, error) {
+	if err := v.cpu.Acquire(ctx); err != nil {
+		return nil, false, fmt.Errorf("pki: the certificate chain was not checked: %w", err)
+	}
+	defer v.cpu.Release()
+	return v.buildPath(chain, now)
+}
+
+// buildPath is the CPU half of validateChain: the path as sent, each certificate signed by the
+// next, then built to a trust anchor. It returns the verified path, leaf first, and whether the
+// leaf is self-signed. It does no I/O.
+func (v *Verifier) buildPath(chain []*x509.Certificate, now time.Time) ([]*x509.Certificate, bool, error) {
 	if len(chain) == 0 {
-		return nil, refuse(UntrustedChain, nil, "the certificate chain is empty")
+		return nil, false, refuse(UntrustedChain, nil, "the certificate chain is empty")
 	}
 	for i, c := range chain {
 		if c == nil {
-			return nil, refuse(UntrustedChain, nil, "certificate %d of the chain is missing", i)
+			return nil, false, refuse(UntrustedChain, nil, "certificate %d of the chain is missing", i)
 		}
 	}
 	// Java validates the path in the order it was sent: each certificate is issued by the next.
 	for i := 0; i+1 < len(chain); i++ {
 		if !bytes.Equal(chain[i].RawIssuer, chain[i+1].RawSubject) {
-			return nil, refuse(UntrustedChain, nil, "certificate %d of the chain is not issued by certificate %d", i, i+1)
+			return nil, false, refuse(UntrustedChain, nil, "certificate %d of the chain is not issued by certificate %d", i, i+1)
 		}
 		if err := chain[i].CheckSignatureFrom(chain[i+1]); err != nil {
-			return nil, refuse(UntrustedChain, err, "certificate %d of the chain is not signed by certificate %d", i, i+1)
+			return nil, false, refuse(UntrustedChain, err, "certificate %d of the chain is not signed by certificate %d", i, i+1)
 		}
 	}
 
@@ -244,17 +277,13 @@ func (v *Verifier) validateChain(ctx context.Context, chain []*x509.Certificate,
 		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
 	})
 	if err != nil {
-		return nil, refuse(UntrustedChain, err, "the certificate chain does not validate")
+		return nil, false, refuse(UntrustedChain, err, "the certificate chain does not validate")
 	}
 	verified := asSent(chains, chain)
 	if verified == nil {
-		return nil, refuse(UntrustedChain, nil, "the certificate chain, in the order sent, does not end at a trusted certificate")
+		return nil, false, refuse(UntrustedChain, nil, "the certificate chain, in the order sent, does not end at a trusted certificate")
 	}
-
-	if err := v.revocationOf(ctx, verified, now); err != nil {
-		return nil, err
-	}
-	return verified[len(verified)-1], nil
+	return verified, selfSigned(verified[0]), nil
 }
 
 // asSent picks the verified chain that is the chain as sent, followed by the anchor that issued
@@ -283,11 +312,11 @@ func asSent(chains [][]*x509.Certificate, sent []*x509.Certificate) []*x509.Cert
 	return nil
 }
 
-func (v *Verifier) revocationOf(ctx context.Context, verified []*x509.Certificate, now time.Time) error {
+func (v *Verifier) revocationOf(ctx context.Context, verified []*x509.Certificate, leafSelfSigned bool, now time.Time) error {
 	leaf := verified[0]
 	// Java: a self-signed end entity is its own issuer, so no CRL or OCSP authority exists to
 	// consult; revocation is skipped. Decided by the certificate, never by configuration.
-	if selfSigned(leaf) {
+	if leafSelfSigned {
 		v.log.WarnContext(ctx, "skipping the revocation check: the end-entity certificate is self-signed, so no CRL or OCSP authority exists to consult",
 			slog.String("subject", leaf.Subject.String()))
 		return nil
