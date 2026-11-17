@@ -122,9 +122,9 @@ type VerifierConfig struct {
 	Fetcher *pki.Fetcher
 	// Logger receives the warnings the certificate checks log. Nil discards them.
 	Logger *slog.Logger
-	// CPU bounds how many signature checks compute at once (internal/cpu explains why): the JWS
-	// signature and, in internal/pki, the certificate chain's. A slot is never held while a
-	// certificate, CRL or OCSP answer is fetched. Nil is unbounded.
+	// CPU bounds how many verifications run at once (internal/cpu explains why). One slot is held
+	// for a whole verification, from the compact form's split to the signature, and given back
+	// while a certificate, a CRL or an OCSP answer is fetched. Nil is unbounded.
 	CPU *cpu.Limiter
 }
 
@@ -156,7 +156,6 @@ func newVerifier(cfg VerifierConfig, business, certificates Clock) (*Verifier, e
 		IssuerName: cfg.IssuerName,
 		Revocation: cfg.Revocation,
 		Logger:     cfg.Logger,
-		CPU:        cfg.CPU,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("jws: %w", err)
@@ -263,6 +262,14 @@ func (v *Verifier) Verify(ctx context.Context, token string, want Expect) (*Veri
 }
 
 func (v *Verifier) verify(ctx context.Context, token string, want Expect) (*Verified, *pki.Document, *Refusal) {
+	// One CPU slot for the whole verification. internal/pki gives it back around every fetch
+	// (cpu.Outside) and takes it again after; a request that ends while it waits is UNVERIFIABLE.
+	ctx, release, err := v.cpu.Hold(ctx)
+	if err != nil {
+		return nil, nil, refusal(Unverifiable, err, "the JWS was not checked")
+	}
+	defer release()
+
 	token = strings.TrimSpace(token)
 
 	// Steps 1 and 2. The shape first, with the codes Java's parser gives, then go-jose.
@@ -320,15 +327,9 @@ func (v *Verifier) verify(ctx context.Context, token string, want Expect) (*Veri
 		return nil, nil, refusal(BadHeader, nil, "the header's alg %s is not the algorithm of the signer's key (%q)", h.alg, jwk.Algorithm)
 	}
 
-	// Step 6, holding a CPU slot: nothing in it waits on the network.
-	var bad *Refusal
-	if err := v.cpu.Do(ctx, func() {
-		bad = verifySignature(alg, signer.Certificate.PublicKey, []byte(c.input), c.signature)
-	}); err != nil {
-		return nil, nil, refusal(Unverifiable, err, "the signature was not checked")
-	}
-	if bad != nil {
-		return nil, nil, bad
+	// Step 6.
+	if r := verifySignature(alg, signer.Certificate.PublicKey, []byte(c.input), c.signature); r != nil {
+		return nil, nil, r
 	}
 
 	if want.CorrelationID != uuid.Nil && want.CorrelationID != p.correlationID {

@@ -128,7 +128,6 @@ type revocationChecker struct {
 	maxCRL         int64
 	maxOCSP        int64
 	log            *slog.Logger
-	cpu            *cpu.Limiter // held while a CRL or an OCSP answer is verified, never while fetched
 
 	mu        sync.Mutex
 	crls      map[string]cachedCRL
@@ -140,7 +139,7 @@ type cachedCRL struct {
 	expires time.Time
 }
 
-func newRevocationChecker(cfg RevocationConfig, logger *slog.Logger, limiter *cpu.Limiter) *revocationChecker {
+func newRevocationChecker(cfg RevocationConfig, logger *slog.Logger) *revocationChecker {
 	c := &revocationChecker{
 		connectTimeout: orDuration(cfg.ConnectTimeout, defaultRevocationConnectTimeout),
 		readTimeout:    orDuration(cfg.ReadTimeout, defaultRevocationReadTimeout),
@@ -148,7 +147,6 @@ func newRevocationChecker(cfg RevocationConfig, logger *slog.Logger, limiter *cp
 		maxOCSP:        orInt64(cfg.MaxOCSPBytes, defaultMaxOCSPBytes),
 		cacheSize:      int(orInt64(int64(cfg.CRLCacheEntries), defaultCRLCacheEntries)),
 		log:            logger,
-		cpu:            limiter,
 		crls:           map[string]cachedCRL{},
 	}
 	c.client = &http.Client{
@@ -271,17 +269,17 @@ var (
 func (c *revocationChecker) crl(ctx context.Context, uri string, leaf, issuer *x509.Certificate, now time.Time) (*crl, *revocationError) {
 	if cached := c.cached(uri, now); cached != nil {
 		// The cache skips the fetch, never the checks.
-		reason, rerr := c.approve(ctx, uri, cached, leaf, issuer, now)
-		if rerr != nil {
-			return nil, rerr
-		}
-		if reason == "" {
+		if usable := approveCRL(cached, leaf, issuer, now) == nil; usable {
 			return cached, nil
 		}
 		return nil, nil
 	}
 
 	body, err := c.get(ctx, uri, c.maxCRL)
+	if errors.Is(err, cpu.ErrGaveUp) {
+		// The request ended while it waited for its CPU slot again: nothing is forgiven for that.
+		return nil, revocationErr(failed, err, "the CRL at %s was not checked", uri)
+	}
 	if errors.Is(err, errTooLarge) {
 		// The JDK treats a CRL over com.sun.security.crl.maxSize as no CRL, not as an error.
 		return nil, nil
@@ -295,30 +293,12 @@ func (c *revocationChecker) crl(ctx context.Context, uri string, leaf, issuer *x
 		// 2026-11-15). The JDK refuses here (a CRLException); this is a deliberate difference.
 		return nil, revocationErr(undetermined, err, "the CRL at %s cannot be read", uri)
 	}
-	reason, rerr := c.approve(ctx, uri, list, leaf, issuer, now)
-	if rerr != nil {
-		return nil, rerr
-	}
-	if reason != "" {
-		c.log.WarnContext(ctx, "a CRL was ignored", slog.String("url", uri), slog.String("reason", reason))
+	if err := approveCRL(list, leaf, issuer, now); err != nil {
+		c.log.WarnContext(ctx, "a CRL was ignored", slog.String("url", uri), slog.String("reason", err.Error()))
 		return nil, nil
 	}
 	c.remember(uri, list, now)
 	return list, nil
-}
-
-// approve runs approveCRL holding a CPU slot and returns why the CRL cannot be used, or "" when it
-// can. When ctx ends before a slot is free it is FAILED: the request is gone, and nothing is
-// forgiven for that.
-func (c *revocationChecker) approve(ctx context.Context, uri string, list *crl, leaf, issuer *x509.Certificate, now time.Time) (string, *revocationError) {
-	if err := c.cpu.Acquire(ctx); err != nil {
-		return "", revocationErr(failed, err, "the CRL at %s was not checked", uri)
-	}
-	defer c.cpu.Release()
-	if err := approveCRL(list, leaf, issuer, now); err != nil {
-		return err.Error(), nil
-	}
-	return "", nil
 }
 
 // crl is a parsed CRL, version 1 or 2. x509.ParseRevocationList reads only version 2, and keytool
@@ -461,22 +441,12 @@ func (c *revocationChecker) checkOCSP(ctx context.Context, leaf, issuer *x509.Ce
 		return revocationErr(failed, err, "the OCSP request cannot be built")
 	}
 	body, err := c.post(ctx, responder, request)
+	if errors.Is(err, cpu.ErrGaveUp) {
+		return revocationErr(failed, err, "the OCSP answer from %s was not checked", responder)
+	}
 	if err != nil {
 		return revocationErr(undetermined, err, "the OCSP responder at %s could not be reached", responder)
 	}
-
-	return c.judgeOCSP(ctx, body, responder, leaf, issuer, now)
-}
-
-// judgeOCSP is the CPU half of checkOCSP, run holding a slot once the answer is in: it is parsed,
-// its signer found, its signature checked, then its dates and status read. It does no I/O. When
-// ctx ends before a slot is free it is FAILED: the request is gone, and nothing is forgiven for
-// that.
-func (c *revocationChecker) judgeOCSP(ctx context.Context, body []byte, responder string, leaf, issuer *x509.Certificate, now time.Time) *revocationError {
-	if err := c.cpu.Acquire(ctx); err != nil {
-		return revocationErr(failed, err, "the OCSP answer from %s was not checked", responder)
-	}
-	defer c.cpu.Release()
 
 	resp, err := ocsp.ParseResponseForCert(body, leaf, nil)
 	if err != nil {
@@ -608,33 +578,43 @@ func namesResponder(resp *ocsp.Response, cert *x509.Certificate) bool {
 var errTooLarge = errors.New("the answer is larger than allowed")
 
 func (c *revocationChecker) get(ctx context.Context, uri string, limit int64) ([]byte, error) {
-	if err := httpURL(uri); err != nil {
-		return nil, err
-	}
-	ctx, cancel := context.WithTimeout(ctx, c.connectTimeout+c.readTimeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, uri, nil)
-	if err != nil {
-		return nil, err
-	}
-	return c.do(req, limit)
+	return c.exchange(ctx, http.MethodGet, uri, nil, limit)
 }
 
 func (c *revocationChecker) post(ctx context.Context, uri string, body []byte) ([]byte, error) {
+	return c.exchange(ctx, http.MethodPost, uri, body, c.maxOCSP)
+}
+
+// exchange sends one request with the CPU slot ctx holds given back (cpu.Outside): a slot is never
+// held while a CRL or an OCSP answer is fetched. The slot is taken again under ctx, not under the
+// request's own timeout, so a source that times out still soft-fails as it did.
+func (c *revocationChecker) exchange(ctx context.Context, method, uri string, body []byte, limit int64) ([]byte, error) {
 	if err := httpURL(uri); err != nil {
 		return nil, err
 	}
+	var answer []byte
+	err := cpu.Outside(ctx, func() error {
+		var err error
+		answer, err = c.send(ctx, method, uri, body, limit)
+		return err
+	})
+	return answer, err
+}
+
+func (c *revocationChecker) send(ctx context.Context, method, uri string, body []byte, limit int64) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.connectTimeout+c.readTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri, bytes.NewReader(body))
+	var content io.Reader
+	if body != nil {
+		content = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, uri, content)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/ocsp-request")
-	return c.do(req, c.maxOCSP)
-}
-
-func (c *revocationChecker) do(req *http.Request, limit int64) ([]byte, error) {
+	if method == http.MethodPost {
+		req.Header.Set("Content-Type", "application/ocsp-request")
+	}
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, err
