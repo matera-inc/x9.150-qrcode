@@ -344,8 +344,10 @@ scrub_check() {
   local dir="$1" hits
   hits="$( { grep -rIlE '(^|[^0-9.])([0-9]{1,3}\.){3}[0-9]{1,3}([^0-9.]|$)' "$dir" 2>/dev/null || true
              find "$dir" -name '*.gz' -print0 | while IFS= read -r -d '' f; do
-               gzip -dc "$f" | grep -qE '(^|[^0-9.])([0-9]{1,3}\.){3}[0-9]{1,3}([^0-9.]|$)' && echo "$f"
+               if gzip -dc "$f" | grep -qE '(^|[^0-9.])([0-9]{1,3}\.){3}[0-9]{1,3}([^0-9.]|$)'; then echo "$f"; fi
              done; } | sort -u)"
+  # The if, not "grep -q && echo": under collect.sh's set -euo pipefail a clean last file made the
+  # loop, and with it this whole check, return 1, so a clean campaign ended with exit 1 and no message.
   if [ -n "$hits" ]; then
     log "FAIL  an IP address is in these files; do not commit them until it is removed:"
     printf '        %s\n' $hits >&2
