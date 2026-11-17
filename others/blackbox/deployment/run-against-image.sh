@@ -55,6 +55,14 @@ COMPOSE=(docker compose -p "$PROJECT" -f "$COMPOSE_FILE")
 
 UP_FLAGS=()
 STAGE="$(mktemp -d)"
+# X9_PLATFORM (linux/amd64, linux/arm64) runs the service as that platform, whatever this machine
+# is; the database and the suite stay native. publish-image.sh checks each architecture this way.
+UNDER_TEST_PLATFORM=()
+if [ -n "${X9_PLATFORM:-}" ]; then
+    UNDER_TEST_PLATFORM=(--platform "$X9_PLATFORM")
+    printf 'services:\n  x9-qrcode:\n    platform: "%s"\n' "$X9_PLATFORM" > "$STAGE/platform.yml"
+    COMPOSE+=(-f "$STAGE/platform.yml")
+fi
 cleanup() {
     "${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
     docker image rm "$X9_UNDER_TEST_IMAGE" "$X9_RUNNER_IMAGE" "$X9_BOOTSTRAP_IMAGE" \
@@ -78,7 +86,7 @@ cp "$HERE/x9-test-ca.pem" "$STAGE/under-test/"
 
 echo "== building $X9_UNDER_TEST_IMAGE from $X9_IMAGE"
 docker build -q -t "$X9_UNDER_TEST_IMAGE" --build-arg "X9_IMAGE=$X9_IMAGE" \
-    -f "$HERE/under-test.Dockerfile" "$STAGE/under-test" >/dev/null
+    ${UNDER_TEST_PLATFORM[@]+"${UNDER_TEST_PLATFORM[@]}"} -f "$HERE/under-test.Dockerfile" "$STAGE/under-test" >/dev/null
 echo "== building $X9_RUNNER_IMAGE"
 docker build -q -t "$X9_RUNNER_IMAGE" \
     -f "$HERE/runner.Dockerfile" "$STAGE/runner" >/dev/null

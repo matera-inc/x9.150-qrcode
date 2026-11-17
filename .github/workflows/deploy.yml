@@ -1,17 +1,19 @@
 name: Deploy
 
-# The ways to run the Go build, checked on a clean runner (Epic 14). Nothing is pushed anywhere.
+# The ways to run the service, checked on a clean runner (Epic 14). Nothing is pushed anywhere.
 #
-#   compose go        (Story 14.2, S14.2-AC2) docker-compose.go.yml up: PostgreSQL 16, the bootstrap,
-#                     Liquibase 4.33.0, then the Go service; health UP and one create answering 201;
-#                     then down. others/scripts/compose-go-smoke.sh, the same on a laptop.
-#   helm              (Story 14.3, S14.3-AC2) helm lint and helm template for the Java values (the
-#                     default) and the Go values; the Go rendering holds no SPRING_*, MONGO* or
-#                     JASYPT_* variable, and the chart refuses what the Go build cannot run.
-#                     others/scripts/helm-check.sh.
-#   helm go on kind   (Story 14.3) the Go rendering installed on a throwaway kind cluster with a
-#                     PostgreSQL in it: Liquibase as an init container, then the service; health UP
-#                     and one create. others/scripts/helm-go-kind.sh.
+#   compose           (Story 14.2, S14.2-AC2) docker-compose.yml up: PostgreSQL 16, the bootstrap,
+#                     Liquibase 4.33.0, then the service; health UP and one create answering 201;
+#                     then down. others/scripts/compose-smoke.sh, the same on a laptop.
+#   helm              (Story 14.3, S14.3-AC2) helm lint and helm template; the rendering holds no
+#                     SPRING_*, MONGO* or JASYPT_* variable, and the chart refuses what the service
+#                     cannot run. others/scripts/helm-check.sh.
+#   helm on kind      (Story 14.3) the chart installed on a throwaway kind cluster with a PostgreSQL
+#                     in it: Liquibase as an init container, then the service; health UP and one
+#                     create. others/scripts/helm-kind.sh.
+#
+# Until 3.0.0 these were `compose go` and `helm go on kind`, and the chart rendered the Java build
+# too; the Java build is retired (ADR-0039).
 #
 # Job-level path filters, as in pairings.yml, so every check always reports: on a pull request that
 # touches nothing a job depends on, it checks out, finds nothing to run, and passes.
@@ -30,8 +32,8 @@ env:
   HELM_VERSION: v4.3.1
 
 jobs:
-  compose-go:
-    name: compose go
+  compose:
+    name: compose
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -39,7 +41,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Does this change touch the Go build, its database or its Compose file?
+      - name: Does this change touch the service, its database or its Compose file?
         id: changes
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -47,16 +49,16 @@ jobs:
           changed="$(git diff --name-only "$BASE_SHA"...HEAD 2>/dev/null || git ls-files)"
           printf '%s\n' "$changed"
           if printf '%s\n' "$changed" | grep -Eq \
-              '(\.go$|^go\.(mod|sum)$|^cmd/|^internal/|^Dockerfile$|^\.dockerignore$|^Makefile$|^db/|^docker-compose\.go\.yml$|^playground/requests/|^others/scripts/compose-go-smoke\.sh$|^\.github/workflows/deploy\.yml$)'; then
+              '(\.go$|^go\.(mod|sum)$|^cmd/|^internal/|^Dockerfile$|^\.dockerignore$|^Makefile$|^db/|^docker-compose\.yml$|^playground/requests/|^others/scripts/compose-smoke\.sh$|^\.github/workflows/deploy\.yml$)'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "Nothing docker-compose.go.yml depends on changed."
+            echo "Nothing docker-compose.yml depends on changed."
           fi
 
-      - name: Bring docker-compose.go.yml up; health and one create; down
+      - name: Bring docker-compose.yml up; health and one create; down
         if: steps.changes.outputs.run == 'true'
-        run: others/scripts/compose-go-smoke.sh
+        run: others/scripts/compose-smoke.sh
 
   helm:
     name: helm
@@ -88,7 +90,7 @@ jobs:
         with:
           version: ${{ env.HELM_VERSION }}
 
-      - name: Lint and template both value sets; the Go rendering refuses Java variables
+      - name: Lint and template the chart; the rendering refuses Java variables
         if: steps.changes.outputs.run == 'true'
         run: others/scripts/helm-check.sh go-ci-out/helm
 
@@ -100,8 +102,8 @@ jobs:
           path: go-ci-out/helm/
           if-no-files-found: ignore
 
-  helm-go-kind:
-    name: helm go on kind
+  helm-kind:
+    name: helm on kind
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -109,7 +111,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Does this change touch the chart, the Go build or its database?
+      - name: Does this change touch the chart, the service or its database?
         id: changes
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -117,16 +119,16 @@ jobs:
           changed="$(git diff --name-only "$BASE_SHA"...HEAD 2>/dev/null || git ls-files)"
           printf '%s\n' "$changed"
           if printf '%s\n' "$changed" | grep -Eq \
-              '(^others/helm/|^db/changelog/|\.go$|^go\.(mod|sum)$|^cmd/|^internal/|^Dockerfile$|^\.dockerignore$|^others/scripts/helm-go-kind\.sh$|^\.github/workflows/deploy\.yml$)'; then
+              '(^others/helm/|^db/changelog/|\.go$|^go\.(mod|sum)$|^cmd/|^internal/|^Dockerfile$|^\.dockerignore$|^others/scripts/helm-kind\.sh$|^\.github/workflows/deploy\.yml$)'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "Nothing the Go chart rendering depends on changed."
+            echo "Nothing the chart rendering depends on changed."
           fi
 
-      - name: Build the Go image (make go-image)
+      - name: Build the image (make image)
         if: steps.changes.outputs.run == 'true'
-        run: make go-image GO_IMAGE=x9-qrcode:go
+        run: make image IMAGE=x9-qrcode:ci
 
       - name: Set up Helm
         if: steps.changes.outputs.run == 'true'
@@ -140,8 +142,8 @@ jobs:
 
       - name: Load the image into it
         if: steps.changes.outputs.run == 'true'
-        run: kind load docker-image x9-qrcode:go --name chart-testing
+        run: kind load docker-image x9-qrcode:ci --name chart-testing
 
-      - name: Install values-go.yaml; Liquibase, health UP, one create
+      - name: Install the chart; Liquibase, health UP, one create
         if: steps.changes.outputs.run == 'true'
-        run: others/scripts/helm-go-kind.sh x9-qrcode:go
+        run: others/scripts/helm-kind.sh x9-qrcode:ci

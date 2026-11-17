@@ -1,54 +1,55 @@
 #!/usr/bin/env bash
 #
-# Build, PROVE, and publish the container image.
+# Build, PROVE, and publish the container image (the Go build, from the root Dockerfile).
 #
-#   ./others/scripts/publish-image.sh                  # build, verify, push git-<sha> and move latest
-#   ./others/scripts/publish-image.sh --no-latest      # leave `latest` where it is
-#   ./others/scripts/publish-image.sh --dry-run        # build and verify, push nothing
+#   ./others/scripts/publish-image.sh                       # build, verify, push git-<sha>, move latest
+#   VERSION=3.0.0 ./others/scripts/publish-image.sh         # ... and 3.0.0, 3.0 and 3
+#   ./others/scripts/publish-image.sh --no-latest           # leave `latest` where it is
+#   ./others/scripts/publish-image.sh --dry-run             # build and verify, push nothing
+#   ./others/scripts/publish-image.sh --allow-unverified-arch   # push an architecture this machine cannot run
 #   REGISTRY_REPO=you/your-image ./others/scripts/publish-image.sh
 #
 # The repo imposes no registry: REGISTRY_REPO defaults to the one this project publishes to and can
 # be pointed anywhere. What the script does impose is that nothing is pushed until it has been run.
+# It pushes from this machine with its stored `docker login`; CI never pushes.
 #
 # WHY THE VERIFY STEP EXISTS. On 2026-09-30 an image was published whose acceptance suite passed
 # 37/37 and which an adopter then reported as missing three features. It was not — their node had a
 # stale layer — but the suite WOULD have passed with all three missing, because it tested the payment
 # flow and not the behaviours most recently changed. Green is not the same as present. So this runs
-# the black-box suite (`make blackbox`, which since Story 3.4 includes those probes) against the
-# built container, and refuses to push if any of it fails.
+# the image smoke test and the WHOLE black-box suite against each built architecture, by its own
+# tag, and refuses to push if any of it fails or cannot run.
+#
+# What it does, in order:
+#   1. builds linux/amd64 and linux/arm64 with docker buildx from the Dockerfile (the Go build
+#      cross-compiles, so neither needs emulation to build), each loaded under its own local tag,
+#      with VERSION and REVISION stamped into the binary and the OCI labels;
+#   2. checks each one's org.opencontainers.image.revision is this commit;
+#   3. per architecture: others/scripts/image-smoke.sh (non-root, -version, health UP against
+#      PostgreSQL, exit 0 on SIGTERM) and others/blackbox/deployment/run-against-image.sh (the whole
+#      suite, on PostgreSQL 16 with db/changelog applied), with X9_PLATFORM set so the image runs as
+#      that architecture. An architecture this machine cannot run is "unverified": refused unless
+#      --allow-unverified-arch;
+#   4. only then pushes: git-<sha>-amd64 and git-<sha>-arm64 (the verified images, as they are),
+#      then ONE multi-arch manifest per tag — git-<sha>, the version tags when VERSION is given
+#      (3.0.0 -> 3.0.0, 3.0, 3; a pre-release such as 3.1.0-rc.1 gets only itself), and `latest`
+#      unless --no-latest — made with `docker buildx imagetools create` from the pushed images, so
+#      what is published is byte for byte what was verified;
+#   5. pulls git-<sha> back and checks its revision label.
+#
+# The Java build's images (2.x and earlier) were published by an earlier version of this script; the
+# last of them is tagged java-final (ADR-0039). This script never touches that tag.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 REGISTRY_REPO="${REGISTRY_REPO:-materainc/x9-qrcode}"
+VERSION="${VERSION:-}"
 MOVE_LATEST=1
 DRY_RUN=0
 ALLOW_UNVERIFIED_ARCH=0
-# Host ports for the verification containers. Neither may be 8080, the port INSIDE the container:
-# when the advertised host and the internal host are identical, normalizeHost stops rewriting the
-# JWS `jku` to plain HTTP, the instance tries to fetch its own JWK set over HTTPS, and every
-# signature check fails with a 401 that looks like a broken image. It is not; it is the port.
-PORT_ARM64="${PORT_ARM64:-8079}"
-PORT_AMD64="${PORT_AMD64:-8078}"
-MONGO_URI="${MONGO_URI:-mongodb://mongo:27017/x9-qrcode?replicaSet=x9-qrcode}"
-NETWORK="${NETWORK:-x9-qrcode-network}"
-
-# The black-box suite needs pytest. Prefer the project venv so a publish does not depend on what
-# happens to be installed globally on the machine doing it.
-PYTEST="${PYTEST:-$PWD/.blackbox-venv/bin/pytest}"
-
-# The suite signs as independent payers and reads openapi.yaml, so it needs `cryptography` and
-# `pyyaml` as well as pytest. A venv from before that is rebuilt, not reused.
-if [ ! -x "$PYTEST" ] || ! "$(dirname "$PYTEST")/python" -c 'import cryptography, yaml' >/dev/null 2>&1; then
-    # Missing SETUP is not a failed check — build it. A check that still cannot run after this
-    # is a refusal to publish, handled at the call site.
-    python3 -m venv "$PWD/.blackbox-venv" >/dev/null 2>&1 \
-        && "$PWD/.blackbox-venv/bin/pip" install -q -r others/blackbox/requirements.txt >/dev/null 2>&1 \
-        || true
-fi
-
-[ -x "$PYTEST" ] || PYTEST="$(command -v pytest || true)"
+ARCHES=(amd64 arm64)
 
 for arg in "$@"; do
     case "$arg" in
@@ -64,6 +65,8 @@ ok()   { printf '   \033[32mok\033[0m    %s\n' "$1"; }
 bad()  { printf '   \033[31mFAIL\033[0m  %s\n' "$1"; }
 die()  { printf '\n\033[31m%s\033[0m\n' "$1" >&2; exit 1; }
 
+docker buildx version >/dev/null 2>&1 || die "docker buildx is needed (it builds both architectures)."
+
 # ------------------------------------------------------------------ what we are about to publish
 
 say "What is being published"
@@ -71,6 +74,22 @@ say "What is being published"
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 SHA="$(git rev-parse --short HEAD)"
 FULL_SHA="$(git rev-parse HEAD)"
+
+# The version tags: 3.0.0 -> 3.0.0 3.0 3. A pre-release or build suffix gets only its own tag, so
+# that `3` never moves to a release candidate.
+VERSION_TAGS=()
+if [ -n "$VERSION" ]; then
+    VERSION="${VERSION#v}"
+    if [[ "$VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+        VERSION_TAGS=("$VERSION" "${BASH_REMATCH[1]}.${BASH_REMATCH[2]}" "${BASH_REMATCH[1]}")
+    elif [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+[-+][0-9A-Za-z.-]+$ ]]; then
+        VERSION_TAGS=("${VERSION//+/_}")
+    else
+        die "VERSION must look like 3.0.0 (or 3.1.0-rc.1), not '$VERSION'."
+    fi
+fi
+# The version stamped into the binary and the image's labels: the release, or the commit.
+IMAGE_VERSION="${VERSION:-git-$SHA}"
 
 # A dry run is for checking a build before it is merged, so it does not insist on main — it only
 # refuses to PUSH. A real publish insists, because a revision label naming a commit nobody can fetch
@@ -87,121 +106,86 @@ elif [ "$BRANCH" != "main" ] || [ -n "$(git status --porcelain)" ]; then
     echo "   note     dry run from '$BRANCH'; a real publish would require a clean main"
 fi
 
+TAGS=("git-$SHA" ${VERSION_TAGS[@]+"${VERSION_TAGS[@]}"})
+[ "$MOVE_LATEST" = "1" ] && TAGS+=(latest)
+
 echo "   commit   $FULL_SHA"
-echo "   tags     $REGISTRY_REPO:git-$SHA{,-amd64,-arm64}"
-[ "$MOVE_LATEST" = "1" ] && echo "   latest   will move to this build" || echo "   latest   left where it is"
+echo "   version  $IMAGE_VERSION"
+echo "   images   $REGISTRY_REPO:git-$SHA-{amd64,arm64}"
+echo "   tags     ${TAGS[*]} (one multi-arch manifest each)"
+[ "$MOVE_LATEST" = "1" ] || echo "   latest   left where it is"
 [ "$DRY_RUN" = "1" ] && echo "   DRY RUN  nothing will be pushed"
+
+# Local tags of this run, removed at the end. Never :latest (a later `docker save` of one of them
+# would carry it and move the recipient's latest).
+LOCAL="x9-qrcode-publish:$SHA"
+local_tag() { printf '%s-%s' "$LOCAL" "$1"; }
+cleanup() {
+    for arch in "${ARCHES[@]}"; do docker image rm "$(local_tag "$arch")" >/dev/null 2>&1 || true; done
+}
+trap cleanup EXIT
 
 # ------------------------------------------------------------------------------------- build
 
-say "Building both architectures"
-make image      >/dev/null 2>&1 || die "arm64 build failed — run 'make image' to see why."
-ok "arm64"
-make image-amd64 >/dev/null 2>&1 || die "amd64 build failed — run 'make image-amd64' to see why."
-ok "amd64"
-
-for pair in "x9-qrcode:latest arm64" "x9-qrcode:latest-amd64 amd64"; do
-    set -- $pair
-    built="$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$1")"
-    [ "$built" = "$FULL_SHA" ] || die "$1 carries revision '$built', expected $FULL_SHA. An image nobody can trace is worse than no image."
-    ok "$2 labelled $SHA"
+say "Building both architectures (docker buildx, from the Dockerfile)"
+for arch in "${ARCHES[@]}"; do
+    docker buildx build --platform "linux/$arch" --load -t "$(local_tag "$arch")" \
+        --build-arg VERSION="$IMAGE_VERSION" --build-arg REVISION="$FULL_SHA" . >/dev/null 2>&1 \
+        || die "the $arch build failed — run 'docker buildx build --platform linux/$arch .' to see why."
+    built="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$(local_tag "$arch")")"
+    [ "$built" = "$FULL_SHA" ] || die "$arch carries revision '$built', expected $FULL_SHA. An image nobody can trace is worse than no image."
+    actual="$(docker image inspect --format '{{.Architecture}}' "$(local_tag "$arch")")"
+    [ "$actual" = "$arch" ] || die "the $arch build is $actual."
+    ok "$arch, labelled $SHA"
 done
 
 # --------------------------------------------------------------------------- prove it, then push
 
 say "Proving the built images actually behave"
 
-# BOTH architectures, not just the one this machine runs natively. An image was verified on arm64
-# and reported as verified, while the people running it were on amd64 — and `docker pull --platform`
-# silently returned the native image anyway, so even the obvious correction did not work. The only
-# reliable way is to run each per-architecture image by its own tag and check what it answers.
+# BOTH architectures, not just the one this machine runs natively. An image was once verified on
+# arm64 and reported as verified, while the people running it were on amd64 — and `docker pull
+# --platform` silently returned the native image anyway. The only reliable way is to run each
+# per-architecture image by its own tag, as that architecture, and check what it answers.
 
-verify_image() {
-    local image="$1" arch="$2" port="$3" platform=""
+can_run() {   # whether this machine's Docker can run a linux/$1 container at all
+    docker run --rm --platform "linux/$1" "$(local_tag "$1")" -version >/dev/null 2>&1
+}
 
-    # An if, not `[ ... ] && assign`: under `set -e` the false branch of such a line returns 1 and
-    # kills the subshell, so the function returned nothing and the caller's case matched nothing —
-    # reporting success for an architecture that was never started. Found by noticing a missing
-    # line of output, which is the only symptom it has.
-    case "$arch" in
-        amd64) platform="--platform linux/amd64" ;;
-        arm64) platform="--platform linux/arm64" ;;
-    esac
-
-    local container="x9-publish-verify-$arch"
-    docker rm -f "$container" >/dev/null 2>&1 || true
-
-    # The black-box suite signs as independent payers issued by the bundled TEST CA, so the
-    # container trusts that CA as well as its own demo certificate (others/blackbox/deployment).
-    # The truststore is copied in, not mounted: Colima cannot bind-mount paths under /Volumes.
-    # The payers' certificates name a CRL the suite serves on this host, which the container
-    # reaches as host.docker.internal; without it every payer would be refused as undeterminable.
-    if ! docker create --name "$container" $platform --network "$NETWORK" -p "$port:8080" \
-            --add-host host.docker.internal:host-gateway \
-            -e SPRING_DATA_MONGODB_URI="$MONGO_URI" \
-            -e X9_CERTIFICATE_TRUSTSTORE_LOCATION=file:/tmp/x9-blackbox-truststore.jks \
-            -e X9_CERTIFICATE_TRUSTSTORE_PASSWORD=x9test123 \
-            -e X9_CERTIFICATE_TRUSTSTORE_ALIAS=x9-test-ca \
-            -e X9_PUBLICENDPOINTS_HOST="localhost:$port" "$image" >/dev/null 2>&1 \
-        || ! docker cp others/blackbox/deployment/x9-blackbox-truststore.jks \
-                "$container:/tmp/x9-blackbox-truststore.jks" >/dev/null 2>&1 \
-        || ! docker start "$container" >/dev/null 2>&1; then
-        docker rm -f "$container" >/dev/null 2>&1 || true
-        echo "unstartable"
-        return
+verify_image() {   # prints pass, fail or unstartable; the evidence goes to $LOGS/<arch>-*.log
+    local arch="$1" image
+    image="$(local_tag "$arch")"
+    if ! can_run "$arch"; then
+        echo "unstartable"; return
     fi
-
-    local health=""
-    # Emulated architectures start slowly; give them room before concluding anything.
-    for _ in $(seq 1 80); do
-        health="$(curl -s -o /dev/null -w '%{http_code}' --max-time 4 "http://localhost:$port/actuator/health" || true)"
-        [ "$health" = "200" ] && break
-        sleep 3
-    done
-
-    if [ "$health" != "200" ]; then
-        docker rm -f "$container" >/dev/null 2>&1 || true
-        echo "unstartable"
-        return
+    if ! X9_PLATFORM="linux/$arch" X9_SMOKE_PORT="$2" \
+            others/scripts/image-smoke.sh "$image" "$LOGS/$arch" >"$LOGS/$arch-smoke.log" 2>&1; then
+        echo "fail-smoke"; return
     fi
-
-    # The black-box unhappy paths. A suite that cannot run is NOT a suite that passed, so a
-    # missing pytest is a refusal to publish rather than a quiet skip — the whole point of this
-    # gate is that it is unable to report success for a check that never executed.
-    if [ ! -x "$PYTEST" ]; then
-        docker rm -f "$container" >/dev/null 2>&1 || true
-        echo "no-pytest"
-        return
-    fi
-
-    # `make blackbox`, and nothing else: one suite decides (Story 3.4 folded acceptance.py in).
-    if X9_BASE_URL="http://localhost:$port" X9_SUITE_HOST=host.docker.internal \
-            make -s blackbox >/dev/null 2>&1; then
-        docker rm -f "$container" >/dev/null 2>&1 || true
+    # The whole suite, in containers, as CI runs it: a suite that could not run fails it.
+    if X9_IMAGE="$image" X9_PLATFORM="linux/$arch" \
+            X9_BLACKBOX_PROJECT="x9-publish-$arch-$SHA" \
+            ./others/blackbox/deployment/run-against-image.sh >"$LOGS/$arch-blackbox.log" 2>&1; then
         echo "pass"
     else
-        X9_BASE_URL="http://localhost:$port" X9_SUITE_HOST=host.docker.internal \
-            make -s blackbox 2>&1 | tail -30
-        docker rm -f "$container" >/dev/null 2>&1 || true
-        echo "fail"
+        echo "fail-blackbox"
     fi
 }
 
-cleanup() { docker rm -f x9-publish-verify-arm64 x9-publish-verify-amd64 >/dev/null 2>&1 || true; }
-trap cleanup EXIT
-
+LOGS="$(mktemp -d "${TMPDIR:-/tmp}/x9-publish-$SHA.XXXXXX")"
+echo "   logs     $LOGS"
 UNVERIFIED=""
-for pair in "x9-qrcode:latest arm64 $PORT_ARM64" "x9-qrcode:latest-amd64 amd64 $PORT_AMD64"; do
-    set -- $pair
-    printf '   ...   %s: building a container and running the suite\n' "$2"
-    result="$(verify_image "$1" "$2" "$3")"
-
+port=18078
+for arch in "${ARCHES[@]}"; do
+    printf '   ...   %s: image smoke test, then the black-box suite\n' "$arch"
+    result="$(verify_image "$arch" "$port")"
+    port=$((port + 1))
     case "$result" in
-        pass)        ok "$2 — the black-box suite (make blackbox)" ;;
-        fail)        die "$2 builds but does not behave. NOTHING was pushed." ;;
-        no-pytest)   die "pytest is missing, so others/blackbox did not run. Run 'make blackbox-venv' and retry — a check that did not execute is not a check that passed." ;;
-        unstartable) bad "$2 could not be started on this machine"; UNVERIFIED="$UNVERIFIED $2" ;;
-        *)           die "verification of $2 produced no verdict ('$result'). Refusing to publish on a check that did not run." ;;
+        pass)          ok "$arch — image smoke test and the whole black-box suite" ;;
+        fail-smoke)    tail -30 "$LOGS/$arch-smoke.log"; die "$arch builds but fails the image smoke test. NOTHING was pushed." ;;
+        fail-blackbox) tail -40 "$LOGS/$arch-blackbox.log"; die "$arch builds but fails the black-box suite. NOTHING was pushed." ;;
+        unstartable)   bad "$arch cannot be run on this machine"; UNVERIFIED="$UNVERIFIED $arch" ;;
+        *)             die "verification of $arch produced no verdict ('$result'). Refusing to publish on a check that did not run." ;;
     esac
 done
 
@@ -209,12 +193,9 @@ if [ -n "$UNVERIFIED" ]; then
     if [ "$ALLOW_UNVERIFIED_ARCH" = "1" ]; then
         printf '\n   \033[33mPublishing with%s unverified — you asked for it with --allow-unverified-arch.\033[0m\n' "$UNVERIFIED"
     else
-        die "Could not verify:$UNVERIFIED on this machine. Publish from a machine that can run it, or pass --allow-unverified-arch to ship it unchecked. An architecture nobody ran is not an architecture anybody verified."
+        die "Could not verify:$UNVERIFIED on this machine. Publish from a machine that can run it (or enable emulation), or pass --allow-unverified-arch to ship it unchecked. An architecture nobody ran is not an architecture anybody verified."
     fi
 fi
-
-cleanup
-trap - EXIT
 
 # ------------------------------------------------------------------------------------- push
 
@@ -225,49 +206,34 @@ fi
 
 say "Pushing"
 
-docker tag x9-qrcode:latest       "$REGISTRY_REPO:git-$SHA-arm64"
-docker tag x9-qrcode:latest-amd64 "$REGISTRY_REPO:git-$SHA-amd64"
-
-for arch in arm64 amd64; do
+for arch in "${ARCHES[@]}"; do
+    docker tag "$(local_tag "$arch")" "$REGISTRY_REPO:git-$SHA-$arch"
     docker push -q "$REGISTRY_REPO:git-$SHA-$arch" >/dev/null || die "push of git-$SHA-$arch failed (docker login?)"
+    docker image rm "$REGISTRY_REPO:git-$SHA-$arch" >/dev/null 2>&1 || true
     ok "git-$SHA-$arch"
 done
 
-docker manifest rm "$REGISTRY_REPO:git-$SHA" >/dev/null 2>&1 || true
-docker manifest create "$REGISTRY_REPO:git-$SHA" \
-    "$REGISTRY_REPO:git-$SHA-amd64" "$REGISTRY_REPO:git-$SHA-arm64" >/dev/null
-docker manifest push "$REGISTRY_REPO:git-$SHA" >/dev/null
-ok "git-$SHA (multi-arch)"
-
-if [ "$MOVE_LATEST" = "1" ]; then
-    docker tag x9-qrcode:latest       "$REGISTRY_REPO:latest-arm64"
-    docker tag x9-qrcode:latest-amd64 "$REGISTRY_REPO:latest-amd64"
-    docker push -q "$REGISTRY_REPO:latest-arm64" >/dev/null
-    docker push -q "$REGISTRY_REPO:latest-amd64" >/dev/null
-    docker manifest rm "$REGISTRY_REPO:latest" >/dev/null 2>&1 || true
-    docker manifest create "$REGISTRY_REPO:latest" \
-        "$REGISTRY_REPO:latest-amd64" "$REGISTRY_REPO:latest-arm64" >/dev/null
-    docker manifest push "$REGISTRY_REPO:latest" >/dev/null
-    ok "latest now points here"
-fi
+# One multi-arch manifest per tag, from the two images just pushed: nothing is rebuilt.
+for tag in "${TAGS[@]}"; do
+    docker buildx imagetools create -t "$REGISTRY_REPO:$tag" \
+        "$REGISTRY_REPO:git-$SHA-amd64" "$REGISTRY_REPO:git-$SHA-arm64" >/dev/null \
+        || die "could not create the manifest $tag"
+    ok "$tag (linux/amd64, linux/arm64)"
+done
 
 # ---------------------------------------------------------------------- confirm from outside
 
 say "Confirming from the registry"
 
-docker rmi "$REGISTRY_REPO:git-$SHA" >/dev/null 2>&1 || true
+docker image rm "$REGISTRY_REPO:git-$SHA" >/dev/null 2>&1 || true
 docker pull -q "$REGISTRY_REPO:git-$SHA" >/dev/null || die "the tag was pushed but does not pull back"
-PULLED="$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$REGISTRY_REPO:git-$SHA")"
+PULLED="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$REGISTRY_REPO:git-$SHA")"
+docker image rm "$REGISTRY_REPO:git-$SHA" >/dev/null 2>&1 || true
 [ "$PULLED" = "$FULL_SHA" ] || die "pulled image reports revision '$PULLED', expected $FULL_SHA"
 ok "pulls back, revision $SHA"
 
-if command -v crane >/dev/null 2>&1; then
-    echo
-    echo "   digests — give these to anyone reporting behaviour that disagrees with this build:"
-    echo "     list  $(crane digest "$REGISTRY_REPO:git-$SHA" 2>/dev/null)"
-    for arch in amd64 arm64; do
-        echo "     $arch $(crane digest --platform "linux/$arch" "$REGISTRY_REPO:git-$SHA" 2>/dev/null)"
-    done
-fi
+echo
+echo "   digests — give these to anyone reporting behaviour that disagrees with this build:"
+docker buildx imagetools inspect "$REGISTRY_REPO:git-$SHA" | sed 's/^/     /'
 
-say "Published $REGISTRY_REPO:git-$SHA"
+say "Published $REGISTRY_REPO:${TAGS[*]}"

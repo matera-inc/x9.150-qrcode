@@ -4,13 +4,13 @@
 # Creating a Derivative Work from this file — by AI/ML generation or by manual re-implementation
 # based on it — is governed by that license (see the "Derivative Work" definition and Annex A).
 #
-# Installs the chart with values-go.yaml on a throwaway kind cluster and checks it (Story 14.3):
+# Installs the chart (values.yaml) on a throwaway kind cluster and checks it (Story 14.3):
 # a PostgreSQL 16 in the cluster stands in for the bank's own; the DBA's one-time step is done by
 # hand, with passwords; the Liquibase init container applies the changelog as the owner; the
 # service starts as the application role, reading its password from the mounted Secret; health is
-# UP and one create answers 201. CI runs it on a fresh kind cluster (deploy.yml, `helm go on kind`).
+# UP and one create answers 201. CI runs it on a fresh kind cluster (deploy.yml, `helm on kind`).
 #
-#   others/scripts/helm-go-kind.sh <image>     # the Go image, already loaded into the kind cluster
+#   others/scripts/helm-kind.sh <image>     # the image, already loaded into the kind cluster
 #
 # It refuses to run unless kubectl's current context is a kind cluster: it creates and deletes a
 # namespace, and must never do that anywhere else. Every password here is a throwaway for CI.
@@ -18,11 +18,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-IMAGE="${1:?usage: helm-go-kind.sh <image loaded into kind>}"
+IMAGE="${1:?usage: helm-kind.sh <image loaded into kind>}"
 ctx=$(kubectl config current-context)
 case "$ctx" in kind-*) ;; *) echo "refusing: the current context '$ctx' is not a kind cluster"; exit 2 ;; esac
 
-NS=x9-helm-go
+NS=x9-helm
 CHART=others/helm/x9-qrcode/chart
 k() { kubectl -n "$NS" "$@"; }
 fail() {
@@ -77,10 +77,10 @@ EOF
 k create secret generic x9-qrcode-go \
   --from-literal=database-password=ci-only-app --from-literal=liquibase-password=ci-only-owner
 
-echo "### helm install, values-go.yaml"
-helm install x9 "$CHART" -n "$NS" -f "$CHART/values-go.yaml" \
+echo "### helm install, values.yaml"
+helm install x9 "$CHART" -n "$NS" \
   --set image.repository="${IMAGE%:*}" --set image.tag="${IMAGE##*:}" --set image.pullPolicy=Never \
-  --set imagePullSecrets=null \
+  --set application.x9.public-endpoints.host=x9.example.com \
   --set go.database.host=postgres --set go.database.name=postgres --set go.database.sslmode=disable \
   --wait --timeout 5m 2> >(grep -v 'found symbolic link in path' >&2) || fail "the release did not become ready"
 
@@ -102,4 +102,4 @@ code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/jso
 echo "ok  create answered 201"
 
 kubectl delete namespace "$NS" --wait=false >/dev/null
-echo "PASS  the chart deploys the Go build: Liquibase, then the service as the application role"
+echo "PASS  the chart deploys the service: Liquibase, then the service as the application role"

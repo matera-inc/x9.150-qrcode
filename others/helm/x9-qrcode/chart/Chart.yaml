@@ -4,10 +4,11 @@ name: x9-qrcode
 # Chart Icon
 icon: https://www.matera.com/images/matera.png
 # Chart Description
-description: 'X9 QRCode'
+description: 'X9 QRCode: the ANSI X9.150 Payment QR Code service on PostgreSQL'
 # This is the chart type.
 type: application
-# This is the chart version.
-version: 1.2.0
-# This is the version number of the application being deployed. (version image container)
-appVersion: latest-amd64
+# This is the chart version. 3.0.0: the Java build is retired (ADR-0039); the chart deploys the Go
+# build only, and `runtime` is gone. The 1.x chart is in git history under the tag java-final.
+version: 3.0.0
+# The image tag deployed when image.tag is empty.
+appVersion: "3.0.0"

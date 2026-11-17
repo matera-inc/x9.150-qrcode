@@ -413,7 +413,7 @@ func newServer(port int, h http.Handler) *http.Server {
 const healthcheckTimeout = 3 * time.Second
 
 // checkHealth is -healthcheck: the distroless image has no shell, curl or wget, so a container
-// health check (docker-compose.go.yml) runs the binary itself against the port it serves on. A
+// health check (docker-compose.yml) runs the binary itself against the port it serves on. A
 // 200 from /actuator/health is UP; anything else, or no answer, is an error and exit code 1.
 func checkHealth(ctx context.Context, port int) error {
 	ctx, cancel := context.WithTimeout(ctx, healthcheckTimeout)

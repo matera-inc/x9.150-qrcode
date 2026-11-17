@@ -23,11 +23,15 @@ Business context:
 - It enforces message integrity and authenticity using JWS (RFC 7515) and X9 Financial PKI trust principles.
 
 Technical context:
-- Java 25 + Spring Boot 3.5 Stack.
+- A static Go binary on a distroless image, running as non-root.
 - Designed for Kubernetes 1.30 (or higher) deployment using Helm.
-- Requires MongoDB 8 (or higher) for the Java build (the default); the Go build (`values-go.yaml`)
-  requires PostgreSQL 16 (or higher) instead.
+- Requires PostgreSQL 16 (or higher): your own; the chart ships no database.
 - Use secrets for security-related artifacts and production-like environments.
+
+The Java build was retired at 3.0.0 (ADR-0039): the 2.x chart and its `runtime: java` values are in
+git history under the tag `java-final`. To move 2.x values, see `UPGRADING-TO-3.md` and
+`docs/CONFIGURATION-FROM-JAVA.md` in the repository. A release that still sets `runtime: java` is
+refused.
 
 
 ## Important Notice
@@ -120,11 +124,11 @@ These values control rollout safety and graceful termination behavior.
 
 ### Runtime Environment Variables
 
-- `environment.env`: baseline application runtime variables.
-- `customerEnvs`: environment-specific business and integration variables.
+- `go.env`: the service's own variables (below).
+- `customerEnvs`: environment-specific variables. A `SPRING_*`, `MONGO*` or `JASYPT_*` name is
+  refused when the chart renders.
 
 ```yaml
-{{ pick $values "environment" | toYaml | replace "    " "  " }}
 {{ pick $values "customerEnvs" | toYaml | replace "    " "  " }}
 ```
 
@@ -164,27 +168,17 @@ The chart exposes explicit startup, readiness, and liveness probes to support st
 {{ pick $values "volumeMounts" | toYaml | replace "    " "  " }}
 ```
 
-### Application and Secret Configuration
+### Application Configuration
 
-`application` contains non-sensitive runtime properties rendered via ConfigMap.
-`secrets` contains sensitive values rendered via Kubernetes Secret.
+`application` holds the X9 settings (public host, keystore locations, reservation window),
+rendered as the service's environment variables. Passwords are never values: they come from the
+Secret named in `go.existingSecret`.
 
 ```yaml
 {{ pick $values "application" | toYaml | replace "    " "  " }}
-{{ pick $values "applicationExtra" | toYaml | replace "    " "  " }}
-{{ pick $values "secrets" | toYaml | replace "    " "  " }}
 ```
 
-## The Go build (`values-go.yaml`)
-
-The chart deploys the Java build by default until the cutover. With `-f values-go.yaml`
-(`runtime: go`) it deploys the Go build on PostgreSQL instead:
-
-```bash
-helm upgrade --install x9-qrcode <repo-name>/{{ .Name }} \
-  --namespace <namespace> \
-  --values values-go.yaml --values my-values.yaml
-```
+## Database, Liquibase and Runtime
 
 - One instance, `strategy: Recreate`, no HPA: the chart refuses `replicaCount` other than 1 and
   `autoscaling.enabled: true` (ADR-0031).
@@ -192,7 +186,7 @@ helm upgrade --install x9-qrcode <repo-name>/{{ .Name }} \
   init container rather than a hook Job: with `Recreate` the schema moves only after the old pod
   has stopped, so an old binary never serves on a newer schema. `go.liquibase.enabled: false` when
   your DBA applies the changelog by hand.
-- Only the Go build's environment variables: a `SPRING_*`, `MONGO*` or `JASYPT_*` name is refused
+- Only the service's environment variables: a `SPRING_*`, `MONGO*` or `JASYPT_*` name is refused
   when the chart renders. `GOMEMLIMIT` is `go.memLimitPercent` (80) percent of the memory limit.
 - Probes on `/actuator/health/liveness` and `/actuator/health/readiness` on the API port.
 - Passwords come from the Secret you name in `go.existingSecret`, never from a value: the database
@@ -200,11 +194,7 @@ helm upgrade --install x9-qrcode <repo-name>/{{ .Name }} \
 - The database is yours: the chart ships no PostgreSQL. Create the owner role and the schema
   first, as `db/README.md` in the repository says.
 
-```yaml
-{{ .Files.Get "values-go.yaml" }}
-```
-
-The `go` section of `values.yaml`, with every default:
+The `go` section of `values.yaml` (its 2.x name, kept so 2.x values carry over), with every default:
 
 ```yaml
 {{ pick $values "go" | toYaml | replace "    " "  " }}
@@ -222,7 +212,7 @@ protect it at your edge (API gateway, mTLS, or network policy).
 
 From an operations perspective, pay special attention to:
 - Keystore and truststore paths/passwords.
-- MongoDB URI and TLS/auth settings.
+- The database host, TLS mode (`go.database.sslmode`) and CA (`go.database.caSecret`).
 
 ## Swagger Endpoints Overview
 

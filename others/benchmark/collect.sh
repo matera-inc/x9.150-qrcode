@@ -15,11 +15,12 @@
 #
 # Environment (all optional except KUBE_CONTEXT):
 #   KUBE_CONTEXT       the kube context to run in. Never defaulted, never written into results.
-#   SEQUENCE           "J G J G J G" (default). J = java-mongo, G = go-postgres. "J J J" for the
-#                      Java baseline alone (Story 5.2).
+#   SEQUENCE           "G G G" (default). G = go-postgres, J = java-mongo. The Java build is
+#                      retired (ADR-0039): J runs its last image, materainc/x9-qrcode:java-final
+#                      (JAVA_IMAGE); "J G J G J G" is how the campaigns of record compared the two.
 #   SCENARIOS          "s1 s2 s7" (default)
-#   GO_SERVES_API      0 (default): the Go build has no API yet (Epics 9-10), so G runs only S7 and
-#                      S1/S2 are skipped with a note in the run. Set 1 once it serves the API.
+#   GO_SERVES_API      1 (default): the Go build serves the API. 0 reproduces the early campaigns,
+#                      when G ran only S7 and S1/S2 were skipped with a note in the run.
 #   PROFILE / STAGES   the k6 load profile (lib/x9.js): readme (default), smoke, or explicit stages
 #   JAVA_WARMUP        k6 stages of the Java build's JIT warm-up, excluded from measurement (plan
 #                      §9.2): default the `warmup` profile, 2 minutes. "none" to skip.
@@ -32,13 +33,14 @@
 #   PRELOAD_PUBLIC_IMAGES=1  also pull and load mongo, postgres, python and k6
 #   BENCH_VIRTUALISATION     a one-line, generic description of the virtualisation layers
 #                            ("Linux VM on a macOS hypervisor, k3s"), recorded as given
-#   JAVA_IMAGE / GO_IMAGE / LIQUIBASE_IMAGE   default x9-qrcode[-go|-liquibase]:git-<HEAD's sha>
+#   GO_IMAGE / LIQUIBASE_IMAGE   default x9-qrcode-go|-liquibase:git-<HEAD's sha>
+#   JAVA_IMAGE         default materainc/x9-qrcode:java-final
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 
-SEQUENCE="${SEQUENCE:-J G J G J G}"
+SEQUENCE="${SEQUENCE:-G G G}"
 SCENARIOS="${SCENARIOS:-s1 s2 s7}"
-GO_SERVES_API="${GO_SERVES_API:-0}"
+GO_SERVES_API="${GO_SERVES_API:-1}"
 PROFILE="${PROFILE:-readme}"
 STAGES="${STAGES:-}"
 JAVA_WARMUP="${JAVA_WARMUP:-warmup}"

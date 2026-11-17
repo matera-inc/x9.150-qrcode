@@ -1,14 +1,17 @@
 name: Pairings
 
-# The two builds pay each other, in all four pairings (Story 11.3, S11.3-AC2): a Java and a Go image
-# are built as the `blackbox` and `blackbox-go` jobs build them, and
-# others/demo/two-instance-payment-cycle.sh runs a whole payment between two instances (create,
-# decode and payload fetch, pre-commit, post-commit, PAID, events) for Java→Java, Java→Go, Go→Java
-# and Go→Go (payer → payee), each side verifying every signed message of the other. Any pairing
-# that does not complete fails the job, naming the pairing and the step.
+# Two instances of the service pay each other (Story 11.3, S11.3-AC2): the image is built as the
+# `blackbox-go` job builds it, and others/demo/two-instance-payment-cycle.sh runs a whole payment
+# between two instances (create, decode and payload fetch, pre-commit, post-commit, PAID, events),
+# each side verifying every signed message of the other. A cycle that does not complete fails the
+# job, naming the step.
+#
+# Until 3.0.0 this ran all four pairings of the Java and Go builds; the Java build is retired
+# (ADR-0039), so it runs Go→Go.
 #
 # A job-level path filter, as in blackbox-go, so the check always reports: on a pull request that
-# touches neither build, db/, the demo nor the suite, it checks out, finds nothing to run, and passes.
+# touches neither the code, db/, the demo nor the suite, it checks out, finds nothing to run, and
+# passes.
 
 on:
   pull_request:
@@ -28,7 +31,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Does this pull request touch either build, db/, the demo or the suite?
+      - name: Does this pull request touch the code, db/, the demo or the suite?
         id: changes
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -36,35 +39,19 @@ jobs:
           changed="$(git diff --name-only "$BASE_SHA"...HEAD)"
           printf '%s\n' "$changed"
           if printf '%s\n' "$changed" | grep -Eq \
-              '(\.go$|^go\.(mod|sum)$|^cmd/|^internal/|^Dockerfile$|^\.dockerignore$|^Makefile$|^db/|^others/demo/|^others/blackbox/|^x9-qrcode-[a-z-]+/|^pom\.xml$|^mvnw|^\.mvn/|^\.github/workflows/pairings\.yml$)'; then
+              '(\.go$|^go\.(mod|sum)$|^cmd/|^internal/|^Dockerfile$|^\.dockerignore$|^Makefile$|^db/|^others/demo/|^others/blackbox/|^\.github/workflows/pairings\.yml$)'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "Nothing either build depends on changed: the pairings are not needed."
+            echo "Nothing the service depends on changed: the pairing is not needed."
           fi
 
-      - name: Set up JDK 25
+      - name: Build the image (make image)
         if: steps.changes.outputs.run == 'true'
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "25"
-          cache: maven
+        run: make image IMAGE=x9-qrcode:ci
 
-      - name: Build the Java image (buildpacks, as `make image` does)
-        if: steps.changes.outputs.run == 'true'
-        run: |
-          chmod +x mvnw
-          ./mvnw -B -ntp -Pdocker -DskipTests package -Dbuild.image.name=x9-qrcode:ci \
-            -Doci.revision="$GITHUB_SHA" -Doci.version="${GITHUB_SHA::7}"
-
-      - name: Build the Go image (make go-image)
-        if: steps.changes.outputs.run == 'true'
-        run: make go-image GO_IMAGE=x9-qrcode:go
-
-      - name: Run the payment cycle in all four pairings
+      - name: Run the payment cycle between two instances
         if: steps.changes.outputs.run == 'true'
         env:
-          JAVA_IMAGE: x9-qrcode:ci
-          GO_IMAGE: x9-qrcode:go
+          IMAGE: x9-qrcode:ci
         run: ./others/demo/two-instance-payment-cycle.sh

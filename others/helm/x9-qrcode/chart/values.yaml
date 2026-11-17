@@ -1,20 +1,29 @@
-# Default values for x9-qrcode.
-# This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
-
-# -- Which build this release deploys: `java` (Spring Boot on MongoDB, the default until the
-# cutover) or `go` (PostgreSQL). Deploy the Go build with `-f values-go.yaml`, which sets this and
-# the `go` section below; see the chart README.
-runtime: java
+# Default values for x9-qrcode: the ANSI X9.150 service on PostgreSQL (Story 14.3).
+#
+#   helm upgrade --install x9-qrcode others/helm/x9-qrcode/chart -n <namespace> -f <your-values>.yaml
+#
+# Every variable this renders is listed in docs/CONFIGURATION-FROM-JAVA.md; SPRING_*, MONGO* and
+# JASYPT_* are refused. The Java build was retired at 3.0.0 (ADR-0039): `runtime` is gone, and a
+# release that still sets `runtime: java` is refused; UPGRADING-TO-3.md says how to move 2.x values.
+#
+# Before installing:
+#   1. The database is yours (ADR-0032): the chart ships no PostgreSQL. Your DBA creates the owner
+#      role and the schema once (db/README.md, "Installing it in your database"), and sets the
+#      application role's password after the first Liquibase run (or creates the roles beforehand).
+#   2. Create the Secret named in go.existingSecret; the chart never takes a password as a value:
+#        kubectl -n <namespace> create secret generic x9-qrcode-go \
+#          --from-file=database-password=<file> --from-file=liquibase-password=<file>
+#      plus private-keystore-password and truststore-password if you mount your own keystores.
+#   3. Set the three required values: application.x9.public-endpoints.host, go.database.host and
+#      go.database.name.
 
 image:
-  repository: "registry.example.com/x9-qrcode"
+  repository: "docker.io/materainc/x9-qrcode"
   pullPolicy: IfNotPresent
-  # Overrides the image tag whose default is the chart appVersion.
+  # -- The image tag; empty means the chart's appVersion (3.0.0).
   tag: ""
 
-imagePullSecrets:
-  - name: registry-credentials
+imagePullSecrets: []
 
 # Resource naming overrides
 nameOverride: "x9-qrcode"
@@ -35,56 +44,37 @@ serviceAccount:
   # If not set and create is true, a name is generated using the fullname template
   name: ""
 
-podSecurityContext: {}
-# fsGroup: 2000
+# distroless nonroot (65532); the root filesystem is never written.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  # Lets the service read the mounted password file (mode 0440).
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
 
-securityContext: {}
-  # capabilities:
-  #   drop:
-  #   - ALL
-  # readOnlyRootFilesystem: true
-  # runAsNonRoot: true
-# runAsUser: 1000
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
 
-# Deployment update strategy
+# One active instance, never two at once (ADR-0031): the Deployment is always `Recreate`, so the old
+# pod is gone before the new one starts.
 deploymentStrategy:
-  # -- Defines the Deployment update strategy:
-  # - RollingUpdate: Performs a gradual update by creating new pods before removing old ones.
-  # - Recreate: Removes all existing pods before creating new ones.
-  type: RollingUpdate
-
-  # Configuration for the RollingUpdate strategy.
-  # This section is ignored if 'type' is set to 'Recreate'.
-  rollingUpdate:
-    # -- Specifies the maximum number of Pods that can be created above the desired count.
-    # It can be an absolute number (e.g., 1) or a percentage (e.g., "25%").
-    # Kubernetes default: "25%"
-    maxSurge: 25%
-
-    # -- Specifies the maximum number of Pods that can be unavailable during the update.
-    # It can be an absolute number (e.g., 1) or a percentage (e.g., "25%").
-    # Kubernetes default: "25%"
-    maxUnavailable: 25%
-
-  # -- Time in seconds to wait before forcing pod termination.
-  terminationGracePeriodSeconds: 120
-
-  # -- Pre-stop time to finish current transactions before graceful shutdown starts
-  preStop:
-    sleep: 15
-
-# Runtime Matera environment variables
-environment:
-  env:
-    - name: SPRING_CONFIG_LOCATION
-      value: "classpath:/,/workspace/app-config/"
+  # -- Informational: the Deployment is always Recreate.
+  type: Recreate
+  # -- Seconds to wait before forcing pod termination. Must exceed go.shutdownDelaySeconds plus the
+  # 20 s drain (ADR-0031).
+  terminationGracePeriodSeconds: 60
 
 # -- Custom environment variables injected in addition to defaults.
-customerEnvs:
-# - name: TEST_VAR_A
-#   value: "test A"
-# - name: TEST_VAR_B
-#   value: "test B"
+# A SPRING_*, MONGO* or JASYPT_* name, or a *PASSWORD* given as a value, is refused when the chart
+# renders.
+customerEnvs: []
+# - name: X9_LOG_LEVEL
+#   value: debug
 
 # -- Allows including one or more initContainers for pod preparation or initial setup.
 initContainers: []
@@ -117,10 +107,8 @@ service:
 # Defines deployment ports.
 deploy:
   ports:
-    # -- Port for the application endpoint.
+    # -- Port for the API and the health endpoints (X9_SERVER_PORT); there is no management port.
     containerPort: 8080
-    # -- Port for the management (actuator) endpoint.
-    managementPort: 12345
 
 # Optional ingress exposure
 ingress:
@@ -145,13 +133,13 @@ livenessProbe:
     # -- Path used to verify container health.
     path: /actuator/health/liveness
     # -- Port where the health check service is running.
-    port: 12345
+    port: http
   # -- Interval in seconds between health checks.
   periodSeconds: 5
   # -- Maximum time in seconds to wait for the livenessProbe response.
   timeoutSeconds: 5
   # -- Initial delay in seconds before starting health checks.
-  initialDelaySeconds: 10
+  initialDelaySeconds: 0
   # -- Number of consecutive failures before considering the container unhealthy.
   failureThreshold: 5
 
@@ -164,15 +152,15 @@ readinessProbe:
     # -- Path used to verify whether the container is ready to receive traffic.
     path: /actuator/health/readiness
     # -- Port where the health check service is running.
-    port: 12345
+    port: http
   # -- Interval in seconds between readiness checks.
   periodSeconds: 5
   # -- Maximum time in seconds to wait for the readinessProbe response.
   timeoutSeconds: 5
   # -- Initial delay in seconds before starting readiness checks.
-  initialDelaySeconds: 10
+  initialDelaySeconds: 0
   # -- Number of consecutive failures before considering the container unhealthy.
-  failureThreshold: 5
+  failureThreshold: 3
 
 # startupProbe configuration to verify whether the application started correctly.
 startupProbe:
@@ -183,33 +171,31 @@ startupProbe:
     # -- Path used to verify whether the application started.
     path: /actuator/health/liveness
     # -- Port where the health check service is running.
-    port: 12345
+    port: http
   # -- Interval in seconds between startup checks.
-  periodSeconds: 5
+  periodSeconds: 2
   # -- Maximum time in seconds to wait for the startupProbe response.
   timeoutSeconds: 5
   # -- Initial delay in seconds before starting startup checks.
-  initialDelaySeconds: 10
+  initialDelaySeconds: 0
   # -- Number of consecutive failures before considering the container not started.
-  failureThreshold: 50
+  failureThreshold: 30
 
-# -- Number of replicas to be deployed.
+# -- Always 1: X9.150 runs one active instance (ADR-0031). Any other value is refused.
 replicaCount: 1
 
-# -- Horizontal autoscaling
+# -- No HPA: `enabled: true` is refused (ADR-0031).
 autoscaling:
   enabled: false
-  minReplicas: 1
-  maxReplicas: 5
-  targetCPUUtilizationPercentage: 80
 
 # Container resources
 resources:
   limits:
     # -- Defines the maximum CPU value the container can consume.
-    cpu: 1000m
-    # -- Defines the maximum memory value the container can consume.
-    memory: 1024Mi
+    cpu: 500m
+    # -- Defines the maximum memory value the container can consume. GOMEMLIMIT is
+    # go.memLimitPercent (80%) of it.
+    memory: 256Mi
 
   # -- Allocation strategy: "critical" or "optimized"
   # - critical: requests == limits (Guaranteed QoS, maximum robustness)
@@ -270,24 +256,22 @@ affinity: {}
 #                 - us-east-1a
 #                 - us-east-1b
 
-# -- Application base properties rendered to ConfigMap
-# These values are non-sensitive and become runtime properties for Spring Boot.
-# Keep this section focused on behavior/configuration (profiles, public hosts, keystore paths),
-# and use `applicationExtra` only for environment-specific overrides.
+# -- The service's X9 settings, rendered as its environment variables.
 application:
-  # -- Log output format used by the application (e.g., json, text).
-  loggingFormat: "json"
   x9:
     public-endpoints:
-      # -- Public host used in X9 payload location and callback URLs.
+      # -- This deployment's public host, without a scheme, at most 37 characters (ENDPOINTS.md);
+      # used in the QR Code's location and the JWS headers (X9_PUBLICENDPOINTS_HOST). Required.
       host:
     certificate:
+      # Empty: the image's bundled demo identity (NON-PRODUCTION). For your own, mount a PKCS#12 or
+      # PEM file (volumes/volumeMounts) and name it here; JKS is refused (CONFIGURATION-FROM-JAVA.md).
       private-keystore:
-        # -- Keystore location mounted in the container filesystem.
-        location:
+        # -- Keystore location in the container (X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION).
+        location: ""
       truststore:
-        # -- Truststore location mounted in the container filesystem.
-        location:
+        # -- Truststore location in the container (X9_CERTIFICATE_TRUSTSTORE_LOCATION).
+        location: ""
     reservation:
       # -- Seconds a payer's pre-commit holds the QR Code before it lapses (X9_RESERVATION_TTL_SECONDS).
       # `90` suits simple installations. `0` means no window: a reservation never expires and ends
@@ -296,42 +280,13 @@ application:
       # A negative value is invalid: the service refuses to start.
       ttl-seconds: 90
 
-# -- Extra application configuration rendered as application-kubernetes.yaml
-applicationExtra: {}
-
-# -- Secrets consumed by template secrets.yaml
-# This section contains sensitive data and is rendered as Kubernetes Secret.
-# Do not commit production secrets in source control. Prefer external secret managers
-# or encrypted values files per environment.
-secrets:
-  configEncryption:
-    # -- Enables Jasypt configs encryption support in runtime.
-    enabled: true
-    # -- Jasypt encryptor master password.
-    password:
-  spring:
-    data:
-      mongodb:
-        # -- MongoDB connection URI (prefer TLS and auth in non-local environments).
-        uri:
-  x9:
-    certificate:
-      privateKeystore:
-        # -- Password for the private keystore file.
-        password:
-        # -- Password for the private key alias inside the keystore.
-        privateKeyPassword:
-      truststore:
-        # -- Password for the truststore used to validate certificate chains.
-        password:
-
-# -- The Go build (`runtime: go`, values-go.yaml); ignored by the Java build. Every variable it
-# sets is listed in docs/CONFIGURATION-FROM-JAVA.md. `application.x9.*` above (public host, keystore
-# locations, reservation window) feeds both builds.
+# -- The service's PostgreSQL, Liquibase, memory and shutdown settings. The section keeps its 2.x name
+# (`go`), so 2.x Go values carry over unchanged. Every variable it sets is listed in
+# docs/CONFIGURATION-FROM-JAVA.md.
 go:
   # -- The Secret, created by you, never by the chart, that holds the passwords below. It must
   # exist before the release is installed.
-  existingSecret: ""
+  existingSecret: x9-qrcode-go
   # -- The key of each password in `existingSecret`. The database password is required; the
   # keystore passwords may be absent (the image's bundled demo identity needs none).
   secretKeys:
@@ -413,6 +368,8 @@ go:
   # (X9_SERVER_SHUTDOWNDELAYSECONDS). `deploymentStrategy.terminationGracePeriodSeconds` must exceed
   # this plus the 20 s drain.
   shutdownDelaySeconds: 5
-  # -- More Go variables, as `name`/`value` (X9_LOG_LEVEL, X9_EVENTS_RETENTION, …). A SPRING_*,
+  # -- More of the service's variables, as `name`/`value` (X9_LOG_LEVEL, X9_EVENTS_RETENTION, …). A SPRING_*,
   # MONGO* or JASYPT_* name is refused when the chart renders, as the service would refuse it.
-  env: []
+  env:
+    - name: X9_LOG_LEVEL
+      value: info

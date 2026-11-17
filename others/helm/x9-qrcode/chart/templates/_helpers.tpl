@@ -36,9 +36,6 @@ Common labels
 */}}
 {{- define "x9-qrcode.labels" -}}
 helm.sh/chart: {{ include "x9-qrcode.chart" . }}
-{{- if ne (include "x9-qrcode.runtime" .) "go" }}
-spring-boot-actuator: "true"
-{{- end }}
 {{ include "x9-qrcode.selectorLabels" . }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- if .Chart.AppVersion }}
@@ -71,43 +68,13 @@ Create the name of the service account to use
 {{- printf "%s:%s" .Values.image.repository $tag -}}
 {{- end -}}
 
-{{/* Helm hook annotation labels */}}
-{{- define "x9-qrcode.helmHookAnnotation" -}}
-helm.sh/hook: post-install, post-upgrade
-helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
-helm.sh/hook-weight: "-5"
-{{- end -}}
-
-{{- define "utils.yaml2properties" }}
-{{- $yaml := . -}}
-{{- range $key, $value := $yaml }}
-{{- if kindIs "map" $value -}}
-{{ $top := $key }}
-{{- range $key, $value := $value }}
-    {{- if kindIs "map" $value }}
-    {{- $newTop := printf "%s.%s" $top $key }}
-{{- include "utils.yaml2properties" (dict $newTop $value) }}
-    {{- else if kindIs "slice" $value }}
-{{ $top }}.{{ $key }}={{ include "utils.joinListWithComma" $value }}
-    {{- else }}
-{{ $top }}.{{ $key }}={{ $value }}
-    {{- end }}
-{{- end }}
-{{- else if kindIs "slice" $value }}
-{{ $key }}={{ include "utils.joinListWithComma" $value }}
-{{- else }}
-{{ $key }}={{ $value }}
-{{- end }}
-{{- end }}
-{{- end }}
-
 {{/*
 Validate resources.strategy is valid ("critical" or "optimized")
 */}}
 {{- define "x9-qrcode.validateResourcesStrategy" -}}
 {{- $strategy := .Values.resources.strategy | default "critical" }}
 {{- if not (has $strategy (list "critical" "optimized")) }}
-{{- fail (printf "resources.strategy deve ser 'critical' ou 'optimized', mas recebeu: '%s'" $strategy) }}
+{{- fail (printf "resources.strategy must be 'critical' or 'optimized', not '%s'" $strategy) }}
 {{- end }}
 {{- end }}
 
@@ -119,19 +86,19 @@ Validate resources configuration based on strategy
 
 {{- /* Validate memory limit always required */ -}}
 {{- if not .Values.resources.limits.memory }}
-{{- fail "resources.limits.memory é OBRIGATÓRIO e não pode ser nulo." }}
+{{- fail "resources.limits.memory is required." }}
 {{- end }}
 
 {{- /* If critical strategy */ -}}
 {{- if eq $strategy "critical" }}
   {{- /* CPU limit is required in critical */ -}}
   {{- if not .Values.resources.limits.cpu }}
-  {{- fail "resources.limits.cpu é OBRIGATÓRIO quando resources.strategy é 'critical'." }}
+  {{- fail "resources.limits.cpu is required when resources.strategy is 'critical'." }}
   {{- end }}
 
   {{- /* requests not allowed in critical */ -}}
   {{- if .Values.resources.requests }}
-  {{- fail "resources.requests não deve ser definido quando resources.strategy é 'critical'. Os requests são automaticamente iguais aos limits (Guaranteed QoS)." }}
+  {{- fail "resources.requests must not be set when resources.strategy is 'critical': requests equal limits (Guaranteed QoS)." }}
   {{- end }}
 {{- end }}
 
@@ -155,7 +122,6 @@ Formula: round(numeric * percentage / 100) using integer arithmetic:
 {{- end }}
 
 {{/*
-[ADR-023: Kubernetes: Quality of Service e eviction de pods Java]
 Calculate resources block (limits + requests) based on strategy
 Handles:
 - critical: requests = limits (Guaranteed QoS)

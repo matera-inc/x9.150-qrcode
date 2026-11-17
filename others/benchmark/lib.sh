@@ -15,7 +15,8 @@ SHA="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 
 NAMESPACE="${NAMESPACE:-x9-bench}"
 OVERLAY="${OVERLAY:-}"                      # "" = the plan §9.2 limits; "small" = smoke only
-JAVA_IMAGE="${JAVA_IMAGE:-x9-qrcode:git-$SHA}"
+# The Java build is retired (ADR-0039): its runs use its last image, pulled, never built here.
+JAVA_IMAGE="${JAVA_IMAGE:-materainc/x9-qrcode:java-final}"
 GO_IMAGE="${GO_IMAGE:-x9-qrcode-go:git-$SHA}"
 LIQUIBASE_IMAGE="${LIQUIBASE_IMAGE:-x9-qrcode-liquibase:git-$SHA}"
 # Resolved once per campaign: footprint.sh, run later by collect.sh, must use the same images even

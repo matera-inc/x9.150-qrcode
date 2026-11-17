@@ -14,7 +14,7 @@
 #     on Docker's classic and containerd image stores (`docker image inspect`'s {{.Size}} is not:
 #     on the containerd store it is the compressed content or the disk usage, by version);
 #   - cold start: milliseconds from `docker run` to the first /actuator/health answering 200 UP,
-#     polled every 50 ms, with the database already up (the method of others/scripts/go-image-smoke.sh);
+#     polled every 50 ms, with the database already up (the method of others/scripts/image-smoke.sh);
 #   - resting memory: the container's memory use (cgroup usage minus inactive file cache, as
 #     `docker stats` and the kubelet report it) after IDLE_SECONDS (default 300) with no request,
 #     plus a sample every 30 s in idle-memory.csv.
@@ -67,7 +67,7 @@ if [ "$BUILD" = java-mongo ]; then
   APP_ENV=(-e "SPRING_DATA_MONGODB_URI=mongodb://mongo:27017/x9-qrcode?replicaSet=rs0&w=majority&journal=true"
            -e X9_PUBLICENDPOINTS_HOST=x9-150.example.com -e X9_TESTING_CLOCKCONTROL=false)
 else
-  # PostgreSQL 16 with the changelog applied, exactly as go-image-smoke.sh does.
+  # PostgreSQL 16 with the changelog applied, exactly as image-smoke.sh does.
   X9_DB_PORT=0 docker compose -f "$ROOT/db/docker-compose.yml" -p "$P" up -d --build --quiet-pull >/dev/null 2>&1 ||
     X9_DB_PORT=0 docker compose -f "$ROOT/db/docker-compose.yml" -p "$P" up -d --build >/dev/null
   NET="${P}_default"

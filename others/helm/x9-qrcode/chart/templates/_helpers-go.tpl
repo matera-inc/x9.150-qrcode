@@ -1,19 +1,7 @@
 {{/*
-Helpers for the Go build (Story 14.3). The Java build's templates do not use them, except
-x9-qrcode.runtime, which says which of the two this release deploys.
+The service's own helpers: GOMEMLIMIT, the refused variables, and the checks run before anything
+renders. The file keeps its 2.x name; since 3.0.0 there is no other build (ADR-0039).
 */}}
-
-{{/*
-Which build this release deploys: "java" (the default until the cutover, Epic 16) or "go"
-(values-go.yaml). Anything else is refused.
-*/}}
-{{- define "x9-qrcode.runtime" -}}
-{{- $runtime := .Values.runtime | default "java" -}}
-{{- if not (has $runtime (list "java" "go")) -}}
-{{- fail (printf "runtime must be 'java' or 'go', not '%s'" $runtime) -}}
-{{- end -}}
-{{- $runtime -}}
-{{- end -}}
 
 {{/*
 GOMEMLIMIT (ADR-0031): go.memLimitPercent (default 80) of resources.limits.memory, in bytes, so the
@@ -60,14 +48,14 @@ plain value. Input: a list of {name, value | valueFrom}.
 What the Go build needs from its values, checked before anything renders.
 */}}
 {{- define "x9-qrcode.validateGo" -}}
+{{- if and (hasKey .Values "runtime") (ne (toString .Values.runtime) "go") -}}
+{{- fail (printf "runtime: %s is a 2.x value: the Java build was retired at 3.0.0 (ADR-0039) and this chart deploys only the Go build. Remove runtime from your values (UPGRADING-TO-3.md); the 2.x chart is in git history under the tag java-final" (toString .Values.runtime)) -}}
+{{- end -}}
 {{- if ne (int .Values.replicaCount) 1 -}}
-{{- fail "replicaCount must be 1 for the Go build: X9.150 runs one active instance (ADR-0031)" -}}
+{{- fail "replicaCount must be 1 : X9.150 runs one active instance (ADR-0031)" -}}
 {{- end -}}
 {{- if .Values.autoscaling.enabled -}}
-{{- fail "autoscaling.enabled must be false for the Go build: X9.150 runs one active instance, so there is no HPA (ADR-0031)" -}}
-{{- end -}}
-{{- if not .Values.image.tag -}}
-{{- fail "image.tag is required for the Go build: the chart's appVersion names a Java image" -}}
+{{- fail "autoscaling.enabled must be false : X9.150 runs one active instance, so there is no HPA (ADR-0031)" -}}
 {{- end -}}
 {{- $delay := int .Values.go.shutdownDelaySeconds -}}
 {{- if le (int .Values.deploymentStrategy.terminationGracePeriodSeconds) (add $delay 20) -}}

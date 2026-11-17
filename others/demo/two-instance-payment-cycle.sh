@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 #
-# A whole payment, between two X9.150 deployments that share nothing — in every pairing of the two
-# builds (Story 11.3).
+# A whole payment, between two X9.150 deployments that share nothing (Story 11.3).
 #
 # One instance is the PAYEE: it issues the QR Code, is told about the payment, and is finally told
 # by its own payment system that the money arrived. The other is the PAYER's PSP: it scans, fetches
@@ -9,40 +8,35 @@
 # database, its own signing key and its own public host, and they talk only over HTTPS, exactly as
 # two institutions would. Each side verifies every signed message the other sends.
 #
-#   ./others/demo/two-instance-payment-cycle.sh                        # all four pairings
-#   PAIRINGS="go-java" ./others/demo/two-instance-payment-cycle.sh     # one: a Go payer, a Java payee
-#   PAYER_IMAGE=x9-qrcode:go PAYEE_IMAGE=materainc/x9-qrcode:1.4.0 \
+#   ./others/demo/two-instance-payment-cycle.sh                        # IMAGE paying IMAGE
+#   PAYER_IMAGE=x9-qrcode:latest PAYEE_IMAGE=materainc/x9-qrcode:3 \
 #       ./others/demo/two-instance-payment-cycle.sh                    # any two images
 #   ./others/demo/two-instance-payment-cycle.sh --keep                 # leave them running afterwards
 #
-# A pairing is written payer-payee: `java-go` is a Java PSP paying a QR Code issued by a Go payee.
-# PAIRINGS takes any of java-java, java-go, go-java and go-go (space- or comma-separated); the
-# default is all four. JAVA_IMAGE (default x9-qrcode:latest, `make image`) and GO_IMAGE (default
-# x9-qrcode:go, `make go-image`) say which image each build is. PAYER_IMAGE and PAYEE_IMAGE, set
-# together, run one pairing of exactly those two images instead; the build of each is read from
-# the image (the Go image's entrypoint is /x9-qrcode), or stated with PAYER_BUILD / PAYEE_BUILD.
+# IMAGE (default x9-qrcode:latest, `make image`) is both sides; PAYER_IMAGE and PAYEE_IMAGE pick
+# each side's image. Both must be the Go build (entrypoint /x9-qrcode). Until 3.0.0 this ran all
+# four pairings of the Java and Go builds (Java→Java, Java→Go, Go→Java, Go→Go); the Java build is
+# retired (ADR-0039), and that version of the script is in the history under the git tag java-final.
 #
 # Per pairing, one compose project (x9-pair-<run>-<pairing>, its own network) holding:
 #
 #   payee, payer          the two images, plus this run's PKI copied in (nothing is bind-mounted,
 #                         so it works on Colima, which cannot mount paths under /Volumes)
-#   <role>-mongo          a Java instance's MongoDB, a single-node replica set (transactions)
-#   <role>-postgres       a Go instance's PostgreSQL 16, with db/local/bootstrap.sql and then
+#   <role>-postgres       each instance's PostgreSQL 16, with db/local/bootstrap.sql and then
 #   <role>-bootstrap,     db/changelog applied by Liquibase before the service starts, the service
-#   <role>-liquibase      connecting as the application role (as docker-compose.go.yml does)
+#   <role>-liquibase      connecting as the application role (as docker-compose.yml does)
 #   tls                   nginx terminating HTTPS for both public hosts, payee.x9demo.test and
-#                         payer.x9demo.test (network aliases), so the two builds are fronted the same
-#                         way: the Go build serves plain HTTP and expects TLS in front of it
+#                         payer.x9demo.test (network aliases): the service serves plain HTTP and
+#                         expects TLS in front of it
 #
 # Trust, generated per run into a temporary directory:
 #
 #   - TLS: a throwaway CA and one server certificate for both hosts. Each instance trusts the CA
-#     through SSL_CERT_DIR (the Go build reads it natively; the Java image's start-up adds it to the
-#     JVM's truststore, which is why the file is named by its OpenSSL subject hash).
-#   - X9 signing: a self-signed identity per ROLE (payee, payer), whatever the build, as PKCS#12,
-#     and one PKCS#12 truststore holding both certificates. Two different keys, so a message
-#     verified by the wrong key, or by the receiver's own, fails. PKCS#12 because the Go build
-#     refuses JKS (ADR-0031); the Java build reads it too.
+#     through SSL_CERT_DIR (the file is named by its OpenSSL subject hash, which the retired Java
+#     image needed; Go reads any name).
+#   - X9 signing: a self-signed identity per ROLE (payee, payer), as PKCS#12, and one PKCS#12
+#     truststore holding both certificates. Two different keys, so a message verified by the wrong
+#     key, or by the receiver's own, fails. PKCS#12 because the service refuses JKS (ADR-0031).
 #
 # The cycle, with the pairing and the step named on any failure: health, create on the payee,
 # decode on the payer (which fetches the payload from the payee over HTTPS and verifies its JWS),
@@ -53,8 +47,7 @@
 # front's log must show the payload fetch, the notifications and each side's read of the other's
 # JWKS: the two talked host to host over TLS, never through a shortcut.
 #
-# NEEDS: Docker with compose v2, openssl, keytool (any JDK), curl and python3. About 2 GiB of
-# Docker memory for a Java-Java pairing; pairings run one at a time.
+# NEEDS: Docker with compose v2, openssl, keytool (any JDK), curl and python3.
 #
 # NON-PRODUCTION. Every key this generates is throwaway; the databases trust every connection.
 set -euo pipefail
@@ -64,8 +57,7 @@ HERE="$ROOT/others/demo"
 KEEP=0
 [ "${1:-}" = "--keep" ] && KEEP=1
 
-JAVA_IMAGE="${JAVA_IMAGE:-x9-qrcode:latest}"
-GO_IMAGE="${GO_IMAGE:-x9-qrcode:go}"
+IMAGE="${IMAGE:-x9-qrcode:latest}"
 RUN="${X9_PAIR_RUN:-$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom | head -c 6 || true)}"
 STAGE="$(mktemp -d "${TMPDIR:-/tmp}/x9-pair-$RUN.XXXXXX")"
 
@@ -91,42 +83,19 @@ docker compose version >/dev/null 2>&1 || fail "docker compose (v2) is not avail
 
 # ------------------------------------------------------------------------------------- the pairings
 
-build_of() {   # the build an image is, read from its entrypoint, as run-against-image.sh does
+check_image() {   # the image must be the Go build, read from its entrypoint, as run-against-image.sh does
     docker image inspect "$1" >/dev/null 2>&1 || docker pull -q "$1" >/dev/null \
-        || fail "no image $1 (build it: make image / make go-image, or pull it)"
-    case "$(docker image inspect "$1" --format '{{json .Config.Entrypoint}}')" in
-        '["/x9-qrcode"]') echo go ;;
-        *) echo java ;;
-    esac
+        || fail "no image $1 (build it: make image, or pull it)"
+    [ "$(docker image inspect "$1" --format '{{json .Config.Entrypoint}}')" = '["/x9-qrcode"]' ] \
+        || fail "$1 is not the Go build (the Java build was retired at 3.0.0; see the tag java-final)"
 }
 
-declare -a NAMES=() PAYER_IMAGES=() PAYEE_IMAGES=() PAYER_BUILDS=() PAYEE_BUILDS=()
-if [ -n "${PAYER_IMAGE:-}" ] || [ -n "${PAYEE_IMAGE:-}" ]; then
-    [ -n "${PAYER_IMAGE:-}" ] && [ -n "${PAYEE_IMAGE:-}" ] || fail "set PAYER_IMAGE and PAYEE_IMAGE together"
-    PAYER_BUILDS+=("${PAYER_BUILD:-$(build_of "$PAYER_IMAGE")}")
-    PAYEE_BUILDS+=("${PAYEE_BUILD:-$(build_of "$PAYEE_IMAGE")}")
-    PAYER_IMAGES+=("$PAYER_IMAGE")
-    PAYEE_IMAGES+=("$PAYEE_IMAGE")
-    NAMES+=("${PAYER_BUILDS[0]}-${PAYEE_BUILDS[0]}")
-else
-    for pairing in $(printf '%s' "${PAIRINGS:-java-java java-go go-java go-go}" | tr ',' ' '); do
-        case "$pairing" in
-            java-java|java-go|go-java|go-go) ;;
-            *) fail "unknown pairing '$pairing': use java-java, java-go, go-java or go-go (payer-payee)" ;;
-        esac
-        payer="${pairing%-*}" payee="${pairing#*-}"
-        NAMES+=("$pairing")
-        PAYER_BUILDS+=("$payer")
-        PAYEE_BUILDS+=("$payee")
-        [ "$payer" = java ] && PAYER_IMAGES+=("$JAVA_IMAGE") || PAYER_IMAGES+=("$GO_IMAGE")
-        [ "$payee" = java ] && PAYEE_IMAGES+=("$JAVA_IMAGE") || PAYEE_IMAGES+=("$GO_IMAGE")
-    done
-fi
-[ "${#NAMES[@]}" -gt 0 ] || fail "PAIRINGS is empty"
-for b in "${PAYER_BUILDS[@]}" "${PAYEE_BUILDS[@]}"; do
-    case "$b" in java|go) ;; *) fail "a build is java or go, not '$b'" ;; esac
-done
-for image in "${PAYER_IMAGES[@]}" "${PAYEE_IMAGES[@]}"; do build_of "$image" >/dev/null; done
+NAMES=("go-go")
+PAYER_IMAGES=("${PAYER_IMAGE:-$IMAGE}")
+PAYEE_IMAGES=("${PAYEE_IMAGE:-$IMAGE}")
+PAYER_BUILDS=(go)
+PAYEE_BUILDS=(go)
+for image in "${PAYER_IMAGES[@]}" "${PAYEE_IMAGES[@]}"; do check_image "$image"; done
 
 # Every local image this run builds, removed at the end unless --keep.
 declare -a BUILT=()
@@ -164,7 +133,7 @@ openssl req -new -newkey rsa:2048 -nodes -sha256 -config "$PKI/openssl.cnf" \
 openssl x509 -req -in "$PKI/tls.csr" -CA "$PKI/tls-ca.pem" -CAkey "$PKI/tls-ca.key" \
     -CAcreateserial -days 30 -sha256 -extfile "$PKI/openssl.cnf" -extensions server \
     -out "$PKI/tls.pem" 2>/dev/null
-# The JVM image reads SSL_CERT_DIR entries named by subject hash; Go reads any name.
+# Named by subject hash, as the retired Java image needed; Go reads any name.
 cp "$PKI/tls-ca.pem" "$PKI/ca/$(openssl x509 -subject_hash -noout -in "$PKI/tls-ca.pem").0"
 step "TLS: a CA, and one certificate for $PAYEE_HOST and $PAYER_HOST"
 
@@ -208,54 +177,18 @@ done
 TLS_IMAGE="x9-pair-tls:$RUN"
 build_image "$TLS_IMAGE" "$HERE/pairing/tls.Dockerfile" "$STAGE/tls"
 step "$TLS_IMAGE  (nginx, HTTPS for both hosts)"
-if printf '%s\n' "${PAYER_BUILDS[@]}" "${PAYEE_BUILDS[@]}" | grep -qx go; then
-    BOOTSTRAP_IMAGE="x9-pair-bootstrap:$RUN"
-    LIQUIBASE_IMAGE="x9-pair-liquibase:$RUN"
-    build_image "$BOOTSTRAP_IMAGE" "$ROOT/db/local/bootstrap.Dockerfile" "$ROOT/db"
-    build_image "$LIQUIBASE_IMAGE" "$ROOT/db/local/liquibase.Dockerfile" "$ROOT/db"
-    step "$BOOTSTRAP_IMAGE, $LIQUIBASE_IMAGE  (db/, for the Go instances)"
-fi
+BOOTSTRAP_IMAGE="x9-pair-bootstrap:$RUN"
+LIQUIBASE_IMAGE="x9-pair-liquibase:$RUN"
+build_image "$BOOTSTRAP_IMAGE" "$ROOT/db/local/bootstrap.Dockerfile" "$ROOT/db"
+build_image "$LIQUIBASE_IMAGE" "$ROOT/db/local/liquibase.Dockerfile" "$ROOT/db"
+step "$BOOTSTRAP_IMAGE, $LIQUIBASE_IMAGE  (db/)"
 
 # ----------------------------------------------------------------------------------------- compose
 
-# The services one instance needs: its database and itself. $1 role, $2 build, $3 image, $4 host.
+# The services one instance needs: its database and itself. $1 role, $2 build (go), $3 image,
+# $4 host.
 instance_services() {
     local role="$1" build="$2" image="$3" host="$4"
-    if [ "$build" = java ]; then
-        cat <<EOF
-  $role-mongo:
-    image: mongo:7.0.45
-    command: ["mongod", "--replSet", "x9-qrcode", "--bind_ip_all", "--wiredTigerCacheSizeGB", "0.25"]
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval",
-             "try { rs.status().ok } catch (e) { rs.initiate({_id: 'x9-qrcode', members: [{_id: 0, host: '$role-mongo:27017'}]}).ok }; db.hello().isWritablePrimary ? 0 : quit(1)"]
-      interval: 2s
-      timeout: 10s
-      retries: 60
-      start_period: 5s
-    tmpfs: [/data/db, /data/configdb]
-
-  $role:
-    image: "$image"
-    depends_on:
-      $role-mongo:
-        condition: service_healthy
-    mem_limit: 1g
-    ports: ["127.0.0.1::8080"]
-    environment:
-      SPRING_DATA_MONGODB_URI: "mongodb://$role-mongo:27017/x9-qrcode?replicaSet=x9-qrcode"
-      X9_PUBLICENDPOINTS_HOST: "$host"
-      X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION: "file:/x9-pair/$role-signing.p12"
-      X9_CERTIFICATE_PRIVATEKEYSTORE_TYPE: PKCS12
-      X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD: "$PASS"
-      X9_CERTIFICATE_PRIVATEKEYSTORE_PRIVATEKEYPASSWORD: "$PASS"
-      X9_CERTIFICATE_TRUSTSTORE_LOCATION: "file:/x9-pair/x9-truststore.p12"
-      X9_CERTIFICATE_TRUSTSTORE_TYPE: PKCS12
-      X9_CERTIFICATE_TRUSTSTORE_PASSWORD: "$PASS"
-      SSL_CERT_DIR: "/etc/ssl/certs:/x9-pair/ca"
-
-EOF
-    else
         cat <<EOF
   $role-postgres:
     image: postgres:16
@@ -289,7 +222,7 @@ EOF
       LIQUIBASE_COMMAND_DEFAULT_SCHEMA_NAME: x9_qrcode
       LIQUIBASE_LIQUIBASE_SCHEMA_NAME: x9_qrcode
       LIQUIBASE_SHOW_BANNER: "false"
-      # Two of these may start together (go-go); a small heap keeps both inside a 4 GiB Docker VM.
+      # Two of these may start together; a small heap keeps both inside a 4 GiB Docker VM.
       JAVA_OPTS: "-Xmx192m -XX:+UseSerialGC"
     command: ["update"]
 
@@ -316,7 +249,6 @@ EOF
       SSL_CERT_DIR: "/etc/ssl/certs:/x9-pair/ca"
 
 EOF
-    fi
 }
 
 write_compose() {   # $1 file, $2 payer build, $3 payer image, $4 payee build, $5 payee image
