@@ -58,6 +58,14 @@ The rest, checked against the §13.5 / §14.3 / §2.1 field tables:
   would pass 18 digits is refused at creation and on PATCH, and the formula refuses rather than
   emits such an amount (`X9-AMT-113` to `X9-AMT-119`, `X9-AMT-124` to `X9-AMT-126`, black-box
   `X9-AMT-423`).
+- **A fraction is refused, never truncated (fixed 2026-11-17).** Both builds read an amount sent as
+  `6.5` as `6` (Jackson's `ACCEPT_FLOAT_AS_INT`, which the Go build had reproduced) and answered 201:
+  the stored debt was not the one asked for. Every integer member the service takes — every amount
+  of a create, a PATCH and a notification, inbound or outbound, and the tip percentages and
+  `daysBefore` beside them — is now refused with 400 naming the field when the number is written
+  with a fraction or an exponent. `6.0` and `6e2` are refused too: the contract says integer, and
+  the reader never has to decide whether a written fraction is "really" zero. Tests:
+  `contract/integer_test.go`, black-box `X9-AMT-424` to `X9-AMT-426`.
 
 ## Alternatives rejected
 

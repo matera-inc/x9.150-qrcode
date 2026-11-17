@@ -140,15 +140,45 @@ func (c *checker) str(path string, s String, rules ...stringRule) {
 	}
 }
 
-// maxLong and minLong are @Max and @Min on a Long.
+// maxLong is @Max on a Long. A Long sent with a fraction or an exponent is refused instead
+// (wholeAmount), its bound unread.
 func (c *checker) maxLong(path string, l Long, bound int64) {
+	if !c.wholeAmount(path, l) {
+		return
+	}
 	if l.IsSet() && l.Value > bound {
 		c.add(path, "must be less than or equal to "+strconv.FormatInt(bound, 10))
 	}
 }
 
+// wholeAmount refuses a Long (an amount, in minor units) that was sent with a fraction or an
+// exponent, as the 18-digit rule words its refusal (ADR-0005), and reports whether it was whole.
+func (c *checker) wholeAmount(path string, l Long) bool {
+	if l.NotInteger != "" {
+		c.add(path, msgAmountNotInteger(l.NotInteger))
+		return false
+	}
+	return true
+}
+
+// msgAmountNotInteger is the refusal of an amount sent as raw, a number with a fraction or an
+// exponent: amounts are integers in minor units (ADR-0005), and one is never truncated.
+func msgAmountNotInteger(raw string) string {
+	return "monetary values should be whole numbers of minor units, written without a fraction or an exponent, but " +
+		raw + " was given."
+}
+
+// wholeInt is wholeAmount for an Integer (a percentage, a day count).
+func (c *checker) wholeInt(path string, i Integer) bool {
+	if i.NotInteger != "" {
+		c.add(path, "must be a whole number, written without a fraction or an exponent, but "+i.NotInteger+" was given")
+		return false
+	}
+	return true
+}
+
 func (c *checker) rangeInt(path string, i Integer, lo, hi int32) {
-	if !i.IsSet() {
+	if !i.IsSet() || !c.wholeInt(path, i) {
 		return
 	}
 	if i.Value < lo {
@@ -160,7 +190,7 @@ func (c *checker) rangeInt(path string, i Integer, lo, hi int32) {
 }
 
 func (c *checker) minInt(path string, i Integer, lo int32) {
-	if i.IsSet() && i.Value < lo {
+	if i.IsSet() && c.wholeInt(path, i) && i.Value < lo {
 		c.add(path, "must be greater than or equal to "+strconv.Itoa(int(lo)))
 	}
 }

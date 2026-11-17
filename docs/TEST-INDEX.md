@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's docstring or doc comment carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**354 tests documented** — every black-box case, and the Go tests that prove
+**359 tests documented** — every black-box case, and the Go tests that prove
 a difference between the builds no black-box case can drive, a fix the differential run found
 (ADR-0028, [TOLERATED-DIFFERENCES.md](../others/blackbox/TOLERATED-DIFFERENCES.md)), or what an
 operator's monitoring reads ([METRICS.md](METRICS.md)); their key starts the test's doc comment,
@@ -280,6 +280,9 @@ status is `X9-MAP-002`.
 | `X9-AMT-421` | 18 nines is accepted and read back to the unit; 10^18 (19 digits) is refused with 400 naming the field, nothing created | `test_payment_requests_pinned.py` |
 | `X9-AMT-423` | a late fee that could pass 18 digits before validUntil is refused at create (bill, fee, method) and on PATCH, naming the field | `test_payment_requests_pinned.py` |
 | `X9-AMT-422` | an amount past 2^63−1 is an unreadable body: 400 `malformed-json`, nothing created (pinned) | `test_payment_requests_pinned.py` |
+| `X9-AMT-424` | an amount of `6.5`, `6.0` or `6e2`, in the bill or the payment method, is refused at create with 400 naming the field, nothing created | `test_payment_requests_pinned.py` |
+| `X9-AMT-425` | a PATCH with a payment-method amount of `6.5` is refused with 400 naming the field; revision and ETag do not move | `test_payment_requests_pinned.py` |
+| `X9-AMT-426` | a notified amount or tip amount of `6.5` is a signed 400 naming the field; the QR Code stays `ACTIVE` | `test_payment_notification.py` |
 | `X9-LOC-425` | tag 26 fits in 99 characters, which limits the configured host to 37 | `test_payment_requests_pinned.py` |
 | `X9-PATCH-420` | fields that are not patchable (creditor, status, id, revision, …), sent with values other than the stored ones, are refused by name and nothing applies | `test_payment_requests_pinned.py` |
 | `X9-PATCH-421` | a patch carrying a creditor other than the stored one is refused naming it, and nothing moves | `test_payment_requests_pinned.py` |
@@ -316,6 +319,8 @@ status is `X9-MAP-002`.
 | `X9-RAIL-507` | an unknown field at any level of a create is refused in the same words on both builds, with no id | `test_closed_requests.py` |
 | `X9-RAIL-508` | an unknown field at any level of a PATCH is refused in the same words on both builds; the ETag and revision do not move | `test_closed_requests.py` |
 | `X9-RAIL-509` | an unknown field at any level of an outbound payment notification is refused in the same words on both builds | `test_closed_requests.py` |
+| `X9-RAIL-510` | `paymentTiming` in another case (`Immediate`) is refused with 400 `malformed-json`, on create (nothing created) and on PATCH (nothing moves) | `test_payment_requests_pinned.py` |
+| `X9-RAIL-511` | `protectionType` in another case (`Plaintext`) is refused at create with 400 `malformed-json`; `plaintext` is accepted | `test_payment_requests_pinned.py` |
 | `X9-RAIL-520` | a pre-commit on a rail the QR Code does not offer is a signed 400 naming it, each rail on its own; nothing recorded | `test_payers.py` |
 | `X9-RAIL-521` | a post-commit on an unoffered rail (RTP on FedNow-only) is a signed 400; one `payment.sent` records it flagged `NOT_OFFERED_RAIL`, the QR Code unchanged | `test_payers.py` |
 | `X9-RAIL-522` | a post-commit offering neither rail nor currency is a signed 400 naming both; its `payment.sent` carries both codes, a `PAID` QR Code stays `PAID` | `test_payers.py` |

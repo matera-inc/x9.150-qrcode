@@ -25,7 +25,7 @@ type Bill struct {
 	// Tip is nil when the body has no tip block, which Java stores as tips refused.
 	Tip       *Tip
 	AmountDue AmountDue
-	// PaymentTiming is "deferred" or "immediate"; Java reads it in any case.
+	// PaymentTiming is "deferred" or "immediate", exactly (the contract refuses another case, I-16).
 	PaymentTiming string
 }
 

@@ -124,13 +124,15 @@ func TestCheckCreate(t *testing.T) {
 			*r = withInvoice(*r, due, 0, 0)
 			r.Bill.Invoice = nil
 		}, "Bill amount due adjustment can only be informed when invoice is not null.", Invalid},
-		{"deferred without an invoice", func(r *Request) { r.Bill.PaymentTiming = "DEFERRED" },
+		{"deferred without an invoice", func(r *Request) { r.Bill.PaymentTiming = "deferred" },
 			"Bill invoice must be informed when DEFERRED payment timing.", Invalid},
 		{"deferred with an invoice", func(r *Request) {
 			*r = withInvoice(*r, due, 0, 0)
 			r.Bill.PaymentTiming = "deferred"
 		}, "", 0},
 		{"another payment timing", func(r *Request) { r.Bill.PaymentTiming = "later" }, "Unexpected value 'later'", Invalid},
+		{"a payment timing in another case (I-16)", func(r *Request) { r.Bill.PaymentTiming = "Immediate" },
+			"Unexpected value 'Immediate'", Invalid},
 		{"a due date before the invoice's date", func(r *Request) {
 			*r = withInvoice(*r, due, 0, 0)
 			r.Bill.Invoice.Date = due.Add(day)

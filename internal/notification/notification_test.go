@@ -530,6 +530,15 @@ func TestRefusedByName(t *testing.T) {
 			status: 400, naming: `"payment: must not be null"`},
 		{name: "a negative amount", request: solanaQR("", "", notifyDefault),
 			edits: []func(map[string]any){payment("amount", -1)}, status: 400, naming: "should not be negative"},
+		// ADR-0005: an amount with a fraction is refused naming it, never truncated to an integer.
+		{name: "a fractional amount", request: solanaQR("", "", notifyDefault),
+			raw: []byte(`{"payment":{"qrcodeId":"%ID%","amount":6.5,"currency":"USDC","network":"solana"},` +
+				`"payer":{"info":"p"},"blockchain":{"action":"PAYMENT_INITIATED","from":"` + wallet + `","to":"` + recipient + `"}}`),
+			status: 400, naming: "payment.amount: monetary values should be whole numbers of minor units"},
+		{name: "a fractional tip", request: solanaQR("", "", notifyDefault),
+			raw: []byte(`{"payment":{"qrcodeId":"%ID%","amount":1000,"tipAmount":0.5,"currency":"USDC","network":"solana"},` +
+				`"payer":{"info":"p"},"blockchain":{"action":"PAYMENT_INITIATED","from":"` + wallet + `","to":"` + recipient + `"}}`),
+			status: 400, naming: "payment.tipAmount: monetary values should be whole numbers of minor units"},
 		{name: "a negative tip", request: solanaQR("", "", notifyDefault),
 			edits: []func(map[string]any){payment("tipAmount", -1)}, status: 400, naming: "should not be negative"},
 		{name: "an expectedDate already past", request: solanaQR("", "", notifyDefault),

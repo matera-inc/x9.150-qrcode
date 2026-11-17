@@ -19,6 +19,7 @@ A cell where Java contradicts the story or an accepted ADR is a strict expected 
 rule, so it turns red the day the two agree.
 """
 import datetime
+import json
 
 import pytest
 
@@ -297,6 +298,106 @@ def test_a_19_digit_amount_beyond_int64_is_refused_as_unreadable(api, amount):
     body["paymentMethods"][0]["amount"] = amount
 
     response = api.post(PR, body=body)
+
+    assert response.status == 400, response
+    assert response.body.get("type", "").endswith("/malformed-json"), response.body
+    assert_not_created(response)
+
+
+NOT_WHOLE = "monetary values should be whole numbers of minor units, written without a fraction or an exponent"
+
+
+@pytest.mark.parametrize("raw", ["6.5", "6.0", "6e2"])
+@pytest.mark.parametrize("where, field", [
+    ("bill", "bill.amountDue.amount"),
+    ("method", "paymentMethods[0].amount"),
+])
+def test_a_fractional_amount_is_refused_at_create_naming_the_field(api, raw, where, field):
+    """X9-AMT-424 — ADR-0005: an amount sent as ``6.5`` (and also ``6.0`` or ``6e2``) in the bill
+    or the payment method is refused at create with 400 naming the field, and nothing is created.
+
+    Source: ANSI X9.150-2026 Data Types — an amount "Shall be a 64 bit integer". Conformance;
+      refusing ``6.0`` and ``6e2`` as well is ours (the contract says integer, so a number written
+      otherwise is not one).
+    Why: Both builds once answered 201 and stored ``6``: a QR Code for a debt nobody asked for. An
+      amount is money; it is refused, never rounded or truncated.
+    """
+    body = samples.payment_request()
+    if where == "bill":
+        body["bill"]["amountDue"]["amount"] = "@AMOUNT@"
+    else:
+        body["paymentMethods"][0]["amount"] = "@AMOUNT@"
+
+    response = api.post(PR, raw=json.dumps(body).replace('"@AMOUNT@"', raw))
+
+    assert_refused(response, naming=f"{field}: {NOT_WHOLE}, but {raw} was given.", status=400)
+    assert_not_created(response)
+
+
+def test_a_fractional_amount_is_refused_on_patch_and_nothing_moves(api):
+    """X9-AMT-425 — ADR-0005: a PATCH carrying a payment-method amount of ``6.5`` is refused with
+    400 naming ``paymentMethods[0].amount``; the QR Code, its revision and its ETag do not move.
+
+    Source: ANSI X9.150-2026 Data Types — an amount "Shall be a 64 bit integer". Conformance.
+    Why: A PATCH that stored ``6`` would change the debt to one nobody asked for, under a 200.
+    """
+    qr = api.create_qr()
+    before = snap(api, qr)
+    body, etag = restated(api, qr)
+    body["paymentMethods"][0]["amount"] = "@AMOUNT@"
+
+    refused = api.patch(f"{PR}/{qr}", raw=json.dumps(body).replace('"@AMOUNT@"', "6.5"), if_match=etag)
+
+    assert_refused(refused, naming=f"paymentMethods[0].amount: {NOT_WHOLE}, but 6.5 was given.",
+                   status=400)
+    assert snap(api, qr) == before
+
+
+@pytest.mark.parametrize("where", ["create", "patch"])
+def test_payment_timing_in_another_case_is_refused(api, where):
+    """X9-RAIL-510 — INTERPRETATION I-16: ``"paymentTiming": "Immediate"`` is refused with 400
+    ``malformed-json`` on create (nothing created) and on PATCH (nothing moves), as every enum
+    value in another case is.
+
+    Source: Ours. I-16, strict to generate: our own API takes the one spelling it emits, as it
+      already refuses ``FedNow`` and ``usd``. The Java build read ``paymentTiming`` in any case.
+    Why: Accepting ``Immediate`` and returning ``immediate`` hands the caller a round-trip
+      mismatch on a field it just set, to be found somewhere less forgiving than a 400.
+    """
+    if where == "create":
+        body = samples.payment_request()
+        body["bill"]["paymentTiming"] = "Immediate"
+        response = api.post(PR, body=body)
+        assert response.status == 400, response
+        assert response.body.get("type", "").endswith("/malformed-json"), response.body
+        assert_not_created(response)
+        return
+
+    qr = api.create_qr()
+    before = snap(api, qr)
+    body, etag = restated(api, qr)
+    body["bill"] = {"description": "blackbox", "paymentTiming": "Immediate",
+                    "amountDue": {"amount": before["bill"]["amountDue"]["amount"]}}
+    response = patch(api, qr, body, if_match=etag)
+    assert response.status == 400, response
+    assert response.body.get("type", "").endswith("/malformed-json"), response.body
+    assert snap(api, qr) == before
+
+
+def test_protection_type_in_another_case_is_refused_at_create(api):
+    """X9-RAIL-511 — INTERPRETATION I-16: ``"protectionType": "Plaintext"`` on a bank rail is
+    refused at create with 400 ``malformed-json``, and nothing is created; ``plaintext`` is the
+    control.
+
+    Source: Ours. I-16, strict to generate; ``ProtectionTypeEnum`` lists lowercase values only.
+    Why: Every enum on our own API is exact, so one spelling is stored and emitted.
+    """
+    accepted = api.create_qr_detailed(currency="USD",
+                                      networks={"fednow": dict(FEDNOW, protectionType="plaintext")})
+    assert accepted.status == 201, accepted
+
+    response = api.create_qr_detailed(currency="USD",
+                                      networks={"fednow": dict(FEDNOW, protectionType="Plaintext")})
 
     assert response.status == 400, response
     assert response.body.get("type", "").endswith("/malformed-json"), response.body

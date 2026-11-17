@@ -65,11 +65,13 @@ These describe how our software behaves; they're enforced in `api/openapi.yaml` 
   and transitions: `internal/domain/` and `STATE-MACHINE.md`.
 - **`paymentTiming`** (lowercase): `immediate` = due when the QR is scanned; `deferred` = due at a
   future date — and `deferred` **requires** `bill.invoice` with a `dueDate`. Wire values are
-  lowercase; input is accepted case-insensitively but always emitted lowercase.
+  lowercase, and create/PATCH take them exactly so: `Immediate` is refused (400), as every enum in
+  another case is (INTERPRETATION I-16).
 - **Money is int64 minor units** — integer cents (or the currency's smallest unit): `600` = $6.00,
   `19825` = $198.25. Never floating-point; the module never converts minor↔major (the paying PSP
   resolves a currency's decimals). At most 18 digits (999999999999999999), as
-  X9.150 requires: one fewer than int64 holds (ADR-0005). Non-money counters (tip %, revision) are plain integers.
+  X9.150 requires: one fewer than int64 holds (ADR-0005). A number written with a fraction or an
+  exponent (`6.5`, `6.0`, `6e2`) is refused with 400 naming the field, never truncated. Non-money counters (tip %, revision) are plain integers.
 - **Currency** is an open string (ISO 4217 code or a digital-asset ticker like `USDC`/`BTC`), not an
   enum. Currencies on one QR must share a pegged group or be a single currency
   (`internal/billing/pegged-currencies.json`; `internal/billing/currency.go`).
