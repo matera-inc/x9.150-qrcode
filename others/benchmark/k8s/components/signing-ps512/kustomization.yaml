@@ -1,0 +1,36 @@
+# SIGNING=ps512 (collect.sh): both builds sign their answers with an RSA-3072 key (PS512): the demo
+# key the images bundled until 3.0.0. From 3.0.1 the Go image bundles an EC P-256 demo key and signs
+# ES256 out of the box (ADR-0040), so the RSA key is mounted, into both builds alike. Everything else
+# is the build's own manifest, unchanged; lib.sh's render() adds this component to java-mongo or
+# go-postgres (and to their small overlays).
+#
+# The key is testdata/pki/x9-demo-rsa-3.0.0.p12 (NON-PRODUCTION: its key is public), the same key
+# and certificate as the java-final image's bundled demo, so a ps512 campaign signs and pins exactly
+# what the campaigns before 3.0.1 did. prepare.sh copies it to build/signing/x9-bench-signing.p12 and
+# collect.sh puts it in the ConfigMap x9-bench-signing. Both builds already trust its certificate.
+#
+# The settings are those of k8s/components/signing-es256, with this key's algorithm and alias.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+patches:
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata: {name: x9-qrcode}
+      spec:
+        template:
+          spec:
+            containers:
+              - name: app
+                env:
+                  - {name: X9_CERTIFICATE_JWKALGORITHM, value: PS512}
+                  - {name: X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION, value: "file:/x9-bench/signing/x9-bench-signing.p12"}
+                  - {name: X9_CERTIFICATE_PRIVATEKEYSTORE_TYPE, value: PKCS12}
+                  - {name: X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD, value: "x9test123"}
+                  - {name: X9_CERTIFICATE_PRIVATEKEYSTORE_PRIVATEKEYPASSWORD, value: "x9test123"}
+                  - {name: X9_CERTIFICATE_PRIVATEKEYSTORE_ALIAS, value: x9-private-keystore}
+                volumeMounts:
+                  - {name: signing, mountPath: /x9-bench/signing, readOnly: true}
+            volumes:
+              - name: signing
+                configMap: {name: x9-bench-signing}

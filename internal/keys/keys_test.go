@@ -33,9 +33,9 @@ const (
 
 func quiet() *logBuffer { return &logBuffer{} }
 
-// S8.2-AC4: with nothing configured, the bundled demo identity loads, as in Java, with the
-// certificate Java ships (the fingerprint the test-clock guard depends on) and a NON-PRODUCTION
-// warning.
+// S8.2-AC4, ADR-0040: with nothing configured, the bundled demo identity loads, as in Java: its
+// certificate (EC P-256 since 3.0.1, the fingerprint the test-clock guard lists), and a
+// NON-PRODUCTION warning.
 func TestBundledDemoIdentity(t *testing.T) {
 	logs := quiet()
 	s, err := Load(config.Certificate{}, newLogger(logs))
@@ -45,13 +45,13 @@ func TestBundledDemoIdentity(t *testing.T) {
 	k := s.Current()
 	id := k.Identity
 	if id.Fingerprint() != DemoFingerprint {
-		t.Fatalf("fingerprint = %s, want Java's %s", id.Fingerprint(), DemoFingerprint)
+		t.Fatalf("fingerprint = %s, want the bundled %s", id.Fingerprint(), DemoFingerprint)
 	}
 	if got := id.Certificate().Subject.String(); got != "CN=x9.matera.com,OU=Demo NonProduction,O=Matera Systems Inc,C=US" {
 		t.Errorf("subject = %s", got)
 	}
-	if got := keyType(id); got != "RSA-3072" {
-		t.Errorf("key = %s, want RSA-3072 as in x9-demo.jks", got)
+	if got := keyType(id); got != "EC-P-256" {
+		t.Errorf("key = %s, want EC-P-256 (ADR-0040)", got)
 	}
 	if len(id.Chain()) != 1 {
 		t.Errorf("a self-signed identity's chain is itself; got %d certificates", len(id.Chain()))

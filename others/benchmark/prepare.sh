@@ -12,19 +12,22 @@
 #                   every signed answer must name, and the algorithm every answer must be signed with
 #   signing.json    which identity the services sign their answers with (SIGNING); collect.sh
 #                   copies it into every run's images.json
-#   signing/        SIGNING=es256 only: the EC signing identity both builds mount, as PKCS#12
+#   signing/        the signing identity both builds mount, as PKCS#12
 #   crl/            the test CA's CRL, served next to the service at the distribution point the
 #                   payer certificates name (http://127.0.0.1:18081/test-ca.crl)
-#   truststore/     what the service trusts: the test CA plus the demo certificate, as the
-#                   black-box JKS (Java) and as PEM (Go reads PKCS#12 or PEM, never JKS)
+#   truststore/     what the service trusts: the test CA plus the RSA demo certificate of 3.0.0, as
+#                   the black-box JKS (Java) and as PEM (Go reads PKCS#12 or PEM, never JKS): the
+#                   same set as every campaign before 3.0.1, whichever identity signs
 #
-# SIGNING chooses the identity both builds sign their answers with:
-#   ps512 (default)  the shipped demo key and certificate (RSA, PS512), bundled in both images
-#   es256            the test-CA EC leaf testdata/pki/x9-test-payer-ec.p12 (P-256, ES256), mounted
-#                    into both builds. It is also the k6 EC payer: the test PKI has one EC end
-#                    entity, and its README names it as the one that doubles as a deployment's own
-#                    identity (the Java build's EcSigningIdentityApiTest ran the service with it).
-#                    Trust is unchanged: its issuer, the test CA, is already trusted by both builds.
+# SIGNING chooses the identity both builds sign their answers with; it is mounted into both:
+#   es256 (default)  the test-CA EC leaf testdata/pki/x9-test-payer-ec.p12 (P-256, ES256): the
+#                    product's own algorithm since 3.0.1 (ADR-0040). It is also the k6 EC payer: the
+#                    test PKI has one EC end entity, and its README names it as the one that doubles
+#                    as a deployment's own identity (the Java build's EcSigningIdentityApiTest ran
+#                    the service with it). Its issuer, the test CA, is already trusted by both builds.
+#   ps512            testdata/pki/x9-demo-rsa-3.0.0.p12 (RSA-3072, PS512): the demo key both images
+#                    bundled until 3.0.0 (the java-final image still does), so a ps512 campaign signs
+#                    and pins exactly what the campaigns before 3.0.1 did.
 #
 # NON-PRODUCTION. Every key read here is committed to this public repository (see
 # testdata/pki/README.md). The script refuses any other
@@ -36,12 +39,12 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 TEST_PKI="$ROOT/testdata/pki"
-DEMO_TRUSTSTORE="$ROOT/internal/keys/bundled/x9-demo-truststore.p12"
 BLACKBOX_TRUSTSTORE="$ROOT/others/blackbox/deployment/x9-blackbox-truststore.jks"
 OUT="${BENCH_BUILD_DIR:-$HERE/build}"
 PASS="x9test123"
-SIGNING="${SIGNING:-ps512}"
+SIGNING="${SIGNING:-es256}"
 EC_IDENTITY="x9-test-payer-ec.p12"
+RSA_IDENTITY="x9-demo-rsa-3.0.0.p12"
 case "$SIGNING" in ps512 | es256) ;; *) echo "SIGNING=$SIGNING: use ps512 or es256" >&2; exit 2 ;; esac
 
 # name  keystore                alg
@@ -62,23 +65,25 @@ for entry in "${PAYERS[@]}"; do
   echo "$name $alg" >>"$work/payers.list"
 done
 
-# The demo certificate stays in the Go truststore whichever identity signs, so that both settings
-# trust exactly the same set; only the pinned payee certificate changes.
-keytool -exportcert -alias x9-truststore -keystore "$DEMO_TRUSTSTORE" -storepass x9demo123 \
+# The RSA demo certificate of 3.0.0 stays in the Go truststore whichever identity signs, so that
+# both settings, and both builds (the black-box JKS holds it too), trust exactly the same set as the
+# campaigns before 3.0.1; only the pinned payee certificate changes.
+keytool -exportcert -alias x9-private-keystore -keystore "$TEST_PKI/$RSA_IDENTITY" -storepass "$PASS" \
   -file "$work/demo.der" >/dev/null 2>&1
 rm -rf "$OUT/signing"
+mkdir -p "$OUT/signing"
 if [ "$SIGNING" = es256 ]; then
-  mkdir -p "$OUT/signing"
-  cp "$TEST_PKI/$EC_IDENTITY" "$OUT/signing/x9-bench-signing.p12"
-  openssl pkcs12 -in "$TEST_PKI/$EC_IDENTITY" -passin "pass:$PASS" -nokeys -clcerts 2>/dev/null |
-    openssl x509 -outform DER >"$work/payee.der"
+  signing_store="$EC_IDENTITY"
   payee_alg=ES256
   identity="testdata/pki/$EC_IDENTITY: the test CA's EC P-256 leaf, mounted as PKCS#12"
 else
-  cp "$work/demo.der" "$work/payee.der"
+  signing_store="$RSA_IDENTITY"
   payee_alg=PS512
-  identity="the shipped demo key (RSA), bundled in both images"
+  identity="testdata/pki/$RSA_IDENTITY: the RSA demo key bundled until 3.0.0, mounted as PKCS#12"
 fi
+cp "$TEST_PKI/$signing_store" "$OUT/signing/x9-bench-signing.p12"
+openssl pkcs12 -in "$TEST_PKI/$signing_store" -passin "pass:$PASS" -nokeys -clcerts 2>/dev/null |
+  openssl x509 -outform DER >"$work/payee.der"
 openssl base64 -A <"$work/payee.der" >"$work/payee.b64"
 openssl x509 -inform DER -in "$work/payee.der" -noout -subject -nameopt RFC2253 >"$work/payee.subject"
 

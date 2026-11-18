@@ -8,13 +8,17 @@ package decoder
 import (
 	"context"
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"maps"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -208,9 +212,9 @@ func (f *fixture) signWithoutCorrelationID(ctx context.Context, w http.ResponseW
 	input := base64.RawURLEncoding.EncodeToString(h) + "." + base64.RawURLEncoding.EncodeToString([]byte(payload))
 	alg, _ := header["alg"].(string)
 	hashes := map[string]crypto.Hash{"256": crypto.SHA256, "384": crypto.SHA384, "512": crypto.SHA512}
-	hash, ok := hashes[strings.TrimLeft(alg, "RPS")]
-	if !ok || !strings.HasPrefix(alg, "RS") && !strings.HasPrefix(alg, "PS") {
-		f.t.Errorf("the demo key signs with %q; this helper re-signs RS and PS only", alg)
+	hash, ok := hashes[strings.TrimLeft(alg, "RPSE")]
+	if !ok || !strings.HasPrefix(alg, "RS") && !strings.HasPrefix(alg, "PS") && !strings.HasPrefix(alg, "ES") {
+		f.t.Errorf("the demo key signs with %q; this helper re-signs RS, PS and ES only", alg)
 		return
 	}
 	digest := hash.New()
@@ -219,13 +223,34 @@ func (f *fixture) signWithoutCorrelationID(ctx context.Context, w http.ResponseW
 	if strings.HasPrefix(alg, "PS") {
 		opts = &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash, Hash: hash}
 	}
-	sig, err := f.store.Current().Identity.Sign(rand.Reader, digest.Sum(nil), opts)
+	id := f.store.Current().Identity
+	sig, err := id.Sign(rand.Reader, digest.Sum(nil), opts)
+	if err == nil && strings.HasPrefix(alg, "ES") {
+		sig, err = joseECDSA(sig, id.Public())
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/jose;charset=UTF-8")
 	_, _ = io.WriteString(w, input+"."+base64.RawURLEncoding.EncodeToString(sig))
+}
+
+// joseECDSA turns an ASN.1 ECDSA signature into JOSE's R || S, each padded to the curve's size.
+func joseECDSA(der []byte, pub crypto.PublicKey) ([]byte, error) {
+	key, ok := pub.(*ecdsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("an ES signature from a %T key", pub)
+	}
+	var rs struct{ R, S *big.Int }
+	if _, err := asn1.Unmarshal(der, &rs); err != nil {
+		return nil, err
+	}
+	size := (key.Curve.Params().BitSize + 7) / 8
+	out := make([]byte, 2*size)
+	rs.R.FillBytes(out[:size])
+	rs.S.FillBytes(out[size:])
+	return out, nil
 }
 
 type reply struct {

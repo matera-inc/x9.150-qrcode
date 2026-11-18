@@ -50,8 +50,8 @@ make down                                      # stop; the database volume is re
 - App: <http://localhost:8080> (health: `/actuator/health`), published on `127.0.0.1` only.
 - The database is not published to the host; look at it with
   `docker compose exec postgres psql -U x9_qrcode_readonly postgres`.
-- It signs with the bundled demo identity (NON-PRODUCTION) and trusts every connection on the
-  Compose network: local use only.
+- It signs with the bundled demo identity (EC P-256, `ES256`; NON-PRODUCTION) and trusts every
+  connection on the Compose network: local use only.
 
 `make compose-smoke` brings the same file up on its own project and a free port, checks health and
 one create, and takes it down — what CI's `compose` job runs.
@@ -179,8 +179,8 @@ the variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`.
   given; `verify-full` also needs `DATABASE_SSLROOTCERT`.
 - **Keys and certificates** are PEM or PKCS#12 files (`X9_CERTIFICATE_PRIVATEKEYSTORE_*`,
   `X9_CERTIFICATE_TRUSTSTORE_*`); a JKS file is refused, naming the `keytool -importkeystore` command
-  that converts it. Empty, the bundled demo identity is used (NON-PRODUCTION: its private key is
-  public).
+  that converts it. Empty, the bundled demo identity is used: EC P-256, signing `ES256` unless
+  told otherwise (NON-PRODUCTION: its private key is public).
 - **The Java build's configuration is refused, not half-read.** A Spring-style file (`spring:`,
   `management:` or `x9:` at the top, Jasypt `ENC(…)`, `classpath:`, `${…}` placeholders, a
   `.properties` file) or any `SPRING_*`, `MONGO*` or `JASYPT_*` variable stops the service and
@@ -279,7 +279,8 @@ the variable beside it. Pass the file with `-config <path>` or `X9_CONFIG_FILE`.
   (no `paymentNotification`, `kind: EXTERNAL`, a rail or currency it does not offer, `blockchain`
   on a bank rail, ACH without `payer.info` or `expectedDate`); the rest is decided by the
   transition map, in one transaction with the stored notification and its events.
-- **Signing** (`internal/jws`): `X9_CERTIFICATE_JWKALGORITHM` (default `PS512`; RS\*, PS\*, or
+- **Signing** (`internal/jws`): `X9_CERTIFICATE_JWKALGORITHM` (default `ES256` with the
+  bundled demo identity, `PS512` with your own keystore, ADR-0040; RS\*, PS\*, or
   ES256/ES384/ES512 each on its own curve), `X9_CERTIFICATE_ENDPOINTTYPE` (`JWK_SET` → `jku`, the
   default; `PEM` → `x5u`; `NONE` → `x5c`) and `X9_PUBLICENDPOINTS_JWSTTLSECONDS` (300, written as
   `ttl: 300000` ms). An algorithm the signing key cannot produce stops the service at start. Its

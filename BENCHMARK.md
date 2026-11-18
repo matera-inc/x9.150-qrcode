@@ -67,7 +67,7 @@ the whole black-box suite passes there.
 | Resources | app 2 vCPU / 2 GiB, database 2 vCPU / 2 GiB, k6 2 vCPU; requests equal limits |
 | One system under test at a time | each scenario deploys, measures and tears down before the next |
 | Empty database | a fresh volume (same size, same storage class) for every scenario |
-| Same crypto | the shipped demo signing key (PS512, `JWK_SET`), the same test-CA trust; payers alternate ES256 and PS512 |
+| Same crypto | the demo signing key both images then shipped (RSA-3072, PS512, `JWK_SET`), the same test-CA trust; payers alternate ES256 and PS512 |
 | Revocation | checked for real against the test CA's CRL, served next to the app |
 | Warm-up | the JVM gets 2 minutes of the same script before each measured Java run, excluded from measurement; its data is deleted before the run. Go gets none |
 | Go memory | `GOMEMLIMIT` at 80% of the limit |
@@ -200,8 +200,12 @@ The first campaign (`2026-11-15T2347Z`, commit `66d113c`) is kept in
 - **Near saturation, both builds are bimodal.** Small changes in scheduling move latency by tens of
   percent. Compare builds only within one campaign, and a change only with an A/B on the same
   machine.
-- **Demo crypto.** The shipped PS512 demo key signs every answer. A bank's own key and algorithm
-  change the absolute numbers for both builds.
+- **Demo crypto.** The PS512 demo key then shipped signs every answer. A bank's own key and
+  algorithm change the absolute numbers for both builds. ES256 on a P-256 key, the same strength,
+  gives this service about 70% more payments per second on the same hardware, which is why the
+  demo identity signs ES256 from 3.0.1
+  ([ADR-0040](docs/adr/0040-the-bundled-demo-identity-signs-es256.md)); the harness's default
+  campaign follows (`SIGNING=es256`; `SIGNING=ps512` reproduces this one).
 - **Scenarios not run:** S3 (an events consumer under load), S4 (contention), S5 (soak), S6
   (saturation). They are run if a question needs them.
 

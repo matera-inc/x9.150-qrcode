@@ -4,7 +4,7 @@
 # cluster's runtime (see README, "Images") and is never pulled from a registry.
 #
 # Configuration is the black-box suite's (others/blackbox/deployment/docker-compose.yml) minus the
-# test clock, which is OFF: the shipped demo signing key (PS512, JWK_SET), and a truststore holding
+# test clock, which is OFF: the signing identity of the campaign (SIGNING, k8s/components), JWK_SET, and a truststore holding
 # the test CA, so the k6 payers are trusted. Their certificates name a CRL distribution point on
 # 127.0.0.1:18081; the `crl` sidecar serves the test CA's CRL there, inside this pod, so revocation
 # is checked for real and no request leaves the pod. It has its own small limits, outside the

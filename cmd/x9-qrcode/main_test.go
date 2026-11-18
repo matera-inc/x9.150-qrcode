@@ -221,12 +221,44 @@ func TestRunRefusesAJKSTruststore(t *testing.T) {
 func TestRunRefusesAnAlgorithmTheKeyCannotProduce(t *testing.T) {
 	env := []string{
 		"DATABASE_HOST=127.0.0.1", "DATABASE_PORT=1", "DATABASE_NAME=bank", "DATABASE_USER=app", "DATABASE_PASSWORD=pw",
-		"DATABASE_SSLMODE=disable", "X9_CERTIFICATE_JWKALGORITHM=ES256",
+		"DATABASE_SSLMODE=disable", "X9_CERTIFICATE_JWKALGORITHM=PS512",
 	}
 	err := run(t.Context(), nil, env, io.Discard)
 	if err == nil || !errors.Is(err, jws.ErrKey) || !strings.Contains(err.Error(), "X9_CERTIFICATE_JWKALGORITHM") ||
-		!strings.Contains(err.Error(), "ES256 needs an EC key, the key is RSA") {
-		t.Fatalf("err = %v, want a refusal naming X9_CERTIFICATE_JWKALGORITHM and the RSA demo key", err)
+		!strings.Contains(err.Error(), "PS512 needs an RSA key, the key is EC (P-256); use ES256") {
+		t.Fatalf("err = %v, want a refusal naming X9_CERTIFICATE_JWKALGORITHM and the EC demo key", err)
+	}
+}
+
+// ADR-0040: with no algorithm set, the bundled demo identity (EC P-256) starts signing ES256, and
+// an operator's own RSA keystore starts signing PS512, as before 3.0.1; PS256, PS384 and PS512 set
+// on that keystore start as configured, and ES256 on it is refused at start.
+func TestTheDefaultAlgorithmFollowsTheIdentity(t *testing.T) {
+	const ownRSA = "../../testdata/pki/x9-test-payer.p12"
+	own := []string{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION=" + ownRSA, "X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD=x9test123"}
+	for _, tc := range []struct {
+		name string
+		env  []string
+		want string
+	}{
+		{"bundled demo, unset", nil, "ES256"},
+		{"own RSA keystore, unset", own, "PS512"},
+		{"own RSA keystore, PS256", append(slices.Clone(own), "X9_CERTIFICATE_JWKALGORITHM=PS256"), "PS256"},
+		{"own RSA keystore, PS384", append(slices.Clone(own), "X9_CERTIFICATE_JWKALGORITHM=PS384"), "PS384"},
+		{"own RSA keystore, PS512", append(slices.Clone(own), "X9_CERTIFICATE_JWKALGORITHM=PS512"), "PS512"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			apiPort, clockPort := freePort(t.Context(), t), freePort(t.Context(), t)
+			out, stop := startRun(t, clockEnv(apiPort, clockPort, tc.env...))
+			stop()
+			if !strings.Contains(out.String(), `"jwkAlgorithm":"`+tc.want+`"`) {
+				t.Errorf("the service did not start signing %s:\n%s", tc.want, out.String())
+			}
+		})
+	}
+	err := run(t.Context(), nil, clockEnv(freePort(t.Context(), t), freePort(t.Context(), t), append(slices.Clone(own), "X9_CERTIFICATE_JWKALGORITHM=ES256")...), io.Discard)
+	if err == nil || !errors.Is(err, jws.ErrKey) || !strings.Contains(err.Error(), "ES256 needs an EC key, the key is RSA") {
+		t.Fatalf("err = %v, want ES256 on an RSA keystore refused at start", err)
 	}
 }
 
@@ -237,7 +269,7 @@ func TestRunRefusesAnAlgorithmTheKeyCannotProduce(t *testing.T) {
 func TestRunWarnsOfThePlaceholderHost(t *testing.T) {
 	base := []string{
 		"DATABASE_HOST=127.0.0.1", "DATABASE_PORT=1", "DATABASE_NAME=bank", "DATABASE_USER=app", "DATABASE_PASSWORD=pw",
-		"DATABASE_SSLMODE=disable", "X9_CERTIFICATE_JWKALGORITHM=ES256",
+		"DATABASE_SSLMODE=disable", "X9_CERTIFICATE_JWKALGORITHM=PS512",
 	}
 	for _, tc := range []struct {
 		name string

@@ -58,9 +58,48 @@ func TestCertificateDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Certificate{EndpointType: "JWK_SET", JWKAlgorithm: "PS512", IssuerName: "X9"}
+	want := Certificate{EndpointType: "JWK_SET", JWKAlgorithm: "ES256", IssuerName: "X9"}
 	if cfg.Certificate != want || cfg.Keystore.Reload.Frequency != 30000 {
 		t.Fatalf("certificate = %+v, reload = %d", cfg.Certificate, cfg.Keystore.Reload.Frequency)
+	}
+}
+
+// ADR-0040: with the algorithm unset, the bundled demo identity (EC P-256) signs ES256 and an
+// operator's own keystore signs PS512, as before 3.0.1, whatever else is set; a configured
+// algorithm is kept as given, with either. An empty value is unset.
+func TestTheDefaultAlgorithmFollowsTheIdentity(t *testing.T) {
+	own := writeFile(t, "own.p12", "p12")
+	for _, tc := range []struct {
+		name string
+		env  []string
+		want string
+	}{
+		{"bundled demo, unset", nil, "ES256"},
+		{"bundled demo, empty", []string{"X9_CERTIFICATE_JWKALGORITHM="}, "ES256"},
+		{"bundled demo, own truststore", []string{"X9_CERTIFICATE_TRUSTSTORE_LOCATION=" + own}, "ES256"},
+		{"bundled demo, PS512 set", []string{"X9_CERTIFICATE_JWKALGORITHM=PS512"}, "PS512"},
+		{"own keystore, unset", []string{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION=" + own}, "PS512"},
+		{"own keystore, file: prefix, unset", []string{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION=file:" + own}, "PS512"},
+		{"own keystore, empty", []string{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION=" + own, "X9_CERTIFICATE_JWKALGORITHM="}, "PS512"},
+		{"own keystore, PS256", []string{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION=" + own, "X9_CERTIFICATE_JWKALGORITHM=PS256"}, "PS256"},
+		{"own keystore, PS384", []string{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION=" + own, "X9_CERTIFICATE_JWKALGORITHM=PS384"}, "PS384"},
+		{"own keystore, PS512", []string{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION=" + own, "X9_CERTIFICATE_JWKALGORITHM=PS512"}, "PS512"},
+		{"own keystore, ES384", []string{"X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION=" + own, "X9_CERTIFICATE_JWKALGORITHM=ES384"}, "ES384"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := Load("", append(complete(), tc.env...))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Certificate.JWKAlgorithm != tc.want {
+				t.Errorf("jwk-algorithm = %q, want %q", cfg.Certificate.JWKAlgorithm, tc.want)
+			}
+		})
+	}
+	// The same from the file: a jwk-algorithm left out of it is unset.
+	file := writeFile(t, "x9.yaml", "certificate:\n  private-keystore:\n    location: "+own+"\n")
+	if cfg, err := Load(file, complete()); err != nil || cfg.Certificate.JWKAlgorithm != "PS512" {
+		t.Errorf("own keystore from the file: jwk-algorithm = %q, err = %v, want PS512", cfg.Certificate.JWKAlgorithm, err)
 	}
 }
 

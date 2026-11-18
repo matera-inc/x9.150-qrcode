@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	gopkcs12 "software.sslmate.com/src/go-pkcs12"
 
 	"github.com/matera-inc/x9.150-qrcode/internal/clock"
 	"github.com/matera-inc/x9.150-qrcode/internal/config"
@@ -47,7 +48,8 @@ const (
 	cid  = "123e4567-e89b-12d3-a456-426614174000"
 )
 
-// The bundled demo certificate as the Java build publishes it (taken from a running Java build).
+// The Java build's demo certificate (RSA, bundled until 3.0.0, now the fixture javaDemo loads) as
+// the Java build published it (taken from a running Java build).
 const (
 	demoX5TS256 = "Z-nq5ZWB6ZyB03RP4IYEL3Nj4TwtFeBREwEdLXbl7Rs"
 	demoX5T     = "RbhYv60txyKnHg2UTFTYW8loq9M"
@@ -105,9 +107,40 @@ func serve(t *testing.T, store *keys.Store, alg string, publication jws.Publicat
 	return &fixture{url: srv.URL, clock: clk, store: store}
 }
 
+// demo is the bundled demo identity: EC P-256, signing ES256 (ADR-0040).
 func demo(t *testing.T) *keys.Store {
 	t.Helper()
 	store, err := keys.Load(config.Certificate{}, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return store
+}
+
+// javaDemoKeystore is the RSA-3072 demo identity the Java build shipped and the image bundled until
+// 3.0.0, kept as a test fixture so that what the Java build published for it (its JWK, x5t, PEM)
+// stays pinned byte for byte.
+const javaDemoKeystore = "../../testdata/pki/x9-demo-rsa-3.0.0.p12"
+
+// javaDemo signs with javaDemoKeystore and trusts its certificate alone, as the 3.0.0 image did.
+func javaDemo(t *testing.T) *keys.Store {
+	t.Helper()
+	data, err := os.ReadFile(javaDemoKeystore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, cert, _, err := gopkcs12.DecodeChain(data, "x9test123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	trust := filepath.Join(t.TempDir(), "trust.pem")
+	if err := os.WriteFile(trust, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := keys.Load(config.Certificate{
+		PrivateKeystore: config.PrivateKeystore{Location: javaDemoKeystore, Password: "x9test123"},
+		Truststore:      config.Truststore{Location: trust},
+	}, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +236,7 @@ func segment(t *testing.T, token string, i int) []byte {
 
 // S10.2-AC2: the JWK set is the signing key with its x5c chain, in Java's shape, member for member.
 func TestJWKSetIsJavas(t *testing.T) {
-	f := serve(t, demo(t), "PS512", jws.PublishJWKSet)
+	f := serve(t, javaDemo(t), "PS512", jws.PublishJWKSet)
 	a := f.do(t, http.MethodGet, jws.JWKSetPath, nil, "")
 	if a.status != http.StatusOK || a.header.Get("Content-Type") != "application/json" {
 		t.Fatalf("status %d, Content-Type %q: %s", a.status, a.header.Get("Content-Type"), a.body)
@@ -265,13 +298,33 @@ func TestJWKSetOfAnECKey(t *testing.T) {
 	}
 }
 
+// ADR-0040: the bundled demo identity is published as an EC P-256 key for ES256.
+func TestJWKSetOfTheBundledDemoIsES256(t *testing.T) {
+	f := serve(t, demo(t), config.DefaultJWKAlgorithm, jws.PublishJWKSet)
+	a := f.do(t, http.MethodGet, jws.JWKSetPath, nil, "")
+	var set struct {
+		Keys []map[string]any `json:"keys"`
+	}
+	if err := json.Unmarshal([]byte(a.body), &set); err != nil || a.status != http.StatusOK || len(set.Keys) != 1 {
+		t.Fatalf("status %d, not a one-key JWK set: %v: %s", a.status, err, a.body)
+	}
+	k := set.Keys[0]
+	if k["kty"] != "EC" || k["crv"] != "P-256" || k["alg"] != "ES256" || k["n"] != nil {
+		t.Fatalf("the demo key is published as %v, want EC P-256 for ES256", k)
+	}
+	sum := sha256.Sum256(f.store.Current().Identity.Certificate().Raw)
+	if hex.EncodeToString(sum[:]) != keys.DemoFingerprint {
+		t.Fatalf("the demo certificate is not the bundled one")
+	}
+}
+
 // X9-SIG-537 (ADR-0028, a known difference between the builds): a certificate name other than
 // x9-key.pem is a 404 (TOLERATED-DIFFERENCES.md, entry 11).
 //
 // S10.2-AC3: the certificate is served in PEM under the name x5u gives it, byte for byte as the
 // Java build serves it; any other name is a 404.
 func TestCertificateIsServedUnderItsName(t *testing.T) {
-	f := serve(t, demo(t), "PS512", jws.PublishPEM)
+	f := serve(t, javaDemo(t), "PS512", jws.PublishPEM)
 	a := f.do(t, http.MethodGet, jws.CertificatePath, nil, "")
 	if a.status != http.StatusOK || a.header.Get("Content-Type") != ContentTypePEM ||
 		a.header.Get("Content-Disposition") != `attachment; filename="x9-key.pem"` {
@@ -339,7 +392,7 @@ func TestPublishedKeyFollowsAReload(t *testing.T) {
 func TestGenerateThenValidate(t *testing.T) {
 	for _, publication := range []jws.Publication{jws.PublishJWKSet, jws.PublishPEM, jws.PublishChain} {
 		t.Run(string(publication), func(t *testing.T) {
-			f := serve(t, demo(t), "PS512", publication)
+			f := serve(t, javaDemo(t), "PS512", publication)
 			a := f.generate(t, cid, "120", ` {"b":[1,null,{"z":null}],"a":{"x":null,"y":1,"y":2},"c":"é","d":1.0}  ignored`)
 			if a.status != http.StatusOK || a.header.Get("Content-Type") != ContentTypeJOSE {
 				t.Fatalf("status %d, Content-Type %q: %s", a.status, a.header.Get("Content-Type"), a.body)
@@ -374,7 +427,7 @@ func TestGenerateThenValidate(t *testing.T) {
 // other; what is pinned here is that Go does not rewrite it.
 func TestGenerateSignsANumberAsSent(t *testing.T) {
 	const payload = `{"a":1e2,"b":-2.50E+3,"c":1.0,"d":100,"e":0.1e-2}`
-	f := serve(t, demo(t), "PS512", jws.PublishChain)
+	f := serve(t, javaDemo(t), "PS512", jws.PublishChain)
 
 	a := f.generate(t, cid, "120", payload)
 
@@ -395,7 +448,7 @@ func TestGenerateSignsANumberAsSent(t *testing.T) {
 // S10.2-AC4: the headers are read, and refused, as Spring reads them; the checks run in Spring's
 // order (media type, Correlation-Id, TTL-Seconds, body, then the ttl's value).
 func TestGenerateRefusalsAreJavas(t *testing.T) {
-	f := serve(t, demo(t), "PS512", jws.PublishChain)
+	f := serve(t, javaDemo(t), "PS512", jws.PublishChain)
 	const path = GeneratePath
 	headers := func(v string) map[string]any {
 		return problem("validation-error", "Validation Failed", "One or more headers failed validation.", path, v)
@@ -456,7 +509,7 @@ func TestGenerateRefusalsAreJavas(t *testing.T) {
 // S10.2-AC4: Correlation-Id and TTL-Seconds take what Spring converts: UUID.fromString's short
 // fields, either case, and Integer.decode's hexadecimal.
 func TestGenerateHeadersAsSpringReadsThem(t *testing.T) {
-	f := serve(t, demo(t), "PS512", jws.PublishChain)
+	f := serve(t, javaDemo(t), "PS512", jws.PublishChain)
 	for _, tc := range []struct {
 		cid, ttl, wantCID string
 		wantTTL           float64
@@ -489,7 +542,7 @@ func TestGenerateHeadersAsSpringReadsThem(t *testing.T) {
 // S10.2-AC5: a JWS that does not verify, and a body without one, are refused with the Java build's
 // body: a 400 business-rule-violation (the Java build never answers this endpoint 422).
 func TestValidateRefusalsAreJavas(t *testing.T) {
-	f := serve(t, demo(t), "PS512", jws.PublishChain)
+	f := serve(t, javaDemo(t), "PS512", jws.PublishChain)
 	const path = ValidatePath
 	signature := problem("business-rule-violation", "Business Rule Violation", "A business rule was violated.", path,
 		"Signature validation failed for content !!!")

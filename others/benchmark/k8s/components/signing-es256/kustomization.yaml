@@ -1,6 +1,8 @@
-# SIGNING=es256 (collect.sh): both builds sign their answers with an EC P-256 key (ES256) instead of
-# the shipped demo key (RSA, PS512). Everything else is the build's own manifest, unchanged; lib.sh's
-# render() adds this component to java-mongo or go-postgres (and to their small overlays).
+# SIGNING=es256 (collect.sh, the default since 3.0.1): both builds sign their answers with an EC
+# P-256 key (ES256), the product's out-of-the-box algorithm (ADR-0040). SIGNING=ps512 mounts an RSA
+# key instead (k8s/components/signing-ps512). Everything else is the build's own manifest,
+# unchanged; lib.sh's render() adds this component to java-mongo or go-postgres (and to their small
+# overlays).
 #
 # The key is the test CA's EC leaf, testdata/pki/x9-test-payer-ec.p12 (NON-PRODUCTION: its key is
 # public), which prepare.sh copies to build/signing/x9-bench-signing.p12 and collect.sh puts in the

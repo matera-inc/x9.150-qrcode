@@ -27,8 +27,8 @@
 #               once its own /actuator/health answers 200 (`x9-qrcode -healthcheck`: the distroless
 #               image has no shell or curl).
 #
-# The X9 signing identity is the image's bundled demo identity (NON-PRODUCTION): no keystore is
-# configured, so `docker compose up` needs no secret. Nothing here is a production setting.
+# The X9 signing identity is the image's bundled demo identity (EC P-256, ES256; NON-PRODUCTION):
+# no keystore is configured, so `docker compose up` needs no secret. Nothing here is a production setting.
 #
 # LOCAL USE ONLY. The database trusts every connection on the Compose network and has no password;
 # DATABASE_PASSWORD below is a placeholder the Go build requires to be set, not a credential. The

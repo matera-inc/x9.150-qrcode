@@ -173,8 +173,10 @@ type Certificate struct {
 	// in x5c).
 	EndpointType string `yaml:"endpoint-type"`
 	// JWKAlgorithm is the JWS alg this service signs with, Java's x9.certificate.jwk-algorithm:
-	// PS512 by default; RS256, RS384, RS512, PS256, PS384 or PS512 for an RSA key, ES256 (P-256),
-	// ES384 (P-384) or ES512 (P-521) for an EC key.
+	// RS256, RS384, RS512, PS256, PS384 or PS512 for an RSA key, ES256 (P-256), ES384 (P-384) or
+	// ES512 (P-521) for an EC key. Unset or empty, it is DefaultJWKAlgorithm (ES256) with the bundled
+	// demo identity and DefaultOwnKeystoreJWKAlgorithm (PS512) with the operator's own keystore
+	// (ADR-0040).
 	JWKAlgorithm string `yaml:"jwk-algorithm"`
 	// IssuerName must appear, ignoring case, in the issuer of the trust anchor that a counterpart's
 	// certificate chains to (ADR-0027 step 4): Java's x9.certificate.issuer-name, "X9" by default.
@@ -340,7 +342,7 @@ func defaults() Config {
 		Log:             Log{Level: "info"},
 		Reservation:     Reservation{TTLSeconds: 90},
 		Testing:         Testing{ClockListen: "127.0.0.1:8099"},
-		Certificate:     Certificate{EndpointType: "JWK_SET", JWKAlgorithm: "PS512", IssuerName: "X9"},
+		Certificate:     Certificate{EndpointType: "JWK_SET", IssuerName: "X9"}, // JWKAlgorithm: defaultJWKAlgorithm
 		Keystore:        Keystore{Reload: KeystoreReload{Frequency: 30000}},
 		Events:          Events{Retention: Duration(30 * 24 * time.Hour)},
 		QRCode:          QRCode{Retention: Duration(400 * 24 * time.Hour)},
@@ -497,6 +499,7 @@ func Load(path string, env []string) (Config, error) {
 	cfg.Certificate.Truststore.Location = trimFileScheme(cfg.Certificate.Truststore.Location)
 	cfg.Currency.SupportedCurrenciesLocation = trimFileScheme(cfg.Currency.SupportedCurrenciesLocation)
 	cfg.Currency.PeggedCurrenciesLocation = trimFileScheme(cfg.Currency.PeggedCurrenciesLocation)
+	cfg.Certificate.JWKAlgorithm = defaultJWKAlgorithm(cfg.Certificate)
 	errs = append(errs, cfg.validate()...)
 	if len(errs) > 0 {
 		return Config{}, fmt.Errorf("invalid configuration:\n%w", errors.Join(errs...))
@@ -816,6 +819,29 @@ var keystoreTypes = map[string]bool{"": true, "JKS": true, "PKCS12": true, "PEM"
 
 // endpointTypes are the values of Java's CertificateEndpointTypeEnum.
 var endpointTypes = map[string]bool{"JWK_SET": true, "PEM": true, "NONE": true}
+
+const (
+	// DefaultJWKAlgorithm is the alg when none is configured and the bundled demo identity signs:
+	// its key is EC P-256 (ADR-0040).
+	DefaultJWKAlgorithm = "ES256"
+	// DefaultOwnKeystoreJWKAlgorithm is the alg when none is configured and the operator's own
+	// keystore signs: the Java build's default, so a deployment that mounts its RSA key and never set
+	// the algorithm signs exactly as it did before 3.0.1.
+	DefaultOwnKeystoreJWKAlgorithm = "PS512"
+)
+
+// defaultJWKAlgorithm is c's algorithm or, when it is unset, the default for the key that signs:
+// ES256 for the bundled demo identity (no keystore location), PS512 for the operator's own.
+func defaultJWKAlgorithm(c Certificate) string {
+	switch {
+	case c.JWKAlgorithm != "":
+		return c.JWKAlgorithm
+	case c.PrivateKeystore.Location == "":
+		return DefaultJWKAlgorithm
+	default:
+		return DefaultOwnKeystoreJWKAlgorithm
+	}
+}
 
 // jwkAlgorithms are the algorithms the Go build signs with (ADR-0027): RS*, PS* and ES*.
 var jwkAlgorithms = map[string]bool{

@@ -62,6 +62,7 @@ the history of why we changed our minds — the part that is usually lost.
 | [0037](0037-the-event-table-is-the-outbox-read-by-cdc-or-plain-sql.md) | **The event table is the outbox, read by CDC or by plain SQL** — X9.150 only inserts; Debezium, a read-status column for SQL readers, or the HTTP API; the columns become a public contract | Accepted |
 | [0038](0038-no-data-migration-from-the-java-build-a-written-mapping-instead.md) | **No data migration from the Java build; a written mapping replaces the converter** — the Java build has no production users; `x9-migrate`, `x9-config-convert` and the migrate image are not built; [CONFIGURATION-FROM-JAVA.md](../CONFIGURATION-FROM-JAVA.md) maps every setting | Accepted — supersedes the migration parts of 0030 and 0031, which are marked amended by it |
 | [0039](0039-java-retired-at-3-0-0.md) | **The Java build is retired at 3.0.0** — removed from `main`, kept in git history (tag `java-final`) and as the `java-final` image; CI, Compose, the chart and the image are Go-only | Accepted — supersedes the `legacy/java/` freeze of 0022; amends 0028, 0030, 0031 |
+| [0040](0040-the-bundled-demo-identity-signs-es256.md) | **The bundled demo identity is EC P-256 and signs ES256 (3.0.1)** — about 70% more payments per second than PS512 on RSA-3072, same strength; with the algorithm unset, ES256 for the demo identity and PS512, as before, for an operator's own keystore | Accepted — amends the PS512 default of 0027 for the demo identity, and 0031's out-of-the-box run |
 
 ## Writing a new one
 

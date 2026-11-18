@@ -28,6 +28,7 @@ using only `keytool` (plus `bc` for one hex→decimal conversion) if you ever ne
 | `x9-test-untrusted-ca.p12` | A CA in **no** truststore |
 | `x9-test-untrusted-payer.p12` | Leaf from that unknown issuer |
 | `x9-test-truststore.jks` | Holds **only** the Test Root CA |
+| `x9-demo-rsa-3.0.0.p12` | **Not** from the test CA: the self-signed RSA-3072 demo identity the image bundled until 3.0.0 (`CN=x9.matera.com, OU=Demo NonProduction`, the Java build's `x9-demo.jks`), re-saved under this directory's password. 3.0.1 bundles an EC P-256 one instead ([ADR-0040](../../docs/adr/0040-the-bundled-demo-identity-signs-es256.md)); this copy is kept for the tests that pin what the Java build published for it, the Java black-box truststore, and the benchmark's `SIGNING=ps512`. Not made by `generate-test-ca.sh` |
 | `test-ca.crl` | Revokes nothing |
 | `test-ca-revoked.crl` | Revokes `x9-test-payer-revoked` |
 
@@ -40,7 +41,7 @@ so a single-entry store can double as a *deployment's own identity* — which is
 
 ## Why this exists
 
-The shipped demo keystore (`src/main/resources/certificate/x9-demo.jks`) is **self-signed**, and
+The shipped demo keystore (now `internal/keys/bundled/x9-demo.p12`) is **self-signed**, and
 `JwsQRCodeSignatureService` deliberately skips revocation checking for self-signed end entities —
 there is no authority to consult, so the check could only ever fail. That is the right production
 behaviour, but it means the demo certificate can never exercise the CA-issued branch: chain

@@ -62,8 +62,10 @@ const (
 	TypeJOSE = "JOSE"
 	// KeyID is the kid of this service's key, the Java build's X9_KEY_ID.
 	KeyID = "x9-key"
-	// DefaultAlgorithm is the alg when none is configured (x9.certificate.jwk-algorithm).
-	DefaultAlgorithm = "PS512"
+	// DefaultAlgorithm is the alg of a Config that names none: ES256, the bundled demo identity's
+	// (ADR-0040). The service's own configuration always names one: internal/config chooses ES256
+	// for the bundled demo identity and PS512 for the operator's own keystore when none is set.
+	DefaultAlgorithm = "ES256"
 	// DefaultTTL is the ttl when none is configured (x9.public-endpoints.jws-ttl-seconds).
 	DefaultTTL = 300 * time.Second
 

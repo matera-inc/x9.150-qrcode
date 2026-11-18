@@ -218,8 +218,9 @@ payers, A (RSA, `PS512`) and B (EC, `ES256`), are issued at run time by the repo
 one from a CA nobody trusts. So the deployment must:
 
 - **trust the test CA.** Start it with `others/blackbox/deployment/x9-blackbox-truststore.p12`,
-  which holds the test CA and the shipped demo certificate (so the deployment, still signing with
-  the demo key, can verify itself when its decoder fetches its own payloads):
+  which holds the test CA and the image's bundled demo certificate, EC P-256 since 3.0.1 (so the
+  deployment, still signing with the demo key, can verify itself when its decoder fetches its own
+  payloads):
 
   ```bash
   X9_CERTIFICATE_TRUSTSTORE_LOCATION=$PWD/others/blackbox/deployment/x9-blackbox-truststore.p12
@@ -227,9 +228,10 @@ one from a CA nobody trusts. So the deployment must:
   X9_CERTIFICATE_TRUSTSTORE_TYPE=PKCS12
   ```
 
-  `build-truststore.sh` writes it, and the same two certificates as JKS
-  (`x9-blackbox-truststore.jks`), which only the golden export uses, against the `java-final`
-  image: the service refuses JKS.
+  `build-truststore.sh` writes it, and a JKS (`x9-blackbox-truststore.jks`), which only runs
+  against the `java-final` image use (the golden export, the benchmark's Java turns): the test CA
+  and the RSA demo certificate *that* image bundles (`testdata/pki/x9-demo-rsa-3.0.0.p12`). The
+  service refuses JKS.
 
 - **reach the suite's CRL.** The service checks revocation of every CA-issued certificate, and a
   CRL it cannot fetch is not forgiven: the payer is refused as undeterminable. The suite serves the

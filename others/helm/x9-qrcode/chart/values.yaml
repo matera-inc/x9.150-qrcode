@@ -264,8 +264,9 @@ application:
       # used in the QR Code's location and the JWS headers (X9_PUBLICENDPOINTS_HOST). Required.
       host:
     certificate:
-      # Empty: the image's bundled demo identity (NON-PRODUCTION). For your own, mount a PKCS#12 or
-      # PEM file (volumes/volumeMounts) and name it here; JKS is refused (CONFIGURATION-FROM-JAVA.md).
+      # Empty: the image's bundled demo identity (EC P-256, ES256; NON-PRODUCTION). For your own,
+      # mount a PKCS#12 or PEM file (volumes/volumeMounts) and name it here; JKS is refused
+      # (CONFIGURATION-FROM-JAVA.md). An RSA keystore of your own signs PS512 unless told otherwise.
       private-keystore:
         # -- Keystore location in the container (X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION).
         location: ""

@@ -16,10 +16,12 @@
 // interface; JKS and JCEKS, refused with the conversion to run (ADR-0031). Go never decrypts
 // Jasypt: internal/config refuses an ENC(…) value before this package runs.
 //
-// With no location configured, the bundled DEMO identity is used, as the Java build does: Java's
-// own x9-demo.jks and x9-demo-truststore.jks, which are PKCS#12 files, copied as .p12 by
-// others/scripts/convert-demo-keystores.sh. It is NON-PRODUCTION (its private key is public) and a
-// WARN says so at every load.
+// With no location configured, the bundled DEMO identity is used, as the Java build did: an EC
+// P-256 key and its self-signed certificate (CN=x9.matera.com, OU=Demo NonProduction), with a
+// truststore holding that certificate alone, made by others/scripts/generate-demo-identity.sh. The
+// service signs with it as ES256 unless told otherwise (ADR-0040); until 3.0.0 it was the Java
+// build's RSA-3072 key, signing PS512. It is NON-PRODUCTION (its private key is public) and a WARN
+// says so at every load.
 package keys
 
 import (
@@ -45,11 +47,11 @@ import (
 	"github.com/matera-inc/x9.150-qrcode/internal/config"
 )
 
-// DemoFingerprint is the SHA-256 of the bundled demo certificate's DER: the one the Java build ships
-// in x9-demo.jks (CN=x9.matera.com, OU=Demo NonProduction). The test-clock guard depends on it.
-const DemoFingerprint = "67e9eae59581e99c81d3744fe086042f7363e13c2d15e05113011d2d76e5ed1b"
+// DemoFingerprint is the SHA-256 of the bundled demo certificate's DER (CN=x9.matera.com,
+// OU=Demo NonProduction, EC P-256). The test-clock guard lists it too.
+const DemoFingerprint = "71f5abfa2557037258e616ef8b4d87b7f8ec4c97ae777e03b406ed9da8b75e41"
 
-// demoPassword opens the bundled demo files; it is public, in the Java build's application.yml.
+// demoPassword opens the bundled demo files; it is public, as it was in the Java build's application.yml.
 const demoPassword = "x9demo123"
 
 var (

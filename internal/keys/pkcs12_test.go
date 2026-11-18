@@ -56,8 +56,8 @@ func TestJavaPKCS12Keystores(t *testing.T) {
 	}
 }
 
-// S8.2-AC1: Java's demo files (PKCS#12 under .jks names, as a 2.x deployment may still hold them)
-// load as keystore and truststore; the content decides the format, not the name.
+// S8.2-AC1: PKCS#12 files under .jks names (as Java's demo files were, and as a 2.x deployment may
+// still hold its own) load as keystore and truststore; the content decides the format, not the name.
 func TestJavaDemoFilesLoadByContent(t *testing.T) {
 	dir := t.TempDir()
 	for name, data := range map[string][]byte{"x9-demo.jks": bundledKeystore, "x9-demo-truststore.jks": bundledTruststore} {

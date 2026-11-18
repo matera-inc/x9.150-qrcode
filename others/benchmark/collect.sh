@@ -27,10 +27,11 @@
 #   GO_WARMUP          the same for Go: default "none" (the plan warms up the JVM only)
 #   IDLE_SECONDS       S7's idle period before resting memory, default 300
 #   OVERLAY            "" (default, the plan §9.2 limits) or "small" (SMOKE ONLY: see k8s/overlays)
-#   SIGNING            ps512 (default): both builds sign their answers with the shipped demo key
-#                      (RSA, PS512). es256: both sign with the test CA's EC P-256 leaf (ES256),
-#                      mounted from prepare.sh's build/signing/ (k8s/components/signing-es256), and
-#                      k6 pins that certificate and refuses an answer signed with anything else.
+#   SIGNING            es256 (default since 3.0.1, the product's algorithm, ADR-0040): both builds
+#                      sign their answers with the test CA's EC P-256 leaf (ES256). ps512: both sign
+#                      with the RSA demo key bundled until 3.0.0 (PS512). Either is mounted from
+#                      prepare.sh's build/signing/ (k8s/components/signing-<SIGNING>), and k6 pins
+#                      that certificate and refuses an answer signed with anything else.
 #                      Recorded in every run's images.json ("signing").
 #   CAMPAIGN           the campaign id, default the UTC start time (2026-11-15T1200Z)
 #   IMAGE_LOADER       a command that imports a `docker save` tar from stdin into the cluster's
