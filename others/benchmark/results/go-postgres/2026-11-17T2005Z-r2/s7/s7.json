@@ -1,0 +1,22 @@
+{
+ "scenario": "S7",
+ "build": "go-postgres",
+ "image": {
+  "image": "materainc/x9-qrcode:3.0.0",
+  "id": "sha256:001fd633f8ab6ea7f8b75284c1cc824dea9dc8bbc7b2e40a6ed00f1399cdcc56",
+  "revision": "c9b77ca668c2b39add2f427856ef970b8f312fda",
+  "version": "3.0.0",
+  "platform": "linux/amd64",
+  "sizeBytes": 17305088
+ },
+ "sizeBytes": 17305088,
+ "compressedSizeBytes": 6047560,
+ "coldStartToHealthUpMs": 254,
+ "restingMemoryBytes": 4477419,
+ "idleSeconds": 300,
+ "limits": {
+  "cpus": "2",
+  "memory": "2g"
+ },
+ "method": "docker run to the first 200 UP from /actuator/health, polled every 50 ms, database already up; resting memory from docker stats (usage minus inactive file cache) after the idle period, no request in between"
+}
