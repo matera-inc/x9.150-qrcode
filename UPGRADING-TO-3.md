@@ -10,6 +10,15 @@
 > `java-final`, and its last image is `materainc/x9-qrcode:java-final`, the way back. How to run
 > the Go build: [RUNNING.md](RUNNING.md).
 
+> **3.0.1: the demo identity is now EC P-256 and signs `ES256`.** The NON-PRODUCTION identity the
+> image bundles changed from RSA-3072 (`PS512`) to EC P-256 (`ES256`): about 70% more payments
+> per second on the same hardware, at the same strength
+> ([ADR-0040](docs/adr/0040-the-bundled-demo-identity-signs-es256.md)). **Your own keys are
+> unaffected:** with `X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION` set and
+> `X9_CERTIFICATE_JWKALGORITHM` unset, the service still signs `PS512`, and an algorithm you set
+> is used as before. Only something that trusted or pinned the 3.0.0 demo certificate (a test, a
+> demo) must take the new one: SHA-256 `71f5abfa2557037258e616ef8b4d87b7f8ec4c97ae777e03b406ed9da8b75e41`.
+
 Why 3.0.0, and what is kept on purpose:
 [ADR-0031](docs/adr/0031-same-image-lighter-and-3-0-is-a-configuration-migration.md). Why there is
 no data migration:
@@ -25,7 +34,7 @@ no data migration:
 | Health | `/actuator/health`, `/actuator/health/liveness`, `/actuator/health/readiness`, in the Java build's JSON shape |
 | Metrics | `/actuator/prometheus`; the request timer keeps its name and labels ([METRICS.md](docs/METRICS.md)) |
 | Environment variables | Where a setting exists in both builds, its variable keeps its name: `X9_PUBLICENDPOINTS_HOST`, `X9_CERTIFICATE_*`, `X9_RESERVATION_TTL_SECONDS`, `X9_JWS_CLOCK_SKEW_SECONDS`, `KEYSTORE_RELOAD_FREQUENCY`, and the others in the mapping |
-| Out of the box | The demo signing identity (NON-PRODUCTION) is bundled, so the image starts with no keystore configured |
+| Out of the box | The demo signing identity (NON-PRODUCTION) is bundled, so the image starts with no keystore configured. It was the Java build's RSA key until 3.0.0; from 3.0.1 it is EC P-256, signing `ES256` |
 
 **What moves:** the management port. The Java chart served health and metrics on a separate port
 (12345). The Go build has no management port: point the probes and the Prometheus scrape at
@@ -152,7 +161,7 @@ memory, and its image is much smaller.
 
 | Tag | Meaning |
 |---|---|
-| `3.0.0`, `3.0`, `3` (and later `3.x`) | The Go build: a release, and the newest of its minor and major line |
+| `3.0.0`, `3.0.1`, `3.0`, `3` (and later `3.x`) | The Go build: a release, and the newest of its minor and major line |
 | `git-<sha>` | Pinned to a source commit, as before |
 | `latest` | The newest release: the Go build from 3.0.0 |
 | `java-final` | The last Java build, immutable: the way back. It receives no more fixes |

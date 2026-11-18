@@ -62,7 +62,7 @@ others/benchmark/
 | Durability parity: MongoDB `{w: "majority", j: true}` (URI and cluster default; one node, so majority is its journal) vs PostgreSQL `synchronous_commit=on`, `fsync=on` | `mongo.yaml`, `java-mongo/app.yaml`, `postgres.yaml`; the database's own report of these settings is saved as `durability.json` for every run |
 | Same volume size and storage class for both databases; **an empty volume each run** | `volumeClaimTemplates` (10 Gi, the cluster's default class); collect.sh deletes the namespace after every scenario |
 | One system under test at a time | each scenario deploys, measures and tears down before the next |
-| Same crypto: the shipped demo signing key (PS512, `JWK_SET`), or with `SIGNING=es256` the test CA's EC key (ES256) for both; the same test-CA trust | both `app.yaml` and `k8s/components/signing-es256`; Java reads the black-box JKS and Go reads the same certificates as PEM, because Go does not read JKS |
+| Same crypto: the same mounted signing identity for both, the test CA's EC key (ES256, the default `SIGNING=es256`) or with `SIGNING=ps512` the RSA demo key of 3.0.0 (PS512); `JWK_SET`; the same test-CA trust | both `app.yaml` and `k8s/components/signing-*`; Java reads the black-box JKS and Go reads the same certificates as PEM, because Go does not read JKS |
 | Each build as shipped; the JVM's **2-minute warm-up is excluded** | `JAVA_WARMUP` (default: the `warmup` profile, 2 minutes); recorded in `warmup.json`; `GOMEMLIMIT` = 80% of the limit for Go |
 | Test clock **off** | `X9_TESTING_CLOCKCONTROL=false` in both builds |
 | Images by `git-<sha>` tag and OCI revision; k6 **v2.4.0** | `build-images.sh`; `images.json`, and the pods' image digests in `resources.json` |
@@ -137,15 +137,25 @@ others/benchmark/collect.sh
 `GO_WARMUP=none`, `IDLE_SECONDS=300`, `GO_SERVES_API=1`. Use `SEQUENCE="J G J G J G"` to compare
 with the java-final image, and `SEQUENCE="J J J"` for the Java baseline alone (Story 5.2). The rest are documented at the top of [`collect.sh`](collect.sh).
 
-**Signing algorithm: `SIGNING=es256`.** By default (`SIGNING=ps512`) both builds sign every answer
-with the shipped demo key: RSA, `PS512`. With `SIGNING=es256` both builds sign with an EC P-256
-key (`ES256`) instead, and nothing else changes: same images, limits, trust, payers and load.
+**Signing algorithm: `SIGNING`.** By default (`SIGNING=es256`, since 3.0.1) both builds sign
+every answer with an EC P-256 key (`ES256`), the algorithm the product signs with out of the box
+([ADR-0040](../../docs/adr/0040-the-bundled-demo-identity-signs-es256.md)). With `SIGNING=ps512`
+both builds sign with an RSA-3072 key (`PS512`) instead, and nothing else changes: same images,
+limits, trust, payers and load.
 
 ```bash
-SIGNING=es256 SEQUENCE="J G J G J G" others/benchmark/collect.sh
+SIGNING=ps512 SEQUENCE="J G J G J G" others/benchmark/collect.sh
 ```
 
-- **The identity** is the test CA's EC leaf, [`testdata/pki/x9-test-payer-ec.p12`](../../testdata/pki/README.md)
+- **The `ps512` identity** is the demo key both images bundled until 3.0.0,
+  [`testdata/pki/x9-demo-rsa-3.0.0.p12`](../../testdata/pki/README.md) (`CN=x9.matera.com,
+  OU=Demo NonProduction`, NON-PRODUCTION). The java-final image still bundles it, and the
+  campaigns before 3.0.1 signed with it (then unmounted, as each image's default), so a `ps512`
+  campaign signs and pins exactly what they did. Both builds already trust its certificate. It is
+  mounted like the EC one, through
+  [`k8s/components/signing-ps512`](k8s/components/signing-ps512/kustomization.yaml), with
+  `X9_CERTIFICATE_JWKALGORITHM=PS512` and `_ALIAS=x9-private-keystore`.
+- **The `es256` identity** is the test CA's EC leaf, [`testdata/pki/x9-test-payer-ec.p12`](../../testdata/pki/README.md)
   (`CN=Test Payer PSP EC`, NON-PRODUCTION: its key is public). The test PKI has one EC end
   entity, and its README names it as the one that doubles as a deployment's own identity (the
   Java build's `EcSigningIdentityApiTest` ran the service with it). No key is generated, and none
@@ -154,21 +164,21 @@ SIGNING=es256 SEQUENCE="J G J G J G" others/benchmark/collect.sh
   payer, which is harmless: k6 holds that key either way, and an answer still has to verify.
 - **Both builds get the same settings.** `prepare.sh` copies the file to `build/signing/`.
   collect.sh mounts it from the ConfigMap `x9-bench-signing`, through the component
-  [`k8s/components/signing-es256`](k8s/components/signing-es256/kustomization.yaml), which works
-  with or without `OVERLAY`. It sets `X9_CERTIFICATE_JWKALGORITHM=ES256`,
+  [`k8s/components/signing-es256`](k8s/components/signing-es256/kustomization.yaml) (or
+  `signing-ps512`), which works with or without `OVERLAY`. For `es256` it sets `X9_CERTIFICATE_JWKALGORITHM=ES256`,
   `X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION=file:/x9-bench/signing/x9-bench-signing.p12`,
   `_TYPE=PKCS12`, `_PASSWORD` and `_PRIVATEKEYPASSWORD` (`x9test123`) and
   `_ALIAS=x9-test-payer-ec`. These are the Java build's settings, and the Go build reads them
   under the same names ([CONFIGURATION-FROM-JAVA.md](../../docs/CONFIGURATION-FROM-JAVA.md)). Java
   needs `_TYPE`, because its default is JKS; for Go the type and alias are informative.
-- **k6 pins the EC certificate** instead of the demo one, and `verifyAnswer` refuses an answer
+- **k6 pins the campaign's certificate** (EC or RSA), and `verifyAnswer` refuses an answer
   signed with any algorithm other than the campaign's (`UNEXPECTED_ALG`, counted in
   `s2_signature_failures`). So a run with 0 signature failures shows the service really signed
   every answer with that algorithm.
 - **It is recorded:** `images.json` has `signing` (setting, `alg`, identity file, certificate
   subject, `x5t#S256`); `resources.json` has the app's `X9_CERTIFICATE_JWKALGORITHM`; and S7's
   `s7.json` has `signing`. S7 runs its container with the same settings. The key file is copied in
-  with `docker cp` before start, not bind-mounted, so with `es256` the cold start runs from
+  with `docker cp` before start, not bind-mounted, so the cold start runs from
   `docker create` and includes that copy.
 
 **The cluster needs room for all three at once:** app 2 vCPU / 2 GiB, database 2 vCPU / 2 GiB, k6
@@ -282,8 +292,8 @@ request leaves the pod.
 
 **Every signed answer is checked as a payer must check it** (`k6/lib/jws.js`, `verifyAnswer`): it
 is a compact JWS; `crit` names `correlationId`, `iat`, `ttl` and `statusCode`; the signing
-certificate is the payee's (the shipped demo certificate, or with `SIGNING=es256` the test CA's
-EC leaf, pinned by `prepare.sh`); `x5t#S256` names it; `alg` is the campaign's (PS512, or ES256);
+certificate is the payee's (the test CA's EC leaf, or with `SIGNING=ps512` the RSA demo
+certificate of 3.0.0, pinned by `prepare.sh`); `x5t#S256` names it; `alg` is the campaign's (ES256, or PS512);
 the signature verifies with its key; `iat`/`ttl` hold; the `correlationId` is the
 request's; and `statusCode` is 200 in the header and, for notification answers, in the body. A
 failed check counts in `s2_errors{step,reason}` and `s2_signature_failures`, the cycle stops there,
@@ -354,7 +364,7 @@ RESULTS_DIR=/tmp/x9bench-results others/benchmark/collect.sh
 docker rm -f x9bench-k3s
 ```
 
-Add `SIGNING=es256` to the same command to smoke-test the ES256 setting.
+Add `SIGNING=ps512` to the same command to smoke-test the PS512 setting.
 
 ---
 

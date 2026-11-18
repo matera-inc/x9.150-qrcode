@@ -97,9 +97,11 @@ certificate:
                                  #   JWK_SET (jku, https://<host>/pub/.well-known/jwks), PEM (x5u,
                                  #   https://<host>/pub/.well-known/certificate/x9-key.pem) or NONE (the
                                  #   chain itself, in x5c). Every JWS also carries x5t#S256.
-  jwk-algorithm: PS512           # X9_CERTIFICATE_JWKALGORITHM. RS256/384/512 or PS256/384/512 for an RSA
+  jwk-algorithm: ""              # X9_CERTIFICATE_JWKALGORITHM. RS256/384/512 or PS256/384/512 for an RSA
                                  #   key; ES256 (P-256), ES384 (P-384) or ES512 (P-521) for an EC key.
-                                 #   An algorithm the key cannot sign with is refused at start.
+                                 #   Empty: ES256 with the bundled demo identity (EC P-256), PS512 with
+                                 #   your own keystore (ADR-0040). An algorithm the key cannot sign with
+                                 #   is refused at start.
   issuer-name: X9                # X9_CERTIFICATE_ISSUERNAME. A counterpart's chain must end at a trust
                                  #   anchor whose issuer contains this, ignoring case; empty skips the check.
   private-keystore:

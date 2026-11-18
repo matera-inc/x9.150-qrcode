@@ -37,7 +37,7 @@ const material = JSON.parse(open(__ENV.PAYERS_PATH || "../build/payers.json"));
 const wanted = (__ENV.PAYERS || "ec,rsa").split(",").map((name) => name.trim());
 const PAYERS = material.payers.filter((payer) => wanted.includes(payer.name));
 const PAYEE_CERTIFICATES = material.payeeCertificates;
-// The algorithm every answer must be signed with (SIGNING: PS512 by default, ES256 with es256).
+// The algorithm every answer must be signed with (SIGNING: ES256 by default, PS512 with ps512).
 const PAYEE_ALG = material.payeeAlg;
 if (PAYERS.length === 0) throw new Error(`no payer among ${wanted} in payers.json`);
 

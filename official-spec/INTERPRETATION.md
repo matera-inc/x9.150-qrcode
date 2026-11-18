@@ -308,7 +308,8 @@ It also allows the signing chain to arrive three ways: *"jku, x5u or x5c"*, all 
 
 **What we do.** Verify whatever the payer presents. `alg` is read from the JWS header and the
 verifier is chosen from it — `RS256/384/512` and `PS256/384/512` against an RSA key, `ES256/384/512`
-against an EC key. What this service *signs* with (`PS512`) is a local configuration choice and is
+against an EC key. What this service *signs* with (`ES256` with its bundled demo identity, `PS512` by default with an
+operator's own RSA keystore) is a local configuration choice and is
 not imposed on anybody else.
 
 **Why this is not a detail.** It was broken, and the break was invisible. On the `x5c` path the code

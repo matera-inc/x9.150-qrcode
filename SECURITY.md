@@ -25,7 +25,7 @@ Please give us a reasonable window to remediate before any public disclosure.
 ## Scope notes
 
 - The repository ships a **self-signed demo identity** (`internal/keys/bundled/x9-demo*.p12`,
-  password `x9demo123`) so the service runs out of the box, and a test PKI under `testdata/pki/`;
+  EC P-256 since 3.0.1, password `x9demo123`) so the service runs out of the box, and a test PKI under `testdata/pki/`;
   both private keys are public. They are **non-production** — real deployments must supply their
   own X9-issued certificates (`X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION`,
   `X9_CERTIFICATE_TRUSTSTORE_LOCATION`). The demo and test keys are not a vulnerability; the test

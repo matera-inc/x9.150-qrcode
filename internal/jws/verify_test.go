@@ -146,7 +146,7 @@ func TestRoundTrip(t *testing.T) {
 // with the code and the detail. No body, or not JOSE, is ABSENT; anything else is INVALID.
 func TestCheckAnswer(t *testing.T) {
 	key := keyFor(t, "RSA")
-	s := newSigner(t, Config{Publication: PublishChain}, fixedClock{epoch})
+	s := newSigner(t, Config{Algorithm: "PS512", Publication: PublishChain}, fixedClock{epoch})
 	v := newTestVerifier(t, epoch, nil, key)
 	sent := uuid.New()
 	yes, err := s.SignAnswer(t.Context(), key, sent, 200)

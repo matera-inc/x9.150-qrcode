@@ -5,8 +5,8 @@
 # the Secret named in go.existingSecret (x9-qrcode-go by default) with database-password and
 # liquibase-password. The chart never takes a password as a value.
 #
-# NOTICE: with no keystore configured, the service signs with the image's bundled demo identity,
-# which is NON-PRODUCTION: its private key is public.
+# NOTICE: with no keystore configured, the service signs with the image's bundled demo identity
+# (EC P-256, ES256 from 3.0.1), which is NON-PRODUCTION: its private key is public.
 
 application:
   x9:

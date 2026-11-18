@@ -5,7 +5,7 @@
 
 // Package cpu bounds how many goroutines do CPU-heavy JWS work at once.
 //
-// Why. Nearly all of this service's CPU goes to JWS: a PS512 signature on every message it signs,
+// Why. Nearly all of this service's CPU goes to JWS: a signature on every message it signs,
 // and, on every JWS it receives, the compact form split and decoded, the header read, the x5c
 // certificates parsed, the chain built and checked, and the signature verified. Under load,
 // hundreds of goroutines do that work at the same time, and the Go scheduler shares the processors

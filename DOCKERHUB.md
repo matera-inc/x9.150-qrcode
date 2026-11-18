@@ -43,7 +43,7 @@ builds a JWS or manages a keystore.
 
 | Tag | Meaning |
 |-----|---------|
-| `3.0.0`, `3.0`, `3` | A release, and the newest release of its minor and major line |
+| `3.0.1`, `3.0`, `3` | A release (`3.0.0` stays), and the newest release of its minor and major line |
 | `latest` | Newest release; auto-selects your architecture |
 | `git-<short-sha>` | Immutable — pinned to a source commit (e.g. `git-a9cb57e`) |
 | `git-<short-sha>-amd64` / `-arm64` | The per-architecture images that tag is made of |
@@ -78,8 +78,9 @@ Every setting is in
 [`config.example.yaml`](https://github.com/matera-inc/x9.150-qrcode/blob/main/cmd/x9-qrcode/config.example.yaml).
 For an all-in-one local run (PostgreSQL, Liquibase and the service), use `docker compose up` with
 the `docker-compose.yml` of the source repository. Health check: `GET /actuator/health`. The image
-starts with a bundled NON-PRODUCTION demo signing identity; supply your own keystore for anything
-real. The API is open/unauthenticated by design — secure it at your edge.
+starts with a bundled NON-PRODUCTION demo signing identity (EC P-256, signing `ES256` from 3.0.1;
+your own RSA keystore still defaults to `PS512`); supply your own keystore for anything real. The
+API is open/unauthenticated by design — secure it at your edge.
 
 ## Provenance
 

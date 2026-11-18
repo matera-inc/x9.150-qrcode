@@ -86,28 +86,26 @@ else
 fi
 
 log "S7 $BUILD: cold start to /actuator/health UP (signing $SIGNING)"
-if [ "$SIGNING" = es256 ]; then
-  # The same identity and settings as k8s/components/signing-es256. The key file is copied into the
-  # created container rather than bind-mounted (a VM's Docker may not see this path), so the clock
-  # starts before `docker create` and the cold start includes the copy of a 3 KB file.
-  identity="$BENCH/build/signing/x9-bench-signing.p12"
-  [ -f "$identity" ] || die "SIGNING=es256 but prepare.sh made no signing identity"
-  APP_ENV+=(-e X9_CERTIFICATE_JWKALGORITHM=ES256
-            -e X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION=file:/tmp/x9-bench-signing.p12
-            -e X9_CERTIFICATE_PRIVATEKEYSTORE_TYPE=PKCS12
-            -e X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD=x9test123
-            -e X9_CERTIFICATE_PRIVATEKEYSTORE_PRIVATEKEYPASSWORD=x9test123
-            -e X9_CERTIFICATE_PRIVATEKEYSTORE_ALIAS=x9-test-payer-ec)
-  start=$(now_ms)
-  docker create --name "$APP" --network "$NET" --cpus "$CPUS" --memory "$MEMORY" -p 127.0.0.1::8080 \
-    "${APP_ENV[@]}" "$IMAGE" >/dev/null
-  docker cp "$identity" "$APP:/tmp/x9-bench-signing.p12" >/dev/null
-  docker start "$APP" >/dev/null
-else
-  start=$(now_ms)
-  docker run -d --name "$APP" --network "$NET" --cpus "$CPUS" --memory "$MEMORY" -p 127.0.0.1::8080 \
-    "${APP_ENV[@]}" "$IMAGE" >/dev/null
-fi
+# The same identity and settings as k8s/components/signing-$SIGNING. The key file is copied into the
+# created container rather than bind-mounted (a VM's Docker may not see this path), so the clock
+# starts before `docker create` and the cold start includes the copy of a 3 KB file.
+identity="$BENCH/build/signing/x9-bench-signing.p12"
+[ -f "$identity" ] || die "SIGNING=$SIGNING but prepare.sh made no signing identity"
+case "$SIGNING" in
+  es256) signing_alg=ES256 signing_alias=x9-test-payer-ec ;;
+  ps512) signing_alg=PS512 signing_alias=x9-private-keystore ;;
+esac
+APP_ENV+=(-e "X9_CERTIFICATE_JWKALGORITHM=$signing_alg"
+          -e X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION=file:/tmp/x9-bench-signing.p12
+          -e X9_CERTIFICATE_PRIVATEKEYSTORE_TYPE=PKCS12
+          -e X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD=x9test123
+          -e X9_CERTIFICATE_PRIVATEKEYSTORE_PRIVATEKEYPASSWORD=x9test123
+          -e "X9_CERTIFICATE_PRIVATEKEYSTORE_ALIAS=$signing_alias")
+start=$(now_ms)
+docker create --name "$APP" --network "$NET" --cpus "$CPUS" --memory "$MEMORY" -p 127.0.0.1::8080 \
+  "${APP_ENV[@]}" "$IMAGE" >/dev/null
+docker cp "$identity" "$APP:/tmp/x9-bench-signing.p12" >/dev/null
+docker start "$APP" >/dev/null
 port="$(docker port "$APP" 8080/tcp | head -1 | sed 's/.*://')"
 up=""
 for _ in $(seq 1 3000); do

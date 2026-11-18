@@ -12,7 +12,9 @@ Accepted 2026-11-13. Part of [0022](0022-rewrite-in-go-as-a-standalone-product.m
 
 **Signing:**
 
-- PS512 by default (RS\*, PS\* and ES\* accepted);
+- PS512 by default (RS\*, PS\* and ES\* accepted); *(amended by [0040](0040-the-bundled-demo-identity-signs-es256.md), 2026-11-18: with the
+  algorithm unset, the bundled demo identity, EC P-256 from 3.0.1, signs ES256; an operator's own
+  keystore still signs PS512)*
 - `typ: JOSE`;
 - the custom headers `correlationId`, `iat` and `ttl` (**milliseconds**), plus `statusCode` on
   responses, all listed in `crit`;

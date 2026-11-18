@@ -22,9 +22,11 @@ LIQUIBASE_IMAGE="${LIQUIBASE_IMAGE:-x9-qrcode-liquibase:git-$SHA}"
 # Resolved once per campaign: footprint.sh, run later by collect.sh, must use the same images even
 # if HEAD moves while the campaign runs.
 export JAVA_IMAGE GO_IMAGE LIQUIBASE_IMAGE
-# The identity both builds sign their answers with: ps512, the shipped demo key (RSA), or es256, the
-# test CA's EC P-256 leaf (prepare.sh says which file, and why that one). Exported for prepare.sh.
-SIGNING="${SIGNING:-ps512}"
+# The identity both builds sign their answers with, mounted into both: es256 (the default since
+# 3.0.1, the product's own algorithm, ADR-0040), the test CA's EC P-256 leaf; or ps512, the RSA demo
+# key the images bundled until 3.0.0 (prepare.sh says which file, and why that one). Exported for
+# prepare.sh.
+SIGNING="${SIGNING:-es256}"
 case "$SIGNING" in ps512 | es256) ;; *) printf 'SIGNING=%s: use ps512 or es256\n' "$SIGNING" >&2; exit 2 ;; esac
 export SIGNING
 K6_IMAGE="grafana/k6:2.4.0"
@@ -42,19 +44,19 @@ kn() { kc -n "$NAMESPACE" "$@"; }
 
 image_of() { case "$1" in java-mongo) echo "$JAVA_IMAGE" ;; go-postgres) echo "$GO_IMAGE" ;; *) die "unknown build $1" ;; esac; }
 
-# The manifests of one part (java-mongo, go-postgres, k6), with this run's images in place. With
-# SIGNING=es256 an app part also gets the component k8s/components/signing-es256, through a
-# kustomization written under build/render/ (kustomize takes components only from a file).
+# The manifests of one part (java-mongo, go-postgres, k6), with this run's images in place. An app
+# part also gets the component k8s/components/signing-$SIGNING, which mounts the signing identity,
+# through a kustomization written under build/render/ (kustomize takes components only from a file).
 render() {
   local part="$1" rel="k8s/$1" dir
   [ -n "$OVERLAY" ] && rel="k8s/overlays/$OVERLAY/$1"
   dir="$BENCH/$rel"
-  if [ "$SIGNING" = es256 ] && [ "$part" != k6 ]; then
+  if [ "$part" != k6 ]; then
     dir="$BENCH/build/render/$part"
     mkdir -p "$dir"
-    printf '%s\n' "# Written by lib.sh render() for SIGNING=es256; regenerated on every render." \
+    printf '%s\n' "# Written by lib.sh render() for SIGNING=$SIGNING; regenerated on every render." \
       "apiVersion: kustomize.config.k8s.io/v1beta1" "kind: Kustomization" \
-      "resources: [\"../../../$rel\"]" "components: [\"../../../k8s/components/signing-es256\"]" \
+      "resources: [\"../../../$rel\"]" "components: [\"../../../k8s/components/signing-$SIGNING\"]" \
       >"$dir/kustomization.yaml"
   fi
   kubectl kustomize "$dir" |
@@ -114,10 +116,8 @@ fresh_namespace() {
     --from-file="$ROOT/db/local/bootstrap.sql" \
     --from-file="$BENCH/k8s/go-postgres/initdb-bootstrap.sh" >/dev/null
   kn create configmap x9-bench-payers --from-file="$BENCH/build/payers.json" >/dev/null
-  if [ "$SIGNING" = es256 ]; then
-    [ -f "$BENCH/build/signing/x9-bench-signing.p12" ] || die "SIGNING=es256 but prepare.sh made no signing identity"
-    kn create configmap x9-bench-signing --from-file="$BENCH/build/signing/x9-bench-signing.p12" >/dev/null
-  fi
+  [ -f "$BENCH/build/signing/x9-bench-signing.p12" ] || die "SIGNING=$SIGNING but prepare.sh made no signing identity"
+  kn create configmap x9-bench-signing --from-file="$BENCH/build/signing/x9-bench-signing.p12" >/dev/null
   kn create configmap x9-bench-k6 \
     --from-file="$BENCH/k6/s1-create.js" --from-file="$BENCH/k6/s2-cycle.js" \
     --from-file=lib.jws.js="$BENCH/k6/lib/jws.js" --from-file=lib.x9.js="$BENCH/k6/lib/x9.js" >/dev/null

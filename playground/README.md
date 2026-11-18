@@ -6,7 +6,7 @@ end with two little scripts:
 - **`simulate_payee.py`** — the *merchant*: pick a bill, create the QR, get its EMV string.
 - **`simulate_payer.py`** — the *payer*: pick a QR, fetch the signed payment payload.
 
-Everything runs locally against the bundled **non-production** demo keystore — no real bank, no real
+Everything runs locally against the bundled **non-production** demo keystore (EC P-256, `ES256`) — no real bank, no real
 certificates. Run the commands below **from the repository root** unless noted.
 
 ---

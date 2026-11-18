@@ -23,8 +23,11 @@ import (
 // The list was the Java build's (TestClockCertificateGuard), entry for entry; TestTheTestPKIIsBundled
 // keeps it equal to the certificates committed under testdata/pki.
 var bundledFingerprints = map[string]string{
-	// The demo identity: x9-demo.jks, bundled byte for byte as internal/keys/bundled/x9-demo.p12.
-	"67e9eae59581e99c81d3744fe086042f7363e13c2d15e05113011d2d76e5ed1b": "x9-demo (CN=x9.matera.com, OU=Demo NonProduction)",
+	// The demo identity, internal/keys/bundled/x9-demo.p12: EC P-256 since 3.0.1 (ADR-0040).
+	"71f5abfa2557037258e616ef8b4d87b7f8ec4c97ae777e03b406ed9da8b75e41": "x9-demo (CN=x9.matera.com, OU=Demo NonProduction, EC P-256)",
+	// The RSA demo identity it replaced (the Java build's x9-demo.jks), no longer bundled; kept as
+	// the test fixture testdata/pki/x9-demo-rsa-3.0.0.p12, so its private key is still committed.
+	"67e9eae59581e99c81d3744fe086042f7363e13c2d15e05113011d2d76e5ed1b": "x9-demo-rsa-3.0.0.p12, the RSA demo identity of 3.0.0 and earlier",
 	// testdata/pki/:
 	"795ff346e9689636e9ba68917fe9f12db9e5e3a43a0b9fe2a39026275859292a": "x9-test-ca.p12, the test root CA",
 	"e08b164ebd84a0a03701d20071bfdd4d7cd8f3185958201c577e6015d51e671a": "x9-test-payer.p12, RSA leaf of the test CA",

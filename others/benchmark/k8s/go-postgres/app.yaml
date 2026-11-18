@@ -2,9 +2,9 @@
 # GOMEMLIMIT at 80% of the memory limit (plan §9.2). The image is the git-<sha> tag collect.sh
 # substitutes for APP_IMAGE; imagePullPolicy Never.
 #
-# The same configuration as the Java build, in the Go build's terms: the bundled demo signing key
-# (the same key and certificate as Java's), the test clock OFF, and the same trust (the test CA plus
-# the demo certificate) as PEM, because Go reads PKCS#12 or PEM and refuses a JKS. The same `crl`
+# The same configuration as the Java build, in the Go build's terms: the signing identity of the
+# campaign (SIGNING, k8s/components), the test clock OFF, and the same trust (the test CA plus
+# the RSA demo certificate of 3.0.0) as PEM, because Go reads PKCS#12 or PEM and refuses a JKS. The same `crl`
 # sidecar serves the test CA's CRL at the payers' distribution point.
 #
 # Until the Go build serves the API (Epics 9-10) only S7 can run against it; S1 and S2 are refused by

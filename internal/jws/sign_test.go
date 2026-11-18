@@ -227,7 +227,7 @@ func TestHeaderProfile(t *testing.T) {
 		{PublishChain, map[string]string{"x5c": base64.StdEncoding.EncodeToString(key.chain[0].Raw)}},
 	} {
 		t.Run(string(tc.publication), func(t *testing.T) {
-			s := newSigner(t, Config{Publication: tc.publication}, fixedClock{at})
+			s := newSigner(t, Config{Algorithm: "PS512", Publication: tc.publication}, fixedClock{at})
 			token, err := s.Sign(t.Context(), key, Message{Payload: []byte(`{"qrCodeContent":"MDA="}`), CorrelationID: id})
 			if err != nil {
 				t.Fatal(err)
@@ -275,15 +275,15 @@ func TestHeaderProfile(t *testing.T) {
 	}
 }
 
-// S8.4-AC1: PS512 by default, and every RS*, PS* and ES* algorithm signs, each ES on its own curve,
+// S8.4-AC1, ADR-0040: ES256 by default, and every RS*, PS* and ES* algorithm signs, each ES on its own curve,
 // with a signature the standard library verifies (ECDSA as JOSE's R || S, not ASN.1).
 func TestEveryAlgorithmSigns(t *testing.T) {
 	s, err := New(Config{Host: "x9.example"}, fixedClock{epoch})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Algorithm() != "PS512" {
-		t.Errorf("default algorithm = %s, want PS512", s.Algorithm())
+	if s.Algorithm() != "ES256" {
+		t.Errorf("default algorithm = %s, want ES256", s.Algorithm())
 	}
 	for _, alg := range []string{"RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512"} {
 		t.Run(alg, func(t *testing.T) {
@@ -378,7 +378,7 @@ func TestInvalidConfigurationIsRefused(t *testing.T) {
 }
 
 func TestInvalidMessageIsRefused(t *testing.T) {
-	s := newSigner(t, Config{}, fixedClock{epoch})
+	s := newSigner(t, Config{Algorithm: "PS512"}, fixedClock{epoch})
 	key := keyFor(t, "RSA")
 	for _, tc := range []struct {
 		name string
@@ -426,7 +426,7 @@ func TestIATIsTheBusinessClock(t *testing.T) {
 	if err := clk.SetNow(epoch); err != nil {
 		t.Fatal(err)
 	}
-	s := newSigner(t, Config{}, clk)
+	s := newSigner(t, Config{Algorithm: "PS512"}, clk)
 	token, err := s.Sign(t.Context(), keyFor(t, "RSA"), Message{Payload: []byte(`{}`), CorrelationID: NewCorrelationID()})
 	if err != nil {
 		t.Fatal(err)
@@ -442,7 +442,7 @@ func TestIATIsTheBusinessClock(t *testing.T) {
 // correlationId echoed.
 func TestSignedAnswer(t *testing.T) {
 	key := keyFor(t, "RSA")
-	s := newSigner(t, Config{Publication: PublishChain}, fixedClock{epoch})
+	s := newSigner(t, Config{Algorithm: "PS512", Publication: PublishChain}, fixedClock{epoch})
 	id := uuid.MustParse("5e9188da-d7da-4e4e-b0e8-1897386ba738")
 	for _, status := range []int{200, 400, 401, 404, 409, 500} {
 		token, err := s.SignAnswer(t.Context(), key, id, status)
@@ -471,9 +471,9 @@ func TestSignedAnswer(t *testing.T) {
 	}
 }
 
-// S8.4-AC1: the configuration's defaults are Java's: PS512, jku, 300 s, and the public host
-// x9-150.example.com when none is set; and the service's own signing key (the bundled demo
-// identity, RSA) can sign with them.
+// S8.4-AC1, ADR-0040: the configuration's defaults are Java's (jku, 300 s, and the public host
+// x9-150.example.com when none is set) except the algorithm, ES256 for the bundled demo identity
+// (EC P-256), which can sign with them.
 func TestConfigFromDefaults(t *testing.T) {
 	cfg, err := config.Load("", []string{
 		"DATABASE_HOST=db.example.com", "DATABASE_NAME=bank", "DATABASE_USER=app",
@@ -483,7 +483,7 @@ func TestConfigFromDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := ConfigFrom(cfg)
-	want := Config{Algorithm: "PS512", Publication: PublishJWKSet, Host: "x9-150.example.com", TTL: 300 * time.Second}
+	want := Config{Algorithm: "ES256", Publication: PublishJWKSet, Host: "x9-150.example.com", TTL: 300 * time.Second}
 	if got != want {
 		t.Fatalf("ConfigFrom = %+v, want %+v", got, want)
 	}

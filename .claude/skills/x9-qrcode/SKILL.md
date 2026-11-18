@@ -53,7 +53,8 @@ make down        # stop everything and throw the database away
 - Run a published image instead of building one: `X9_IMAGE=materainc/x9-qrcode:3 make up`.
 - Optional settings (host, port, log level, image): `cp .env.sample .env`.
 - By hand, without `make`: `docker compose up -d --build --wait` (needs BuildKit/buildx).
-- It signs with the bundled **NON-PRODUCTION** demo identity and the database trusts every
+- It signs with the bundled **NON-PRODUCTION** demo identity (EC P-256, `ES256` since 3.0.1;
+  your own RSA keystore still defaults to `PS512`) and the database trusts every
   connection on the Compose network: local use only.
 - The binary on the host instead of a container (fast inner loop, debugger): start only the
   database with `docker compose -f db/docker-compose.yml up -d --build`, export the `DATABASE_*`

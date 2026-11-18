@@ -83,12 +83,13 @@ The Go build reads **PKCS#12 or PEM**. The file's content decides its format, no
 `type`: a file called `.jks` that is really PKCS#12 (keytool's default since JDK 9, which is what
 the Java build's bundled demo files are) is read as it is. A true JKS or JCEKS file is refused:
 convert it as shown in [JKS to PKCS#12](#jks-to-pkcs12). A location left empty is the bundled
-**demo identity (NON-PRODUCTION)**, as in the Java build.
+**demo identity (NON-PRODUCTION)**, as in the Java build; from 3.0.1 it is an EC P-256 key, not
+the Java build's RSA one ([ADR-0040](adr/0040-the-bundled-demo-identity-signs-es256.md)).
 
 | Java property | Java variable | Go key | Go variable | Notes |
 |---|---|---|---|---|
 | `x9.certificate.endpoint-type` (`JWK_SET`) | `X9_CERTIFICATE_ENDPOINTTYPE` | `certificate.endpoint-type` | `X9_CERTIFICATE_ENDPOINTTYPE` | Same: `JWK_SET`, `PEM` or `NONE`. |
-| `x9.certificate.jwk-algorithm` (`PS512`) | `X9_CERTIFICATE_JWKALGORITHM` | `certificate.jwk-algorithm` | `X9_CERTIFICATE_JWKALGORITHM` | Same. An algorithm the key cannot sign with is refused at start. |
+| `x9.certificate.jwk-algorithm` (`PS512`) | `X9_CERTIFICATE_JWKALGORITHM` | `certificate.jwk-algorithm` | `X9_CERTIFICATE_JWKALGORITHM` | Same, and unset still means `PS512` with your own keystore. With the bundled demo identity (no keystore location) unset means `ES256` from 3.0.1. An algorithm the key cannot sign with is refused at start. |
 | `x9.certificate.issuer-name` (`X9`) | `X9_CERTIFICATE_ISSUERNAME` | `certificate.issuer-name` | `X9_CERTIFICATE_ISSUERNAME` | Same; empty skips the check. |
 | `x9.certificate.certificate-supported-type` (`X.509`) | — | dropped | — | Always X.509. |
 | `x9.certificate.custom-provider` | `X9_CERTIFICATE_CUSTOMPROVIDER` | dropped | — | The Java build never read it. |

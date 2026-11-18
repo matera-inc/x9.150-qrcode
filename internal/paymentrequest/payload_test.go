@@ -44,7 +44,7 @@ func newPayer(t *testing.T, e *env) *payer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	signer, err := jws.New(jws.Config{Algorithm: "PS512", Publication: jws.PublishChain, Host: host}, e.clock)
+	signer, err := jws.New(jws.Config{Algorithm: "ES256", Publication: jws.PublishChain, Host: host}, e.clock)
 	if err != nil {
 		t.Fatal(err)
 	}

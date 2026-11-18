@@ -9,6 +9,7 @@ description: 'X9 QRCode: the ANSI X9.150 Payment QR Code service on PostgreSQL'
 type: application
 # This is the chart version. 3.0.0: the Java build is retired (ADR-0039); the chart deploys the Go
 # build only, and `runtime` is gone. The 1.x chart is in git history under the tag java-final.
-version: 3.0.0
+# 3.0.1: the image's bundled demo identity is EC P-256 and signs ES256 (ADR-0040).
+version: 3.0.1
 # The image tag deployed when image.tag is empty.
-appVersion: "3.0.0"
+appVersion: "3.0.1"

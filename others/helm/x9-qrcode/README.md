@@ -86,7 +86,7 @@ The `go.*` section keeps its 2.x name, so values written for the 2.x chart's Go 
 
 | Value | Variable | Default |
 |---|---|---|
-| `image.repository`, `image.tag` | — | `docker.io/materainc/x9-qrcode`, the appVersion (`3.0.0`) |
+| `image.repository`, `image.tag` | — | `docker.io/materainc/x9-qrcode`, the appVersion (`3.0.1`) |
 | `go.existingSecret`, `go.secretKeys.*` | `DATABASE_PASSWORD_FILE`, `X9_CERTIFICATE_*_PASSWORD` | `x9-qrcode-go`; `database-password`, `private-keystore-password`, `private-key-password`, `truststore-password` |
 | `go.database.host`, `port`, `name` | `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME` | required, `5432`, required |
 | `go.database.user`, `schema` | `DATABASE_USER`, `DATABASE_SCHEMA` | `x9_qrcode_app`, `x9_qrcode` |

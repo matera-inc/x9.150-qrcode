@@ -156,8 +156,9 @@ next to the code (`*_test.go`); the database tests start PostgreSQL with Docker.
 # Running the Application
 
 The service needs **PostgreSQL** with the schema applied by Liquibase **before** it starts. It ships
-with a demo signing key and truststore, so it runs out of the box. The demo key is NON-PRODUCTION:
-its private key is public. Provide your own X9-issued keys, as PEM or PKCS#12 files, through the `certificate` keys of
+with a demo signing key and truststore, so it runs out of the box. The demo key (EC P-256, signing
+`ES256` since 3.0.1, [ADR-0040](docs/adr/0040-the-bundled-demo-identity-signs-es256.md)) is
+NON-PRODUCTION: its private key is public. Provide your own X9-issued keys, as PEM or PKCS#12 files, through the `certificate` keys of
 [`config.example.yaml`](cmd/x9-qrcode/config.example.yaml) or their environment variables.
 
 > **First time here?** See **[RUNNING.md](RUNNING.md)** for the details: configuration, health,
@@ -249,7 +250,7 @@ docker pull materainc/x9-qrcode:git-<short-sha> # a specific commit (immutable)
 X9_IMAGE=materainc/x9-qrcode:3 make up          # run it with PostgreSQL and Liquibase
 ```
 
-Tags: `latest` (floating), `3`, `3.0`, `3.0.0` (the release line), `git-<short-sha>` (immutable,
+Tags: `latest` (floating), `3`, `3.0`, `3.0.1` (the release line; `3.0.0` stays), `git-<short-sha>` (immutable,
 pinned to a source commit), and `java-final` (the last Java build, 2.x; no longer maintained).
 
 Each image records the exact source commit it was built from, via standard OCI labels — so you can
@@ -606,7 +607,7 @@ environment variable (the name the Java build used, `x9.certificate.*` there):
 
 * **`issuer-name`** (`X9_CERTIFICATE_ISSUERNAME`): a counterpart's chain must end at a trust anchor whose issuer contains this, ignoring case. Default: `X9`. Empty skips the check.
 * **`endpoint-type`** (`X9_CERTIFICATE_ENDPOINTTYPE`): how a signed JWS points at the certificate. Default: `JWK_SET`.
-* **`jwk-algorithm`** (`X9_CERTIFICATE_JWKALGORITHM`): the signing algorithm. `RS256`, `RS384`, `RS512`, `PS256`, `PS384` or `PS512` for an RSA key; `ES256`, `ES384` or `ES512`, each on its own curve, for an EC key. Default: `PS512`. An algorithm the key cannot sign with stops the service at start.
+* **`jwk-algorithm`** (`X9_CERTIFICATE_JWKALGORITHM`): the signing algorithm. `RS256`, `RS384`, `RS512`, `PS256`, `PS384` or `PS512` for an RSA key; `ES256`, `ES384` or `ES512`, each on its own curve, for an EC key. Default: `ES256` with the bundled demo identity (EC P-256), `PS512` with your own keystore, as before 3.0.1 ([ADR-0040](docs/adr/0040-the-bundled-demo-identity-signs-es256.md)). An algorithm the key cannot sign with stops the service at start.
 
 The **endpoint type** defines how the public certificate is exposed on a generated JWS. The options are:
 * **`NONE`**: the certificate chain itself, in the `x5c` field
@@ -614,7 +615,7 @@ The **endpoint type** defines how the public certificate is exposed on a generat
 * **`JWK_SET`**: the `jku` field, the public JWK Set URL (`/pub/.well-known/jwks`)
 
 The private key and the truststore are files, configured with these variables:
-* `X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION`: the file holding the private key and its complete certificate chain, as PEM or PKCS#12; a JKS file is refused. Empty: the bundled demo key (NON-PRODUCTION).
+* `X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION`: the file holding the private key and its complete certificate chain, as PEM or PKCS#12; a JKS file is refused. Empty: the bundled demo key (EC P-256, NON-PRODUCTION).
 * `X9_CERTIFICATE_PRIVATEKEYSTORE_PASSWORD`: the password of a PKCS#12 keystore.
 * `X9_CERTIFICATE_PRIVATEKEYSTORE_PRIVATEKEYPASSWORD`: accepted empty or equal to the keystore password, since a PKCS#12 file has one password.
 * `X9_CERTIFICATE_TRUSTSTORE_LOCATION`: the truststore, as PEM or PKCS#12. **Notice:** it should contain the X9 Root CA and the X9 intermediate CAs.
