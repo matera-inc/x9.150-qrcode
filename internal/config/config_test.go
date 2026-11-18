@@ -56,7 +56,7 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.Server.Port != 8080 || cfg.Database.Port != 5432 || cfg.Database.Schema != "x9_qrcode" ||
 		cfg.Database.PoolWrites != 8 || cfg.Database.PoolReads != 4 || cfg.Reservation.TTLSeconds != 90 ||
-		cfg.Log.Level != "info" {
+		cfg.Notification.SettlementMarginSeconds != 1 || cfg.Log.Level != "info" {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
 	// S8.6-AC3: the test clock is off by default; its listener's address is Java's default.
@@ -96,8 +96,11 @@ database:
   pool-writes: 6
 reservation:
   ttl-seconds: 30
+notification:
+  settlement-margin-seconds: 7
 `)
-	cfg, err := Load(path, []string{"DATABASE_HOST=from-env", "X9_RESERVATION_TTL_SECONDS=0"})
+	cfg, err := Load(path, []string{"DATABASE_HOST=from-env", "X9_RESERVATION_TTL_SECONDS=0",
+		"X9_NOTIFICATION_SETTLEMENT_MARGIN_SECONDS=0"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,6 +109,9 @@ reservation:
 	}
 	if cfg.Reservation.TTLSeconds != 0 {
 		t.Errorf("reservation.ttl-seconds = %d, want the environment's 0", cfg.Reservation.TTLSeconds)
+	}
+	if cfg.Notification.SettlementMarginSeconds != 0 {
+		t.Errorf("notification.settlement-margin-seconds = %d, want the environment's 0", cfg.Notification.SettlementMarginSeconds)
 	}
 	if cfg.Server.Port != 9000 || cfg.Database.PoolWrites != 6 || cfg.Database.SSLMode != "disable" {
 		t.Errorf("the file's values were lost: %+v", cfg)
@@ -167,6 +173,8 @@ func TestInvalidValues(t *testing.T) {
 		{"no write pool", []string{"DATABASE_POOL_WRITES=0"}, "database.pool-writes (DATABASE_POOL_WRITES): must be at least 1"},
 		{"bad exec mode", []string{"DATABASE_QUERY_EXEC_MODE=fast"}, "database.query-exec-mode (DATABASE_QUERY_EXEC_MODE)"},
 		{"negative reservation", []string{"X9_RESERVATION_TTL_SECONDS=-1"}, "reservation.ttl-seconds (X9_RESERVATION_TTL_SECONDS): must not be negative"},
+		{"negative settlement margin", []string{"X9_NOTIFICATION_SETTLEMENT_MARGIN_SECONDS=-1"},
+			"notification.settlement-margin-seconds (X9_NOTIFICATION_SETTLEMENT_MARGIN_SECONDS): must not be negative"},
 		{"bad log level", []string{"X9_LOG_LEVEL=loud"}, "log.level (X9_LOG_LEVEL)"},
 		// S8.6-AC1: the clock listener is host:port, and never the API port.
 		{"clock on the API port", []string{"X9_TESTING_CLOCKCONTROL=true", "X9_TESTING_CLOCKLISTEN=0.0.0.0:8080"},

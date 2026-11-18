@@ -48,6 +48,7 @@ type Config struct {
 	Database        Database        `yaml:"database"`
 	Log             Log             `yaml:"log"`
 	Reservation     Reservation     `yaml:"reservation"`
+	Notification    Notification    `yaml:"notification"`
 	Currency        Currency        `yaml:"currency"`
 	Testing         Testing         `yaml:"testing"`
 	Certificate     Certificate     `yaml:"certificate"`
@@ -143,6 +144,15 @@ type Log struct {
 // window; a negative value is invalid.
 type Reservation struct {
 	TTLSeconds int `yaml:"ttl-seconds"`
+}
+
+// Notification is how a payer's payment notification is judged. SettlementMarginSeconds is how
+// long before validUntil (the QR Code's and the matched payment method's) a pre-commit is still
+// approved: a payer approved closer than that starts a transfer that cannot settle while the QR
+// Code is valid (ADR-0041). 0 is off (validUntil inclusive, INTERPRETATION I-13); a negative value
+// is invalid.
+type Notification struct {
+	SettlementMarginSeconds int `yaml:"settlement-margin-seconds"`
 }
 
 // Currency is where the currency configuration is read from (INTERPRETATION I-3): the Java build's
@@ -341,6 +351,7 @@ func defaults() Config {
 		Database:        Database{Port: 5432, Schema: "x9_qrcode", PoolWrites: 8, PoolReads: 4},
 		Log:             Log{Level: "info"},
 		Reservation:     Reservation{TTLSeconds: 90},
+		Notification:    Notification{SettlementMarginSeconds: 1},
 		Testing:         Testing{ClockListen: "127.0.0.1:8099"},
 		Certificate:     Certificate{EndpointType: "JWK_SET", IssuerName: "X9"}, // JWKAlgorithm: defaultJWKAlgorithm
 		Keystore:        Keystore{Reload: KeystoreReload{Frequency: 30000}},
@@ -377,6 +388,7 @@ var envVars = []envVar{
 	{"DATABASE_QUERY_EXEC_MODE", "database.query-exec-mode", setString(func(c *Config) *string { return &c.Database.QueryExecMode })},
 	{"X9_LOG_LEVEL", "log.level", setString(func(c *Config) *string { return &c.Log.Level })},
 	{"X9_RESERVATION_TTL_SECONDS", "reservation.ttl-seconds", setInt(func(c *Config) *int { return &c.Reservation.TTLSeconds })},
+	{"X9_NOTIFICATION_SETTLEMENT_MARGIN_SECONDS", "notification.settlement-margin-seconds", setInt(func(c *Config) *int { return &c.Notification.SettlementMarginSeconds })},
 	{"X9_CURRENCY_SUPPORTEDCURRENCIESLOCATION", "currency.supported-currencies-location", setString(func(c *Config) *string { return &c.Currency.SupportedCurrenciesLocation })},
 	{"X9_CURRENCY_PEGGEDCURRENCIESLOCATION", "currency.pegged-currencies-location", setString(func(c *Config) *string { return &c.Currency.PeggedCurrenciesLocation })},
 	{"X9_TESTING_CLOCKCONTROL", "testing.clock-control", setBool(func(c *Config) *bool { return &c.Testing.ClockControl })},
@@ -738,6 +750,10 @@ func (c Config) validate() []error {
 	}
 	if c.Reservation.TTLSeconds < 0 {
 		errs = append(errs, problem("reservation.ttl-seconds", "must not be negative (0 means no window), got %d", c.Reservation.TTLSeconds))
+	}
+	if c.Notification.SettlementMarginSeconds < 0 {
+		errs = append(errs, problem("notification.settlement-margin-seconds",
+			"must not be negative (0 means no margin), got %d", c.Notification.SettlementMarginSeconds))
 	}
 	if c.PublicEndpoints.JWSTTLSeconds < 1 {
 		errs = append(errs, problem("public-endpoints.jws-ttl-seconds", "must be at least 1, got %d", c.PublicEndpoints.JWSTTLSeconds))

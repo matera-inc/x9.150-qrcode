@@ -18,7 +18,7 @@ import (
 )
 
 // The acceptance gate of a pre-commit, at the payee's clock (INTERPRETATION I-13): the edges are
-// inclusive, the tip is judged in the notified currency, and the amount is the total less the tip.
+// inclusive with no settlement margin and closed that margin early with one (ADR-0041), the tip is judged in the notified currency, and the amount is the total less the tip.
 func TestGate(t *testing.T) {
 	due := `,"invoice":{"date":"2029-01-01","dueDate":"2029-06-01T00:00:00Z"}`
 	adjusted := due + `,"amountDue":{"amount":1000,"currency":"USDC","adjustments":{"formula":"FixedDiscountLateFeeLinearInterest",` +
@@ -31,13 +31,32 @@ func TestGate(t *testing.T) {
 		name          string
 		bill, method  string
 		at            time.Time
+		margin        time.Duration
 		amount, tip   int64
 		field, saying string // "" accepts
 	}{
 		{name: "the face amount", amount: 1000},
 		{name: "one unit off", amount: 999, field: fieldAmount, saying: "Expected 1000 USDC but the notification carries 999."},
 		{name: "at validUntil exactly", at: validUntil, amount: 1000},
-		{name: "a millisecond past validUntil", at: validUntil.Add(time.Millisecond), amount: 1000, field: "validUntil"},
+		{name: "a millisecond past validUntil", at: validUntil.Add(time.Millisecond), amount: 1000, field: "validUntil",
+			saying: "This QR Code expired at 2030-01-01T00:00:00Z"},
+		// ADR-0041: the settlement margin. now + margin > validUntil is refused; 0 is off.
+		{name: "a margin before it", at: validUntil.Add(-time.Second), margin: time.Second, amount: 1000},
+		{name: "inside the margin", at: validUntil.Add(-999 * time.Millisecond), margin: time.Second, amount: 1000,
+			field: "validUntil", saying: "Too little time is left to settle: this QR Code expires at 2030-01-01T00:00:00Z, " +
+				"and payments are approved only until 1 second before it."},
+		{name: "at validUntil with a margin", at: validUntil, margin: time.Second, amount: 1000, field: "validUntil", saying: "Too little time"},
+		{name: "past validUntil with a margin", at: validUntil.Add(time.Millisecond), margin: time.Second, amount: 1000,
+			field: "validUntil", saying: "This QR Code expired at"},
+		{name: "a margin of several seconds", at: validUntil.Add(-4 * time.Second), margin: 5 * time.Second, amount: 1000,
+			field: "validUntil", saying: "until 5 seconds before it"},
+		{name: "a method inside its margin", method: `,"validUntil":"2029-01-01T00:00:00Z"`,
+			at: time.Date(2029, 1, 1, 0, 0, 0, 0, time.UTC).Add(-500 * time.Millisecond), margin: time.Second, amount: 1000,
+			field: "paymentMethods.validUntil", saying: "Too little time is left to settle: the USDC payment method expires at 2029-01-01T00:00:00Z"},
+		{name: "a method before its margin", method: `,"validUntil":"2029-01-01T00:00:00Z"`,
+			at: time.Date(2029, 1, 1, 0, 0, 0, 0, time.UTC).Add(-time.Second), margin: time.Second, amount: 1000},
+		{name: "a method at its validUntil with no margin", method: `,"validUntil":"2029-01-01T00:00:00Z"`,
+			at: time.Date(2029, 1, 1, 0, 0, 0, 0, time.UTC), amount: 1000},
 		{name: "a method expired", method: `,"validUntil":"2029-01-01T00:00:00Z"`, at: time.Date(2029, 1, 1, 0, 0, 0, 1e6, time.UTC),
 			amount: 1000, field: "paymentMethods.validUntil"},
 		{name: "a tip on a bill that offers none", amount: 1100, tip: 100, field: fieldTipAmount, saying: "does not accept tips"},
@@ -88,7 +107,7 @@ func TestGate(t *testing.T) {
 			if at.IsZero() {
 				at = t0
 			}
-			r, err := Gate(domain.Row{ValidUntil: validUntil}, paymentrequest.BillingRequest(&req), &data, at)
+			r, err := Gate(domain.Row{ValidUntil: validUntil}, paymentrequest.BillingRequest(&req), &data, at, c.margin)
 			if err != nil {
 				t.Fatal(err)
 			}

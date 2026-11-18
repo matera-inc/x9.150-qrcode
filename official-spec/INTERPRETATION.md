@@ -736,8 +736,15 @@ whose clock judges those instants, nor what is owed at exactly the due date.
   amount carried and the amount owed, or 400 on `validUntil`), and the payer's remedy is to fetch
   the payload again and resend. Skew is the payer's risk; it never lets a payer lock in a discount
   or a validity the payee no longer grants.
-- **`validUntil` is inclusive.** A request arriving at exactly `validUntil` is accepted; one
-  millisecond later it is refused.
+- **`validUntil` is inclusive, less a settlement margin for a pre-commit** (amended 2026-11-18 by
+  [ADR-0041](../docs/adr/0041-a-pre-commit-needs-time-to-settle-before-validuntil.md)). Past
+  `validUntil` a request is refused as expired. A pre-commit is also refused, on `validUntil` or
+  `paymentMethods.validUntil`, when the payee's clock at receipt plus the margin
+  (`X9_NOTIFICATION_SETTLEMENT_MARGIN_SECONDS`, default 1 s) is past the QR Code's or the matched
+  method's `validUntil`: it arrives before the money moves, and a transfer started then could not
+  settle while the QR Code is valid. With the margin at 0, `validUntil` itself is the edge: a
+  request arriving at exactly `validUntil` is accepted, one millisecond later is refused. The
+  edges of an adjusted amount (I-14) are not moved by the margin.
 - **The due date is an instant, and a payment up to and including it is on time.** At exactly
   `dueDate` the full amount is owed, with no late fee. The first day's late fee applies from
   `dueDate + 1 ms`. (Before this, the formula threw at exactly `dueDate`, so that instant had no

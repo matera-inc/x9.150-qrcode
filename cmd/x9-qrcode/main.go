@@ -219,7 +219,10 @@ func run(ctx context.Context, args, env []string, stdout io.Writer) error {
 	// A payer's payment notification (Story 10.4): verified, refused by name, decided by the
 	// transition map, and always answered signed.
 	notification.New(st, keyStore, signer, verifier,
-		domain.Settings{ReservationTTL: time.Duration(cfg.Reservation.TTLSeconds) * time.Second}, logger).Register(api)
+		domain.Settings{
+			ReservationTTL:   time.Duration(cfg.Reservation.TTLSeconds) * time.Second,
+			SettlementMargin: time.Duration(cfg.Notification.SettlementMarginSeconds) * time.Second,
+		}, logger).Register(api)
 	// Every request is timed in http_server_requests_seconds, labelled by its route's template.
 	srv := newServer(cfg.Server.Port, httplog.Middleware(logger,
 		registry.Requests(api.Mux(), testclock.OffsetHeader(businessClock, api))))

@@ -27,13 +27,15 @@ const tipTolerance = 1
 // I-13): nil when it would accept, or the refusal. It reads the QR Code as stored, never the payload
 // the payer fetched:
 //
-//  1. the QR Code's validUntil, inclusive;
+//  1. the QR Code's validUntil, inclusive, less the settlement margin: past validUntil it has
+//     expired; within margin of it, too little time is left for the transfer to settle while it is
+//     valid (ADR-0041, amending I-13);
 //  2. the payment method whose currency is the notification's (matched whatever the case), whose
 //     network object for the notified rail is published and, on a chain, whose destination address
 //     is blockchain.to: one lookup that covers the currency, the rail and the address together,
 //     after a rail or a currency that no method offers at all is refused naming it, each rail on
 //     its own (ADR-0036, amended 2026-11-15);
-//  3. that method's validUntil, inclusive;
+//  3. that method's validUntil, likewise;
 //  4. the tip: only on a bill that offers one, inside its range in percent of what is paid to the
 //     merchant, give or take one minor unit;
 //  5. the amount less the tip: within the editable range, or the amount the payload would quote now
@@ -42,10 +44,15 @@ const tipTolerance = 1
 // The domain consults it only once the status admits the pre-commit, and releases a holder whose
 // retry it refuses (ADR-0036). An error is a failure, never an answer: an adjusted amount past 18
 // digits, which the create already refuses (ADR-0005).
-func Gate(row domain.Row, req billing.Request, data *contract.NotificationData, now time.Time) (*domain.Refusal, error) {
+//
+// margin is domain.Settings.SettlementMargin; 0 is off, and validUntil is then inclusive.
+func Gate(row domain.Row, req billing.Request, data *contract.NotificationData, now time.Time, margin time.Duration) (*domain.Refusal, error) {
 	if row.ValidUntil.Before(now) {
 		return refusal("validUntil", fmt.Sprintf("This QR Code expired at %s and can no longer be paid.",
 			contract.FormatInstant(row.ValidUntil))), nil
+	}
+	if tooLate(row.ValidUntil, now, margin) {
+		return refusal("validUntil", tooLittleTime("this QR Code", row.ValidUntil, margin)), nil
 	}
 	pay := data.Payment.Value
 	notified := domain.Notification{Network: pay.Network.Value, Currency: pay.Currency.Value}
@@ -60,6 +67,10 @@ func Gate(row domain.Row, req billing.Request, data *contract.NotificationData, 
 		return refusal("paymentMethods.validUntil", fmt.Sprintf("The %s payment method expired at %s.",
 			method.Currency, contract.FormatInstant(method.ValidUntil))), nil
 	}
+	if tooLate(method.ValidUntil, now, margin) {
+		return refusal("paymentMethods.validUntil",
+			tooLittleTime(fmt.Sprintf("the %s payment method", method.Currency), method.ValidUntil, margin)), nil
+	}
 	total := pay.Amount.Value
 	var tip int64
 	if pay.TipAmount.IsSet() {
@@ -70,6 +81,30 @@ func Gate(row domain.Row, req billing.Request, data *contract.NotificationData, 
 	}
 	req.ValidUntil = row.ValidUntil
 	return checkAmount(req, method, total, tip, now)
+}
+
+// tooLate is whether less than margin is left before validUntil: now + margin > validUntil. Never
+// with no margin, where validUntil itself is the edge.
+func tooLate(validUntil, now time.Time, margin time.Duration) bool {
+	return margin > 0 && validUntil.Before(now.Add(margin))
+}
+
+// tooLittleTime is the refusal of a pre-commit inside the settlement margin of what expires.
+func tooLittleTime(what string, validUntil time.Time, margin time.Duration) string {
+	return fmt.Sprintf("Too little time is left to settle: %s expires at %s, and payments are approved only until %s before it.",
+		what, contract.FormatInstant(validUntil), formatMargin(margin))
+}
+
+// formatMargin is a margin in words: "1 second", "5 seconds", or Go's notation when it is not
+// whole seconds (never from the configuration, which counts seconds).
+func formatMargin(d time.Duration) string {
+	if d%time.Second != 0 {
+		return d.String()
+	}
+	if n := int64(d / time.Second); n != 1 {
+		return fmt.Sprintf("%d seconds", n)
+	}
+	return "1 second"
 }
 
 // offerOf is domain.OfferOf over the methods the gate reads.

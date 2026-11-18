@@ -98,6 +98,7 @@ The `go.*` section keeps its 2.x name, so values written for the 2.x chart's Go 
 | `application.x9.public-endpoints.host` | `X9_PUBLICENDPOINTS_HOST` | required |
 | `application.x9.certificate.*.location` | `X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION`, `X9_CERTIFICATE_TRUSTSTORE_LOCATION` | empty: the bundled demo identity (NON-PRODUCTION) |
 | `application.x9.reservation.ttl-seconds` | `X9_RESERVATION_TTL_SECONDS` | `90` |
+| `application.x9.notification.settlement-margin-seconds` | `X9_NOTIFICATION_SETTLEMENT_MARGIN_SECONDS` | `1`; `0` is off |
 | `deploy.ports.containerPort` | `X9_SERVER_PORT` | `8080` |
 | `go.env`, `customerEnvs` | any other variable (`X9_LOG_LEVEL`, `X9_EVENTS_RETENTION`, …) | `X9_LOG_LEVEL=info`, `[]` |
 

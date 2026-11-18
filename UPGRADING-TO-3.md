@@ -19,6 +19,16 @@
 > is used as before. Only something that trusted or pinned the 3.0.0 demo certificate (a test, a
 > demo) must take the new one: SHA-256 `71f5abfa2557037258e616ef8b4d87b7f8ec4c97ae777e03b406ed9da8b75e41`.
 
+> **After 3.0.1: a pre-commit needs a settlement margin before `validUntil`.** The next release
+> refuses a payer's pre-commit ("I'll pay") that arrives less than
+> `X9_NOTIFICATION_SETTLEMENT_MARGIN_SECONDS` (key `notification.settlement-margin-seconds`, chart
+> value `application.x9.notification.settlement-margin-seconds`; default `1`) before the QR Code's
+> or the matched payment method's `validUntil`, with the usual signed 400 on `validUntil` or
+> `paymentMethods.validUntil` saying "Too little time is left to settle". Before, a pre-commit was
+> accepted up to `validUntil` inclusive; set the margin to `0` to keep that. A negative value stops
+> the service at start. Post-commits are not affected
+> ([ADR-0041](docs/adr/0041-a-pre-commit-needs-time-to-settle-before-validuntil.md)).
+
 Why 3.0.0, and what is kept on purpose:
 [ADR-0031](docs/adr/0031-same-image-lighter-and-3-0-is-a-configuration-migration.md). Why there is
 no data migration:

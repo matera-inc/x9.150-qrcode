@@ -302,6 +302,20 @@ Beyond the skew, a payment notification is refused with a signed `401`, and a pa
 reported `INVALID` with `signatureProblem` `FUTURE_IAT`. An expired one (`iat + ttl` passed) is
 refused the same way, with `EXPIRED`.
 
+## Settlement margin
+
+A pre-commit ("I'll pay") arrives before the money moves, so the payee approves it only while there is
+still time for the transfer to settle before the QR Code expires
+([ADR-0041](docs/adr/0041-a-pre-commit-needs-time-to-settle-before-validuntil.md)).
+
+| Variable | Key | Default | Meaning |
+|---|---|---|---|
+| `X9_NOTIFICATION_SETTLEMENT_MARGIN_SECONDS` | `notification.settlement-margin-seconds` | `1` | A pre-commit is refused when less than this many seconds are left before the QR Code's or the matched payment method's `validUntil`. `0` turns it off (`validUntil` inclusive). Negative stops the service at start. |
+
+The refusal is the usual signed `400` on `validUntil` (or `paymentMethods.validUntil`), saying "Too
+little time is left to settle"; past `validUntil` it still says the QR Code expired. Judged on this
+service's clock at receipt. A post-commit is never judged on time, so it is recorded however late.
+
 ## Moving the clock (test deployments only)
 
 Discount windows, `validUntil`, the reservation lapse and JWS `iat + ttl` all depend on "now". A

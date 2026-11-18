@@ -77,6 +77,11 @@ type Settings struct {
 	// 0 means no window: a reservation never lapses (ADR-0036). Negative values are refused at
 	// startup, never here.
 	ReservationTTL time.Duration
+
+	// SettlementMargin is x9.notification.settlement-margin-seconds: a pre-commit is refused when
+	// less than this is left before the QR Code's or the matched method's validUntil (ADR-0041).
+	// 0 is off. Negative values are refused at startup, never here.
+	SettlementMargin time.Duration
 }
 
 // EffectiveStatus is the status as it stands at now (ADR-0019): a PAYMENT_INITIATED whose
