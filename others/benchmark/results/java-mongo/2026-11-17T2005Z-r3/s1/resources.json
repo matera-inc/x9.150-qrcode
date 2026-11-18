@@ -1,0 +1,56 @@
+[
+ {
+  "pod": "mongo",
+  "container": "database",
+  "image": "mongo:7.0.45",
+  "imageID": "docker-pullable://mongo@sha256:8bb4442761a63a8dda452744082cdac9644b429807eb977b42324a63cef59ca4",
+  "resources": {
+   "limits": {
+    "cpu": "2",
+    "memory": "2Gi"
+   },
+   "requests": {
+    "cpu": "2",
+    "memory": "2Gi"
+   }
+  },
+  "env": {}
+ },
+ {
+  "pod": "x9-qrcode",
+  "container": "crl",
+  "image": "python:3.13.9-slim",
+  "imageID": "docker-pullable://python@sha256:326df678c20c78d465db501563f3492d17c42a4afe33a1f2bf5406a1d56b0e86",
+  "resources": {
+   "limits": {
+    "cpu": "100m",
+    "memory": "64Mi"
+   },
+   "requests": {
+    "cpu": "50m",
+    "memory": "64Mi"
+   }
+  },
+  "env": {}
+ },
+ {
+  "pod": "x9-qrcode",
+  "container": "app",
+  "image": "x9-qrcode:git-ff6bc43",
+  "imageID": "docker-pullable://x9-qrcode@sha256:de9d33eddd92834e7b8611763af494e12a37231117d5200d32892daa40b40ce4",
+  "resources": {
+   "limits": {
+    "cpu": "2",
+    "memory": "2Gi"
+   },
+   "requests": {
+    "cpu": "2",
+    "memory": "2Gi"
+   }
+  },
+  "env": {
+   "SPRING_DATA_MONGODB_URI": "mongodb://mongo-0.mongo:27017/x9-qrcode?replicaSet=rs0&w=majority&journal=true",
+   "X9_TESTING_CLOCKCONTROL": "false"
+  }
+ }
+]

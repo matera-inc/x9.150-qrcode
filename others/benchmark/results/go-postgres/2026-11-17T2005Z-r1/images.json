@@ -1,0 +1,27 @@
+{
+ "build": "go-postgres",
+ "campaign": "2026-11-17T2005Z",
+ "run": 1,
+ "sequence": "J G J G J G",
+ "position": 2,
+ "app": {
+  "image": "materainc/x9-qrcode:3.0.0",
+  "id": "sha256:001fd633f8ab6ea7f8b75284c1cc824dea9dc8bbc7b2e40a6ed00f1399cdcc56",
+  "revision": "c9b77ca668c2b39add2f427856ef970b8f312fda",
+  "version": "3.0.0",
+  "platform": "linux/amd64",
+  "sizeBytes": 17305088
+ },
+ "liquibase": {
+  "image": "x9-qrcode-liquibase:git-c9b77ca",
+  "id": "sha256:8848700b02f64b4b0983c9c6e56a203c1ed9381020844923ce7818f42a406ff1",
+  "revision": "c9b77ca668c2b39add2f427856ef970b8f312fda",
+  "version": "git-c9b77ca",
+  "platform": "linux/amd64",
+  "sizeBytes": 683691520
+ },
+ "harnessRevision": "c9b77ca668c2b39add2f427856ef970b8f312fda",
+ "profile": "readme",
+ "stages": "",
+ "overlay": "none"
+}

@@ -1,0 +1,34 @@
+{
+ "build": "go-postgres",
+ "campaign": "2026-11-17T2211Z",
+ "run": 2,
+ "sequence": "J G J G J G",
+ "position": 4,
+ "app": {
+  "image": "materainc/x9-qrcode:3.0.0",
+  "id": "sha256:001fd633f8ab6ea7f8b75284c1cc824dea9dc8bbc7b2e40a6ed00f1399cdcc56",
+  "revision": "c9b77ca668c2b39add2f427856ef970b8f312fda",
+  "version": "3.0.0",
+  "platform": "linux/amd64",
+  "sizeBytes": 17305088
+ },
+ "liquibase": {
+  "image": "x9-qrcode-liquibase:git-a4a4c1c",
+  "id": "sha256:c1ecfe788f18c8e5fdac2d0deb16657db50a84553101df907a379272836557fd",
+  "revision": "a4a4c1cceb863aac63b9515c054a7b4ad305c991",
+  "version": "git-a4a4c1c",
+  "platform": "linux/amd64",
+  "sizeBytes": 683691520
+ },
+ "harnessRevision": "a4a4c1cceb863aac63b9515c054a7b4ad305c991",
+ "profile": "readme",
+ "stages": "",
+ "overlay": "none",
+ "signing": {
+  "signing": "es256",
+  "alg": "ES256",
+  "identity": "testdata/pki/x9-test-payer-ec.p12: the test CA's EC P-256 leaf, mounted as PKCS#12",
+  "certificate": "CN=Test Payer PSP EC,O=Example PSP,C=US",
+  "x5tS256": "GSQbEJtzdCFwXWXn1s_C_Ke8lCXw8mP-BGQ9qnC89Rg"
+ }
+}
