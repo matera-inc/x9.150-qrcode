@@ -1,0 +1,72 @@
+[
+ {
+  "pod": "postgres",
+  "container": "database",
+  "image": "postgres:16",
+  "imageID": "docker-pullable://postgres@sha256:dd2bf3ce2dc83a81674cf7f217fcfd8a5009a4b325dda5b843bfee82a06cff6f",
+  "resources": {
+   "limits": {
+    "cpu": "2",
+    "memory": "2Gi"
+   },
+   "requests": {
+    "cpu": "2",
+    "memory": "2Gi"
+   }
+  },
+  "env": {}
+ },
+ {
+  "pod": "x9-db-init",
+  "container": "wait-for-postgres",
+  "image": "postgres:16",
+  "imageID": "docker-pullable://postgres@sha256:dd2bf3ce2dc83a81674cf7f217fcfd8a5009a4b325dda5b843bfee82a06cff6f",
+  "resources": {},
+  "env": {}
+ },
+ {
+  "pod": "x9-db-init",
+  "container": "liquibase",
+  "image": "x9-qrcode-liquibase:git-c9b77ca",
+  "imageID": "docker-pullable://x9-qrcode-liquibase@sha256:8848700b02f64b4b0983c9c6e56a203c1ed9381020844923ce7818f42a406ff1",
+  "resources": {},
+  "env": {}
+ },
+ {
+  "pod": "x9-qrcode",
+  "container": "crl",
+  "image": "python:3.13.9-slim",
+  "imageID": "docker-pullable://python@sha256:326df678c20c78d465db501563f3492d17c42a4afe33a1f2bf5406a1d56b0e86",
+  "resources": {
+   "limits": {
+    "cpu": "100m",
+    "memory": "64Mi"
+   },
+   "requests": {
+    "cpu": "50m",
+    "memory": "64Mi"
+   }
+  },
+  "env": {}
+ },
+ {
+  "pod": "x9-qrcode",
+  "container": "app",
+  "image": "materainc/x9-qrcode:3.0.0",
+  "imageID": "docker-pullable://materainc/x9-qrcode@sha256:001fd633f8ab6ea7f8b75284c1cc824dea9dc8bbc7b2e40a6ed00f1399cdcc56",
+  "resources": {
+   "limits": {
+    "cpu": "2",
+    "memory": "2Gi"
+   },
+   "requests": {
+    "cpu": "2",
+    "memory": "2Gi"
+   }
+  },
+  "env": {
+   "X9_TESTING_CLOCKCONTROL": "false",
+   "GOMEMLIMIT": "1638MiB"
+  }
+ }
+]

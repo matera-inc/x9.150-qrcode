@@ -1,0 +1,27 @@
+{
+ "build": "java-mongo",
+ "campaign": "2026-11-17T2211Z",
+ "run": 2,
+ "sequence": "J G J G J G",
+ "position": 3,
+ "app": {
+  "image": "x9-qrcode:git-ff6bc43",
+  "id": "sha256:de9d33eddd92834e7b8611763af494e12a37231117d5200d32892daa40b40ce4",
+  "revision": "ff6bc436adc3f59edbb162d92c96497750c57334",
+  "version": "git-ff6bc43",
+  "platform": "linux/amd64",
+  "sizeBytes": 409960960
+ },
+ "liquibase": null,
+ "harnessRevision": "a4a4c1cceb863aac63b9515c054a7b4ad305c991",
+ "profile": "readme",
+ "stages": "",
+ "overlay": "none",
+ "signing": {
+  "signing": "es256",
+  "alg": "ES256",
+  "identity": "testdata/pki/x9-test-payer-ec.p12: the test CA's EC P-256 leaf, mounted as PKCS#12",
+  "certificate": "CN=Test Payer PSP EC,O=Example PSP,C=US",
+  "x5tS256": "GSQbEJtzdCFwXWXn1s_C_Ke8lCXw8mP-BGQ9qnC89Rg"
+ }
+}
