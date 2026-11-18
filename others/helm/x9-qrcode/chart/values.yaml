@@ -280,6 +280,12 @@ application:
       # Once a transaction hash is registered the reservation stops expiring whatever this says (ADR-0036).
       # A negative value is invalid: the service refuses to start.
       ttl-seconds: 90
+    notification:
+      # -- Seconds before validUntil (the QR Code's and the matched payment method's) after which a
+      # payer's pre-commit is refused, so the transfer it starts can settle while the QR Code is valid
+      # (X9_NOTIFICATION_SETTLEMENT_MARGIN_SECONDS, ADR-0041). `0` is off: validUntil itself is the
+      # edge. A negative value is invalid: the service refuses to start.
+      settlement-margin-seconds: 1
 
 # -- The service's PostgreSQL, Liquibase, memory and shutdown settings. The section keeps its 2.x name
 # (`go`), so 2.x Go values carry over unchanged. Every variable it sets is listed in

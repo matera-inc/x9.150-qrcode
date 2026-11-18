@@ -56,6 +56,10 @@ DISCOUNTED = BILL - DISCOUNT
 HOLDER = "holder@example.com"
 OTHER = "other@example.com"
 
+# x9.notification.settlement-margin-seconds (1 s, the default the black-box deployment runs with):
+# a pre-commit is refused once less than this is left before validUntil (ADR-0041).
+SETTLEMENT_MARGIN = datetime.timedelta(seconds=1)
+
 # Past x9.reservation.ttl-seconds (90 s, the default the black-box deployment runs with).
 LAPSED_MS = 95_000
 
@@ -358,11 +362,12 @@ def test_t5_the_late_fee_rises_every_24_hours_from_the_due_date(api, clock, paye
 def test_t6_a_pre_commit_after_valid_until_is_refused_and_the_payee_may_still_mark_it_paid(
         api, clock, events):
     """X9-TIME-006 — T6: fetched before ``validUntil``, announced 1 ms after it: refused on
-    ``validUntil``; the payee may still mark it PAID. Announced just before it: accepted
-    (S4.5-AC1, S1.3-AC3).
+    ``validUntil``; the payee may still mark it PAID. Announced just before the settlement margin
+    (``validUntil`` − 1 s): accepted (S4.5-AC1, S1.3-AC3).
 
-    Source: Ours. Plan §4.2 T6; Story 1.3 (``validUntil`` is inclusive, judged at the payee's
-    clock on receipt); ADR-0020 (the payee states the outcome of its own receivable).
+    Source: Ours. Plan §4.2 T6; Story 1.3 (judged at the payee's clock on receipt); ADR-0041
+    (a pre-commit needs the settlement margin before ``validUntil``); ADR-0020 (the payee states
+    the outcome of its own receivable).
     Why: a payer who fetched in time does not keep the right to pay after expiry; but money that
     reached the payee anyway must still be recordable, or the books cannot close.
     """
@@ -383,9 +388,41 @@ def test_t6_a_pre_commit_after_valid_until_is_refused_and_the_payee_may_still_ma
     assert api.status_of(late["id"]) == "PAID"
     assert [e.get("type") for e in event_types(events, late["id"], 1)] == [CLEARED]
 
-    accepted = just_before(clock, valid_until,
+    accepted = just_before(clock, valid_until - SETTLEMENT_MARGIN,
                            lambda: api.notify(on_time["id"], payer_info=HOLDER))
-    assert accepted.status == 200, f"validUntil is inclusive: accepted up to it: {accepted}"
+    assert accepted.status == 200, \
+        f"accepted up to the settlement margin before validUntil: {accepted}"
+
+
+def test_a_pre_commit_inside_the_settlement_margin_is_refused_and_reserves_nothing(api, clock):
+    """X9-TIME-019 — a pre-commit judged after ``validUntil`` − 1 s but before ``validUntil`` is
+    refused on ``validUntil`` as too little time to settle, not as expired, and reserves nothing.
+
+    Source: Ours. ADR-0041 (amends INTERPRETATION I-13's inclusive ``validUntil`` for the
+    pre-commit; default margin 1 s).
+    Why: a pre-commit arrives before the money moves; a transfer approved in the QR Code's last
+    instant cannot settle while it is valid, so the payee plays safe.
+    """
+    valid_until = whole_seconds_from_now(datetime.timedelta(hours=1))
+    qr = created(api, valid_until=iso(valid_until))
+    edge = valid_until - SETTLEMENT_MARGIN
+
+    # Judged at edge + 1 ms or later; proved to be before validUntil by timing the attempt, as
+    # just_before does. A refusal changes nothing, so an attempt can be repeated.
+    for _ in range(ATTEMPTS):
+        started = time.monotonic()
+        clock.move_to(edge + MS)
+        refused = api.notify(qr["id"], payer_info=HOLDER)
+        if time.monotonic() - started < (SETTLEMENT_MARGIN - MS).total_seconds():
+            break
+    else:
+        pytest.fail(f"no attempt finished within {SETTLEMENT_MARGIN} of moving the clock, so none "
+                    f"can be shown to have been judged before {valid_until}")
+
+    assert_refused_on(refused, "validUntil")
+    assert "Too little time is left to settle" in json.dumps(refused.body), \
+        f"refused for the margin, not as expired: {refused.body}"
+    assert api.status_of(qr["id"]) == "ACTIVE", "a refused pre-commit reserves nothing"
 
 
 def test_a_post_commit_after_valid_until_is_accepted_and_registered(

@@ -72,6 +72,7 @@ case, dots to underscores, dashes removed), and "—" means there is none worth 
 | Java property | Java variable | Go key | Go variable | Notes |
 |---|---|---|---|---|
 | `x9.reservation.ttl-seconds` (90) | `X9_RESERVATION_TTL_SECONDS` | `reservation.ttl-seconds` | `X9_RESERVATION_TTL_SECONDS` | Same, including 0 for no window; negative is refused. |
+| — (Go only) | — | `notification.settlement-margin-seconds` | `X9_NOTIFICATION_SETTLEMENT_MARGIN_SECONDS` | New, default 1: a pre-commit is refused when less than this is left before the QR Code's or the matched payment method's `validUntil` ([ADR-0041](adr/0041-a-pre-commit-needs-time-to-settle-before-validuntil.md)). 0 is off (Java's behaviour: `validUntil` inclusive); negative is refused. |
 | `x9.currency.supported-currencies-location` | `X9_CURRENCY_SUPPORTEDCURRENCIESLOCATION` | `currency.supported-currencies-location` | `X9_CURRENCY_SUPPORTEDCURRENCIESLOCATION` | A path; `file:` is accepted and dropped, `classpath:` is refused. Empty is the bundled file, the same as Java's. |
 | `x9.currency.pegged-currencies-location` | `X9_CURRENCY_PEGGEDCURRENCIESLOCATION` | `currency.pegged-currencies-location` | `X9_CURRENCY_PEGGEDCURRENCIESLOCATION` | As above. |
 | `x9.testing.clock-control` (false) | `X9_TESTING_CLOCKCONTROL` | `testing.clock-control` | `X9_TESTING_CLOCKCONTROL` | Same, test deployments only ([ADR-0033](adr/0033-the-clock-can-be-moved-in-test-deployments-only.md)). |
@@ -201,6 +202,7 @@ values are under `go.*`.
 | `application.x9.certificate.private-keystore.location` | `x9.certificate.private-keystore.location` | `certificate.private-keystore.location` | `X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION` | Mount a PKCS#12 or PEM file; see [JKS to PKCS#12](#jks-to-pkcs12). |
 | `application.x9.certificate.truststore.location` | `x9.certificate.truststore.location` | `certificate.truststore.location` | `X9_CERTIFICATE_TRUSTSTORE_LOCATION` | As above. |
 | `application.x9.reservation.ttl-seconds` | `x9.reservation.ttl-seconds` | `reservation.ttl-seconds` | `X9_RESERVATION_TTL_SECONDS` | Same. |
+| `application.x9.notification.settlement-margin-seconds` | — (Go only) | `notification.settlement-margin-seconds` | `X9_NOTIFICATION_SETTLEMENT_MARGIN_SECONDS` | New, default 1 (ADR-0041). |
 | `application.loggingFormat` | `application.loggingFormat` | dropped | — | Always JSON. |
 | `applicationExtra` | any Spring property | dropped | — | Write Go keys in the Go YAML file instead. |
 | `secrets.spring.data.mongodb.uri` | `spring.data.mongodb.uri` | `database.host` | `DATABASE_HOST` | And the other `DATABASE_*` variables above: chart values `go.database.*`; the password is `DATABASE_PASSWORD_FILE`, mounted from the Secret `go.existingSecret`. |

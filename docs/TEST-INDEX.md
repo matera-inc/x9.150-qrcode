@@ -6,7 +6,7 @@ at one and still mean the same thing after the method has been renamed.
 Each test's docstring or doc comment carries **Source** — whether the rule is the standard's, **ours**,
 or a mechanism being pinned — and **Why** it matters. See [TEST-CONVENTIONS.md](TEST-CONVENTIONS.md).
 
-**359 tests documented** — every black-box case, and the Go tests that prove
+**360 tests documented** — every black-box case, and the Go tests that prove
 a difference between the builds no black-box case can drive, a fix the differential run found
 (ADR-0028, [TOLERATED-DIFFERENCES.md](../others/blackbox/TOLERATED-DIFFERENCES.md)), or what an
 operator's monitoring reads ([METRICS.md](METRICS.md)); their key starts the test's doc comment,
@@ -389,7 +389,7 @@ judged within the 2 s before it; "1 ms after" is exact.
 | `X9-TIME-003` | T3: no second edge at 23:59:59 UTC of E's day; the discount is neither offered nor accepted after E | `test_time_edges.py` |
 | `X9-TIME-004` | T4: at exactly `dueDate` the full amount and no fee; 1 ms later the first day's fee | `test_time_edges.py` |
 | `X9-TIME-005` | T5: the late fee rises every 24 h from `dueDate`; its advertised `validUntil` is the next boundary, capped by the QR Code's | `test_time_edges.py` |
-| `X9-TIME-006` | T6: a pre-commit 1 ms after `validUntil` is refused, one just before is accepted; the payee may still mark it PAID | `test_time_edges.py` |
+| `X9-TIME-006` | T6: a pre-commit 1 ms after `validUntil` is refused, one just before the settlement margin (`validUntil` − 1 s) is accepted; the payee may still mark it PAID | `test_time_edges.py` |
 | `X9-TIME-007` | T7: a payment method past its own `validUntil` is absent from the payload and refused; the other is served and accepted | `test_time_edges.py` |
 | `X9-TIME-008` | T8: after a lapse the ETag reads ACTIVE and If-Match with it succeeds; another payer takes over with `payment.initiated`; the first payer's late SENT is registered, flagged | `test_time_edges.py` |
 | `X9-TIME-010` | T9: a reservation taken 30 s before `validUntil` ends at `validUntil` | `test_time_edges.py` |
@@ -401,6 +401,7 @@ judged within the 2 s before it; "1 ms after" is exact.
 | `X9-TIME-017` | one instant: 1 ms past a method's `validUntil`, with `dateForPayment` that day, the expired method is absent and the other is priced one day late | `test_time_edges.py` |
 | `X9-TIME-024` | the GET answer's `sentAt` is never before `revisedAt` (black-box, both builds) | `test_patch_merged_rules.py` |
 | `X9-TIME-018` | a post-commit 1 ms after `validUntil` is accepted, signed, and registered with its hash | `test_time_edges.py` |
+| `X9-TIME-019` | a pre-commit inside the settlement margin (after `validUntil` − 1 s, before `validUntil`) is refused on `validUntil` as too little time to settle, and reserves nothing (ADR-0041) | `test_time_edges.py` |
 | `X9-TIME-501` | the test clock moves, reads back and resets, and every answer carries `X-Test-Clock-Offset` while it is moved | `test_clock.py` |
 | `X9-TIME-502` | on the test clock, a payload stops being served once the clock passes `validUntil` (X9-LIFE-126 without sleeping) | `test_clock.py` |
 

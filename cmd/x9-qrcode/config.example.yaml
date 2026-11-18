@@ -56,6 +56,12 @@ log:
 reservation:
   ttl-seconds: 90                # X9_RESERVATION_TTL_SECONDS. 0 = no window; negative is invalid.
 
+notification:
+  settlement-margin-seconds: 1   # X9_NOTIFICATION_SETTLEMENT_MARGIN_SECONDS. A pre-commit is refused when
+                                 # less than this is left before the QR Code's or the matched payment
+                                 # method's validUntil, so the transfer can settle while it is valid
+                                 # (ADR-0041). 0 = off (validUntil inclusive); negative is invalid.
+
 # Retention (ADR-0029), the service's one background job. Durations are ISO-8601 days, hours, minutes
 # and seconds (P30D, PT1H, P1DT12H); years and months are refused. Each run deletes, on the business
 # clock and in small batches, first the events older than events.retention, then the QR Codes whose

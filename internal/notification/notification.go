@@ -338,7 +338,7 @@ func Decide(row domain.Row, a *Accepted, last *domain.NotificationRecord, now ti
 	}
 	var gate *domain.Refusal
 	if phase == domain.PhasePreCommit {
-		if gate, err = Gate(row, rules, &a.Data, now); err != nil {
+		if gate, err = Gate(row, rules, &a.Data, now, s.SettlementMargin); err != nil {
 			return domain.Decision{}, err
 		}
 	}

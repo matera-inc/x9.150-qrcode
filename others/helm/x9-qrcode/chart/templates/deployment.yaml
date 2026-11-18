@@ -176,6 +176,9 @@ spec:
             # 0 means no window: a reservation never expires on its own (ADR-0036).
             - name: X9_RESERVATION_TTL_SECONDS
               value: {{ dig "x9" "reservation" "ttl-seconds" 90 .Values.application | quote }}
+            # 0 is off: a pre-commit is approved up to validUntil itself (ADR-0041).
+            - name: X9_NOTIFICATION_SETTLEMENT_MARGIN_SECONDS
+              value: {{ dig "x9" "notification" "settlement-margin-seconds" 1 .Values.application | quote }}
             {{- with (dig "x9" "certificate" "private-keystore" "location" nil .Values.application) }}
             - name: X9_CERTIFICATE_PRIVATEKEYSTORE_LOCATION
               value: {{ . | quote }}

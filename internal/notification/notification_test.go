@@ -166,7 +166,7 @@ func serve(t *testing.T, skew time.Duration) *fixture {
 	}
 	st := &fakeStore{clock: clk, rows: map[uuid.UUID]domain.Row{}}
 	api := httpapi.New(logger, clk.Now)
-	New(st, ks, payee, verifier, domain.Settings{ReservationTTL: 90 * time.Second}, logger).Register(api)
+	New(st, ks, payee, verifier, domain.Settings{ReservationTTL: 90 * time.Second, SettlementMargin: time.Second}, logger).Register(api)
 	srv := httptest.NewServer(api)
 	t.Cleanup(srv.Close)
 	return &fixture{t: t, url: srv.URL, clock: clk, store: st, keys: ks, payer: payer, verifier: verifier, logs: logs}
@@ -653,6 +653,57 @@ func TestAPostCommitNotOfferedIsRecordedAndRefused(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ADR-0041: inside the settlement margin before validUntil, a pre-commit is a signed 400 on
+// validUntil and reserves nothing; a holder's retry is refused and releases the QR Code, as expiry
+// does; a post-commit is not judged on time and is recorded.
+func TestTheSettlementMargin(t *testing.T) {
+	inside := validUntil.Add(-500 * time.Millisecond)
+	const saying = "validUntil: Too little time is left to settle: this QR Code expires at 2030-01-01T00:00:00Z, " +
+		"and payments are approved only until 1 second before it."
+
+	t.Run("a new pre-commit", func(t *testing.T) {
+		f := serve(t, 0)
+		id := f.qr(solanaQR("", "", notifyDefault))
+		f.clock.set(inside)
+		r, cid := f.notify(note(id))
+		if v := violations(f.signed(r, http.StatusBadRequest, cid)); !strings.Contains(v, saying) {
+			t.Errorf("violations %s, want %q", v, saying)
+		}
+		if got := f.store.row(id).Status; got != domain.StatusActive {
+			t.Errorf("status %s, want ACTIVE: nothing reserved", got)
+		}
+	})
+	t.Run("a holder's retry", func(t *testing.T) {
+		f := serve(t, 0)
+		id := f.qr(solanaQR("", "", notifyDefault))
+		f.clock.set(validUntil.Add(-30 * time.Second))
+		r, cid := f.notify(note(id))
+		f.signed(r, http.StatusOK, cid)
+		f.clock.set(inside)
+		r, cid = f.notify(note(id))
+		if v := violations(f.signed(r, http.StatusBadRequest, cid)); !strings.Contains(v, saying) {
+			t.Errorf("violations %s, want %q", v, saying)
+		}
+		if got := f.store.row(id).Status; got != domain.StatusActive {
+			t.Errorf("status %s, want ACTIVE: the refused retry releases", got)
+		}
+	})
+	t.Run("a post-commit", func(t *testing.T) {
+		f := serve(t, 0)
+		id := f.qr(solanaQR("", "", notifyDefault))
+		f.clock.set(validUntil.Add(-30 * time.Second))
+		r, cid := f.notify(note(id))
+		f.signed(r, http.StatusOK, cid)
+		f.clock.set(inside)
+		r, cid = f.notify(note(id, payment("transactionId", "5VfYtx9Hash"),
+			top("blockchain", map[string]any{"action": "SENT", "from": wallet, "to": recipient})))
+		f.signed(r, http.StatusOK, cid)
+		if !f.store.row(id).HashRegistered {
+			t.Errorf("the post-commit inside the margin was not registered: %+v", f.store.row(id))
+		}
+	})
 }
 
 // ADR-0036, amended 2026-11-15: a pre-commit's rail or currency not offered is the acceptance

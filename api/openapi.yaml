@@ -16,7 +16,7 @@ info:
 
     - **`dueDate`**, and every other `date-time` field (e.g. `validUntil`, `createdAt`, `revisedAt`, `sentAt`), MUST be a UTC timestamp ending in `Z`. There is no separate timezone field when creating a QR Code: the biller must convert the bill's due date/time **from the biller's own local timezone to UTC** before submitting it (e.g. end-of-day 2030-05-15 in a UTC-03:00 timezone is sent as `2030-05-16T02:59:59Z`).
     - **Date-only** fields — `invoice.date` and the `dateForPayment` query parameter — are plain calendar dates (`YYYY-MM-DD`) and are interpreted at UTC start-of-day.
-    - Late-fee / discount amounts are calculated at request time, on the payee's clock, in UTC. Every `validUntil` is an exact instant, inclusive: a request at that instant is in time, one a millisecond later is not. There is no end-of-day rounding; a biller who means the end of its local day sends that instant, converted to UTC.
+    - Late-fee / discount amounts are calculated at request time, on the payee's clock, in UTC. Every `validUntil` is an exact instant, inclusive: a request at that instant is in time, one a millisecond later is not; a payer's pre-commit must moreover leave the payee a settlement margin before it (1 s by default, see the `400` of `POST /pub/api/v1/payment-notification`). There is no end-of-day rounding; a biller who means the end of its local day sends that instant, converted to UTC.
 
     ## Compatibility with future versions
 
@@ -821,6 +821,14 @@ paths:
             unknown network...). **Signed**, like every answer from this endpoint: a JWS whose body
             is `{"statusCode": 400}` plus the usual error fields (`type`, `title`, `status`,
             `detail`, `violations`), with the notification's `correlationId` echoed.
+
+            A pre-commit is also refused when too little time is left for the transfer to settle
+            before the QR Code's `validUntil` (field `validUntil`) or the matched payment method's
+            (field `paymentMethods.validUntil`): when this payee's clock at receipt plus
+            `notification.settlement-margin-seconds` (`X9_NOTIFICATION_SETTLEMENT_MARGIN_SECONDS`,
+            1 s by default, 0 off) is past it. Its `detail` begins "Too little time is left to
+            settle"; once `validUntil` itself has passed, it still says the QR Code (or the method)
+            expired. A post-commit is never refused on time.
 
             Also returned, signed under a fresh `correlationId`, for a request refused before it is
             read: an empty body, or one that cannot be read.

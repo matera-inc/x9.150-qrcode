@@ -248,8 +248,9 @@ that is here must still be marked `GAP`.
 | `R-I12-11` | The answer is signed with `typ: JOSE`. | `sign_test.go::TestSignedAnswer`, `X9-SIG-516` | `S3.2-AC4`, `S3.2-AC6`, `S8.4-AC2` |
 | `R-I13-01` | The payee's clock at receipt decides whether a pre-commit is still valid and which amount is owed. | `X9-TIME-016` | `S1.3-AC2`, `S4.5-AC2` |
 | `R-I13-02` | A pre-commit the payee's clock refuses is a 400 on the amount or on `validUntil`. | `X9-SIG-521` | `S3.2-AC7` |
-| `R-I13-03` | A pre-commit is accepted up to `validUntil` and refused one millisecond after. | `X9-TIME-006` | `S1.3-AC3`, `S4.5-AC1` |
+| `R-I13-03` | A pre-commit is accepted up to the settlement margin before `validUntil` (ADR-0041; inclusive of `validUntil` itself with the margin at 0) and refused as expired one millisecond after `validUntil`. | `X9-TIME-006`, `gate_test.go::TestGate` | `S1.3-AC3`, `S4.5-AC1` |
 | `R-I13-04` | At exactly `dueDate` the full amount is owed with no late fee; the first day's fee applies one millisecond later. | `X9-TIME-004` | `S1.3-AC4`, `S2.6-AC1`, `S4.5-AC1` |
+| `R-I13-05` | A pre-commit is refused on `validUntil` or `paymentMethods.validUntil` when the payee's clock plus the settlement margin is past the QR Code's or the matched method's `validUntil` (ADR-0041). | `X9-TIME-019`, `gate_test.go::TestGate` | — |
 | `R-I14-01` | A discount is served, advertised and accepted up to its edge E, and refused one millisecond after; the face amount is still accepted. | `X9-TIME-001`, `X9-TIME-003` | `S1.3-AC1`, `S2.6-AC1`, `S2.6-AC4`, `S4.5-AC1` |
 | `R-I14-02` | Of several discounts the largest eligible one is served, until its own edge. | `formula_test.go::TestTheLargestEligibleDiscountWins` | `S9.4-AC3` |
 | `R-I14-03` | A late fee rises every 24 hours from `dueDate`, and its `validUntil` is the next boundary. | `X9-TIME-005` | `S2.6-AC1`, `S2.6-AC2`, `S4.5-AC1` |
